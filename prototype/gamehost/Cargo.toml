@@ -20,16 +20,18 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
 minifb = "0.28"
 wgpu-hal = "=30.0.1" # patched below; read for instrumentation only
+objc2 = "0.6" # #13: autorelease pool per loop iteration
+wgpu = { version = "=30.0.1", features = ["counters"] } # #13: internal resource counters
 
 [profile.release]
 debug = 1
 
 # PROTOTYPE: local patched Ruffle (see patches/). Same pin a1277c0 plus the patch.
 [patch."https://github.com/ruffle-rs/ruffle"]
-ruffle_render_wgpu = { path = "../../../../src/ruffle/render/wgpu" }
-ruffle_render = { path = "../../../../src/ruffle/render" }
-ruffle_core = { path = "../../../../src/ruffle/core" }
-ruffle_frontend_utils = { path = "../../../../src/ruffle/frontend-utils" }
+ruffle_render_wgpu = { path = "../../../../src/ruffle-13/render/wgpu" }
+ruffle_render = { path = "../../../../src/ruffle-13/render" }
+ruffle_core = { path = "../../../../src/ruffle-13/core" }
+ruffle_frontend_utils = { path = "../../../../src/ruffle-13/frontend-utils" }
 
 [patch.crates-io]
-wgpu-hal = { path = "../../../../src/patched/wgpu-hal-30.0.1" }
+wgpu-hal = { path = "../../../../src/patched/wgpu-hal-30.0.1-13" }

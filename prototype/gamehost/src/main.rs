@@ -108,6 +108,8 @@ enum Msg {
     Ping { id: u32 },
     Stats { id: u32 },
     RenderBench { id: u32, n: u32 },
+    Mem { id: u32 },
+    FullGc { id: u32 },
 }
 
 fn start_reader(tx: Sender<Msg>) {
@@ -138,6 +140,8 @@ fn start_reader(tx: Sender<Msg>) {
                     b'P' => Msg::Ping { id },
                     b'Q' => Msg::Stats { id },
                     b'B' => Msg::RenderBench { id, n: u32::from_le_bytes(body[5..9].try_into().unwrap()) },
+                    b'M' => Msg::Mem { id },
+                    b'G' => Msg::FullGc { id },
                     _ => continue,
                 };
                 if tx.send(msg).is_err() {
@@ -414,6 +418,8 @@ fn main() {
         None
     };
 
+    let trim_every: Option<u32> = std::env::var("SKUA_TRIM_TICKS").ok().and_then(|v| v.parse().ok());
+    let mut ticks_since_trim = 0u32;
     let started = Instant::now();
     let mut last_tick = Instant::now();
     let mut ticks: u64 = 0;
@@ -426,7 +432,10 @@ fn main() {
     let mut tick_busy = Duration::ZERO;
     let mut max_tick = Duration::ZERO;
 
-    loop {
+    // #13: Metal returns autoreleased objects (command buffers, encoders, descriptors). A plain Rust loop
+    // never drains an autorelease pool, so drain one per iteration like an AppKit/winit run loop does.
+    let use_arp = std::env::var_os("SKUA_NO_ARP").is_none();
+    let mut iteration = || {
         let wait = lock(&player).time_til_next_frame().min(Duration::from_millis(33));
         let msg = rx.recv_timeout(wait);
         match msg {
@@ -478,6 +487,18 @@ fn main() {
                 send_with_id(b'I', id, &rest);
             }
             Ok(Msg::Ping { id }) => send_with_id(b'P', id, &[]),
+            Ok(Msg::Mem { id }) => {
+                // #13: Ruffle-side and wgpu-side memory accounting.
+                let mut p = lock(&player);
+                let core = p.skua_mem_stats();
+                let renderer = <dyn Any>::downcast_mut::<WgpuRenderBackend<TextureTarget>>(p.renderer_mut()).unwrap();
+                let json = format!("{{{core},{},\"renders\":{renders}}}", renderer.skua_mem_stats());
+                send_with_id(b'Q', id, json.as_bytes());
+            }
+            Ok(Msg::FullGc { id }) => {
+                lock(&player).skua_full_gc();
+                send_with_id(b'P', id, &[]);
+            }
             Ok(Msg::RenderBench { id, n }) => {
                 // Render the live stage n times back to back (with a GPU wait) and report per-frame render time.
                 let mut times = vec![];
@@ -539,8 +560,20 @@ fn main() {
             guarded("tick", || p.tick(FloatDuration::from_std(dt)));
             // Without a per-frame render nothing polls the device, so finished submissions,
             // staging-belt chunks and map callbacks are never reclaimed. Poll without blocking.
-            if std::env::var_os("SKUA_NO_POLL").is_none() {
+            if std::env::var_os("SKUA_POLL_WAIT").is_some() {
+                // #13 experiment: backpressure. Block until the GPU has finished everything submitted so far.
+                let _ = descriptors.device.poll(wgpu::PollType::Wait { submission_index: None, timeout: None });
+            } else if std::env::var_os("SKUA_NO_POLL").is_none() {
                 let _ = descriptors.device.poll(wgpu::PollType::Poll);
+            }
+            // #13: a host that isn't rendering still has to bound the offscreen pool and pending work.
+            if let Some(n) = trim_every {
+                ticks_since_trim += 1;
+                if ticks_since_trim >= n {
+                    ticks_since_trim = 0;
+                    let renderer = <dyn Any>::downcast_mut::<WgpuRenderBackend<TextureTarget>>(p.renderer_mut()).unwrap();
+                    renderer.skua_trim();
+                }
             }
             let spent = t0.elapsed();
             tick_busy += spent;
@@ -570,6 +603,13 @@ fn main() {
                     let _ = w.update_with_buffer(&buf, img.width() as usize, img.height() as usize);
                 }
             }
+        }
+    };
+    loop {
+        if use_arp {
+            objc2::rc::autoreleasepool(|_| iteration());
+        } else {
+            iteration();
         }
     }
 }

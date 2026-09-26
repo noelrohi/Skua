@@ -1,0 +1,176 @@
+diff --git a/core/src/library.rs b/core/src/library.rs
+index 74188cd5e..c5d9eb34e 100644
+--- a/core/src/library.rs
++++ b/core/src/library.rs
+@@ -52,6 +52,12 @@ pub struct Avm2ClassRegistry<'gc> {
+     class_map: WeakValueHashMap<Avm2Class<'gc>, WeakMovieSymbol>,
+ }
+ 
++impl<'gc> Avm2ClassRegistry<'gc> {
++    pub fn skua_len(&self) -> usize {
++        self.class_map.len()
++    }
++}
++
+ unsafe impl<'gc> Collect<'gc> for Avm2ClassRegistry<'gc> {
+     fn trace<C: Trace<'gc>>(&self, cc: &mut C) {
+         for (k, _) in self.class_map.iter() {
+@@ -490,6 +496,17 @@ impl<'gc> Library<'gc> {
+         self.movie_libraries.known_movies()
+     }
+ 
++    /// skua #13 instrumentation: (movie libraries, characters, SWF bytes, AVM2 class registry entries).
++    pub fn skua_stats(&self) -> (usize, usize, usize, usize) {
++        let (mut n, mut chars, mut bytes) = (0, 0, 0);
++        for (movie, lib) in self.movie_libraries.0.iter() {
++            n += 1;
++            chars += lib.characters.len();
++            bytes += movie.data().len();
++        }
++        (n, chars, bytes, self.avm2_class_registry.skua_len())
++    }
++
+     /// Returns the default Font implementations behind the built in names (ie `_sans`)
+     pub fn default_font(
+         &mut self,
+diff --git a/core/src/player.rs b/core/src/player.rs
+index 0be19dcaf..72e93d6cd 100644
+--- a/core/src/player.rs
++++ b/core/src/player.rs
+@@ -2446,6 +2446,20 @@ impl Player {
+         rval
+     }
+ 
++    /// skua #13 instrumentation: JSON with GC object count and movie library totals.
++    pub fn skua_mem_stats(&mut self) -> String {
++        let gc = self.gc_arena.borrow().metrics().total_gc_count();
++        let (movies, chars, swf_bytes, classes) = self.mutate_with_update_context(|ctx| ctx.library.skua_stats());
++        format!(
++            "\"gcObjects\":{gc},\"movies\":{movies},\"characters\":{chars},\"swfBytes\":{swf_bytes},\"classRegistry\":{classes}"
++        )
++    }
++
++    /// skua #13 instrumentation: finish the current GC cycle (a full collection).
++    pub fn skua_full_gc(&mut self) {
++        self.gc_arena.borrow_mut().finish_cycle();
++    }
++
+     pub fn flush_shared_objects(&mut self) {
+         self.update(|context| {
+             if let Some(mut avm1_activation) =
+diff --git a/render/wgpu/src/backend.rs b/render/wgpu/src/backend.rs
+index e6338ee7f..c12dba9cb 100644
+--- a/render/wgpu/src/backend.rs
++++ b/render/wgpu/src/backend.rs
+@@ -380,6 +380,32 @@ impl<T: RenderTarget> WgpuRenderBackend<T> {
+         }
+     }
+ 
++    /// skua #13 instrumentation: JSON fields for the texture pools and wgpu's internal counters.
++    pub fn skua_mem_stats(&self) -> String {
++        let (ks, kn, kb) = self.texture_pool.skua_stats();
++        let (os, on, ob) = self.offscreen_texture_pool.skua_stats();
++        let c = self.descriptors.device.get_internal_counters();
++        format!(
++            "\"poolSizes\":{ks},\"poolTex\":{kn},\"poolMB\":{},\"offPoolSizes\":{os},\"offPoolTex\":{on},\"offPoolMB\":{},\"halTextures\":{},\"halTexMB\":{},\"halBuffers\":{},\"halBufMB\":{},\"halEncoders\":{},\"halBindGroups\":{},\"halAllocs\":{}",
++            kb / 1_000_000,
++            ob / 1_000_000,
++            c.hal.textures.read(),
++            c.hal.texture_memory.read() / 1_000_000,
++            c.hal.buffers.read(),
++            c.hal.buffer_memory.read() / 1_000_000,
++            c.hal.command_encoders.read(),
++            c.hal.bind_groups.read(),
++            c.hal.memory_allocations.read(),
++        )
++    }
++
++    /// skua #13: what `submit_frame` does to bound per-frame state, for a host that is not rendering:
++    /// submit pending offscreen work and drop the offscreen texture pool.
++    pub fn skua_trim(&mut self) {
++        self.active_frame.submit_direct(&self.descriptors);
++        self.offscreen_texture_pool = TexturePool::new();
++    }
++
+     pub fn descriptors(&self) -> &Arc<Descriptors> {
+         &self.descriptors
+     }
+@@ -669,6 +695,9 @@ impl<T: RenderTarget + 'static> RenderBackend for WgpuRenderBackend<T> {
+         self.active_frame
+             .submit_for_target(&self.descriptors, &self.target, frame_output);
+         self.offscreen_texture_pool = TexturePool::new();
++        if let Some((age, keep)) = skua_pool_trim() {
++            self.texture_pool.end_frame(age, keep);
++        }
+         self.profiler
+             .end_frame()
+             .expect("Frame should end successfully");
+@@ -1341,3 +1370,14 @@ impl ActiveFrame {
+         }
+     }
+ }
++
++/// skua #13: `SKUA_POOL_TRIM=<max_age_frames>,<keep_per_size>` bounds the main-frame texture pool
++/// (upstream only clears it on resize).
++fn skua_pool_trim() -> Option<(u64, usize)> {
++    static V: std::sync::OnceLock<Option<(u64, usize)>> = std::sync::OnceLock::new();
++    *V.get_or_init(|| {
++        let v = std::env::var("SKUA_POOL_TRIM").ok()?;
++        let (a, k) = v.split_once(',')?;
++        Some((a.parse().ok()?, k.parse().ok()?))
++    })
++}
+diff --git a/render/wgpu/src/buffer_pool.rs b/render/wgpu/src/buffer_pool.rs
+index 7d36ac70c..6d89f5cc3 100644
+--- a/render/wgpu/src/buffer_pool.rs
++++ b/render/wgpu/src/buffer_pool.rs
+@@ -12,6 +12,9 @@ type Constructor<Type, Description> = Box<dyn Fn(&Descriptors, &Description) ->
+ pub struct TexturePool {
+     pools: FnvHashMap<TextureKey, BufferPool<(wgpu::Texture, wgpu::TextureView), AlwaysCompatible>>,
+     globals_cache: FnvHashMap<GlobalsKey, Arc<Globals>>,
++    /// skua #13: frame of last use per key, so sizes that stop being used can be evicted.
++    last_used: FnvHashMap<TextureKey, u64>,
++    frame: u64,
+ }
+ 
+ impl TexturePool {
+@@ -19,6 +22,31 @@ impl TexturePool {
+         Default::default()
+     }
+ 
++    /// skua #13: drop pooled textures whose size has not been asked for in the last `max_age` frames.
++    /// Entries still borrowed are dropped when returned (their pool is gone).
++    /// Also keeps at most `keep` idle textures per size, so one heavy frame doesn't pin its peak forever.
++    pub fn end_frame(&mut self, max_age: u64, keep: usize) {
++        self.frame += 1;
++        let frame = self.frame;
++        let last_used = &self.last_used;
++        self.pools.retain(|k, _| last_used.get(k).is_some_and(|f| frame - f <= max_age));
++        self.last_used.retain(|_, f| frame - *f <= max_age);
++        for pool in self.pools.values() {
++            pool.available.lock().unwrap().truncate(keep);
++        }
++    }
++
++    /// skua #13 instrumentation: (sizes, idle textures, idle bytes).
++    pub fn skua_stats(&self) -> (usize, usize, u64) {
++        let (mut n, mut bytes) = (0, 0u64);
++        for (k, pool) in &self.pools {
++            let c = pool.available.lock().unwrap().len();
++            n += c;
++            bytes += c as u64 * k.size.width as u64 * k.size.height as u64 * 4 * k.sample_count as u64;
++        }
++        (self.pools.len(), n, bytes)
++    }
++
+     pub fn get_texture(
+         &mut self,
+         descriptors: &Descriptors,
+@@ -33,6 +61,7 @@ impl TexturePool {
+             format,
+             sample_count,
+         };
++        self.last_used.insert(key, self.frame);
+         let pool = self.pools.entry(key).or_insert_with(|| {
+             let label = if cfg!(feature = "render_debug_labels") {
+                 use std::sync::atomic::{AtomicU32, Ordering};

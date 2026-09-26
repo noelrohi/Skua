@@ -2953,6 +2953,7 @@ dependencies = [
  "futures",
  "image",
  "minifb",
+ "objc2",
  "roxmltree",
  "ruffle_core",
  "ruffle_frontend_utils",
@@ -2962,6 +2963,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "wgpu",
  "wgpu-hal",
 ]
 

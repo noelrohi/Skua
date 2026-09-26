@@ -72,6 +72,7 @@ public static class Program
         switch (mode)
         {
             case "smoke": Smoke(); break;
+            case "loginscreen": LoginScreen(double.Parse(args[1])); break;
             case "hold": Log("holding"); Thread.Sleep(Timeout.Infinite); break;
             case "live": Live(Arg(args, "--server")); break;
             case "full": Live(Arg(args, "--server")); RunScript(Path.GetFullPath(args[1]), double.Parse(args[2])); break;
@@ -158,6 +159,15 @@ public static class Program
         Shot("login-screen");
         Bench("idle-prelogin", () => Bot.Flash.GetGameObject("mcLogin.currentLabel"), 2000);
         Log("stats " + Host.Stats());
+        MemSample("smoke", Stopwatch.StartNew());
+    }
+
+    // #13: no login; sit at the login screen and sample memory every 30 s.
+    static void LoginScreen(double minutes)
+    {
+        var sw = Stopwatch.StartNew();
+        while (sw.Elapsed.TotalMinutes < minutes) { MemSample("loginscreen", sw); Thread.Sleep(30000); }
+        MemSample("loginscreen-after-full-gc", sw, gc: true);
     }
 
     static void CheckCallbacks()
@@ -240,7 +250,9 @@ public static class Program
         bool ok = SpinWait.SpinUntil(() => { Thread.Sleep(250); return Bot.Player.Playing && Bot.Flash.IsWorldLoaded; }, TimeSpan.FromSeconds(90));
         Log($"login {(ok ? "OK" : "FAILED")} in {sw.ElapsedMilliseconds} ms: Playing={Bot.Player.Playing} IsWorldLoaded={Bot.Flash.IsWorldLoaded} map={Bot.Map.Name} server={Bot.Servers.LastIP}");
         Log("stats after login (before any render) " + Host.Stats());
+        MemSample("after-login-before-render", Stopwatch.StartNew());
         Log("RENDERBENCH after-login " + Host.RenderBench(1));
+        MemSample("after-login-after-render", Stopwatch.StartNew());
         Shot("after-login");
         if (!ok) throw new Exception("login failed");
     }
@@ -361,8 +373,30 @@ public static class Program
         return long.TryParse(o, out var v) ? v : -1;
     }
 
+    // #13: `footprint` categories of the Game Host (phys_footprint, what Activity Monitor calls Memory).
+    static string Footprint(int pid)
+    {
+        var p = Process.Start(new ProcessStartInfo("footprint", pid.ToString()) { RedirectStandardOutput = true, RedirectStandardError = true })!;
+        var o = p.StandardOutput.ReadToEnd();
+        p.WaitForExit();
+        static double Mb(string v) { var a = v.Split(' '); var n = double.Parse(a[0]); return a[1] switch { "GB" => n * 1000, "MB" => n, "KB" => n / 1000, _ => n / 1e6 }; }
+        var tot = Regex.Match(o, @"Footprint: ([\d.]+ \w+)");
+        var cats = new Dictionary<string, double>();
+        foreach (Match m in Regex.Matches(o, @"^\s*([\d.]+ \w+)\s+[\d.]+ \w+\s+[\d.]+ \w+\s+\d+\s+(.+)$", RegexOptions.Multiline))
+            cats[m.Groups[2].Value.Trim()] = Mb(m.Groups[1].Value);
+        double C(string k) => cats.TryGetValue(k, out var v) ? v : 0;
+        return $"fp={(tot.Success ? Mb(tot.Groups[1].Value) : -1):F0} gfx={C("IOAccelerator (graphics)"):F0} unmappedGfx={C("Owned physical footprint (unmapped) (graphics)"):F0} malloc={C("Malloc Small") + C("Malloc Large") + C("Malloc Tiny") + C("Malloc Nano"):F0}";
+    }
+
+    static void MemSample(string label, Stopwatch sw, bool gc = false)
+    {
+        if (gc) Host.FullGc();
+        Log($"MEM {label} t={sw.Elapsed.TotalMinutes:F1}min {Footprint(Host.Pid)} {Host.Mem()}");
+    }
+
     static void Sample(string label, Stopwatch sw)
     {
+        MemSample(label, sw);
         var st = JObject.Parse(Host.Stats());
         Log($"SAMPLE {label} t={sw.Elapsed.TotalMinutes:F1}min rss={RssKb(Host.Pid) / 1024} MB framesRun={st["framesRun"]} tickBusyMs={st["tickBusyMs"]} maxTickMs={st["maxTickMs"]} maxTickGapMs={st["maxTickGapMs"]} peakCmdBufs={st["maxOutstandingCmdBufs"]} framesEst={st["framesEst"]} ticks={st["ticks"]} calls={st["calls"]} events={st["events"]} playing={Bot.Player.Playing} map={Bot.Map.Name} kills={Bot.Stats.Kills} deaths={Bot.Stats.Deaths} drops={Bot.Stats.Drops} relogins={Bot.Stats.Relogins}");
     }
@@ -382,12 +416,14 @@ public static class Program
             if (m != lastMinute)
             {
                 lastMinute = m; Sample("script", sw);
-                if (m % 15 == 0) { Shot($"script-{m:D3}min"); Log($"RENDERBENCH script-{m}min " + Host.RenderBench(30)); }
+                if (m % 15 == 0) { Shot($"script-{m:D3}min"); if (Environment.GetEnvironmentVariable("SKUA_NO_RENDERBENCH") == null) Log($"RENDERBENCH script-{m}min " + Host.RenderBench(30)); }
+                if (m % 30 == 0 && m > 0) MemSample("script-after-full-gc", sw, gc: true);
             }
             if (!mgr.ScriptRunning) { Log("Script ended on its own"); break; }
             Thread.Sleep(1000);
         }
         Sample("script-end", sw);
+        MemSample("script-end-after-full-gc", sw, gc: true);
         Shot("script-end");
         mgr.StopScript().GetAwaiter().GetResult();
         Log("Script stopped");

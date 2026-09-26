@@ -141,6 +141,10 @@ public sealed class GameHost : IDisposable
 
     public string RenderBench(int n) => Encoding.UTF8.GetString(Request('B', BitConverter.GetBytes(n), TimeSpan.FromSeconds(120)));
 
+    public string Mem() => Encoding.UTF8.GetString(Request('M', ReadOnlySpan<byte>.Empty, TimeSpan.FromSeconds(10)));
+
+    public void FullGc() => Request('G', ReadOnlySpan<byte>.Empty, TimeSpan.FromSeconds(60));
+
     public string Stats() => Encoding.UTF8.GetString(Request('Q', ReadOnlySpan<byte>.Empty, TimeSpan.FromSeconds(10)));
 
     public Shot Screenshot(int maxWidth = 0)
