@@ -59,6 +59,7 @@ public static class Program
         switch (mode)
         {
             case "smoke": Smoke(); break;
+            case "hold": Log("holding"); Thread.Sleep(Timeout.Infinite); break;
             case "live": Live(Arg(args, "--server")); break;
             case "script": Login(Arg(args, "--server")); RunScript(args[1], double.Parse(args[2])); break;
             case "idle": Login(Arg(args, "--server")); Idle(double.Parse(args[1])); break;
