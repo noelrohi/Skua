@@ -27,12 +27,13 @@ wgpu = { version = "=30.0.1", features = ["counters"] } # #13: internal resource
 debug = 1
 
 # PROTOTYPE: local patched Ruffle (see patches/). Same pin a1277c0 plus the patch.
-# #13 gate build overrides these with --config to ~/src/ruffle-13lib (0001 + 0003..0011); see README.
+# #17: own copies of #13's gate config (~/src/ruffle-17 = ruffle-13lib + #17 patches).
 [patch."https://github.com/ruffle-rs/ruffle"]
-ruffle_render_wgpu = { path = "../../../../src/ruffle-13/render/wgpu" }
-ruffle_render = { path = "../../../../src/ruffle-13/render" }
-ruffle_core = { path = "../../../../src/ruffle-13/core" }
-ruffle_frontend_utils = { path = "../../../../src/ruffle-13/frontend-utils" }
+ruffle_render_wgpu = { path = "../../../../src/ruffle-17/render/wgpu" }
+ruffle_render = { path = "../../../../src/ruffle-17/render" }
+ruffle_core = { path = "../../../../src/ruffle-17/core" }
+ruffle_frontend_utils = { path = "../../../../src/ruffle-17/frontend-utils" }
 
 [patch.crates-io]
-wgpu-hal = { path = "../../../../src/patched/wgpu-hal-30.0.1-13" }
+wgpu-hal = { path = "../../../../src/patched/wgpu-hal-30.0.1-17" }
+gc-arena = { path = "../../../../src/patched/gc-arena-0.7.0-17" }

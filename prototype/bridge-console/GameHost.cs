@@ -149,6 +149,9 @@ public sealed class GameHost : IDisposable
 
     public void FullGc() => Request('G', ReadOnlySpan<byte>.Empty, TimeSpan.FromSeconds(60));
 
+    /// <summary>#17: render knob "key=value" (interval_ms, budget_pct, max_interval_ms, passes, layer_flush, inflight, thread).</summary>
+    public void Knob(string kv) => Request('V', Encoding.UTF8.GetBytes(kv), TimeSpan.FromSeconds(120));
+
     public string Stats() => Encoding.UTF8.GetString(Request('Q', ReadOnlySpan<byte>.Empty, TimeSpan.FromSeconds(10)));
 
     public Shot Screenshot(int maxWidth = 0)

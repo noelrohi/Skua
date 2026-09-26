@@ -10,6 +10,7 @@
 //!   'S' u32 id | u32 max_width (0 = native)  screenshot
 //!   'P' u32 id                               ping (transport-only round trip)
 //!   'Q' u32 id                               stats (JSON)
+//!   'V' u32 id | utf8 "key=value"             #17 render knobs: interval_ms, budget_pct, max_interval_ms, passes
 //! Game Host -> Engine
 //!   'R' u32 id | utf8 return XML             reply to 'C'
 //!   'I' u32 id | u32 w | u32 h | u64 frames | PNG bytes   reply to 'S'
@@ -22,6 +23,7 @@
 //!
 //! EOF on stdin => exit(0) immediately.
 
+mod proxy;
 mod xml;
 
 use ruffle_core::backend::log::LogBackend;
@@ -112,6 +114,7 @@ enum Msg {
     FullGc { id: u32 },
     Census { id: u32 },
     Retainers { id: u32, class: String },
+    Knob { id: u32, kv: String },
 }
 
 fn start_reader(tx: Sender<Msg>) {
@@ -145,6 +148,7 @@ fn start_reader(tx: Sender<Msg>) {
                     b'M' => Msg::Mem { id },
                     b'G' => Msg::FullGc { id },
                     b'Y' => Msg::Census { id },
+                    b'V' => Msg::Knob { id, kv: String::from_utf8_lossy(&body[5..]).into_owned() },
                     b'Z' => Msg::Retainers { id, class: String::from_utf8_lossy(&body[5..]).into_owned() },
                     _ => continue,
                 };
@@ -310,6 +314,12 @@ struct Opts {
     show_game: bool,
     render_every_frame: bool,
     render_interval: Option<Duration>,
+    /// #17: render at most this % of wall time (0 = off): after a frame that cost C, wait C*100/pct.
+    render_budget_pct: u32,
+    /// #17: never stretch the interval beyond this.
+    render_max_interval: Duration,
+    /// #17: run the GPU half of a frame on a render thread.
+    render_thread: bool,
 }
 
 fn parse_args() -> Opts {
@@ -317,7 +327,18 @@ fn parse_args() -> Opts {
     let mut show_game = false;
     let mut render_every_frame = false;
     let mut render_interval = None;
+    let mut render_budget_pct = 0;
+    let mut render_max_interval = Duration::from_secs(30);
+    let mut render_thread = false;
     for a in std::env::args().skip(1) {
+        if let Some(v) = a.strip_prefix("--render-budget-pct=") {
+            render_budget_pct = v.parse().unwrap();
+            continue;
+        }
+        if let Some(v) = a.strip_prefix("--render-max-interval-ms=") {
+            render_max_interval = Duration::from_millis(v.parse().unwrap());
+            continue;
+        }
         if let Some(ms) = a.strip_prefix("--render-interval-ms=") {
             render_interval = Some(Duration::from_millis(ms.parse().unwrap()));
             continue;
@@ -325,14 +346,50 @@ fn parse_args() -> Opts {
         match a.as_str() {
             "--show-game" => show_game = true,
             "--render-every-frame" => render_every_frame = true,
+            "--render-thread" => render_thread = true,
             _ => swf = Some(a),
         }
     }
-    Opts { swf: swf.expect("usage: skua-gamehost [--show-game] [--render-every-frame] [--render-interval-ms=N] <skua.swf>"), show_game, render_every_frame, render_interval }
+    Opts {
+        swf: swf.expect("usage: skua-gamehost [--show-game] [--render-every-frame] [--render-interval-ms=N] [--render-budget-pct=N] [--render-max-interval-ms=N] [--render-thread] <skua.swf>"),
+        show_game,
+        render_every_frame,
+        render_interval,
+        render_budget_pct,
+        render_max_interval,
+        render_thread,
+    }
 }
 
 const WIDTH: u32 = 958;
 const HEIGHT: u32 = 550;
+
+fn px(p: &mut Player) -> &mut proxy::ProxyBackend {
+    <dyn Any>::downcast_mut::<proxy::ProxyBackend>(p.renderer_mut()).unwrap()
+}
+
+fn png_reply(id: u32, frames: u64, max_width: u32, img: Option<image::RgbaImage>) {
+    let (w, h, png) = match img {
+        Some(mut img) => {
+            if max_width > 0 && img.width() > max_width {
+                let nh = (img.height() as f64 * max_width as f64 / img.width() as f64).round() as u32;
+                img = image::imageops::resize(&img, max_width, nh, image::imageops::FilterType::Triangle);
+            }
+            let mut png = Vec::new();
+            image::DynamicImage::ImageRgba8(img.clone())
+                .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+                .unwrap();
+            (img.width(), img.height(), png)
+        }
+        None => (0, 0, vec![]),
+    };
+    let mut rest = Vec::with_capacity(16 + png.len());
+    rest.extend_from_slice(&w.to_le_bytes());
+    rest.extend_from_slice(&h.to_le_bytes());
+    rest.extend_from_slice(&frames.to_le_bytes());
+    rest.extend_from_slice(&png);
+    send_with_id(b'I', id, &rest);
+}
 
 fn main() {
     let opts = parse_args();
@@ -378,7 +435,8 @@ fn main() {
     .expect("no wgpu adapter");
     let descriptors = Arc::new(Descriptors::new(instance, adapter, device, queue));
     let target = TextureTarget::new(&descriptors.device, (WIDTH, HEIGHT)).unwrap();
-    let renderer = WgpuRenderBackend::new(descriptors.clone(), target).unwrap();
+    let renderer = proxy::ProxyBackend::new(WgpuRenderBackend::new(descriptors.clone(), target).unwrap(), opts.render_thread);
+    let rshared = renderer.shared.clone();
 
     let swf_path = std::fs::canonicalize(&opts.swf).expect("swf path");
     let movie_url = Url::from_file_path(&swf_path).unwrap();
@@ -436,6 +494,20 @@ fn main() {
     let mut max_tick_gap = Duration::ZERO;
     let mut tick_busy = Duration::ZERO;
     let mut max_tick = Duration::ZERO;
+    // #17: render policy state (knobs can change it at runtime) and main-thread render time.
+    let mut render_interval = opts.render_interval;
+    let mut render_budget_pct = opts.render_budget_pct;
+    let mut render_max_interval = opts.render_max_interval;
+    let mut cur_gap = Duration::ZERO;
+    let (mut prep_sum_us, mut prep_max_us, mut prep_n, mut last_prep_us) = (0u64, 0u64, 0u64, 0u64);
+    macro_rules! note_prep {
+        ($d:expr) => {{
+            let us = $d.as_micros() as u64;
+            prep_sum_us += us;
+            prep_max_us = prep_max_us.max(us);
+            prep_n += 1;
+        }};
+    }
 
     // #13: Metal returns autoreleased objects (command buffers, encoders, descriptors). A plain Rust loop
     // never drains an autorelease pool, so drain one per iteration like an AppKit/winit run loop does.
@@ -462,42 +534,23 @@ fn main() {
                 send_with_id(b'R', id, reply.as_bytes());
             }
             Ok(Msg::Screenshot { id, max_width }) => {
-                let img = guarded("screenshot", || {
-                    let mut p = lock(&player);
-                    p.render();
-                    let renderer = <dyn Any>::downcast_mut::<WgpuRenderBackend<TextureTarget>>(p.renderer_mut()).unwrap();
-                    renderer.capture_frame()
-                })
-                .flatten();
+                // #17: the capture (GPU wait + readback + PNG) runs after the frame, on the render thread if any.
+                let frames = frames_est as u64;
+                let t0 = Instant::now();
+                let mut p = lock(&player);
+                let ok = guarded("screenshot", || p.render()).is_some();
+                note_prep!(t0.elapsed());
                 renders += 1;
-                let (w, h, png) = match img {
-                    Some(mut img) => {
-                        if max_width > 0 && img.width() > max_width {
-                            let nh = (img.height() as f64 * max_width as f64 / img.width() as f64).round() as u32;
-                            img = image::imageops::resize(&img, max_width, nh, image::imageops::FilterType::Triangle);
-                        }
-                        let mut png = Vec::new();
-                        image::DynamicImage::ImageRgba8(img.clone())
-                            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
-                            .unwrap();
-                        (img.width(), img.height(), png)
-                    }
-                    None => (0, 0, vec![]),
-                };
-                let mut rest = Vec::with_capacity(16 + png.len());
-                rest.extend_from_slice(&w.to_le_bytes());
-                rest.extend_from_slice(&h.to_le_bytes());
-                rest.extend_from_slice(&(frames_est as u64).to_le_bytes());
-                rest.extend_from_slice(&png);
-                send_with_id(b'I', id, &rest);
+                last_render = Instant::now();
+                px(&mut p).after(move |r| png_reply(id, frames, max_width, if ok { r.capture_frame() } else { None }));
             }
             Ok(Msg::Ping { id }) => send_with_id(b'P', id, &[]),
             Ok(Msg::Mem { id }) => {
                 // #13: Ruffle-side and wgpu-side memory accounting.
                 let mut p = lock(&player);
                 let core = p.skua_mem_stats();
-                let renderer = <dyn Any>::downcast_mut::<WgpuRenderBackend<TextureTarget>>(p.renderer_mut()).unwrap();
-                let json = format!("{{{core},{},\"renders\":{renders}}}", renderer.skua_mem_stats());
+                let stats = px(&mut p).lock().0.skua_mem_stats();
+                let json = format!("{{{core},{stats},\"renders\":{renders}}}");
                 send_with_id(b'Q', id, json.as_bytes());
             }
             Ok(Msg::Census { id }) => {
@@ -518,10 +571,15 @@ fn main() {
                 // Render the live stage n times back to back (with a GPU wait) and report per-frame render time.
                 let mut times = vec![];
                 let before = wgpu_hal::SKUA_MAX_OUTSTANDING.swap(0, Ordering::Relaxed);
+                px(&mut lock(&player)).wait_idle();
+                let _ = ruffle_render_wgpu::backend::skua_render_census();
                 for _ in 0..n {
                     let t0 = Instant::now();
                     let ok = guarded("render-bench", || {
-                        lock(&player).render();
+                        let mut p = lock(&player);
+                        p.render();
+                        px(&mut p).wait_idle();
+                        drop(p);
                         let _ = descriptors.device.poll(wgpu::PollType::Wait { submission_index: None, timeout: None });
                     });
                     if ok.is_none() {
@@ -534,12 +592,48 @@ fn main() {
                 wgpu_hal::SKUA_MAX_OUTSTANDING.fetch_max(before, Ordering::Relaxed);
                 times.sort_by(|a, b| a.partial_cmp(b).unwrap());
                 let pct = |q: f64| times.get(((times.len() as f64 - 1.0) * q) as usize).copied().unwrap_or(-1.0);
-                let json = format!("{{\"n\":{},\"p50Ms\":{:.2},\"p90Ms\":{:.2},\"maxMs\":{:.2},\"peakOutstandingCmdBufs\":{}}}", times.len(), pct(0.5), pct(0.9), pct(1.0), peak);
+                let json = format!("{{\"n\":{},\"p50Ms\":{:.2},\"p90Ms\":{:.2},\"maxMs\":{:.2},\"peakOutstandingCmdBufs\":{},\"rc\":{}}}", times.len(), pct(0.5), pct(0.9), pct(1.0), peak, ruffle_render_wgpu::backend::skua_render_census());
                 send_with_id(b'Q', id, json.as_bytes());
             }
+            Ok(Msg::Knob { id, kv }) => {
+                if let Some((k, v)) = kv.split_once('=') {
+                    let n: u64 = v.trim().parse().unwrap_or(0);
+                    match k.trim() {
+                        "interval_ms" => render_interval = (n > 0).then(|| Duration::from_millis(n)),
+                        "budget_pct" => render_budget_pct = n as u32,
+                        "max_interval_ms" => render_max_interval = Duration::from_millis(n),
+                        "passes" => ruffle_render_wgpu::backend::set_max_passes_per_submit(n as u32),
+                        "layer_flush" => ruffle_render_wgpu::backend::set_layer_flush(n as u32),
+                        "inflight" => ruffle_render_wgpu::backend::set_max_in_flight(n as u32),
+                        "thread" => rshared.threaded.store(n != 0, Ordering::Relaxed),
+                        _ => tracing::warn!("unknown knob {k}"),
+                    }
+                }
+                send_with_id(b'P', id, &[]);
+            }
             Ok(Msg::Stats { id }) => {
+                let rs = &rshared.stats;
+                let take = |a: &AtomicU64| a.swap(0, Ordering::Relaxed);
+                let frames = take(&rs.frames);
+                let (sub_us, sub_max) = (take(&rs.submit_us), take(&rs.submit_max_us));
+                let (blk_us, blk_n, blk_max) = (take(&rs.main_blocked_us), take(&rs.main_blocked_n), take(&rs.main_blocked_max_us));
+                let (prep_us, prep_max, prep_n) = (std::mem::take(&mut prep_sum_us), std::mem::take(&mut prep_max_us), std::mem::take(&mut prep_n));
+                let render_json = format!(
+                    "\"submitN\":{frames},\"submitMsAvg\":{:.1},\"submitMsMax\":{:.1},\"submitMsSum\":{:.0},\"prepN\":{prep_n},\"prepMsAvg\":{:.1},\"prepMsMax\":{:.1},\"prepMsSum\":{:.0},\"mainBlockedN\":{blk_n},\"mainBlockedMsSum\":{:.0},\"mainBlockedMsMax\":{:.1},\"renderGapMs\":{},\"threaded\":{},\"rc\":{}",
+                    sub_us as f64 / 1000.0 / frames.max(1) as f64,
+                    sub_max as f64 / 1000.0,
+                    sub_us as f64 / 1000.0,
+                    prep_us as f64 / 1000.0 / prep_n.max(1) as f64,
+                    prep_max as f64 / 1000.0,
+                    prep_us as f64 / 1000.0,
+                    blk_us as f64 / 1000.0,
+                    blk_max as f64 / 1000.0,
+                    cur_gap.as_millis(),
+                    rshared.threaded.load(Ordering::Relaxed),
+                    ruffle_render_wgpu::backend::skua_render_census()
+                );
                 let json = format!(
-                    "{{\"uptimeMs\":{},\"ticks\":{},\"framesEst\":{},\"calls\":{},\"events\":{},\"renders\":{},\"frameRate\":{},\"maxTickGapMs\":{},\"framesRun\":{},\"tickBusyMs\":{},\"maxTickMs\":{},\"maxOutstandingCmdBufs\":{}}}",
+                    "{{{render_json},\"uptimeMs\":{},\"ticks\":{},\"framesEst\":{},\"calls\":{},\"events\":{},\"renders\":{},\"frameRate\":{},\"maxTickGapMs\":{},\"framesRun\":{},\"tickBusyMs\":{},\"maxTickMs\":{},\"maxOutstandingCmdBufs\":{}}}",
                     started.elapsed().as_millis(),
                     ticks,
                     frames_est as u64,
@@ -578,7 +672,9 @@ fn main() {
             if std::env::var_os("SKUA_POLL_WAIT").is_some() {
                 // #13 experiment: backpressure. Block until the GPU has finished everything submitted so far.
                 let _ = descriptors.device.poll(wgpu::PollType::Wait { submission_index: None, timeout: None });
-            } else if std::env::var_os("SKUA_NO_POLL").is_none() {
+            } else if std::env::var_os("SKUA_NO_POLL").is_none() && !rshared.threaded.load(Ordering::Relaxed) {
+                // #17: with a render thread, that thread polls; a poll here would wait on wgpu's device
+                // lock while the render thread is inside a blocking poll (seen as ~1 s tick stalls).
                 let _ = descriptors.device.poll(wgpu::PollType::Poll);
             }
             // #13: a host that isn't rendering still has to bound the offscreen pool and pending work.
@@ -586,8 +682,7 @@ fn main() {
                 ticks_since_trim += 1;
                 if ticks_since_trim >= n {
                     ticks_since_trim = 0;
-                    let renderer = <dyn Any>::downcast_mut::<WgpuRenderBackend<TextureTarget>>(p.renderer_mut()).unwrap();
-                    renderer.skua_trim();
+                    px(&mut p).after(|r| r.skua_trim());
                 }
             }
             let spent = t0.elapsed();
@@ -601,21 +696,38 @@ fn main() {
         }
 
         // Headless still renders now and then: Ruffle accumulates CPU-side state until a frame is rendered.
-        let interval = if window.is_some() || opts.render_every_frame { Some(Duration::from_millis(33)) } else { opts.render_interval };
-        if interval.is_some_and(|i| last_render.elapsed() >= i) {
-            last_render = Instant::now();
-            let mut p = lock(&player);
-            guarded("render", || p.render());
-            renders += 1;
-            if let Some(w) = window.as_mut() {
-                let renderer = <dyn Any>::downcast_mut::<WgpuRenderBackend<TextureTarget>>(p.renderer_mut()).unwrap();
-                if let Some(img) = renderer.capture_frame() {
+        // #17 render budget: after a frame that cost C (main-thread prep + GPU submit), wait at least
+        // C*100/budget_pct before the next one (capped at max_interval), and never start a frame while
+        // the render thread still has one.
+        let interval = if window.is_some() || opts.render_every_frame { Some(Duration::from_millis(33)) } else { render_interval };
+        if let Some(i) = interval {
+            let mut gap = i;
+            if render_budget_pct > 0 {
+                let cost_us = last_prep_us + rshared.stats.last_submit_us.load(Ordering::Relaxed);
+                let stretched = Duration::from_micros(cost_us * 100 / render_budget_pct as u64);
+                gap = gap.max(stretched.min(render_max_interval));
+            }
+            cur_gap = gap;
+            let busy = rshared.busy.load(Ordering::Acquire);
+            if last_render.elapsed() >= gap && !busy {
+                last_render = Instant::now();
+                let t0 = Instant::now();
+                let mut p = lock(&player);
+                guarded("render", || p.render());
+                let prep = t0.elapsed();
+                note_prep!(prep);
+                last_prep_us = prep.as_micros() as u64;
+                renders += 1;
+                if let Some(w) = window.as_mut() {
+                    let img = px(&mut p).lock().0.capture_frame();
                     drop(p);
-                    let buf: Vec<u32> = img
-                        .pixels()
-                        .map(|px| ((px[0] as u32) << 16) | ((px[1] as u32) << 8) | px[2] as u32)
-                        .collect();
-                    let _ = w.update_with_buffer(&buf, img.width() as usize, img.height() as usize);
+                    if let Some(img) = img {
+                        let buf: Vec<u32> = img
+                            .pixels()
+                            .map(|px| ((px[0] as u32) << 16) | ((px[1] as u32) << 8) | px[2] as u32)
+                            .collect();
+                        let _ = w.update_with_buffer(&buf, img.width() as usize, img.height() as usize);
+                    }
                 }
             }
         }

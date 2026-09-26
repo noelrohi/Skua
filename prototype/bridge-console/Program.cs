@@ -4,6 +4,7 @@
 //   bridge-console live [--server NAME]          login, maps, latency benchmark, event ordering
 //   bridge-console script <file.cs> <minutes>    login, run a Script, sample Game Host RSS every minute
 //   bridge-console idle <minutes>                login, stay in battleon, sample RSS (hidden-running check)
+//   bridge-console crowd <final-minutes>         #17: A/B render settings in crowded battleon within one login
 //
 // Env: SKUA_GAMEHOST (binary), SKUA_SWF (skua.swf), SKUA_OUT (output dir), SKUA_SHOW_GAME=1.
 // The Test Account password is read from Keychain and never printed; all output is redacted.
@@ -78,6 +79,8 @@ public static class Program
             case "full": Live(Arg(args, "--server")); RunScript(Path.GetFullPath(args[1]), double.Parse(args[2])); break;
             case "script": Login(Arg(args, "--server")); RunScript(args[1], double.Parse(args[2])); break;
             case "idle": Login(Arg(args, "--server")); Idle(double.Parse(args[1])); break;
+            case "crowd": Login(Arg(args, "--server")); Crowd(double.Parse(args[1])); break;
+            case "crowddry": CrowdDry(); break;
         }
         Log("done; closing Game Host");
         Flash.Dispose();
@@ -453,5 +456,137 @@ public static class Program
         }
         Sample("idle-end", sw);
         Shot("idle-end");
+    }
+
+    // ------------------------------------------------------------------ #17 crowded maps
+
+    record Phase(string Name, string[] Knobs, bool LagKiller, bool HidePlayers, double Minutes);
+
+    /// <summary>A getter loop like a Script's waits: Player.Cell back to back with a short sleep; latencies per phase.</summary>
+    static readonly List<double> GetterMs = new();
+    static volatile bool GetterRun;
+
+    static void GetterLoop()
+    {
+        while (true)
+        {
+            if (!GetterRun) { Thread.Sleep(50); continue; }
+            long a = Stopwatch.GetTimestamp();
+            _ = Bot.Player.Cell;
+            double ms = Stopwatch.GetElapsedTime(a).TotalMilliseconds;
+            lock (GetterMs) GetterMs.Add(ms);
+            Thread.Sleep(20);
+        }
+    }
+
+    static string GetterSummary(bool reset = true)
+    {
+        double[] t;
+        lock (GetterMs) { t = GetterMs.ToArray(); if (reset) GetterMs.Clear(); }
+        if (t.Length == 0) return "getter n=0";
+        Array.Sort(t);
+        double P(double q) => t[Math.Min(t.Length - 1, (int)(t.Length * q))];
+        return $"getter n={t.Length} p50={P(.5):F1} p90={P(.9):F1} p99={P(.99):F1} max={t[^1]:F1} ms over20ms={t.Count(x => x > 20)}";
+    }
+
+    static long JoinTimed(string map)
+    {
+        var sw = Stopwatch.StartNew();
+        Bot.Map.Join(map, "Enter", "Spawn");
+        bool ok = SpinWait.SpinUntil(() => { Thread.Sleep(100); return string.Equals(Bot.Map.Name, map, StringComparison.OrdinalIgnoreCase) && Bot.Player.Playing && Bot.Flash.IsWorldLoaded; }, TimeSpan.FromSeconds(60));
+        Log($"JOIN {map}: {(ok ? "OK" : "FAILED")} in {sw.ElapsedMilliseconds} ms; players={Bot.Map.PlayerCount} cell={Bot.Player.Cell}");
+        return ok ? sw.ElapsedMilliseconds : -1;
+    }
+
+    static void RenderStats(string label, Stopwatch sw)
+    {
+        var st = JObject.Parse(Host.Stats());
+        Log($"RSTATS {label} t={sw.Elapsed.TotalMinutes:F1}min players={Bot.Map.PlayerCount} map={Bot.Map.Name} lagKiller={Bot.Options.LagKiller} hidePlayers={Bot.Options.HidePlayers} submitN={st["submitN"]} submitMsAvg={st["submitMsAvg"]} submitMsMax={st["submitMsMax"]} prepMsAvg={st["prepMsAvg"]} prepMsMax={st["prepMsMax"]} mainBlockedMsMax={st["mainBlockedMsMax"]} maxTickGapMs={st["maxTickGapMs"]} maxTickMs={st["maxTickMs"]} gapMs={st["renderGapMs"]} threaded={st["threaded"]} rc={st["rc"]!.ToString(Newtonsoft.Json.Formatting.None)} {GetterSummary()}");
+    }
+
+    /// <summary>Offline check of the crowd plumbing at the login screen (no login).</summary>
+    static void CrowdDry()
+    {
+        new Thread(GetterLoop) { IsBackground = true, Name = "getter" }.Start();
+        GetterRun = true;
+        var sw = Stopwatch.StartNew();
+        foreach (var t in new[] { "0", "1" })
+        {
+            Host.Knob("thread=" + t);
+            Thread.Sleep(5000);
+            RenderStats("dry-thread" + t, sw);
+            Log("RENDERBENCH dry " + Host.RenderBench(3));
+            MemSample("dry", sw);
+            var shot = Stopwatch.StartNew();
+            Shot("dry-thread" + t);
+            Log($"screenshot took {shot.ElapsedMilliseconds} ms");
+        }
+    }
+
+    static void Try(Action a)
+    {
+        try { a(); } catch (Exception e) { Log($"[crowd] {e.GetType().Name}: {e.Message}"); }
+    }
+
+    static void Crowd(double finalMinutes)
+    {
+        var gate = new[] { "thread=0", "layer_flush=0", "passes=256", "inflight=16", "interval_ms=250", "budget_pct=0" };
+        var fixes = new[] { "thread=0", "layer_flush=8", "passes=64", "inflight=2", "interval_ms=250", "budget_pct=0" };
+        var threaded = new[] { "thread=1", "layer_flush=8", "passes=64", "inflight=2", "interval_ms=250", "budget_pct=0" };
+        var budget = new[] { "thread=1", "layer_flush=8", "passes=64", "inflight=2", "interval_ms=250", "budget_pct=10", "max_interval_ms=5000" };
+        var headless = new[] { "thread=1", "layer_flush=8", "passes=64", "inflight=2", "interval_ms=1000", "budget_pct=10", "max_interval_ms=5000" };
+        double pm = double.TryParse(Environment.GetEnvironmentVariable("SKUA_PHASE_MIN"), out var x) ? x : 3;
+        // Order: the fixed builds first; the gate baseline (which stalled in #14) last, so a stall can't cost the gate run.
+        var phases = new List<Phase>
+        {
+            new("ruffle-fixes-sync", fixes, false, false, pm),
+            new("render-thread", threaded, false, false, pm),
+            new("render-budget", budget, false, false, pm),
+            new("default-headless", headless, true, false, finalMinutes),
+            new("gate+hideplayers", gate, false, true, pm),
+            new("gate+lagkiller", gate, true, false, pm),
+            new("gate", gate, false, false, pm),
+        };
+        new Thread(GetterLoop) { IsBackground = true, Name = "getter" }.Start();
+        foreach (var ph in phases)
+        {
+            Log($"PHASE {ph.Name} knobs=[{string.Join(",", ph.Knobs)}] lagKiller={ph.LagKiller} hidePlayers={ph.HidePlayers} minutes={ph.Minutes}");
+            GetterRun = false;
+            foreach (var k in ph.Knobs) Try(() => Host.Knob(k));
+            Bot.Options.LagKiller = ph.LagKiller;
+            Bot.Options.HidePlayers = ph.HidePlayers;
+            var sw = Stopwatch.StartNew();
+            JoinTimed("yulgar");
+            Host.Stats(); GetterSummary(); // reset counters
+            GetterRun = true;
+            JoinTimed("battleon");
+            // Options are re-applied on every map join by Skua's timer, but set them again in case.
+            Bot.Options.LagKiller = ph.LagKiller;
+            Bot.Options.HidePlayers = ph.HidePlayers;
+            int lastMinute = -1;
+            while (sw.Elapsed.TotalMinutes < ph.Minutes)
+            {
+                int m = (int)sw.Elapsed.TotalMinutes;
+                if (m != lastMinute) { lastMinute = m; Try(() => MemSample(ph.Name, sw)); Try(() => RenderStats(ph.Name, sw)); }
+                Thread.Sleep(1000);
+            }
+            Try(() => RenderStats(ph.Name + "-end", sw));
+            GetterRun = false;
+            Try(() => Log($"RENDERBENCH {ph.Name} " + Host.RenderBench(3)));
+            Try(() => MemSample(ph.Name + "-end", sw));
+            var shot = Stopwatch.StartNew();
+            Try(() => Shot($"crowd-{ph.Name}"));
+            Log($"screenshot {ph.Name} took {shot.ElapsedMilliseconds} ms (lagKiller={Bot.Options.LagKiller})");
+            if (ph.LagKiller)
+            {
+                // What a `screenshot` that wants the world costs with the lag killer on: show it, shoot, hide it.
+                var w = Stopwatch.StartNew();
+                Bot.Options.LagKiller = false;
+                Thread.Sleep(300);
+                Try(() => Shot($"crowd-{ph.Name}-world"));
+                Bot.Options.LagKiller = true;
+                Log($"world screenshot {ph.Name} took {w.ElapsedMilliseconds} ms incl. 300 ms settle");
+            }
+        }
     }
 }

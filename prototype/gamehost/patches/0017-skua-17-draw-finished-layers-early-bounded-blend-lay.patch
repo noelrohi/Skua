@@ -1,0 +1,840 @@
+From d52f7164fa2132c1da8f3fb77cd6ef160d6f6ef9 Mon Sep 17 00:00:00 2001
+From: Rohi <noelrohi59@gmail.com>
+Date: Sun, 27 Sep 2026 02:13:36 +0800
+Subject: [PATCH] skua #17: draw finished layers early (bounded blend-layer
+ textures); render census; runtime in-flight bound
+
+WgpuCommandHandler kept every trivial/complex blend's stage-sized layer texture alive until the
+parent command list was fully chunked (N sibling layers = N full-stage textures). The handler now
+draws the pending chunks onto its target after every layer_flush() layers (SKUA_LAYER_FLUSH,
+default 8, 0 = upstream), so the pool reuses a handful of textures. Not done for a Layer's own
+surface, whose target nested Alpha/Erase blends read while it is still being chunked.
+
+Also: per-frame counters (skua_render_census), set_max_in_flight/max_in_flight.
+---
+ render/wgpu/src/backend.rs          |  94 ++++++-
+ render/wgpu/src/buffer_pool.rs      |   1 +
+ render/wgpu/src/surface.rs          | 412 +++++++++++++++-------------
+ render/wgpu/src/surface/commands.rs | 110 +++++++-
+ 4 files changed, 424 insertions(+), 193 deletions(-)
+
+diff --git a/render/wgpu/src/backend.rs b/render/wgpu/src/backend.rs
+index 7bb5e954e..ab7ca3fb5 100644
+--- a/render/wgpu/src/backend.rs
++++ b/render/wgpu/src/backend.rs
+@@ -598,8 +598,15 @@ impl<T: RenderTarget + 'static> RenderBackend for WgpuRenderBackend<T> {
+             return;
+         };
+ 
++        SKUA_RC_FRAMES.fetch_add(1, Ordering::Relaxed); // skua #17
+         for entry in cache_entries {
+             let texture = as_texture(&entry.handle);
++            SKUA_RC_CACHE_ENTRIES.fetch_add(1, Ordering::Relaxed);
++            SKUA_RC_CACHE_FILTERS.fetch_add(entry.filters.len() as u64, Ordering::Relaxed);
++            SKUA_RC_CACHE_PX.fetch_add(
++                texture.texture.width() as u64 * texture.texture.height() as u64,
++                Ordering::Relaxed,
++            );
+             let surface = Surface::new(
+                 &self.descriptors,
+                 self.surface.quality(),
+@@ -830,6 +837,7 @@ impl<T: RenderTarget + 'static> RenderBackend for WgpuRenderBackend<T> {
+         quality: StageQuality,
+         bounds: PixelRegion,
+     ) -> Option<Box<dyn SyncHandle>> {
++        SKUA_RC_OFFSCREEN.fetch_add(1, Ordering::Relaxed); // skua #17
+         let texture = as_texture(&handle);
+ 
+         let extent = wgpu::Extent3d {
+@@ -1305,8 +1313,72 @@ static PASSES_SINCE_SUBMIT: AtomicU32 = AtomicU32::new(0);
+ /// skua #14 instrumentation: submissions made mid-frame because the pass budget was reached.
+ pub static SKUA_PASS_BUDGET_FLUSHES: AtomicU64 = AtomicU64::new(0);
+ 
++/// skua #17: layers a surface collects before drawing them early (0 = upstream behaviour).
++pub use crate::surface::set_layer_flush;
++
+ pub(crate) fn note_render_pass() {
+     PASSES_SINCE_SUBMIT.fetch_add(1, Ordering::Relaxed);
++    SKUA_RC_PASSES.fetch_add(1, Ordering::Relaxed);
++}
++
++// skua #17 instrumentation: what the frames since the last `skua_render_census` drew.
++pub static SKUA_RC_PASSES: AtomicU64 = AtomicU64::new(0);
++pub static SKUA_RC_FRAMES: AtomicU64 = AtomicU64::new(0);
++pub static SKUA_RC_CACHE_ENTRIES: AtomicU64 = AtomicU64::new(0);
++pub static SKUA_RC_CACHE_FILTERS: AtomicU64 = AtomicU64::new(0);
++pub static SKUA_RC_CACHE_PX: AtomicU64 = AtomicU64::new(0);
++pub static SKUA_RC_BLEND_LAYER: AtomicU64 = AtomicU64::new(0);
++pub static SKUA_RC_BLEND_TRIVIAL: AtomicU64 = AtomicU64::new(0);
++pub static SKUA_RC_BLEND_COMPLEX: AtomicU64 = AtomicU64::new(0);
++pub static SKUA_RC_BLEND_SHADER: AtomicU64 = AtomicU64::new(0);
++pub static SKUA_RC_ALPHA_MASKS: AtomicU64 = AtomicU64::new(0);
++pub static SKUA_RC_EARLY_DRAWS: AtomicU64 = AtomicU64::new(0);
++pub static SKUA_RC_POOL_ALLOCS: AtomicU64 = AtomicU64::new(0);
++pub static SKUA_RC_OFFSCREEN: AtomicU64 = AtomicU64::new(0);
++static SKUA_RC_LIVE_LAYERS: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
++static SKUA_RC_LIVE_LAYERS_MAX: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
++
++pub(crate) fn skua_live_layers(delta: i64) {
++    let v = SKUA_RC_LIVE_LAYERS.fetch_add(delta, Ordering::Relaxed) + delta;
++    SKUA_RC_LIVE_LAYERS_MAX.fetch_max(v, Ordering::Relaxed);
++}
++
++pub(crate) fn skua_count_blend(mode: &ruffle_render::commands::RenderBlendMode) {
++    use ruffle_render::commands::RenderBlendMode;
++    let c = match mode {
++        RenderBlendMode::Builtin(swf::BlendMode::Layer) => &SKUA_RC_BLEND_LAYER,
++        RenderBlendMode::Builtin(m) => match crate::blend::BlendType::from(RenderBlendMode::Builtin(*m)) {
++            crate::blend::BlendType::Trivial(_) => &SKUA_RC_BLEND_TRIVIAL,
++            _ => &SKUA_RC_BLEND_COMPLEX,
++        },
++        RenderBlendMode::Shader(_) => &SKUA_RC_BLEND_SHADER,
++    };
++    c.fetch_add(1, Ordering::Relaxed);
++}
++
++/// JSON of the counters above (per-frame averages where it makes sense), then resets them.
++pub fn skua_render_census() -> String {
++    let t = |a: &AtomicU64| a.swap(0, Ordering::Relaxed);
++    let frames = t(&SKUA_RC_FRAMES);
++    let live_max = SKUA_RC_LIVE_LAYERS_MAX.swap(0, Ordering::Relaxed);
++    format!(
++        "{{\"frames\":{frames},\"passes\":{},\"cacheEntries\":{},\"cacheFilters\":{},\"cacheMpx\":{:.1},\"blendLayer\":{},\"blendTrivial\":{},\"blendComplex\":{},\"blendShader\":{},\"alphaMasks\":{},\"earlyDraws\":{},\"poolAllocs\":{},\"offscreenDraws\":{},\"liveLayersMax\":{live_max},\"layerFlush\":{},\"passBudget\":{},\"maxInFlight\":{}}}",
++        t(&SKUA_RC_PASSES),
++        t(&SKUA_RC_CACHE_ENTRIES),
++        t(&SKUA_RC_CACHE_FILTERS),
++        t(&SKUA_RC_CACHE_PX) as f64 / 1e6,
++        t(&SKUA_RC_BLEND_LAYER),
++        t(&SKUA_RC_BLEND_TRIVIAL),
++        t(&SKUA_RC_BLEND_COMPLEX),
++        t(&SKUA_RC_BLEND_SHADER),
++        t(&SKUA_RC_ALPHA_MASKS),
++        t(&SKUA_RC_EARLY_DRAWS),
++        t(&SKUA_RC_POOL_ALLOCS),
++        t(&SKUA_RC_OFFSCREEN),
++        crate::surface::layer_flush(),
++        max_passes_per_submit(),
++        max_in_flight(),
++    )
+ }
+ 
+ /// Most passes to record before submitting mid-frame. Each pass costs 3 backend command
+@@ -1368,13 +1440,27 @@ fn submit_encoder(
+ /// GPU runs them, and every queued submission holds Metal driver memory until it completes
+ /// (`Stress2`: ~1 GB/s). Keep at most `SKUA_MAX_INFLIGHT` (default 16, 0 = off) submissions
+ /// outstanding by waiting for the oldest.
++/// skua #17: runtime override of `SKUA_MAX_INFLIGHT` (for A/B runs in one process).
++static MAX_IN_FLIGHT: AtomicU32 = AtomicU32::new(u32::MAX);
++
++pub fn set_max_in_flight(submissions: u32) {
++    MAX_IN_FLIGHT.store(submissions, Ordering::Relaxed);
++}
++
++pub fn max_in_flight() -> u32 {
++    let v = MAX_IN_FLIGHT.load(Ordering::Relaxed);
++    if v != u32::MAX {
++        return v;
++    }
++    let v = std::env::var("SKUA_MAX_INFLIGHT").ok().and_then(|v| v.parse().ok()).unwrap_or(16);
++    MAX_IN_FLIGHT.store(v, Ordering::Relaxed);
++    v
++}
++
+ fn skua_bound_in_flight(descriptors: &Descriptors, index: SubmissionIndex) {
+-    static MAX: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+     static IN_FLIGHT: std::sync::Mutex<std::collections::VecDeque<SubmissionIndex>> =
+         std::sync::Mutex::new(std::collections::VecDeque::new());
+-    let max = *MAX.get_or_init(|| {
+-        std::env::var("SKUA_MAX_INFLIGHT").ok().and_then(|v| v.parse().ok()).unwrap_or(16)
+-    });
++    let max = max_in_flight() as usize;
+     if max == 0 {
+         return;
+     }
+diff --git a/render/wgpu/src/buffer_pool.rs b/render/wgpu/src/buffer_pool.rs
+index ac98c4e97..6ea58d38c 100644
+--- a/render/wgpu/src/buffer_pool.rs
++++ b/render/wgpu/src/buffer_pool.rs
+@@ -90,6 +90,7 @@ impl TexturePool {
+                 None
+             };
+             BufferPool::new(Box::new(move |descriptors, _description| {
++                crate::backend::SKUA_RC_POOL_ALLOCS.fetch_add(1, std::sync::atomic::Ordering::Relaxed); // skua #17
+                 let texture = descriptors.device.create_texture(&wgpu::TextureDescriptor {
+                     label: label.as_deref(),
+                     size,
+diff --git a/render/wgpu/src/surface.rs b/render/wgpu/src/surface.rs
+index a44abc9b2..7e0890491 100644
+--- a/render/wgpu/src/surface.rs
++++ b/render/wgpu/src/surface.rs
+@@ -8,7 +8,7 @@ use crate::dynamic_transforms::DynamicTransforms;
+ use crate::filters::FilterSource;
+ use crate::mesh::Mesh;
+ use crate::pixel_bender::{ShaderMode, run_pixelbender_shader_impl};
+-use crate::surface::commands::{Chunk, CommandRenderer, chunk_blends};
++use crate::surface::commands::{Chunk, ChunkState, CommandRenderer, EarlyDraw, chunk_blends};
+ use crate::utils::run_copy_pipeline;
+ use crate::utils::supported_sample_count;
+ use crate::{Descriptors, MaskState, Pipelines};
+@@ -21,6 +21,7 @@ use tracing::instrument;
+ use wgpu_profiler::Scope;
+ 
+ pub use crate::surface::commands::LayerRef;
++pub use crate::surface::commands::{layer_flush, set_layer_flush}; // skua #17
+ 
+ use self::commands::ChunkBlendMode;
+ 
+@@ -124,8 +125,10 @@ impl Surface {
+             draw_encoder,
+         );
+ 
+-        let mut num_masks = 0;
+-        let mut mask_state = MaskState::NoMask;
++        let mut state = ChunkState {
++            num_masks: 0,
++            mask_state: MaskState::NoMask,
++        };
+         let chunks = chunk_blends(
+             commands,
+             descriptors,
+@@ -141,162 +144,169 @@ impl Surface {
+                 layer => layer,
+             },
+             texture_pool,
++            // skua #17: lets the handler draw finished layers into `target` early (bounded layer textures).
++            // Not for a Layer's own surface: nested Alpha/Erase blends read that target while it is
++            // still being chunked, so drawing into it early could change what they see.
++            (!matches!(nearest_layer, LayerRef::Current)).then_some(EarlyDraw {
++                surface: self,
++                target: &target,
++                state: &mut state,
++                nearest_layer,
++            }),
+         );
+ 
+         for chunk in chunks {
+-            // skua #14: never let one encoder collect more passes than the backend can hold.
+-            crate::backend::flush_if_over_pass_budget(descriptors, staging_belt, draw_encoder);
+-            match chunk {
+-                Chunk::Draw {
+-                    chunk,
+-                    needs_stencil,
+-                    transforms,
+-                    vertices,
+-                } => {
+-                    transforms.copy_to(staging_belt, draw_encoder, &dynamic_transforms.buffer);
+-                    vertices.copy_to(
+-                        staging_belt,
+-                        draw_encoder,
+-                        &dynamic_transforms.vertex_buffer,
+-                    );
+-                    crate::backend::note_render_pass(); // skua #14
+-                    let mut render_pass = draw_encoder.scoped_render_pass(
+-                        format!(
+-                            "Chunked draw calls {}",
+-                            if needs_stencil {
+-                                "(with stencil)"
+-                            } else {
+-                                "(Stencilless)"
+-                            }
+-                        ),
+-                        wgpu::RenderPassDescriptor {
+-                            color_attachments: &[target.color_attachments()],
+-                            depth_stencil_attachment: if needs_stencil {
+-                                target.stencil_attachment(descriptors, texture_pool)
+-                            } else {
+-                                None
+-                            },
+-                            ..Default::default()
+-                        },
+-                    );
+-                    render_pass.set_bind_group(0, target.globals().bind_group(), &[]);
+-                    render_pass.set_bind_group(1, &dynamic_transforms.bind_group, &[]);
+-                    let mut renderer = CommandRenderer::new(
+-                        &self.pipelines,
+-                        descriptors,
+-                        &dynamic_transforms.vertex_buffer,
+-                        num_masks,
+-                        mask_state,
+-                        needs_stencil,
+-                    );
++            self.draw_chunk(
++                chunk,
++                &target,
++                &mut state,
++                nearest_layer,
++                descriptors,
++                staging_belt,
++                dynamic_transforms,
++                draw_encoder,
++                texture_pool,
++            );
++        }
+ 
+-                    for command in &chunk {
+-                        renderer.execute(&mut render_pass.scope(command.name()), command);
+-                    }
++        // If nothing happened, ensure it's cleared so we don't operate on garbage data
++        target.ensure_cleared(draw_encoder);
+ 
+-                    num_masks = renderer.num_masks();
+-                    mask_state = renderer.mask_state();
+-                }
+-                Chunk::Blend {
+-                    texture,
+-                    blend_mode: ChunkBlendMode::Shader(shader),
++        target
++    }
++
++    /// One chunk of `draw_commands` onto `target`. skua #17: split out so the command handler can
++    /// also draw finished chunks early (see `EarlyDraw`).
++    #[expect(clippy::too_many_arguments)]
++    pub(crate) fn draw_chunk<'encoder, 'global: 'encoder>(
++        &self,
++        chunk: Chunk,
++        target: &CommandTarget,
++        state: &mut ChunkState,
++        nearest_layer: LayerRef<'_>,
++        descriptors: &'encoder Descriptors,
++        staging_belt: &mut wgpu::util::StagingBelt,
++        dynamic_transforms: &'encoder DynamicTransforms,
++        draw_encoder: &mut Scope<'global, wgpu::CommandEncoder>,
++        texture_pool: &mut TexturePool,
++    ) {
++        // skua #14: never let one encoder collect more passes than the backend can hold.
++        crate::backend::flush_if_over_pass_budget(descriptors, staging_belt, draw_encoder);
++        match chunk {
++            Chunk::Draw {
++                chunk,
++                needs_stencil,
++                transforms,
++                vertices,
++            } => {
++                transforms.copy_to(staging_belt, draw_encoder, &dynamic_transforms.buffer);
++                vertices.copy_to(
++                    staging_belt,
++                    draw_encoder,
++                    &dynamic_transforms.vertex_buffer,
++                );
++                crate::backend::note_render_pass(); // skua #14
++                let mut render_pass = draw_encoder.scoped_render_pass(
++                    format!(
++                        "Chunked draw calls {}",
++                        if needs_stencil {
++                            "(with stencil)"
++                        } else {
++                            "(Stencilless)"
++                        }
++                    ),
++                    wgpu::RenderPassDescriptor {
++                        color_attachments: &[target.color_attachments()],
++                        depth_stencil_attachment: if needs_stencil {
++                            target.stencil_attachment(descriptors, texture_pool)
++                        } else {
++                            None
++                        },
++                        ..Default::default()
++                    },
++                );
++                render_pass.set_bind_group(0, target.globals().bind_group(), &[]);
++                render_pass.set_bind_group(1, &dynamic_transforms.bind_group, &[]);
++                let mut renderer = CommandRenderer::new(
++                    &self.pipelines,
++                    descriptors,
++                    &dynamic_transforms.vertex_buffer,
++                    state.num_masks,
++                    state.mask_state,
+                     needs_stencil,
+-                } => {
+-                    assert!(!needs_stencil, "Shader blend mode not implemented in masks");
+-                    let parent_blend_buffer =
+-                        target.update_blend_buffer(descriptors, texture_pool, draw_encoder);
+-                    run_pixelbender_shader_impl(
+-                        descriptors,
+-                        shader,
+-                        ShaderMode::Filter,
+-                        &[
+-                            PixelBenderShaderArgument::ImageInput {
+-                                index: 0,
+-                                channels: 0xFF,
+-                                name: "background".to_string(),
+-                                texture: Some(ImageInputTexture::TextureRef(
+-                                    parent_blend_buffer.texture(),
+-                                )),
+-                            },
+-                            PixelBenderShaderArgument::ImageInput {
+-                                index: 1,
+-                                channels: 0xff,
+-                                name: "foreground".to_string(),
+-                                texture: Some(ImageInputTexture::TextureRef(texture.texture())),
+-                            },
+-                        ],
+-                        parent_blend_buffer.texture(),
+-                        draw_encoder,
+-                        target.color_attachments(),
+-                        target.sample_count(),
+-                        &FilterSource::for_entire_texture(texture.texture()),
+-                    )
+-                    .expect("Failed to run PixelBender blend mode");
++                );
++
++                for command in &chunk {
++                    renderer.execute(&mut render_pass.scope(command.name()), command);
+                 }
+-                Chunk::Blend {
+-                    texture,
+-                    blend_mode: ChunkBlendMode::Complex(blend_mode),
+-                    needs_stencil,
+-                } => {
+-                    let parent = match blend_mode {
+-                        ComplexBlend::Alpha | ComplexBlend::Erase => {
+-                            match nearest_layer {
+-                                LayerRef::None => {
+-                                    // An Alpha or Erase with no Layer above it should be ignored
+-                                    continue;
+-                                }
+-                                LayerRef::Current => &target,
+-                                LayerRef::Parent(layer) => layer,
++
++                state.num_masks = renderer.num_masks();
++                state.mask_state = renderer.mask_state();
++            }
++            Chunk::Blend {
++                texture,
++                blend_mode: ChunkBlendMode::Shader(shader),
++                needs_stencil,
++            } => {
++                assert!(!needs_stencil, "Shader blend mode not implemented in masks");
++                let parent_blend_buffer =
++                    target.update_blend_buffer(descriptors, texture_pool, draw_encoder);
++                run_pixelbender_shader_impl(
++                    descriptors,
++                    shader,
++                    ShaderMode::Filter,
++                    &[
++                        PixelBenderShaderArgument::ImageInput {
++                            index: 0,
++                            channels: 0xFF,
++                            name: "background".to_string(),
++                            texture: Some(ImageInputTexture::TextureRef(
++                                parent_blend_buffer.texture(),
++                            )),
++                        },
++                        PixelBenderShaderArgument::ImageInput {
++                            index: 1,
++                            channels: 0xff,
++                            name: "foreground".to_string(),
++                            texture: Some(ImageInputTexture::TextureRef(texture.texture())),
++                        },
++                    ],
++                    parent_blend_buffer.texture(),
++                    draw_encoder,
++                    target.color_attachments(),
++                    target.sample_count(),
++                    &FilterSource::for_entire_texture(texture.texture()),
++                )
++                .expect("Failed to run PixelBender blend mode");
++            }
++            Chunk::Blend {
++                texture,
++                blend_mode: ChunkBlendMode::Complex(blend_mode),
++                needs_stencil,
++            } => {
++                let parent = match blend_mode {
++                    ComplexBlend::Alpha | ComplexBlend::Erase => {
++                        match nearest_layer {
++                            LayerRef::None => {
++                                // An Alpha or Erase with no Layer above it should be ignored
++                                return;
+                             }
++                            LayerRef::Current => target,
++                            LayerRef::Parent(layer) => layer,
+                         }
+-                        _ => &target,
+-                    };
+-
+-                    let parent_blend_buffer =
+-                        parent.update_blend_buffer(descriptors, texture_pool, draw_encoder);
++                    }
++                    _ => target,
++                };
+ 
+-                    let blend_bind_group =
+-                        descriptors
+-                            .device
+-                            .create_bind_group(&wgpu::BindGroupDescriptor {
+-                                label: create_debug_label!(
+-                                    "Complex blend binds {:?} {}",
+-                                    blend_mode,
+-                                    if needs_stencil {
+-                                        "(with stencil)"
+-                                    } else {
+-                                        "(Stencilless)"
+-                                    }
+-                                )
+-                                .as_deref(),
+-                                layout: &descriptors.bind_layouts.blend,
+-                                entries: &[
+-                                    wgpu::BindGroupEntry {
+-                                        binding: 0,
+-                                        resource: wgpu::BindingResource::TextureView(
+-                                            parent_blend_buffer.view(),
+-                                        ),
+-                                    },
+-                                    wgpu::BindGroupEntry {
+-                                        binding: 1,
+-                                        resource: wgpu::BindingResource::TextureView(
+-                                            texture.view(),
+-                                        ),
+-                                    },
+-                                    wgpu::BindGroupEntry {
+-                                        binding: 2,
+-                                        resource: wgpu::BindingResource::Sampler(
+-                                            descriptors.bitmap_samplers.get_sampler(false, false),
+-                                        ),
+-                                    },
+-                                ],
+-                            });
++                let parent_blend_buffer =
++                    parent.update_blend_buffer(descriptors, texture_pool, draw_encoder);
+ 
+-                    crate::backend::note_render_pass(); // skua #14
+-                    let mut render_pass =
+-                        draw_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
++                let blend_bind_group =
++                    descriptors
++                        .device
++                        .create_bind_group(&wgpu::BindGroupDescriptor {
+                             label: create_debug_label!(
+-                                "Complex blend {:?} {}",
++                                "Complex blend binds {:?} {}",
+                                 blend_mode,
+                                 if needs_stencil {
+                                     "(with stencil)"
+@@ -305,55 +315,85 @@ impl Surface {
+                                 }
+                             )
+                             .as_deref(),
+-                            color_attachments: &[target.color_attachments()],
+-                            depth_stencil_attachment: if needs_stencil {
+-                                target.stencil_attachment(descriptors, texture_pool)
+-                            } else {
+-                                None
+-                            },
+-                            ..Default::default()
++                            layout: &descriptors.bind_layouts.blend,
++                            entries: &[
++                                wgpu::BindGroupEntry {
++                                    binding: 0,
++                                    resource: wgpu::BindingResource::TextureView(
++                                        parent_blend_buffer.view(),
++                                    ),
++                                },
++                                wgpu::BindGroupEntry {
++                                    binding: 1,
++                                    resource: wgpu::BindingResource::TextureView(
++                                        texture.view(),
++                                    ),
++                                },
++                                wgpu::BindGroupEntry {
++                                    binding: 2,
++                                    resource: wgpu::BindingResource::Sampler(
++                                        descriptors.bitmap_samplers.get_sampler(false, false),
++                                    ),
++                                },
++                            ],
+                         });
+-                    render_pass.set_bind_group(0, target.globals().bind_group(), &[]);
+ 
+-                    if needs_stencil {
+-                        match mask_state {
+-                            MaskState::NoMask => {}
+-                            MaskState::DrawMaskStencil => {
+-                                render_pass.set_stencil_reference(num_masks - 1);
+-                            }
+-                            MaskState::DrawMaskedContent => {
+-                                render_pass.set_stencil_reference(num_masks);
+-                            }
+-                            MaskState::ClearMaskStencil => {
+-                                render_pass.set_stencil_reference(num_masks);
++                crate::backend::note_render_pass(); // skua #14
++                let mut render_pass =
++                    draw_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
++                        label: create_debug_label!(
++                            "Complex blend {:?} {}",
++                            blend_mode,
++                            if needs_stencil {
++                                "(with stencil)"
++                            } else {
++                                "(Stencilless)"
+                             }
++                        )
++                        .as_deref(),
++                        color_attachments: &[target.color_attachments()],
++                        depth_stencil_attachment: if needs_stencil {
++                            target.stencil_attachment(descriptors, texture_pool)
++                        } else {
++                            None
++                        },
++                        ..Default::default()
++                    });
++                render_pass.set_bind_group(0, target.globals().bind_group(), &[]);
++
++                if needs_stencil {
++                    match state.mask_state {
++                        MaskState::NoMask => {}
++                        MaskState::DrawMaskStencil => {
++                            render_pass.set_stencil_reference(state.num_masks - 1);
++                        }
++                        MaskState::DrawMaskedContent => {
++                            render_pass.set_stencil_reference(state.num_masks);
++                        }
++                        MaskState::ClearMaskStencil => {
++                            render_pass.set_stencil_reference(state.num_masks);
+                         }
+-                        render_pass.set_pipeline(
+-                            self.pipelines.complex_blends[blend_mode].pipeline_for(mask_state),
+-                        );
+-                    } else {
+-                        render_pass.set_pipeline(
+-                            self.pipelines.complex_blends[blend_mode].stencilless_pipeline(),
+-                        );
+                     }
++                    render_pass.set_pipeline(
++                        self.pipelines.complex_blends[blend_mode].pipeline_for(state.mask_state),
++                    );
++                } else {
++                    render_pass.set_pipeline(
++                        self.pipelines.complex_blends[blend_mode].stencilless_pipeline(),
++                    );
++                }
+ 
+-                    render_pass.set_bind_group(2, &blend_bind_group, &[]);
++                render_pass.set_bind_group(2, &blend_bind_group, &[]);
+ 
+-                    render_pass.set_vertex_buffer(0, descriptors.quad.vertices_pos.slice(..));
+-                    render_pass.set_index_buffer(
+-                        descriptors.quad.indices.slice(..),
+-                        wgpu::IndexFormat::Uint32,
+-                    );
++                render_pass.set_vertex_buffer(0, descriptors.quad.vertices_pos.slice(..));
++                render_pass.set_index_buffer(
++                    descriptors.quad.indices.slice(..),
++                    wgpu::IndexFormat::Uint32,
++                );
+ 
+-                    render_pass.draw_indexed(0..6, 0, 0..1);
+-                }
++                render_pass.draw_indexed(0..6, 0, 0..1);
+             }
+         }
+-
+-        // If nothing happened, ensure it's cleared so we don't operate on garbage data
+-        target.ensure_cleared(draw_encoder);
+-
+-        target
+     }
+ 
+     pub fn quality(&self) -> StageQuality {
+diff --git a/render/wgpu/src/surface/commands.rs b/render/wgpu/src/surface/commands.rs
+index 647a687d3..46940ca59 100644
+--- a/render/wgpu/src/surface/commands.rs
++++ b/render/wgpu/src/surface/commands.rs
+@@ -18,6 +18,7 @@ use ruffle_render::pixel_bender::PixelBenderShaderHandle;
+ use ruffle_render::quality::StageQuality;
+ use ruffle_render::transform::Transform;
+ use std::mem;
++use std::sync::atomic::{AtomicU32, Ordering};
+ use swf::{BlendMode, Color, ColorTransform, Twips};
+ use wgpu::Backend;
+ use wgpu_profiler::Scope;
+@@ -482,6 +483,46 @@ impl DrawCommand {
+     }
+ }
+ 
++/// skua #17: stencil state carried from one chunk to the next while drawing onto one target.
++pub struct ChunkState {
++    pub num_masks: u32,
++    pub mask_state: MaskState,
++}
++
++/// skua #17: what the command handler needs to draw finished chunks onto its own target early.
++///
++/// Upstream keeps every trivial blend's layer texture (a full-stage texture each) alive until the
++/// whole parent command list is chunked, so N sibling layers hold N stage-sized textures at once.
++/// Drawing the pending chunk after every `layer_flush()` layers bounds that to a few textures,
++/// which the texture pool then reuses.
++pub struct EarlyDraw<'a> {
++    pub surface: &'a Surface,
++    pub target: &'a CommandTarget,
++    pub state: &'a mut ChunkState,
++    pub nearest_layer: LayerRef<'a>,
++}
++
++/// skua #17: layers to collect before drawing them early (0 = upstream behaviour).
++/// `SKUA_LAYER_FLUSH` or `set_layer_flush` (default 8).
++static LAYER_FLUSH: AtomicU32 = AtomicU32::new(u32::MAX);
++
++pub fn layer_flush() -> u32 {
++    let v = LAYER_FLUSH.load(Ordering::Relaxed);
++    if v != u32::MAX {
++        return v;
++    }
++    let v = std::env::var("SKUA_LAYER_FLUSH")
++        .ok()
++        .and_then(|v| v.parse().ok())
++        .unwrap_or(8);
++    LAYER_FLUSH.store(v, Ordering::Relaxed);
++    v
++}
++
++pub fn set_layer_flush(layers: u32) {
++    LAYER_FLUSH.store(layers, Ordering::Relaxed);
++}
++
+ #[derive(Copy, Clone)]
+ pub enum LayerRef<'a> {
+     None,
+@@ -504,8 +545,9 @@ pub fn chunk_blends<'encoder, 'global: 'encoder>(
+     height: u32,
+     nearest_layer: LayerRef,
+     texture_pool: &'encoder mut TexturePool,
++    early: Option<EarlyDraw<'encoder>>,
+ ) -> Vec<Chunk> {
+-    WgpuCommandHandler::new(
++    let mut handler = WgpuCommandHandler::new(
+         descriptors,
+         staging_belt,
+         dynamic_transforms,
+@@ -516,8 +558,9 @@ pub fn chunk_blends<'encoder, 'global: 'encoder>(
+         height,
+         nearest_layer,
+         texture_pool,
+-    )
+-    .chunk_blends(commands)
++    );
++    handler.early = early;
++    handler.chunk_blends(commands)
+ }
+ 
+ struct WgpuCommandHandler<'encoder, 'global: 'encoder> {
+@@ -539,6 +582,9 @@ struct WgpuCommandHandler<'encoder, 'global: 'encoder> {
+     vertices: BufferBuilder,
+     needs_stencil: bool,
+     num_masks: i32,
++    early: Option<EarlyDraw<'encoder>>,
++    /// skua #17: layer textures referenced by `current` and not yet drawn.
++    pending_layers: u32,
+ }
+ 
+ impl<'encoder, 'global: 'encoder> WgpuCommandHandler<'encoder, 'global> {
+@@ -582,6 +628,8 @@ impl<'encoder, 'global: 'encoder> WgpuCommandHandler<'encoder, 'global> {
+             vertices,
+             needs_stencil: false,
+             num_masks: 0,
++            early: None,
++            pending_layers: 0,
+         }
+     }
+ 
+@@ -607,6 +655,8 @@ impl<'encoder, 'global: 'encoder> WgpuCommandHandler<'encoder, 'global> {
+     /// Every complex blend will be its own item, but every other draw will be chunked together
+     fn chunk_blends(&mut self, commands: CommandList) -> Vec<Chunk> {
+         commands.execute(self);
++        crate::backend::skua_live_layers(-(self.pending_layers as i64)); // skua #17: drawn by the caller next
++        self.pending_layers = 0;
+ 
+         let current = mem::take(&mut self.current);
+         let mut result = mem::take(&mut self.result);
+@@ -632,6 +682,44 @@ impl<'encoder, 'global: 'encoder> WgpuCommandHandler<'encoder, 'global> {
+         result
+     }
+ 
++    /// skua #17: draw everything chunked so far onto the target now, releasing its layer textures.
++    fn draw_early(&mut self) {
++        let Some(early) = self.early.as_mut() else {
++            return;
++        };
++        let mut result = mem::take(&mut self.result);
++        if !self.current.is_empty() {
++            result.push(Chunk::Draw {
++                chunk: mem::take(&mut self.current),
++                needs_stencil: self.needs_stencil,
++                transforms: mem::replace(
++                    &mut self.transforms,
++                    Self::new_transforms(self.descriptors, self.dynamic_transforms),
++                ),
++                vertices: mem::replace(
++                    &mut self.vertices,
++                    Self::new_vertices(self.descriptors, self.dynamic_transforms),
++                ),
++            });
++        }
++        crate::backend::SKUA_RC_EARLY_DRAWS.fetch_add(1, Ordering::Relaxed);
++        for chunk in result {
++            early.surface.draw_chunk(
++                chunk,
++                early.target,
++                early.state,
++                early.nearest_layer,
++                self.descriptors,
++                self.staging_belt,
++                self.dynamic_transforms,
++                self.draw_encoder,
++                self.texture_pool,
++            );
++        }
++        crate::backend::skua_live_layers(-(self.pending_layers as i64));
++        self.pending_layers = 0;
++    }
++
+     fn add_to_current(
+         &mut self,
+         matrix: Matrix,
+@@ -707,6 +795,7 @@ impl<'encoder, 'global: 'encoder> WgpuCommandHandler<'encoder, 'global> {
+ 
+ impl CommandHandler for WgpuCommandHandler<'_, '_> {
+     fn blend(&mut self, commands: CommandList, blend_mode: RenderBlendMode) {
++        crate::backend::skua_count_blend(&blend_mode);
+         let surface = Surface::new(
+             self.descriptors,
+             self.quality,
+@@ -785,6 +874,13 @@ impl CommandHandler for WgpuCommandHandler<'_, '_> {
+                         blend_mode,
+                     },
+                 );
++                // skua #17
++                self.pending_layers += 1;
++                crate::backend::skua_live_layers(1);
++                let limit = layer_flush();
++                if limit > 0 && self.pending_layers >= limit {
++                    self.draw_early();
++                }
+             }
+             blend_type => {
+                 if !self.current.is_empty() {
+@@ -812,6 +908,13 @@ impl CommandHandler for WgpuCommandHandler<'_, '_> {
+                     needs_stencil: self.num_masks > 0,
+                 });
+                 self.needs_stencil = self.num_masks > 0;
++                // skua #17
++                self.pending_layers += 1;
++                crate::backend::skua_live_layers(1);
++                let limit = layer_flush();
++                if limit > 0 && self.pending_layers >= limit {
++                    self.draw_early();
++                }
+             }
+         }
+     }
+@@ -963,6 +1066,7 @@ impl CommandHandler for WgpuCommandHandler<'_, '_> {
+     }
+ 
+     fn render_alpha_mask(&mut self, maskee_commands: CommandList, mask_commands: CommandList) {
++        crate::backend::SKUA_RC_ALPHA_MASKS.fetch_add(1, Ordering::Relaxed);
+         let surface = Surface::new(
+             self.descriptors,
+             self.quality,
+-- 
+2.47.1
+
