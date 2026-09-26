@@ -1,0 +1,11 @@
+--- a/src/metal/adapter.rs
++++ b/src/metal/adapter.rs
+@@ -45,7 +45,7 @@
+ /// <https://bugzilla.mozilla.org/show_bug.cgi?id=1971452>.
+ ///
+ /// [new command buffer]: https://developer.apple.com/documentation/metal/mtlcommandqueue/makecommandbuffer()?language=objc
+-pub(super) const MAX_COMMAND_BUFFERS: usize = 4096;
++pub(super) const MAX_COMMAND_BUFFERS: usize = 65536; // skua #6: AQW frames record >2048 render passes per encoder
+ 
+ /// "Maximum number of entries in the buffer argument table, per graphics or kernel function"
+ ///

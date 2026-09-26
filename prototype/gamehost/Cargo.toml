@@ -29,3 +29,6 @@ ruffle_render_wgpu = { path = "../../../../src/ruffle/render/wgpu" }
 ruffle_render = { path = "../../../../src/ruffle/render" }
 ruffle_core = { path = "../../../../src/ruffle/core" }
 ruffle_frontend_utils = { path = "../../../../src/ruffle/frontend-utils" }
+
+[patch.crates-io]
+wgpu-hal = { path = "../../../../src/patched/wgpu-hal-30.0.1" }
