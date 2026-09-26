@@ -492,7 +492,9 @@ fn main() {
         if dt > max_tick_gap {
             max_tick_gap = dt;
         }
-        if dt.as_micros() > 0 {
+        // Don't tick after every Bridge message: during a burst of calls that just adds the tick's
+        // own cost (sockets, timers, streams) to each round trip. Tick at most every 4 ms.
+        if dt >= Duration::from_millis(4) {
             let mut p = lock(&player);
             let fr = p.frame_rate();
             guarded("tick", || p.tick(FloatDuration::from_std(dt)));
