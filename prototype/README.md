@@ -30,3 +30,11 @@ dotnet bridge-console/bin/Release/net10.0/bridge-console.dll full Scripts/Farm/L
 ```
 
 `live`/`full`/`script` read the Test Account from Keychain (`skua-test-account`) and redact it from all output.
+
+## #14: mid-frame flush (branch `prototype/gamehost-flush`)
+
+`patches/0003` replaces #6's wgpu-hal limit patch. Ruffle's wgpu backend submits mid-frame every 256 render passes, and wgpu-hal stays at its stock 4096 (`0002` is now only a peak counter). Numbers: `results/run14-flush-2026-09-26.txt`. Upstream draft: `gamehost/patches/UPSTREAM-ruffle-pass-budget.md`.
+- `stress/bench.py <swf>`: render time, peak command buffers and device loss, no login.
+- `stress/ab.py <swf> <secs> <budget>...`: 250 ms interval renders plus Engine-like pings. `1000000000` means no flush, and needs a 65536 wgpu-hal build.
+- Game Host frames `K` (pass budget) and `V` (render interval). Bridge console modes `flush` and `flushab`.
+- `stress/Stress4.as`: 4× Stress3. It shows Ruffle's per-blend-layer textures (17 GB, 5 s per render); the flush does not fix this.

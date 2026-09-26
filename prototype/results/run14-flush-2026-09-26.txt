@@ -1,0 +1,134 @@
+# PROTOTYPE #14 results, 2026-09-26. Game Host = skua-gamehost + patches 0001, 0003 (pass budget 256) on STOCK wgpu-hal 30.0.1 (0002 = peak counter only).
+# Live run 1 (one Test Account login, Galanoth, --render-interval-ms=250). Sanitized: RENDERBENCH/join/login/stats lines only.
+19:48:16.407 login OK in 4896 ms: Playing=True IsWorldLoaded=True map=battleon server=sock8.aq.com
+19:48:16.408 stats after login (before any render) {"uptimeMs":7355,"ticks":518,"framesEst":220,"calls":762,"events":14,"renders":28,"frameRate":30,"maxTickGapMs":297,"framesRun":211,"tickBusyMs":1449,"maxTickMs":51,"maxOutstandingCmdBufs":769}
+19:48:16.482 RENDERBENCH after-login {"n":1,"minMs":74.62,"p50Ms":74.62,"p90Ms":74.62,"maxMs":74.62,"peakOutstandingCmdBufs":769,"passBudgetFlushes":5}
+19:48:18.343 join battleon: OK in 1773 ms; map=battleon cell=Enter players=3 IsWorldLoaded=True
+19:48:20.836 RENDERBENCH battleon {"n":30,"minMs":81.54,"p50Ms":82.74,"p90Ms":83.97,"maxMs":91.81,"peakOutstandingCmdBufs":769,"passBudgetFlushes":180}
+19:48:20.915 stats battleon {"uptimeMs":11862,"ticks":647,"framesEst":355,"calls":1140,"events":47,"renders":68,"frameRate":30,"maxTickGapMs":2496,"framesRun":276,"tickBusyMs":1719,"maxTickMs":21,"maxOutstandingCmdBufs":769}
+19:48:23.019 RENDERBENCH battleon budget=32 round=1 {"n":30,"minMs":65.90,"p50Ms":67.00,"p90Ms":68.13,"maxMs":70.53,"peakOutstandingCmdBufs":102,"passBudgetFlushes":1412}
+19:48:25.181 RENDERBENCH battleon budget=64 round=1 {"n":30,"minMs":68.43,"p50Ms":69.46,"p90Ms":70.18,"maxMs":73.00,"peakOutstandingCmdBufs":193,"passBudgetFlushes":691}
+19:48:27.438 RENDERBENCH battleon budget=128 round=1 {"n":30,"minMs":71.11,"p50Ms":72.12,"p90Ms":73.45,"maxMs":80.44,"peakOutstandingCmdBufs":385,"passBudgetFlushes":331}
+19:48:29.828 RENDERBENCH battleon budget=256 round=1 {"n":30,"minMs":75.05,"p50Ms":76.62,"p90Ms":80.54,"maxMs":82.46,"peakOutstandingCmdBufs":769,"passBudgetFlushes":151}
+19:48:32.539 RENDERBENCH battleon budget=512 round=1 {"n":30,"minMs":82.86,"p50Ms":86.13,"p90Ms":90.10,"maxMs":109.59,"peakOutstandingCmdBufs":1537,"passBudgetFlushes":61}
+19:48:40.517 RENDERBENCH battleon budget=1024 round=1 {"n":30,"minMs":239.86,"p50Ms":258.93,"p90Ms":276.45,"maxMs":337.97,"peakOutstandingCmdBufs":3073,"passBudgetFlushes":30}
+19:48:43.226 RENDERBENCH battleon budget=32 round=2 {"n":30,"minMs":66.46,"p50Ms":68.12,"p90Ms":70.80,"maxMs":591.70,"peakOutstandingCmdBufs":97,"passBudgetFlushes":1412}
+19:48:45.422 RENDERBENCH battleon budget=64 round=2 {"n":30,"minMs":68.73,"p50Ms":70.24,"p90Ms":71.75,"maxMs":82.42,"peakOutstandingCmdBufs":193,"passBudgetFlushes":691}
+19:48:47.707 RENDERBENCH battleon budget=128 round=2 {"n":30,"minMs":72.14,"p50Ms":73.22,"p90Ms":75.11,"maxMs":78.26,"peakOutstandingCmdBufs":385,"passBudgetFlushes":331}
+19:48:50.165 RENDERBENCH battleon budget=256 round=2 {"n":30,"minMs":76.61,"p50Ms":78.29,"p90Ms":83.81,"maxMs":86.72,"peakOutstandingCmdBufs":769,"passBudgetFlushes":151}
+19:48:53.034 RENDERBENCH battleon budget=512 round=2 {"n":30,"minMs":84.63,"p50Ms":86.19,"p90Ms":89.43,"maxMs":278.44,"peakOutstandingCmdBufs":1537,"passBudgetFlushes":61}
+19:49:03.358 RENDERBENCH battleon budget=1024 round=2 {"n":30,"minMs":268.03,"p50Ms":307.86,"p90Ms":461.86,"maxMs":481.11,"peakOutstandingCmdBufs":3073,"passBudgetFlushes":30}
+19:49:10.053 join yulgar: OK in 5664 ms; map=yulgar cell=Enter players=7 IsWorldLoaded=True
+19:49:10.768 RENDERBENCH yulgar {"n":30,"minMs":21.41,"p50Ms":23.26,"p90Ms":25.24,"maxMs":34.60,"peakOutstandingCmdBufs":769,"passBudgetFlushes":30}
+19:49:10.796 stats yulgar {"uptimeMs":61743,"ticks":987,"framesEst":1852,"calls":2094,"events":62,"renders":492,"frameRate":30,"maxTickGapMs":10252,"framesRun":496,"tickBusyMs":3166,"maxTickMs":291,"maxOutstandingCmdBufs":3073}
+19:49:15.424 join battleontown: OK in 4601 ms; map=battleontown cell=Enter players=1 IsWorldLoaded=True
+19:49:15.509 RENDERBENCH battleontown {"n":30,"minMs":2.06,"p50Ms":2.51,"p90Ms":3.46,"maxMs":6.71,"peakOutstandingCmdBufs":54,"passBudgetFlushes":0}
+19:49:15.514 stats battleontown {"uptimeMs":66461,"ticks":1355,"framesEst":1993,"calls":3382,"events":71,"renders":541,"frameRate":30,"maxTickGapMs":86,"framesRun":638,"tickBusyMs":4517,"maxTickMs":32,"maxOutstandingCmdBufs":769}
+# 19:49:16 rejoin battleon -> ~20 players arrive; interval renders take 94% of the main thread (sample), output gaps up to 60 s, Engine Join never returns; run ended 20:00:50. 0 device-loss / 'outstanding' log lines in the whole run.
+
+# Offline, stress/bench.py Stress3 (1500 masked+glow+LAYER sprites), RenderBench n=20, interleaved
+base65536 {'n': 20, 'p50Ms': 282.71, 'p90Ms': 315.22, 'maxMs': 1113.72, 'peakOutstandingCmdBufs': 4586} []
+flush256  {'n': 20, 'minMs': 93.94, 'p50Ms': 96.08, 'p90Ms': 101.53, 'maxMs': 567.65, 'peakOutstandingCmdBufs': 769, 'passBudgetFlushes': 116} []
+base65536 {'n': 20, 'p50Ms': 270.45, 'p90Ms': 286.27, 'maxMs': 999.81, 'peakOutstandingCmdBufs': 4586} []
+flush256  {'n': 20, 'minMs': 98.26, 'p50Ms': 115.28, 'p90Ms': 249.38, 'maxMs': 1634.99, 'peakOutstandingCmdBufs': 769, 'passBudgetFlushes': 116} []
+base65536 {'n': 20, 'p50Ms': 266.32, 'p90Ms': 311.15, 'maxMs': 4158.42, 'peakOutstandingCmdBufs': 4586} []
+flush256  {'n': 20, 'minMs': 93.93, 'p50Ms': 98.02, 'p90Ms': 110.04, 'maxMs': 1370.52, 'peakOutstandingCmdBufs': 769, 'passBudgetFlushes': 116} []
+# stock wgpu-hal, no flush (patch 0001 only):
+{"swf": "Stress3.swf", "args": [], "env": {}, "bench": null, "stats": null, "lastTrace": "", "deviceLost": ["[log] metal: refusing to create new command buffer; 4097 outstanding command buffers exceeds the limit of 4096. Treating this as device lost. Ensure command encoders are submitted or dropped rather th"], "alive": true}
+# Budget sweep (SKUA_FLUSH_PASSES), stock wgpu-hal; peak = 3*budget+1; >1365 loses the device
+budget 32 p50 86.27 p90 93.59 min 83.13 peak 100 flushes/20 1148 ok
+budget 32 p50 85.37 p90 89.59 min 83.32 peak 100 flushes/20 1148 ok
+budget 64 p50 96.35 p90 129.65 min 92.99 peak 193 flushes/20 565 ok
+budget 64 p50 97.24 p90 214.92 min 88.84 peak 193 flushes/20 565 ok
+budget 128 p50 92.13 p90 99.23 min 89.28 peak 385 flushes/20 266 ok
+budget 128 p50 120.27 p90 340.11 min 96.95 peak 385 flushes/20 266 ok
+budget 256 p50 96.37 p90 105.97 min 93.57 peak 769 flushes/20 116 ok
+budget 256 p50 97.16 p90 101.54 min 93.88 peak 769 flushes/20 116 ok
+budget 512 p50 104.21 p90 113.17 min 99.22 peak 1537 flushes/20 41 ok
+budget 512 p50 334.36 p90 508.0 min 133.99 peak 1537 flushes/20 41 ok
+budget 1024 p50 741.35 p90 941.35 min 518.61 peak 3073 flushes/20 20 ok
+budget 1024 p50 693.73 p90 819.77 min 270.89 peak 3073 flushes/20 20 ok
+budget 1300 p50 262.93 p90 273.41 min 243.13 peak 3901 flushes/20 20 ok
+budget 1300 p50 651.3 p90 932.53 min 447.92 peak 3901 flushes/20 20 ok
+budget 1400 p50 None p90 None min None peak None flushes/20 None LOST
+budget 1400 p50 None p90 None min None peak None flushes/20 None LOST
+budget 2000 p50 None p90 None min None peak None flushes/20 None LOST
+budget 2000 p50 None p90 None min None peak None flushes/20 None LOST
+budget 4 p50 86.23 p90 91.3 min 84.04 peak 17 flushes/20 9006 ok
+budget 4 p50 96.19 p90 105.95 min 87.47 peak 17 flushes/20 9006 ok
+budget 8 p50 102.16 p90 111.28 min 93.35 peak 30 flushes/20 4503 ok
+budget 8 p50 97.91 p90 113.75 min 92.54 peak 30 flushes/20 4503 ok
+budget 16 p50 355.45 p90 626.51 min 140.02 peak 58 flushes/20 2251 ok
+budget 16 p50 313.45 p90 881.22 min 82.62 peak 58 flushes/20 2251 ok
+budget 32 p50 526.89 p90 1187.03 min 97.63 peak 100 flushes/20 1148 ok
+budget 32 p50 99.48 p90 106.34 min 95.18 peak 100 flushes/20 1148 ok
+# Stress2 (offscreen BitmapData.draw), MAX_DRAWS_PER_FLUSH back to 100
+gh-base-4096 Stress2 {'n': 20, 'p50Ms': 0.28, 'p90Ms': 0.5, 'maxMs': 88.86, 'peakOutstandingCmdBufs': 884} lastTrace  ok []
+gh-base-65536 Stress2 {'n': 20, 'p50Ms': 0.45, 'p90Ms': 0.71, 'maxMs': 81.0, 'peakOutstandingCmdBufs': 1009} lastTrace  ok []
+gh-flush Stress2 {'n': 20, 'minMs': 0.24, 'p50Ms': 0.28, 'p90Ms': 0.58, 'maxMs': 75.51, 'peakOutstandingCmdBufs': 514, 'passBudgetFlushes': 0} lastTrace  ok []
+# Stress3 PNGs, 0002-build vs flush-build, 3 runs each: all 6 byte-identical (md5 584a19cf05672d73f93e16b9e4c643ed)
+
+# Offline, stress/ab.py (250 ms interval renders + Engine-like 4/s ping), Stress3, 65536-hal A/B build
+## no flush (== #6 patch 0002 behaviour):
+{"budget": 1000000000, "renderN": 100, "renderMsAvg": 691.2, "renderMsMax": 1252, "ticks": 216, "maxTickGapMs": 1254, "peak": 4529, "pingP50Ms": 483.5, "pingMaxMs": 996.8}
+budget 1000000000 t=10s  phys_footprint: 40 GB | IOAccel 38 GB 0
+budget 1000000000 t=20s  phys_footprint: 69 GB | IOAccel 57 GB 0
+budget 1000000000 t=30s  phys_footprint: 70 GB | IOAccel 58 GB 0
+budget 1000000000 t=40s  phys_footprint: 70 GB | IOAccel 
+budget 1000000000 t=50s  | IOAccel 
+budget 1000000000 t=60s  | IOAccel 
+## flush 256:
+{"budget": 256, "renderN": 254, "renderMsAvg": 77.5, "renderMsMax": 93, "ticks": 1645, "maxTickGapMs": 133, "peak": 769, "pingP50Ms": 15.0, "pingMaxMs": 72.3}
+budget 256 t=10s  phys_footprint: 5362 MB | IOAccel MB 0 B
+budget 256 t=20s  phys_footprint: 5222 MB | IOAccel MB 0 MB
+budget 256 t=30s  phys_footprint: 5452 MB | IOAccel MB 0 MB
+budget 256 t=40s  phys_footprint: 5336 MB | IOAccel MB 0 MB
+budget 256 t=50s  phys_footprint: 5530 MB | IOAccel MB 0 MB
+budget 256 t=60s  phys_footprint: 5188 MB | IOAccel MB 0 MB
+## recheck no flush with #13 idle:
+{"budget": 1000000000, "renderN": 29, "renderMsAvg": 1082.4, "renderMsMax": 3970, "ticks": 114, "maxTickGapMs": 4032, "peak": 4529, "pingP50Ms": 320.8, "pingMaxMs": 3766.8}
+t=10s footprint 27 GB; t=20s 41 GB
+## stock vs 65536 hal, both flush 256, interleaved, #13 idle:
+gh-flush r1 {"budget": 256, "renderN": 110, "renderMsAvg": 70.2, "renderMsMax": 83, "ticks": 805, "maxTickGapMs": 126, "peak": 769, "pingP50Ms": 15.0, "pingMaxMs": 45.1}
+   other gamehosts:   1.4 /Users/rohi/sandbox/skua-mem/prototype/gamehost/target;
+gh-ab65536 r1 {"budget": 256, "renderN": 110, "renderMsAvg": 70.1, "renderMsMax": 81, "ticks": 768, "maxTickGapMs": 123, "peak": 769, "pingP50Ms": 15.0, "pingMaxMs": 58.4}
+   other gamehosts:   1.1 /Users/rohi/sandbox/skua-mem/prototype/gamehost/target;
+gh-flush r2 {"budget": 256, "renderN": 111, "renderMsAvg": 70.8, "renderMsMax": 89, "ticks": 768, "maxTickGapMs": 124, "peak": 769, "pingP50Ms": 15.0, "pingMaxMs": 41.2}
+   other gamehosts:   1.8 /Users/rohi/sandbox/skua-mem/prototype/gamehost/target;
+gh-ab65536 r2 {"budget": 256, "renderN": 109, "renderMsAvg": 71.5, "renderMsMax": 84, "ticks": 789, "maxTickGapMs": 126, "peak": 769, "pingP50Ms": 15.0, "pingMaxMs": 58.1}
+   other gamehosts:   1.5 /Users/rohi/sandbox/skua-mem/prototype/gamehost/target;
+## stock hal flush 256, 5 min WHILE #13 ran a stress Game Host (GPU contention): renders 805 ms avg, footprint flat
+{"budget": 256, "renderN": 370, "renderMsAvg": 804.7, "renderMsMax": 1327, "ticks": 515, "maxTickGapMs": 1332, "peak": 769, "pingP50Ms": 549.8, "pingMaxMs": 1070.0}
+t=1min  phys_footprint: 7866 MB
+t=2min  phys_footprint: 7865 MB
+t=3min  phys_footprint: 7861 MB
+t=4min  phys_footprint: 7868 MB
+t=5min  phys_footprint: 7860 MB
+## Stress4 (6000 sprites), 65536 A/B build: flush does not help; per-layer textures, 17 GB footprint (13 GB graphics, 12,071 regions) vs Stress3 5.3 GB (3.4 GB, 3,071)
+{"budget": 1000000000, "renderN": 5, "renderMsAvg": 5204.6, "renderMsMax": 10466, "ticks": 15, "maxTickGapMs": 12036, "peak": 18095, "pingP50Ms": 5548.7, "pingMaxMs": 10684.0}
+{"budget": 256, "renderN": 5, "renderMsAvg": 5239.1, "renderMsMax": 6164, "ticks": 22, "maxTickGapMs": 6202, "peak": 769, "pingP50Ms": 5426.3, "pingMaxMs": 5929.1}
+{"budget": 1000000000, "renderN": 5, "renderMsAvg": 5241.8, "renderMsMax": 5599, "ticks": 29, "maxTickGapMs": 5797, "peak": 18095, "pingP50Ms": 5260.0, "pingMaxMs": 5362.9}
+{"budget": 256, "renderN": 5, "renderMsAvg": 5239.1, "renderMsMax": 6766, "ticks": 36, "maxTickGapMs": 6779, "peak": 769, "pingP50Ms": 5477.8, "pingMaxMs": 6516.8}
+{"budget": 64, "renderN": 5, "renderMsAvg": 5404.1, "renderMsMax": 7263, "ticks": 43, "maxTickGapMs": 7280, "peak": 193, "pingP50Ms": 5457.4, "pingMaxMs": 7019.5}
+
+# Pre-guard wgpu repro (#15301 question): wgpu-hal MAX_COMMAND_BUFFERS=2048 and the fail-fast guard disabled
+flush 256: renders normally (p50 95.8 ms, peak 769). no flush: hangs forever, 0% CPU; main thread stack:
+ + 2470 _RNvCs1xSN3mS6xEb_13skua_gamehost4main (in gh-oldhang) + 4732 [0x102356b9c] main.rs:497
+ + 2470 _RINvCs1xSN3mS6xEb_13skua_gamehost7guardeduNCNvB2_4mains5_0EB2_ (in gh-oldhang) + 100 [0x10234eb14] main.rs:288
+ + 2470 _RNvMs1_NtCs5tnWkEF5Z8F_11ruffle_core6playerNtB5_6Player6render (in gh-oldhang) + 3160 [0x1025d49f4]
+ + 2470 _RNvXs1_NtCskAxsgkQr0hb_18ruffle_render_wgpu7backendINtB5_17WgpuRenderBackendNtNtB7_6target13TextureTargetENtNtCsleqvUdoqpis_13ruffle_render7backend13RenderBackend12submit_frameCs1xSN3mS6xEb_1
+ + 2470 _RINvMs3_NtCskAxsgkQr0hb_18ruffle_render_wgpu7backendNtB6_11ActiveFrame17submit_for_targetNtNtB8_6target13TextureTargetECs1xSN3mS6xEb_13skua_gamehost (in gh-oldhang) + 104 [0x102320258] backen
+ + 2470 _RNvMNtNtCscjHKSIDPD9B_4wgpu3api15command_encoderNtB2_14CommandEncoder6finish (in gh-oldhang) + 40 [0x1029ef8f4]
+ + 2470 _RNvXsI_NtNtCscjHKSIDPD9B_4wgpu7backend9wgpu_coreNtB5_18CoreCommandEncoderNtNtB9_8dispatch23CommandEncoderInterface6finish (in gh-oldhang) + 68 [0x1029ce290]
+ + 2470 _RNvMsi_NtCs6pVeaUbxyVL_9wgpu_core7commandNtNtB7_6global6Global22command_encoder_finish (in gh-oldhang) + 72 [0x102ac8788]
+ + 2470 _RNvMs9_NtCs6pVeaUbxyVL_9wgpu_core7commandNtB5_14CommandEncoder6finish (in gh-oldhang) + 2612 [0x102a5e7a0]
+ + 2470 _RNvXs2_NtNtCs9IQa6doR9Qe_8wgpu_hal5metal7commandNtB7_14CommandEncoderNtB9_14CommandEncoder14begin_encoding (in gh-oldhang) + 124 [0x102b0cba8]
+ + 2470 -[AGXG16XFamilyCommandQueue commandBuffer] (in AGXMetalG16X) + 44 [0x22ec2b2e0]
+ + 2470 -[AGXG16XFamilyCommandBuffer initWithQueue:retainedReferences:] (in AGXMetalG16X) + 64 [0x22ec25ed4]
+ + 2470 -[IOGPUMetalCommandBuffer initWithQueue:retainedReferences:synchronousDebugMode:] (in IOGPU) + 112 [0x1c1832fd8]
+ + 2470 -[_MTLCommandBuffer initWithQueue:retainedReferences:synchronousDebugMode:] (in Metal) + 204 [0x1a6e207d0]
+ + 2470 _dispatch_semaphore_wait_slow (in libdispatch.dylib) + 132 [0x199f96b28]
+ + 2470 _dispatch_sema4_wait (in libdispatch.dylib) + 28 [0x199f9649c]
+ + 2470 semaphore_wait_trap (in libsystem_kernel.dylib) + 8 [0x19a110b9c]
+ 2470 Thread_1133121: stdout-writer
+ + 2470 thread_start (in libsystem_pthread.dylib) + 8 [0x19a150cec]
