@@ -25,8 +25,12 @@ Skua's core, running without any UI: it owns game state, runs Scripts and accept
 _Avoid_: bot, core, daemon, backend
 
 **Control Surface**:
-Anything that drives the Engine from outside it, such as a CLI, an MCP server or a GUI.
+Anything that drives the Engine from outside its process, such as a CLI, an MCP server or a GUI.
 _Avoid_: frontend, UI, client
+
+**Engine Name**:
+The short name that identifies one Engine on a Mac, so several Engines can run side by side; the default is `default`.
+_Avoid_: instance, profile, session
 
 **Script**:
 A C# program, compiled and run by the Engine, that plays the game toward some goal.
@@ -35,6 +39,18 @@ _Avoid_: bot, plugin
 **Script Source**:
 The repository the Engine fetches Scripts from.
 _Avoid_: script repo, scripts folder
+
+**Script Dialog**:
+A message a Script raises for a human; it is either a Notice or a Question.
+_Avoid_: message box, popup, prompt
+
+**Notice**:
+An OK-only Script Dialog; it never waits for an answer.
+_Avoid_: info box, alert
+
+**Question**:
+A Script Dialog offering a choice (yes/no or named buttons) that waits for a Control Surface to answer it until it times out.
+_Avoid_: prompt, confirm, pending dialog
 
 **Test Account**:
 An AQW account reserved for automated sessions; agents never log in with any other account.
