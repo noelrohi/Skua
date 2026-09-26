@@ -141,6 +141,9 @@ public sealed class GameHost : IDisposable
 
     public string RenderBench(int n) => Encoding.UTF8.GetString(Request('B', BitConverter.GetBytes(n), TimeSpan.FromSeconds(120)));
 
+    /// <summary>#14: set the Game Host's mid-frame flush budget (render passes per submission).</summary>
+    public void SetPassBudget(int passes) => Request('K', BitConverter.GetBytes(passes), TimeSpan.FromSeconds(10));
+
     public string Stats() => Encoding.UTF8.GetString(Request('Q', ReadOnlySpan<byte>.Empty, TimeSpan.FromSeconds(10)));
 
     public Shot Screenshot(int maxWidth = 0)

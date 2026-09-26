@@ -26,10 +26,10 @@ debug = 1
 
 # PROTOTYPE: local patched Ruffle (see patches/). Same pin a1277c0 plus the patch.
 [patch."https://github.com/ruffle-rs/ruffle"]
-ruffle_render_wgpu = { path = "../../../../src/ruffle/render/wgpu" }
-ruffle_render = { path = "../../../../src/ruffle/render" }
-ruffle_core = { path = "../../../../src/ruffle/core" }
-ruffle_frontend_utils = { path = "../../../../src/ruffle/frontend-utils" }
+ruffle_render_wgpu = { path = "../../../../src/ruffle-14/render/wgpu" }
+ruffle_render = { path = "../../../../src/ruffle-14/render" }
+ruffle_core = { path = "../../../../src/ruffle-14/core" }
+ruffle_frontend_utils = { path = "../../../../src/ruffle-14/frontend-utils" }
 
 [patch.crates-io]
-wgpu-hal = { path = "../../../../src/patched/wgpu-hal-30.0.1" }
+wgpu-hal = { path = "../../../../src/patched/wgpu-hal-30.0.1-14" }

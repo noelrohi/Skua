@@ -10,6 +10,8 @@
 //!   'S' u32 id | u32 max_width (0 = native)  screenshot
 //!   'P' u32 id                               ping (transport-only round trip)
 //!   'Q' u32 id                               stats (JSON)
+//!   'B' u32 id | u32 n                       render n times, reply 'Q' with timings
+//!   'K' u32 id | u32 passes                  set the mid-frame flush pass budget (#14), reply 'P'
 //! Game Host -> Engine
 //!   'R' u32 id | utf8 return XML             reply to 'C'
 //!   'I' u32 id | u32 w | u32 h | u64 frames | PNG bytes   reply to 'S'
@@ -108,6 +110,7 @@ enum Msg {
     Ping { id: u32 },
     Stats { id: u32 },
     RenderBench { id: u32, n: u32 },
+    SetPassBudget { id: u32, passes: u32 },
 }
 
 fn start_reader(tx: Sender<Msg>) {
@@ -138,6 +141,7 @@ fn start_reader(tx: Sender<Msg>) {
                     b'P' => Msg::Ping { id },
                     b'Q' => Msg::Stats { id },
                     b'B' => Msg::RenderBench { id, n: u32::from_le_bytes(body[5..9].try_into().unwrap()) },
+                    b'K' => Msg::SetPassBudget { id, passes: u32::from_le_bytes(body[5..9].try_into().unwrap()) },
                     _ => continue,
                 };
                 if tx.send(msg).is_err() {
@@ -478,10 +482,16 @@ fn main() {
                 send_with_id(b'I', id, &rest);
             }
             Ok(Msg::Ping { id }) => send_with_id(b'P', id, &[]),
+            Ok(Msg::SetPassBudget { id, passes }) => {
+                // skua #14: mid-frame flush budget (render passes per submission), for measuring.
+                ruffle_render_wgpu::backend::set_max_passes_per_submit(passes);
+                send_with_id(b'P', id, &[]);
+            }
             Ok(Msg::RenderBench { id, n }) => {
                 // Render the live stage n times back to back (with a GPU wait) and report per-frame render time.
                 let mut times = vec![];
                 let before = wgpu_hal::SKUA_MAX_OUTSTANDING.swap(0, Ordering::Relaxed);
+                let flushes0 = ruffle_render_wgpu::backend::SKUA_PASS_BUDGET_FLUSHES.load(Ordering::Relaxed);
                 for _ in 0..n {
                     let t0 = Instant::now();
                     let ok = guarded("render-bench", || {
@@ -498,7 +508,7 @@ fn main() {
                 wgpu_hal::SKUA_MAX_OUTSTANDING.fetch_max(before, Ordering::Relaxed);
                 times.sort_by(|a, b| a.partial_cmp(b).unwrap());
                 let pct = |q: f64| times.get(((times.len() as f64 - 1.0) * q) as usize).copied().unwrap_or(-1.0);
-                let json = format!("{{\"n\":{},\"p50Ms\":{:.2},\"p90Ms\":{:.2},\"maxMs\":{:.2},\"peakOutstandingCmdBufs\":{}}}", times.len(), pct(0.5), pct(0.9), pct(1.0), peak);
+                let json = format!("{{\"n\":{},\"minMs\":{:.2},\"p50Ms\":{:.2},\"p90Ms\":{:.2},\"maxMs\":{:.2},\"peakOutstandingCmdBufs\":{},\"passBudgetFlushes\":{}}}", times.len(), pct(0.0), pct(0.5), pct(0.9), pct(1.0), peak, ruffle_render_wgpu::backend::SKUA_PASS_BUDGET_FLUSHES.load(Ordering::Relaxed) - flushes0);
                 send_with_id(b'Q', id, json.as_bytes());
             }
             Ok(Msg::Stats { id }) => {

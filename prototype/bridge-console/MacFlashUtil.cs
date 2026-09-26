@@ -33,7 +33,7 @@ public class MacFlashUtil : IFlashUtil
     public void InitializeFlash()
     {
         Host?.Dispose();
-        Host = new GameHost(GameHostExe, SwfPath, ShowGame);
+        Host = new GameHost(GameHostExe, SwfPath, ShowGame, Environment.GetEnvironmentVariable("SKUA_GAMEHOST_ARGS"));
         Host.EventXml += CallHandler;
     }
 

@@ -1,0 +1,262 @@
+diff --git a/render/wgpu/src/backend.rs b/render/wgpu/src/backend.rs
+index e6338ee7f..7a3b1e8c1 100644
+--- a/render/wgpu/src/backend.rs
++++ b/render/wgpu/src/backend.rs
+@@ -33,6 +33,7 @@ use std::any::Any;
+ use std::borrow::Cow;
+ use std::cell::Cell;
+ use std::num::NonZeroU32;
++use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+ use std::sync::Arc;
+ use swf::Color;
+ use tracing::instrument;
+@@ -1272,6 +1273,76 @@ impl RenderTargetMode {
+     }
+ }
+ 
++/// Render passes recorded into the active frame's encoder since it was last submitted.
++///
++/// wgpu-core turns every render pass into its own backend command buffer (plus one for the
++/// barriers before it), and they all stay "created but not submitted" until the encoder is
++/// submitted. Metal treats more than 4096 of those as a lost device (older wgpu hung instead),
++/// and a single heavy Flash frame (many masks, filters, layers) can record thousands of passes.
++/// skua #14: global for the prototype; upstream this would live on `Descriptors`.
++static PASSES_SINCE_SUBMIT: AtomicU32 = AtomicU32::new(0);
++
++/// skua #14 instrumentation: submissions made mid-frame because the pass budget was reached.
++pub static SKUA_PASS_BUDGET_FLUSHES: AtomicU64 = AtomicU64::new(0);
++
++pub(crate) fn note_render_pass() {
++    PASSES_SINCE_SUBMIT.fetch_add(1, Ordering::Relaxed);
++}
++
++/// Most passes to record before submitting mid-frame. Each pass costs 3 backend command
++/// buffers on Metal (pass, barriers, following copies), so 256 peaks at 769, far below 4096.
++/// skua #14: `SKUA_FLUSH_PASSES` or `set_max_passes_per_submit` override it for measuring.
++static MAX_PASSES_PER_SUBMIT: AtomicU32 = AtomicU32::new(0);
++
++fn max_passes_per_submit() -> u32 {
++    let v = MAX_PASSES_PER_SUBMIT.load(Ordering::Relaxed);
++    if v != 0 {
++        return v;
++    }
++    let v = std::env::var("SKUA_FLUSH_PASSES")
++        .ok()
++        .and_then(|v| v.parse().ok())
++        .unwrap_or(256);
++    MAX_PASSES_PER_SUBMIT.store(v, Ordering::Relaxed);
++    v
++}
++
++pub fn set_max_passes_per_submit(passes: u32) {
++    MAX_PASSES_PER_SUBMIT.store(passes.max(1), Ordering::Relaxed);
++}
++
++/// Submits everything recorded so far if the pass budget is reached.
++/// Only call this between passes, on the active frame's encoder.
++pub(crate) fn flush_if_over_pass_budget(
++    descriptors: &Descriptors,
++    staging_belt: &mut wgpu::util::StagingBelt,
++    encoder: &mut wgpu::CommandEncoder,
++) {
++    if PASSES_SINCE_SUBMIT.load(Ordering::Relaxed) < max_passes_per_submit() {
++        return;
++    }
++    SKUA_PASS_BUDGET_FLUSHES.fetch_add(1, Ordering::Relaxed);
++    submit_encoder(descriptors, staging_belt, encoder);
++}
++
++fn submit_encoder(
++    descriptors: &Descriptors,
++    staging_belt: &mut wgpu::util::StagingBelt,
++    encoder: &mut wgpu::CommandEncoder,
++) -> SubmissionIndex {
++    PASSES_SINCE_SUBMIT.store(0, Ordering::Relaxed);
++    staging_belt.finish();
++    let draw_encoder = std::mem::replace(
++        encoder,
++        descriptors
++            .device
++            .create_command_encoder(&Default::default()),
++    );
++    let index = descriptors.queue.submit(Some(draw_encoder.finish()));
++    staging_belt.recall();
++    index
++}
++
+ pub struct ActiveFrame {
+     pub staging_belt: wgpu::util::StagingBelt,
+     pub command_encoder: wgpu::CommandEncoder,
+@@ -1279,7 +1350,7 @@ pub struct ActiveFrame {
+ }
+ 
+ impl ActiveFrame {
+-    const MAX_DRAWS_PER_FLUSH: u32 = 10; // skua #6: 100 multi-pass draws can exceed Metal's 4096 unsubmitted command buffers
++    const MAX_DRAWS_PER_FLUSH: u32 = 100;
+ 
+     pub fn new(descriptors: &Descriptors) -> Self {
+         Self {
+@@ -1298,6 +1369,7 @@ impl ActiveFrame {
+         frame: T::Frame,
+     ) -> SubmissionIndex {
+         self.draws_since_flush = 0;
++        PASSES_SINCE_SUBMIT.store(0, Ordering::Relaxed);
+         self.staging_belt.finish();
+         let draw_encoder = std::mem::replace(
+             &mut self.command_encoder,
+@@ -1317,16 +1389,7 @@ impl ActiveFrame {
+ 
+     pub fn submit_direct(&mut self, descriptors: &Descriptors) -> SubmissionIndex {
+         self.draws_since_flush = 0;
+-        self.staging_belt.finish();
+-        let draw_encoder = std::mem::replace(
+-            &mut self.command_encoder,
+-            descriptors
+-                .device
+-                .create_command_encoder(&Default::default()),
+-        );
+-        let index = descriptors.queue.submit(Some(draw_encoder.finish()));
+-        self.staging_belt.recall();
+-        index
++        submit_encoder(descriptors, &mut self.staging_belt, &mut self.command_encoder)
+     }
+ 
+     pub fn maybe_flush(&mut self, descriptors: &Descriptors) {
+@@ -1338,6 +1401,12 @@ impl ActiveFrame {
+ 
+         if self.draws_since_flush > Self::MAX_DRAWS_PER_FLUSH {
+             self.submit_direct(descriptors);
++        } else {
++            flush_if_over_pass_budget(
++                descriptors,
++                &mut self.staging_belt,
++                &mut self.command_encoder,
++            );
+         }
+     }
+ }
+diff --git a/render/wgpu/src/filters/bevel.rs b/render/wgpu/src/filters/bevel.rs
+index 749c31b05..e8b35e876 100644
+--- a/render/wgpu/src/filters/bevel.rs
++++ b/render/wgpu/src/filters/bevel.rs
+@@ -263,6 +263,7 @@ impl BevelFilter {
+                     },
+                 ],
+             });
++        crate::backend::note_render_pass(); // skua #14
+         let mut render_pass = draw_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+             label: create_debug_label!("Bevel filter").as_deref(),
+             color_attachments: &[target.color_attachments()],
+diff --git a/render/wgpu/src/filters/blur.rs b/render/wgpu/src/filters/blur.rs
+index 52ab1059f..5d6a3f63b 100644
+--- a/render/wgpu/src/filters/blur.rs
++++ b/render/wgpu/src/filters/blur.rs
+@@ -320,6 +320,7 @@ impl BlurFilter {
+                 ],
+             });
+ 
++        crate::backend::note_render_pass(); // skua #14
+         let mut render_pass = draw_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+             label: create_debug_label!("Blur filter").as_deref(),
+             color_attachments: &[destination.color_attachments()],
+diff --git a/render/wgpu/src/filters/color_matrix.rs b/render/wgpu/src/filters/color_matrix.rs
+index 7bf105a93..99483b10d 100644
+--- a/render/wgpu/src/filters/color_matrix.rs
++++ b/render/wgpu/src/filters/color_matrix.rs
+@@ -182,6 +182,7 @@ impl ColorMatrixFilter {
+                     },
+                 ],
+             });
++        crate::backend::note_render_pass(); // skua #14
+         let mut render_pass = draw_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+             label: create_debug_label!("Color matrix filter").as_deref(),
+             color_attachments: &[target.color_attachments()],
+diff --git a/render/wgpu/src/filters/displacement_map.rs b/render/wgpu/src/filters/displacement_map.rs
+index 223f340b6..022f3c5c0 100644
+--- a/render/wgpu/src/filters/displacement_map.rs
++++ b/render/wgpu/src/filters/displacement_map.rs
+@@ -256,6 +256,7 @@ impl DisplacementMapFilter {
+                     },
+                 ],
+             });
++        crate::backend::note_render_pass(); // skua #14
+         let mut render_pass = draw_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+             label: create_debug_label!("Displacement map filter").as_deref(),
+             color_attachments: &[target.color_attachments()],
+diff --git a/render/wgpu/src/filters/glow.rs b/render/wgpu/src/filters/glow.rs
+index 15a8d5253..4d3b2e0d4 100644
+--- a/render/wgpu/src/filters/glow.rs
++++ b/render/wgpu/src/filters/glow.rs
+@@ -240,6 +240,7 @@ impl GlowFilter {
+                     },
+                 ],
+             });
++        crate::backend::note_render_pass(); // skua #14
+         let mut render_pass = draw_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+             label: create_debug_label!("Glow filter").as_deref(),
+             color_attachments: &[target.color_attachments()],
+diff --git a/render/wgpu/src/pixel_bender.rs b/render/wgpu/src/pixel_bender.rs
+index ea1e1e38e..2a6196fd8 100644
+--- a/render/wgpu/src/pixel_bender.rs
++++ b/render/wgpu/src/pixel_bender.rs
+@@ -645,6 +645,7 @@ pub(super) fn run_pixelbender_shader_impl(
+ 
+     let pipeline = compiled_shader.get_pipeline(descriptors, sample_count, target.format());
+ 
++    crate::backend::note_render_pass(); // skua #14
+     let mut render_pass = render_command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+         label: Some("PixelBender render pass"),
+         color_attachments: &[color_attachment],
+diff --git a/render/wgpu/src/surface.rs b/render/wgpu/src/surface.rs
+index b6197150d..a44abc9b2 100644
+--- a/render/wgpu/src/surface.rs
++++ b/render/wgpu/src/surface.rs
+@@ -144,6 +144,8 @@ impl Surface {
+         );
+ 
+         for chunk in chunks {
++            // skua #14: never let one encoder collect more passes than the backend can hold.
++            crate::backend::flush_if_over_pass_budget(descriptors, staging_belt, draw_encoder);
+             match chunk {
+                 Chunk::Draw {
+                     chunk,
+@@ -157,6 +159,7 @@ impl Surface {
+                         draw_encoder,
+                         &dynamic_transforms.vertex_buffer,
+                     );
++                    crate::backend::note_render_pass(); // skua #14
+                     let mut render_pass = draw_encoder.scoped_render_pass(
+                         format!(
+                             "Chunked draw calls {}",
+@@ -289,6 +292,7 @@ impl Surface {
+                                 ],
+                             });
+ 
++                    crate::backend::note_render_pass(); // skua #14
+                     let mut render_pass =
+                         draw_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                             label: create_debug_label!(
+diff --git a/render/wgpu/src/surface/target.rs b/render/wgpu/src/surface/target.rs
+index 1cfe3dc5b..d28462806 100644
+--- a/render/wgpu/src/surface/target.rs
++++ b/render/wgpu/src/surface/target.rs
+@@ -324,6 +324,7 @@ impl CommandTarget {
+         // If we aren't clearing with a color (eg a texture instead)
+         // the there's no point in creating a new render pass that does nothing.
+         if self.render_target_mode.color().is_some() {
++            crate::backend::note_render_pass(); // skua #14
+             encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                 label: create_debug_label!("Clearing command target").as_deref(),
+                 color_attachments: &[self.color_attachments()],
+diff --git a/render/wgpu/src/utils.rs b/render/wgpu/src/utils.rs
+index 37523a47b..3fda9a67c 100644
+--- a/render/wgpu/src/utils.rs
++++ b/render/wgpu/src/utils.rs
+@@ -230,6 +230,7 @@ pub fn run_copy_pipeline(
+     // so this doesn't matter.
+     let load = wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT);
+ 
++    crate::backend::note_render_pass(); // skua #14
+     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+         label: create_debug_label!("Copy back to render target").as_deref(),
+         color_attachments: &[Some(wgpu::RenderPassColorAttachment {

@@ -3,6 +3,7 @@
 //   bridge-console smoke                         load to the login screen, no login
 //   bridge-console live [--server NAME]          login, maps, latency benchmark, event ordering
 //   bridge-console script <file.cs> <minutes>    login, run a Script, sample Game Host RSS every minute
+//   bridge-console flush <minutes> [--server NAME]   #14: login, render benches per pass budget, then idle
 //   bridge-console idle <minutes>                login, stay in battleon, sample RSS (hidden-running check)
 //
 // Env: SKUA_GAMEHOST (binary), SKUA_SWF (skua.swf), SKUA_OUT (output dir), SKUA_SHOW_GAME=1.
@@ -77,6 +78,7 @@ public static class Program
             case "full": Live(Arg(args, "--server")); RunScript(Path.GetFullPath(args[1]), double.Parse(args[2])); break;
             case "script": Login(Arg(args, "--server")); RunScript(args[1], double.Parse(args[2])); break;
             case "idle": Login(Arg(args, "--server")); Idle(double.Parse(args[1])); break;
+            case "flush": Flush(Arg(args, "--server"), double.Parse(args[1])); break;
         }
         Log("done; closing Game Host");
         Flash.Dispose();
@@ -271,6 +273,32 @@ public static class Program
                 Thread.Sleep(100);
             }
         }) { IsBackground = true }.Start();
+    }
+
+    // #14: the first render after login is where #6 lost the Metal device without patch 0002.
+    static void Flush(string? server, double minutes)
+    {
+        Login(server);
+        Join("battleon");
+        foreach (int round in new[] { 1, 2 })
+            foreach (int b in new[] { 32, 64, 128, 256, 512, 1024 })
+            {
+                Host.SetPassBudget(b);
+                Log($"RENDERBENCH battleon budget={b} round={round} " + Host.RenderBench(30));
+            }
+        Host.SetPassBudget(256);
+        Shot("map-battleon-budget256");
+        Join("yulgar");
+        Join("battleontown");
+        Join("battleon");
+        var sw = Stopwatch.StartNew();
+        while (sw.Elapsed.TotalMinutes < minutes)
+        {
+            Thread.Sleep(60_000);
+            Log($"SAMPLE t={sw.Elapsed.TotalMinutes:F1}min playing={Bot.Player.Playing} map={Bot.Map.Name} stats={Host.Stats()}");
+        }
+        Log("RENDERBENCH battleon end " + Host.RenderBench(30));
+        Shot("map-battleon-end");
     }
 
     static void Live(string? server)
