@@ -41,13 +41,21 @@ Branch `prototype/gamehost-memory`. Verdict and numbers: the #13 resolution.
   every minute, plus a full-GC sample every 30 min. New mode: `loginscreen <min>` (no login).
 - **Host fixes:** an autorelease pool per loop iteration (Metal objects were never released), an offscreen pool trim every 30
   ticks (`SKUA_TRIM_TICKS`, 0 = off), host flags via `SKUA_GAMEHOST_ARGS`, and `SKUA_NO_RENDERBENCH=1`.
-- **Ruffle patch series** on `a1277c0` + `0001` (apply with `git am patches/00{03..11}-*.patch`):
+- **Ruffle patch series** on `a1277c0` + `0001` (apply with `git am patches/00{03..16}-*.patch`):
   `0003`–`0006` upstream PR #24590 (movie-library lifetime by reachability; `unloadAndStop`; lazy tessellation),
   `0007` stats + texture-pool trim, `0008` gc-arena 0.7 external-accounting shim, `0009` #14's pass-budget flush,
-  `0010` pool trim on by default (`SKUA_POOL_TRIM=off`), `0011` at most 16 in-flight submissions (`SKUA_MAX_INFLIGHT`).
+  `0010` pool trim on by default (`SKUA_POOL_TRIM=off`), `0011` at most 16 in-flight submissions (`SKUA_MAX_INFLIGHT`),
+  `0012`/`0014` GC census and retainer path (need `patches/gc-arena-0.7.0-census.patch` via `[patch.crates-io]`),
+  `0013`/`0015` the null audio backend ends event sounds after their duration (AQW `SoundFX.activeChannels` leak),
+  `0016` `Dictionary(weakKeys)` holds object keys weakly (AQW `Game._colorCache` leak).
   `0002` is only a peak counter now (stock wgpu-hal 4096 limit).
-- **Build of the gate config** (`~/src/ruffle-13lib` = pin + 0001 + 0003..0011):
-  `cargo build --release --target-dir target-lib --config 'patch."https://github.com/ruffle-rs/ruffle".ruffle_core.path="<ruffle>/core"'`
+- **Diagnostics:** `'Y'` = census (live GC objects by Rust type and AS3 class), `'Z' <class>` = shortest root path to the oldest
+  live instance of an AS3 display class; `bridge-console` with `SKUA_CENSUS=1`, `SKUA_RETAIN_CLASSES=A,B`, `SKUA_GC_AT=10,30,...`.
+  Repro SWFs: `stress/Sounds.as` (channels kept until `SOUND_COMPLETE`), `stress/WeakDict.as` (weak-key cache);
+  compile with `mxmlc -omit-trace-statements=false`.
+- **Build of the gate config** (`~/src/ruffle-13lib` = pin + 0001 + 0003..0016; add
+  `--config 'patch.crates-io.gc-arena.path="<gc-arena-0.7.0 + census patch>"'`):
+  `cargo build --release --target-dir target-fix --config 'patch."https://github.com/ruffle-rs/ruffle".ruffle_core.path="<ruffle>/core"'`
   (same for `ruffle_render`, `ruffle_render_wgpu`, `ruffle_frontend_utils`).
 - **Offline:** `stress/fp.py <label> <secs> <every> <swf> [flags]` samples footprint + `'M'`.
   **Live:** `bridge-console script <Leveling.cs> 120 --server Galanoth` with `SKUA_GAMEHOST_ARGS=--render-interval-ms=250`.
