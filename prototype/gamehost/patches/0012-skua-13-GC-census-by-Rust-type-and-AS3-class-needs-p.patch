@@ -1,7 +1,7 @@
 From 061f167307c37d95502f58b4669b58015ff720ed Mon Sep 17 00:00:00 2001
 From: Rohi <noelrohi59@gmail.com>
 Date: Sat, 26 Sep 2026 21:32:37 +0800
-Subject: [PATCH 12/14] skua #13: GC census by Rust type and AS3 class (needs
+Subject: [PATCH 12/16] skua #13: GC census by Rust type and AS3 class (needs
  patched gc-arena)
 
 ---

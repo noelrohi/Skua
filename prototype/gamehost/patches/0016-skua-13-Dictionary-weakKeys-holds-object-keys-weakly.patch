@@ -1,0 +1,261 @@
+From f4b97e5ca2b73401e2b4acc671eabc5d4e0fa0f9 Mon Sep 17 00:00:00 2001
+From: Rohi <noelrohi59@gmail.com>
+Date: Sat, 26 Sep 2026 23:25:14 +0800
+Subject: [PATCH 16/16] skua #13: Dictionary(weakKeys) holds object keys
+ weakly; dead keys removed at finalization
+
+---
+ Cargo.lock                                    |  2 -
+ core/src/avm2.rs                              | 20 +++++++
+ .../avm2/globals/flash/utils/Dictionary.as    |  6 +-
+ .../avm2/globals/flash/utils/dictionary.rs    | 23 ++++++++
+ core/src/avm2/object/dictionary_object.rs     | 58 ++++++++++++++++++-
+ core/src/avm2/object/script_object.rs         | 20 +++++++
+ core/src/player.rs                            |  7 ++-
+ 7 files changed, 128 insertions(+), 8 deletions(-)
+
+diff --git a/Cargo.lock b/Cargo.lock
+index ca486b73e..48dcd866c 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -2062,8 +2062,6 @@ dependencies = [
+ [[package]]
+ name = "gc-arena"
+ version = "0.7.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "160a11f93020eea95cb4c59e2eda2e4c6353f75aa4fbb01f2bf8729b2e4d6dd2"
+ dependencies = [
+  "enum-map",
+  "gc-arena-derive",
+diff --git a/core/src/avm2.rs b/core/src/avm2.rs
+index 3cc01d364..f9e439b2e 100644
+--- a/core/src/avm2.rs
++++ b/core/src/avm2.rs
+@@ -172,6 +172,9 @@ pub struct Avm2<'gc> {
+     /// currently present on the display list. This list keeps track of that.
+     broadcast_list: FnvHashMap<AvmString<'gc>, Vec<WeakObject<'gc>>>,
+ 
++    /// skua #13: every `Dictionary(true)` created, so dead keys can be removed at finalization.
++    pub skua_weak_dictionaries: Vec<crate::avm2::object::DictionaryObjectWeak<'gc>>,
++
+     alias_to_class_map: FnvHashMap<AvmString<'gc>, ClassObject<'gc>>,
+     class_to_alias_map: FnvHashMap<Class<'gc>, AvmString<'gc>>,
+ 
+@@ -228,6 +231,7 @@ impl<'gc> Avm2<'gc> {
+             native_custom_constructor_table: Default::default(),
+             native_fast_call_list: Default::default(),
+             broadcast_list: Default::default(),
++            skua_weak_dictionaries: Vec::new(),
+ 
+             alias_to_class_map: Default::default(),
+             class_to_alias_map: Default::default(),
+@@ -385,6 +389,22 @@ impl<'gc> Avm2<'gc> {
+     ///
+     /// Attempts to register the same listener for the same event will also do
+     /// nothing.
++    /// skua #13: called at finalization (marking finished, nothing swept yet). Forget dead weak
++    /// dictionaries and remove the entries of live ones whose keys were not reached.
++    pub fn skua_purge_weak_dictionaries(&mut self, fc: &gc_arena::Finalization<'gc>) -> usize {
++        let mut purged = 0;
++        self.skua_weak_dictionaries.retain(|d| {
++            if d.skua_is_dead(fc) {
++                return false;
++            }
++            if let Some(dict) = d.0.upgrade(fc) {
++                purged += crate::avm2::object::DictionaryObject(dict).skua_purge_dead_keys(fc);
++            }
++            true
++        });
++        purged
++    }
++
+     pub fn register_broadcast_listener(
+         context: &mut UpdateContext<'gc>,
+         object: Object<'gc>,
+diff --git a/core/src/avm2/globals/flash/utils/Dictionary.as b/core/src/avm2/globals/flash/utils/Dictionary.as
+index 3184bde5d..184b11664 100644
+--- a/core/src/avm2/globals/flash/utils/Dictionary.as
++++ b/core/src/avm2/globals/flash/utils/Dictionary.as
+@@ -1,5 +1,4 @@
+ package flash.utils {
+-    import __ruffle__.stub_constructor;
+ 
+     [Ruffle(InstanceAllocator)]
+     public dynamic class Dictionary {
+@@ -10,8 +9,11 @@ package flash.utils {
+ 
+         public function Dictionary(weakKeys:Boolean = false) {
+             if (weakKeys) {
+-                stub_constructor("flash.utils.Dictionary", "with weak keys");
++                this.setWeakKeys();
+             }
+         }
++
++        // skua #13: keys are held weakly (see dictionary_object.rs).
++        private native function setWeakKeys():void;
+     }
+ }
+diff --git a/core/src/avm2/globals/flash/utils/dictionary.rs b/core/src/avm2/globals/flash/utils/dictionary.rs
+index 644bc3509..69ed6b2ff 100644
+--- a/core/src/avm2/globals/flash/utils/dictionary.rs
++++ b/core/src/avm2/globals/flash/utils/dictionary.rs
+@@ -1 +1,24 @@
+ pub use crate::avm2::object::dictionary_allocator;
++
++use crate::avm2::activation::Activation;
++use crate::avm2::function::FunctionArgs;
++use crate::avm2::object::DictionaryObjectWeak;
++use crate::avm2::value::Value;
++use crate::avm2::Error;
++use gc_arena::Gc;
++
++/// skua #13: `Dictionary.setWeakKeys`, called by the constructor for `new Dictionary(true)`.
++pub fn set_weak_keys<'gc>(
++    activation: &mut Activation<'_, 'gc>,
++    this: Value<'gc>,
++    _args: FunctionArgs<'_, 'gc>,
++) -> Result<Value<'gc>, Error<'gc>> {
++    if let Some(dict) = this.as_object().and_then(|o| o.as_dictionary_object()) {
++        dict.skua_set_weak_keys();
++        activation
++            .avm2()
++            .skua_weak_dictionaries
++            .push(DictionaryObjectWeak(Gc::downgrade(dict.0)));
++    }
++    Ok(Value::Undefined)
++}
+diff --git a/core/src/avm2/object/dictionary_object.rs b/core/src/avm2/object/dictionary_object.rs
+index 095b4c03d..8f5ce9d87 100644
+--- a/core/src/avm2/object/dictionary_object.rs
++++ b/core/src/avm2/object/dictionary_object.rs
+@@ -18,7 +18,14 @@ pub fn dictionary_allocator<'gc>(
+ ) -> Result<Object<'gc>, Error<'gc>> {
+     let base = ScriptObjectData::new(class);
+ 
+-    Ok(DictionaryObject(Gc::new(activation.gc(), DictionaryObjectData { base })).into())
++    Ok(DictionaryObject(Gc::new(
++        activation.gc(),
++        DictionaryObjectData {
++            base,
++            weak_keys: std::cell::Cell::new(false),
++        },
++    ))
++    .into())
+ }
+ 
+ /// An object that allows associations between objects and values.
+@@ -42,15 +49,60 @@ impl fmt::Debug for DictionaryObject<'_> {
+     }
+ }
+ 
+-#[derive(Clone, Collect, HasPrefixField)]
+-#[collect(no_drop)]
++#[derive(Clone, HasPrefixField)]
+ #[repr(C, align(8))]
+ pub struct DictionaryObjectData<'gc> {
+     /// Base script object
+     base: ScriptObjectData<'gc>,
++
++    /// skua #13: `new Dictionary(true)`. Object keys are traced weakly and entries whose key
++    /// died are removed at the end of marking (`Avm2::skua_purge_weak_dictionaries`).
++    weak_keys: std::cell::Cell<bool>,
++}
++
++unsafe impl<'gc> Collect<'gc> for DictionaryObjectData<'gc> {
++    fn trace<C: gc_arena::collect::Trace<'gc>>(&self, cc: &mut C) {
++        if self.weak_keys.get() {
++            self.base.skua_trace_weak_keys(cc);
++        } else {
++            cc.trace(&self.base);
++        }
++    }
++}
++
++impl<'gc> DictionaryObjectWeak<'gc> {
++    pub fn skua_is_dead(self, fc: &gc_arena::Finalization<'gc>) -> bool {
++        self.0.is_dropped() || self.0.is_dead(fc)
++    }
+ }
+ 
+ impl<'gc> DictionaryObject<'gc> {
++    /// skua #13: switch to weak keys (`new Dictionary(true)`). Weakening edges needs no barrier.
++    pub fn skua_set_weak_keys(self) {
++        self.0.weak_keys.set(true);
++    }
++
++    /// skua #13: remove entries whose object key the finished marking phase did not reach.
++    pub fn skua_purge_dead_keys(self, fc: &gc_arena::Finalization<'gc>) -> usize {
++        let dead: Vec<DynamicKey<'gc>> = self
++            .base()
++            .values()
++            .iter()
++            .filter_map(|(k, _)| match k {
++                DynamicKey::Object(o) if Gc::downgrade(o.gc_base()).is_dead(fc) => Some(*k),
++                _ => None,
++            })
++            .collect();
++        if !dead.is_empty() {
++            let base = self.base();
++            let mut values = base.values_mut(fc);
++            for k in &dead {
++                values.remove(k);
++            }
++        }
++        dead.len()
++    }
++
+     /// Retrieve a value in the dictionary's object space.
+     pub fn get_property_by_object(self, name: Object<'gc>) -> Value<'gc> {
+         self.base()
+diff --git a/core/src/avm2/object/script_object.rs b/core/src/avm2/object/script_object.rs
+index 9855272a5..80d9a9be4 100644
+--- a/core/src/avm2/object/script_object.rs
++++ b/core/src/avm2/object/script_object.rs
+@@ -176,6 +176,26 @@ impl<'gc> ScriptObjectData<'gc> {
+ #[derive(Clone, Copy)]
+ pub struct ScriptObjectWrapper<'gc>(pub Gc<'gc, ScriptObjectData<'gc>>);
+ 
++impl<'gc> ScriptObjectData<'gc> {
++    /// skua #13: trace like `derive(Collect)` does, but hold the object keys of `values` weakly
++    /// (`Dictionary(weakKeys = true)`). Dead keys are removed at finalization, see
++    /// `DictionaryObject::skua_purge_dead_keys`.
++    pub fn skua_trace_weak_keys<C: gc_arena::collect::Trace<'gc>>(&self, cc: &mut C) {
++        for (k, v) in self.values.borrow().iter() {
++            match k {
++                DynamicKey::Object(o) => cc.trace(&Gc::downgrade(o.gc_base())),
++                other => cc.trace(other),
++            }
++            cc.trace(v);
++        }
++        cc.trace(&self.slots);
++        cc.trace(&self.bound_methods);
++        cc.trace(&self.proto);
++        cc.trace(&self.instance_class);
++        cc.trace(&self.vtable);
++    }
++}
++
+ impl<'gc> ScriptObjectWrapper<'gc> {
+     /// Retrieve the values stored directly on this ScriptObjectData.
+     pub fn values(&self) -> Ref<'_, DynamicMap<DynamicKey<'gc>, Value<'gc>>> {
+diff --git a/core/src/player.rs b/core/src/player.rs
+index f859957ec..167b5856b 100644
+--- a/core/src/player.rs
++++ b/core/src/player.rs
+@@ -2552,7 +2552,12 @@ impl Player {
+                     .data
+                     .try_borrow_mut(fc)
+                     .expect("Arena root borrowed during garbage collection");
+-                data.library.resolve_releasable_libraries(fc)
++                let resume = data.library.resolve_releasable_libraries(fc);
++                if !resume {
++                    // skua #13: marking is final; drop weak-dictionary entries whose key died.
++                    data.avm2.skua_purge_weak_dictionaries(fc);
++                }
++                resume
+             });
+             marked = arena
+                 .finish_marking()
+-- 
+2.47.1
+

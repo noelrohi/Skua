@@ -1,7 +1,7 @@
 From ffbdb2d8db4aba6a73682274c7b1f921839a39eb Mon Sep 17 00:00:00 2001
 From: Rohi <noelrohi59@gmail.com>
 Date: Sat, 26 Sep 2026 23:00:20 +0800
-Subject: [PATCH 14/14] skua #13: retainer path (shortest root path to the
+Subject: [PATCH 14/16] skua #13: retainer path (shortest root path to the
  oldest live instance of an AS3 class)
 
 ---

@@ -1,0 +1,33 @@
+From 2496369b5590d8f54eb2402bd599f1bb6ec9571b Mon Sep 17 00:00:00 2001
+From: Rohi <noelrohi59@gmail.com>
+Date: Sat, 26 Sep 2026 23:25:13 +0800
+Subject: [PATCH 15/16] skua #13: null audio position stays 0 while playing
+ (keeps soundchannel_position output)
+
+---
+ core/src/backend/audio.rs | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/core/src/backend/audio.rs b/core/src/backend/audio.rs
+index 13c333576..7f47115b8 100644
+--- a/core/src/backend/audio.rs
++++ b/core/src/backend/audio.rs
+@@ -323,12 +323,12 @@ impl AudioBackend for NullAudioBackend {
+         self.instances.clear();
+     }
+     fn get_sound_position(&self, instance: SoundInstanceHandle) -> Option<f64> {
+-        // Streams keep reporting 0 as before (timeline sync is unchanged); event sounds end.
++        // Position stays 0 as before (timeline sync and `SoundChannel.position` unchanged);
++        // event sounds now end once their duration has passed.
+         let i = self.instances.get(instance)?;
+         match i.length {
+             Some(len) if i.start.elapsed() >= len => None,
+-            Some(_) => Some(i.start.elapsed().as_secs_f64() * 1000.0),
+-            None => Some(0.0),
++            _ => Some(0.0),
+         }
+     }
+     fn get_sound_duration(&self, sound: SoundHandle) -> Option<FloatDuration> {
+-- 
+2.47.1
+
