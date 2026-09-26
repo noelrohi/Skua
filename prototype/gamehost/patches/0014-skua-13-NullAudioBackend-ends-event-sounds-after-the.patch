@@ -1,0 +1,111 @@
+From 898f80256c37b0a3a32436fb0a2903ae916b4434 Mon Sep 17 00:00:00 2001
+From: Rohi <noelrohi59@gmail.com>
+Date: Sat, 26 Sep 2026 22:53:38 +0800
+Subject: [PATCH] skua #13: NullAudioBackend ends event sounds after their
+ duration (soundComplete fires)
+
+---
+ core/src/backend/audio.rs | 52 ++++++++++++++++++++++++++++++++-------
+ 1 file changed, 43 insertions(+), 9 deletions(-)
+
+diff --git a/core/src/backend/audio.rs b/core/src/backend/audio.rs
+index 0f63f6b11..c3eb471fe 100644
+--- a/core/src/backend/audio.rs
++++ b/core/src/backend/audio.rs
+@@ -219,16 +219,34 @@ struct NullSound {
+ /// Audio backend that ignores all audio.
+ pub struct NullAudioBackend {
+     sounds: SlotMap<SoundHandle, NullSound>,
++    /// skua #13: playing instances, so event sounds can end after their duration.
++    /// Without this nothing ever ends, `soundComplete` never fires, and content that keeps its
++    /// channels until then (AQW's `SoundFX.activeChannels`) grows without bound.
++    instances: SlotMap<SoundInstanceHandle, NullInstance>,
+     volume: f32,
+ }
+ 
++struct NullInstance {
++    start: web_time::Instant,
++    /// `None` for streams and sounds of unknown length: they play until stopped.
++    length: Option<Duration>,
++}
++
+ impl NullAudioBackend {
+     pub fn new() -> NullAudioBackend {
+         NullAudioBackend {
+             sounds: SlotMap::with_key(),
++            instances: SlotMap::with_key(),
+             volume: 1.0,
+         }
+     }
++
++    fn start_instance(&mut self, length: Option<Duration>) -> SoundInstanceHandle {
++        self.instances.insert(NullInstance {
++            start: web_time::Instant::now(),
++            length,
++        })
++    }
+ }
+ 
+ impl AudioBackend for NullAudioBackend {
+@@ -269,10 +287,16 @@ impl AudioBackend for NullAudioBackend {
+ 
+     fn start_sound(
+         &mut self,
+-        _sound: SoundHandle,
+-        _sound_info: &swf::SoundInfo,
++        sound: SoundHandle,
++        sound_info: &swf::SoundInfo,
+     ) -> Result<SoundInstanceHandle, DecodeError> {
+-        Ok(SoundInstanceHandle::null())
++        let length = self
++            .sounds
++            .get(sound)
++            .map(|s| s.duration)
++            .filter(|d| *d > FloatDuration::ZERO)
++            .map(|d| Duration::from_secs_f64(d.as_millis() / 1000.0 * f64::from(sound_info.num_loops.max(1))));
++        Ok(self.start_instance(length))
+     }
+ 
+     fn start_stream(
+@@ -280,7 +304,7 @@ impl AudioBackend for NullAudioBackend {
+         _clip_data: crate::tag_utils::SwfSlice,
+         _handle: &swf::SoundStreamHead,
+     ) -> Result<SoundInstanceHandle, DecodeError> {
+-        Ok(SoundInstanceHandle::null())
++        Ok(self.start_instance(None))
+     }
+ 
+     fn start_substream(
+@@ -288,14 +312,24 @@ impl AudioBackend for NullAudioBackend {
+         _stream_data: Substream,
+         _handle: &SoundStreamInfo,
+     ) -> Result<SoundInstanceHandle, DecodeError> {
+-        Ok(SoundInstanceHandle::null())
++        Ok(self.start_instance(None))
+     }
+ 
+-    fn stop_sound(&mut self, _sound: SoundInstanceHandle) {}
++    fn stop_sound(&mut self, sound: SoundInstanceHandle) {
++        self.instances.remove(sound);
++    }
+ 
+-    fn stop_all_sounds(&mut self) {}
+-    fn get_sound_position(&self, _instance: SoundInstanceHandle) -> Option<f64> {
+-        Some(0.0)
++    fn stop_all_sounds(&mut self) {
++        self.instances.clear();
++    }
++    fn get_sound_position(&self, instance: SoundInstanceHandle) -> Option<f64> {
++        // Streams keep reporting 0 as before (timeline sync is unchanged); event sounds end.
++        let i = self.instances.get(instance)?;
++        match i.length {
++            Some(len) if i.start.elapsed() >= len => None,
++            Some(_) => Some(i.start.elapsed().as_secs_f64() * 1000.0),
++            None => Some(0.0),
++        }
+     }
+     fn get_sound_duration(&self, sound: SoundHandle) -> Option<FloatDuration> {
+         if let Some(sound) = self.sounds.get(sound) {
+-- 
+2.47.1
+
