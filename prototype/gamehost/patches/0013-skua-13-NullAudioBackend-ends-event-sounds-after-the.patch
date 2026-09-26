@@ -1,8 +1,8 @@
 From 898f80256c37b0a3a32436fb0a2903ae916b4434 Mon Sep 17 00:00:00 2001
 From: Rohi <noelrohi59@gmail.com>
 Date: Sat, 26 Sep 2026 22:53:38 +0800
-Subject: [PATCH] skua #13: NullAudioBackend ends event sounds after their
- duration (soundComplete fires)
+Subject: [PATCH 13/14] skua #13: NullAudioBackend ends event sounds after
+ their duration (soundComplete fires)
 
 ---
  core/src/backend/audio.rs | 52 ++++++++++++++++++++++++++++++++-------

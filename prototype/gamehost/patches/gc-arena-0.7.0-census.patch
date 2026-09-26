@@ -1,13 +1,28 @@
 diff --color -ru a/src/arena.rs b/src/arena.rs
 --- a/src/arena.rs	2006-07-24 09:21:28
-+++ b/src/arena.rs	2026-09-26 21:33:05
-@@ -238,6 +238,19 @@
++++ b/src/arena.rs	2026-09-26 22:57:30
+@@ -238,6 +238,34 @@
      }
  
      #[inline]
 +    /// skua #13 census: (type name, live objects, bytes) of every allocation in the arena.
 +    pub fn skua_census(&self) -> alloc::vec::Vec<(&'static str, usize, usize)> {
 +        self.context.skua_census()
++    }
++
++    /// skua #13 census: visit every live allocation with its type and strong pointers.
++    pub fn skua_edges(&self, f: &mut dyn FnMut(&'static str, *const (), &[usize])) {
++        self.context.skua_edges(f)
++    }
++
++    /// skua #13 census: the strong pointers held directly by the arena root.
++    pub fn skua_root_edges(&self) -> alloc::vec::Vec<usize>
++    where
++        for<'a> Root<'a, R>: crate::Collect<'a>,
++    {
++        let mut f = crate::context::SkuaFinder { out: alloc::vec::Vec::new() };
++        crate::collect::Trace::trace(&mut f, &self.root);
++        f.out
 +    }
 +
 +    /// skua #13 census: visit every live allocation (type name, pointer to the value).
@@ -23,12 +38,40 @@ diff --color -ru a/src/arena.rs b/src/arena.rs
      }
 diff --color -ru a/src/context.rs b/src/context.rs
 --- a/src/context.rs	2006-07-24 09:21:28
-+++ b/src/context.rs	2026-09-26 21:33:05
-@@ -187,6 +187,35 @@
++++ b/src/context.rs	2026-09-26 22:57:30
+@@ -187,6 +187,63 @@
      gray_again: Queue<GcPtr>,
  }
  
++/// skua #13 census: a tracer that records every strong pointer a value holds.
++pub struct SkuaFinder {
++    pub(crate) out: Vec<usize>,
++}
++
++impl<'gc> Trace<'gc> for SkuaFinder {
++    fn trace_gc(&mut self, gc: Gc<'gc, ()>) {
++        self.out.push(gc.ptr.as_ptr() as usize);
++    }
++
++    fn trace_gc_weak(&mut self, _gc: GcWeak<'gc, ()>) {}
++}
++
 +impl Context {
++    /// skua #13 census: visit every live allocation with its type and the strong pointers it holds.
++    pub(crate) fn skua_edges(&self, f: &mut dyn FnMut(&'static str, *const (), &[usize])) {
++        let mut rec = SkuaFinder { out: Vec::new() };
++        let mut cur = self.all.get();
++        while let Some(p) = cur {
++            let h = p.header();
++            if h.is_live() {
++                rec.out.clear();
++                unsafe { (h.vtable().find_value)(p.as_ptr() as *const (), &mut rec) };
++                f((h.vtable().type_name)(), p.as_ptr() as *const (), &rec.out);
++            }
++            cur = h.next();
++        }
++    }
++
 +    /// skua #13 census: (type name, live objects, bytes) for every allocation on the `all` list.
 +    pub(crate) fn skua_census(&self) -> alloc::vec::Vec<(&'static str, usize, usize)> {
 +        let mut map: alloc::collections::BTreeMap<&'static str, (usize, usize)> = Default::default();
@@ -62,7 +105,7 @@ diff --color -ru a/src/context.rs b/src/context.rs
          struct DropAll<'a>(&'a Metrics, Option<GcPtr>);
 diff --color -ru a/src/types.rs b/src/types.rs
 --- a/src/types.rs	2006-07-24 09:21:28
-+++ b/src/types.rs	2026-09-26 21:30:52
++++ b/src/types.rs	2026-09-26 22:55:17
 @@ -187,7 +187,7 @@
      }
  
@@ -72,7 +115,7 @@ diff --color -ru a/src/types.rs b/src/types.rs
          let ptr = tagged_ptr::untag(self.tagged_vtable.get());
          // SAFETY:
          // - the pointer was properly untagged.
-@@ -265,13 +265,15 @@
+@@ -265,13 +265,17 @@
  /// We use a custom vtable instead of `dyn Collect` for extra flexibility. The type is over-aligned
  /// so that `GcHeader` can store flags into the LSBs of the vtable pointer.
  #[repr(align(16))]
@@ -87,14 +130,19 @@ diff --color -ru a/src/types.rs b/src/types.rs
 +    pub(crate) value_layout: Layout,
 +    /// skua #13 census: the Rust type stored in this `GcPtr`.
 +    pub(crate) type_name: fn() -> &'static str,
++    /// skua #13 census: trace the value with a `Finder` (which pointers does it hold?).
++    pub(crate) find_value: unsafe fn(*const (), &mut crate::context::SkuaFinder),
  }
  
  impl CollectVtable {
-@@ -288,6 +290,7 @@
+@@ -288,6 +292,10 @@
                  ptr::drop_in_place(ptr.cast::<T>());
              },
              value_layout: Layout::new::<T>(),
 +            type_name: core::any::type_name::<T>,
++            find_value: |ptr, f| unsafe {
++                ptr.cast::<T>().as_ref_unchecked().trace(f);
++            },
          }
      }
  }

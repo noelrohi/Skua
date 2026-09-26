@@ -1,0 +1,594 @@
+# PROTOTYPE #13 census diagnostic run, 2026-09-26 22:27-23:08 (sanitized). Gate config binary + GC census (0012 + gc-arena patch), full GC + census every 10 min.
+22:27:52.605 login OK in 4890 ms: Playing=True IsWorldLoaded=True map=battleon server=sock8.aq.com
+22:27:53.813 MEM after-login-before-render t=0.0min fp=4708 gfx=2782 unmappedGfx=1012 malloc=887 {"gcObjects":194806,"movies":12,"characters":18723,"swfBytes":17437516,"classRegistry":1698,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":897,"halTexMB":0,"halBuffers":9586,"halBufMB":0,"halEncoders":13,"halBindGroups":1263,"halAllocs":0,"renders":31}
+22:27:57.134 MEM after-login-after-render t=0.0min fp=5586 gfx=3720 unmappedGfx=1152 malloc=688 {"gcObjects":173066,"movies":33,"characters":18896,"swfBytes":17473327,"classRegistry":1729,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":800,"halTexMB":0,"halBuffers":9794,"halBufMB":0,"halEncoders":13,"halBindGroups":1154,"halAllocs":0,"renders":42}
+22:27:57.934 MEM script t=0.0min fp=5332 gfx=3721 unmappedGfx=885 malloc=700 {"gcObjects":175438,"movies":46,"characters":18896,"swfBytes":17473327,"classRegistry":1729,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":661,"halTexMB":0,"halBuffers":9820,"halBufMB":0,"halEncoders":13,"halBindGroups":1015,"halAllocs":0,"renders":45}
+22:27:57.961 SAMPLE script t=0.0min rss=1394 MB framesRun=295 tickBusyMs=906 maxTickMs=19 maxTickGapMs=898 peakCmdBufs=769 framesEst=379 ticks=583 calls=892 events=42 playing=True map=battleon kills=0 deaths=0 drops=0 relogins=1
+22:28:58.823 MEM script t=1.0min fp=1436 gfx=402 unmappedGfx=240 malloc=767 {"gcObjects":288534,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":147,"halTexMB":0,"halBuffers":7431,"halBufMB":0,"halEncoders":13,"halBindGroups":149,"halAllocs":0,"renders":280}
+22:28:58.846 SAMPLE script t=1.0min rss=1422 MB framesRun=2114 tickBusyMs=18149 maxTickMs=47 maxTickGapMs=374 peakCmdBufs=769 framesEst=2206 ticks=5894 calls=28593 events=403 playing=True map=icestormunder kills=5 deaths=0 drops=0 relogins=1
+22:29:58.296 MEM script t=2.0min fp=1379 gfx=331 unmappedGfx=240 malloc=781 {"gcObjects":400417,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":145,"halTexMB":0,"halBuffers":7429,"halBufMB":0,"halEncoders":13,"halBindGroups":147,"halAllocs":0,"renders":508}
+22:29:58.319 SAMPLE script t=2.0min rss=1440 MB framesRun=3898 tickBusyMs=37414 maxTickMs=25 maxTickGapMs=34 peakCmdBufs=304 framesEst=3990 ticks=11145 calls=56972 events=763 playing=True map=icestormunder kills=10 deaths=0 drops=0 relogins=1
+22:30:58.803 MEM script t=3.0min fp=1419 gfx=362 unmappedGfx=243 malloc=787 {"gcObjects":417048,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":144,"halTexMB":0,"halBuffers":7429,"halBufMB":0,"halEncoders":13,"halBindGroups":146,"halAllocs":0,"renders":740}
+22:30:58.827 SAMPLE script t=3.0min rss=1447 MB framesRun=5714 tickBusyMs=57403 maxTickMs=25 maxTickGapMs=29 peakCmdBufs=377 framesEst=5806 ticks=16469 calls=85790 events=1131 playing=True map=icestormunder kills=15 deaths=0 drops=0 relogins=1
+22:31:58.287 MEM script t=4.0min fp=1422 gfx=357 unmappedGfx=243 malloc=796 {"gcObjects":451435,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":146,"halTexMB":0,"halBuffers":7427,"halBufMB":0,"halEncoders":13,"halBindGroups":148,"halAllocs":0,"renders":968}
+22:31:58.312 SAMPLE script t=4.0min rss=1456 MB framesRun=7498 tickBusyMs=76846 maxTickMs=21 maxTickGapMs=31 peakCmdBufs=342 framesEst=7590 ticks=21783 calls=114103 events=1496 playing=True map=icestormunder kills=20 deaths=0 drops=0 relogins=1
+22:32:58.791 MEM script t=5.0min fp=1457 gfx=388 unmappedGfx=243 malloc=801 {"gcObjects":406934,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":2,"offPoolTex":2,"offPoolMB":0,"halTextures":149,"halTexMB":0,"halBuffers":7437,"halBufMB":0,"halEncoders":13,"halBindGroups":152,"halAllocs":0,"renders":1200}
+22:32:58.819 SAMPLE script t=5.0min rss=1459 MB framesRun=9313 tickBusyMs=96807 maxTickMs=21 maxTickGapMs=29 peakCmdBufs=377 framesEst=9405 ticks=27164 calls=142970 events=1888 playing=True map=icestormunder kills=26 deaths=0 drops=0 relogins=1
+22:33:58.277 MEM script t=6.0min fp=1466 gfx=388 unmappedGfx=243 malloc=808 {"gcObjects":551686,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":147,"halTexMB":0,"halBuffers":7429,"halBufMB":0,"halEncoders":13,"halBindGroups":149,"halAllocs":0,"renders":1429}
+22:33:58.305 SAMPLE script t=6.0min rss=1465 MB framesRun=11098 tickBusyMs=116551 maxTickMs=25 maxTickGapMs=26 peakCmdBufs=304 framesEst=11190 ticks=32395 calls=171348 events=2263 playing=True map=icestormunder kills=30 deaths=0 drops=0 relogins=1
+22:34:58.774 MEM script t=7.0min fp=1487 gfx=403 unmappedGfx=243 malloc=815 {"gcObjects":500019,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":147,"halTexMB":0,"halBuffers":7427,"halBufMB":0,"halEncoders":13,"halBindGroups":149,"halAllocs":0,"renders":1661}
+22:34:58.798 SAMPLE script t=7.0min rss=1470 MB framesRun=12913 tickBusyMs=136540 maxTickMs=21 maxTickGapMs=27 peakCmdBufs=377 framesEst=13005 ticks=37726 calls=200217 events=2647 playing=True map=icestormunder kills=36 deaths=0 drops=0 relogins=1
+22:35:58.287 MEM script t=8.0min fp=1494 gfx=403 unmappedGfx=243 malloc=822 {"gcObjects":442187,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":146,"halTexMB":0,"halBuffers":7429,"halBufMB":0,"halEncoders":13,"halBindGroups":148,"halAllocs":0,"renders":1888}
+22:35:58.316 SAMPLE script t=8.0min rss=1455 MB framesRun=14698 tickBusyMs=156120 maxTickMs=21 maxTickGapMs=25 peakCmdBufs=377 framesEst=14790 ticks=42971 calls=228544 events=3032 playing=True map=icestormunder kills=43 deaths=0 drops=0 relogins=1
+22:36:58.793 MEM script t=9.0min fp=1454 gfx=357 unmappedGfx=240 malloc=830 {"gcObjects":479137,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":147,"halTexMB":0,"halBuffers":7429,"halBufMB":0,"halEncoders":13,"halBindGroups":149,"halAllocs":0,"renders":2121}
+22:36:58.817 SAMPLE script t=9.0min rss=1436 MB framesRun=16513 tickBusyMs=176199 maxTickMs=22 maxTickGapMs=28 peakCmdBufs=342 framesEst=16605 ticks=48318 calls=257413 events=3415 playing=True map=icestormunder kills=48 deaths=0 drops=0 relogins=1
+22:37:58.278 MEM script t=10.0min fp=1490 gfx=388 unmappedGfx=240 malloc=836 {"gcObjects":543995,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":145,"halTexMB":0,"halBuffers":7429,"halBufMB":0,"halEncoders":13,"halBindGroups":147,"halAllocs":0,"renders":2349}
+22:37:58.305 SAMPLE script t=10.0min rss=1441 MB framesRun=18298 tickBusyMs=195915 maxTickMs=23 maxTickGapMs=29 peakCmdBufs=377 framesEst=18390 ticks=53579 calls=285768 events=3777 playing=True map=icestormunder kills=54 deaths=0 drops=0 relogins=1
+22:37:58.600 MEM script-after-full-gc t=10.0min fp=1490 gfx=388 unmappedGfx=240 malloc=836 {"gcObjects":232027,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":147,"halTexMB":0,"halBuffers":7429,"halBufMB":0,"halEncoders":13,"halBindGroups":149,"halAllocs":0,"renders":2351}
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 52050 1665600 ruffle_common::avm_string::repr::AvmStringRepr<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 27061 4113272 ruffle_core::avm2::object::stage_object::StageObjectData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 20714 8285600 ruffle_core::display_object::graphic::GraphicData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 20179 13883152 ruffle_core::display_object::movie_clip::MovieClipData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 20075 2730200 ruffle_core::avm2::object::script_object::ScriptObjectData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 14055 2473680 ruffle_core::avm2::method::MethodData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 10948 2102016 ruffle_core::avm2::vtable::VTableData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 10789 517872 ruffle_core::avm2::multiname::Multiname<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 8186 1637200 ruffle_core::avm2::object::function_object::FunctionObjectData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 7983 1788192 ruffle_core::display_object::graphic::GraphicShared
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 6433 1904168 ruffle_core::display_object::movie_clip::MovieClipShared<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 5716 1326112 ruffle_core::avm2::class::ClassData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 5353 128472 alloc::vec::Vec<ruffle_core::avm2::namespace::Namespace<'_>>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 4100 98400 alloc::vec::Vec<ruffle_core::avm2::scope::Scope<'_>>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 3401 54416 ruffle_core::avm2::namespace::NamespaceData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 2052 328320 gc_arena::lock::RefLock<ruffle_core::avm1::object::script_object::ObjectData<'_>>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 1880 466240 ruffle_core::avm2::object::class_object::ClassObjectData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 1878 45072 ruffle_core::avm1::function::FunctionObject<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 1472 70656 ruffle_core::avm2::script::ScriptData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 1307 240488 ruffle_core::avm2::object::array_object::ArrayObjectData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 1111 195536 ruffle_core::avm2::object::dispatch_object::DispatchObjectData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 805 25760 ruffle_core::font::font_set::FontSetData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 793 881816 ruffle_core::display_object::edit_text::EditTextData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 706 84720 ruffle_core::avm2::e4x::E4XNodeData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 693 127512 ruffle_core::avm2::object::soundchannel_object::SoundChannelObjectData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 454 185232 ruffle_core::display_object::text::TextData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 424 13568 ruffle_core::display_object::edit_text::EditTextShared
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 360 28800 ruffle_core::display_object::text::TextShared
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 334 64128 ruffle_core::avm2::object::event_object::EventObjectData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 221 84864 ruffle_core::display_object::morph_shape::MorphShapeData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 189 49896 ruffle_core::display_object::morph_shape::MorphShapeShared
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 183 90768 ruffle_core::display_object::avm2_button::Avm2ButtonData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 115 31280 ruffle_core::display_object::avm2_button::ButtonShared
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 54 10800 ruffle_core::font::FontData
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 39 936 ruffle_core::avm2::op::LookupSwitch
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 32 5888 ruffle_core::avm2::object::vector_object::VectorObjectData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 27 3888 gc_arena::lock::RefLock<ruffle_core::bitmap::bitmap_data::BitmapRawData<'_>>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 26 3536 ruffle_core::avm2::object::dictionary_object::DictionaryObjectData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 21 3024 ruffle_core::avm2::object::bitmapdata_object::BitmapDataObjectData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 21 8904 ruffle_core::display_object::bitmap::BitmapGraphicData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 20 3040 ruffle_core::avm2::object::date_object::DateObjectData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 16 3712 ruffle_core::avm2::object::loaderinfo_object::LoaderInfoObjectData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 16 1408 ruffle_core::character::BitmapCharacter<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 14 2576 ruffle_core::avm2::object::bytearray_object::ByteArrayObjectData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 14 4816 ruffle_core::avm2::object::regexp_object::RegExpObjectData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 14 6496 ruffle_core::display_object::loader_display::LoaderDisplayData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 12 1152 ruffle_core::avm2::domain::DomainData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 12 1536 ruffle_core::avm2::script::TranslationUnitData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 10 1440 ruffle_core::avm2::object::domain_object::DomainObjectData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 9 1728 ruffle_core::avm2::object::sound_object::SoundObjectData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 4 704 ruffle_core::avm2::object::shared_object_object::SharedObjectObjectData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 4 704 ruffle_core::avm2::object::stage3d_object::Stage3DObjectData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 4 1376 ruffle_core::avm2::object::textformat_object::TextFormatObjectData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 3 480 ruffle_core::avm2::object::error_object::ErrorObjectData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 3 456 ruffle_core::avm2::object::namespace_object::NamespaceObjectData<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 2 48 ruffle_core::avm1::scope::Scope<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 1 24 alloc::vec::Vec<ruffle_core::avm1::value::Value<'_>>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 1 8 gc_arena::dynamic_roots::Inner<'_>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 1 32 gc_arena::lock::RefLock<ruffle_core::avm2::call_stack::CallStack<'_>>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 1 7040 gc_arena::lock::RefLock<ruffle_core::player::GcRootData<'_>>
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 18217 0 as3:Object
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 12731 0 as3:[display] Shape
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 6359 0 as3:[display] MovieClip
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 3340 0 as3:[display] Head_Iris_Nonecopy7_53
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 3340 0 as3:[display] Head_Iris_Lightcopy7_54
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 1472 0 as3:global
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 381 0 as3:[display] TextField
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 185 0 as3:[display] CannedOption
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 146 0 as3:[display] Sprite
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 94 0 as3:[display] StaticText
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 72 0 as3:
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 70 0 as3:ColorTransform
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 68 0 as3:[display] SimpleButton
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 46 0 as3:Timer
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 32 0 as3:GlowFilter
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 32 0 as3:[display] MorphShape
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 21 0 as3:[display] Bitmap
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 20 0 as3:Rectangle
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 16 0 as3:[display] Graphics
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 16 0 as3:UncaughtErrorEvents
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 16 0 as3:EventDispatcher
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 16 0 as3:ZSortItem
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 16 0 as3:Avatar
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 15 0 as3:[display] Invisible
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 15 0 as3:[display] MonsterMC
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 15 0 as3:[display] Plate_Monster_58
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 14 0 as3:[display] Loader
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 13 0 as3:[display] ball
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 11 0 as3:Transform
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 10 0 as3:[display] buttonComponent
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 10 0 as3:LoaderSlot
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 10 0 as3:[display] Eyebrow_Skincopy8_56
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 10 0 as3:URLLoader
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 9 0 as3:LoaderContext
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 8 0 as3:[display] uiTextLine
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 7 0 as3:[display] ActMask
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] Symbol8_9
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] Symbol10_8
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] DefaultMHair
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] Male_6
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] ib1
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] ib2
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] Symbol12_3
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] Male_5
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] icons_blank_layered_bg_499
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] actBar_icon_bgcopy2_330
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 5 0 as3:[display] Male_Face_Shade_mhair_6
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 5 0 as3:[display] ChronoZHairM
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 5 0 as3:[display] game_1_Male_Master1_28_48
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 5 0 as3:[display] chkBox_32
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 5 0 as3:[display] Symbol2FaceDark_47
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 5 0 as3:[display] Male_Face_Base_mhair_5
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 5 0 as3:[display] FaceNone_46
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 5 0 as3:[display] CC_8
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 5 0 as3:[display] far0AQWCasCptrNoCCMHead
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 5 0 as3:Point
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 4 0 as3:[display] crossedswords
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 3 0 as3:User
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 3 0 as3:Room
+22:37:58.623 CENSUS script-after-full-gc t=10.0min 3 0 as3:Vector3D
+22:38:58.292 MEM script t=11.0min fp=1438 gfx=331 unmappedGfx=243 malloc=837 {"gcObjects":505013,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":145,"halTexMB":0,"halBuffers":7429,"halBufMB":0,"halEncoders":13,"halBindGroups":147,"halAllocs":0,"renders":2580}
+22:38:58.317 SAMPLE script t=11.0min rss=1443 MB framesRun=20098 tickBusyMs=214833 maxTickMs=29 maxTickGapMs=37 peakCmdBufs=377 framesEst=20190 ticks=58790 calls=313878 events=4176 playing=True map=icestormunder kills=59 deaths=0 drops=0 relogins=1
+22:39:57.871 MEM script t=12.0min fp=1469 gfx=357 unmappedGfx=240 malloc=845 {"gcObjects":651658,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":146,"halTexMB":0,"halBuffers":7433,"halBufMB":0,"halEncoders":13,"halBindGroups":148,"halAllocs":0,"renders":2808}
+22:39:57.894 SAMPLE script t=12.0min rss=1304 MB framesRun=21886 tickBusyMs=234668 maxTickMs=27 maxTickGapMs=32 peakCmdBufs=377 framesEst=21978 ticks=63969 calls=341872 events=4559 playing=True map=icestormunder kills=65 deaths=0 drops=0 relogins=1
+22:40:58.378 MEM script t=13.0min fp=1511 gfx=388 unmappedGfx=243 malloc=855 {"gcObjects":701463,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":2,"offPoolTex":2,"offPoolMB":0,"halTextures":147,"halTexMB":0,"halBuffers":7432,"halBufMB":0,"halEncoders":13,"halBindGroups":149,"halAllocs":0,"renders":3040}
+22:40:58.403 SAMPLE script t=13.0min rss=1314 MB framesRun=23701 tickBusyMs=254309 maxTickMs=33 maxTickGapMs=35 peakCmdBufs=342 framesEst=23793 ticks=69281 calls=370531 events=4964 playing=True map=icestormunder kills=71 deaths=0 drops=0 relogins=1
+22:41:57.882 MEM script t=14.0min fp=1517 gfx=388 unmappedGfx=240 malloc=863 {"gcObjects":746974,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":146,"halTexMB":0,"halBuffers":7427,"halBufMB":0,"halEncoders":13,"halBindGroups":148,"halAllocs":0,"renders":3268}
+22:41:57.905 SAMPLE script t=14.0min rss=1305 MB framesRun=25486 tickBusyMs=273868 maxTickMs=27 maxTickGapMs=29 peakCmdBufs=377 framesEst=25578 ticks=74527 calls=398841 events=5322 playing=True map=icestormunder kills=77 deaths=0 drops=0 relogins=1
+22:42:58.396 MEM script t=15.0min fp=1462 gfx=326 unmappedGfx=240 malloc=869 {"gcObjects":776020,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":144,"halTexMB":0,"halBuffers":7429,"halBufMB":0,"halEncoders":13,"halBindGroups":146,"halAllocs":0,"renders":3500}
+22:42:58.420 SAMPLE script t=15.0min rss=1208 MB framesRun=27301 tickBusyMs=293381 maxTickMs=25 maxTickGapMs=29 peakCmdBufs=307 framesEst=27393 ticks=79866 calls=427647 events=5717 playing=True map=icestormunder kills=82 deaths=0 drops=0 relogins=1
+22:43:57.899 MEM script t=16.0min fp=1497 gfx=357 unmappedGfx=240 malloc=873 {"gcObjects":769171,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":146,"halTexMB":0,"halBuffers":7425,"halBufMB":0,"halEncoders":13,"halBindGroups":148,"halAllocs":0,"renders":3729}
+22:43:57.924 SAMPLE script t=16.0min rss=1214 MB framesRun=29086 tickBusyMs=312793 maxTickMs=23 maxTickGapMs=29 peakCmdBufs=342 framesEst=29178 ticks=85154 calls=456032 events=6058 playing=True map=icestormunder kills=87 deaths=0 drops=0 relogins=1
+22:44:58.398 MEM script t=17.0min fp=1482 gfx=336 unmappedGfx=240 malloc=879 {"gcObjects":744052,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":145,"halTexMB":0,"halBuffers":7431,"halBufMB":0,"halEncoders":13,"halBindGroups":147,"halAllocs":0,"renders":3961}
+22:44:58.424 SAMPLE script t=17.0min rss=1222 MB framesRun=30902 tickBusyMs=332355 maxTickMs=23 maxTickGapMs=29 peakCmdBufs=393 framesEst=30994 ticks=90481 calls=484827 events=6440 playing=True map=icestormunder kills=93 deaths=0 drops=0 relogins=1
+22:45:57.894 MEM script t=18.0min fp=1512 gfx=357 unmappedGfx=243 malloc=885 {"gcObjects":696812,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":147,"halTexMB":0,"halBuffers":7427,"halBufMB":0,"halEncoders":13,"halBindGroups":149,"halAllocs":0,"renders":4190}
+22:45:57.917 SAMPLE script t=18.0min rss=1204 MB framesRun=32686 tickBusyMs=351232 maxTickMs=23 maxTickGapMs=30 peakCmdBufs=342 framesEst=32778 ticks=95808 calls=513306 events=6812 playing=True map=icestormunder kills=98 deaths=0 drops=0 relogins=1
+22:46:58.366 MEM script t=19.0min fp=1546 gfx=388 unmappedGfx=240 malloc=892 {"gcObjects":629596,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":146,"halTexMB":0,"halBuffers":7429,"halBufMB":0,"halEncoders":13,"halBindGroups":148,"halAllocs":0,"renders":4422}
+22:46:58.392 SAMPLE script t=19.0min rss=1206 MB framesRun=34501 tickBusyMs=370668 maxTickMs=24 maxTickGapMs=30 peakCmdBufs=318 framesEst=34593 ticks=101153 calls=542122 events=7184 playing=True map=icestormunder kills=103 deaths=0 drops=0 relogins=1
+22:47:57.859 MEM script t=20.0min fp=1532 gfx=362 unmappedGfx=243 malloc=900 {"gcObjects":663121,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":153,"halTexMB":0,"halBuffers":7429,"halBufMB":0,"halEncoders":13,"halBindGroups":210,"halAllocs":0,"renders":4651}
+22:47:57.889 SAMPLE script t=20.0min rss=1208 MB framesRun=36285 tickBusyMs=389658 maxTickMs=21 maxTickGapMs=24 peakCmdBufs=342 framesEst=36377 ticks=106412 calls=570545 events=7553 playing=True map=icestormunder kills=109 deaths=0 drops=0 relogins=1
+22:47:58.215 MEM script-after-full-gc t=20.0min fp=1529 gfx=362 unmappedGfx=240 malloc=900 {"gcObjects":315575,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":146,"halTexMB":0,"halBuffers":7427,"halBufMB":0,"halEncoders":13,"halBindGroups":148,"halAllocs":0,"renders":4652}
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 73095 2339040 ruffle_common::avm_string::repr::AvmStringRepr<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 46903 7129256 ruffle_core::avm2::object::stage_object::StageObjectData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 33881 4607816 ruffle_core::avm2::object::script_object::ScriptObjectData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 30649 12259600 ruffle_core::display_object::graphic::GraphicData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 30052 20675776 ruffle_core::display_object::movie_clip::MovieClipData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 14788 2957600 ruffle_core::avm2::object::function_object::FunctionObjectData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 14055 2473680 ruffle_core::avm2::method::MethodData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 10948 2102016 ruffle_core::avm2::vtable::VTableData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 10789 517872 ruffle_core::avm2::multiname::Multiname<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 7983 1788192 ruffle_core::display_object::graphic::GraphicShared
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 6433 1904168 ruffle_core::display_object::movie_clip::MovieClipShared<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 5716 1326112 ruffle_core::avm2::class::ClassData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 5353 128472 alloc::vec::Vec<ruffle_core::avm2::namespace::Namespace<'_>>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 4100 98400 alloc::vec::Vec<ruffle_core::avm2::scope::Scope<'_>>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 3401 54416 ruffle_core::avm2::namespace::NamespaceData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 2052 328320 gc_arena::lock::RefLock<ruffle_core::avm1::object::script_object::ObjectData<'_>>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 1880 466240 ruffle_core::avm2::object::class_object::ClassObjectData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 1878 45072 ruffle_core::avm1::function::FunctionObject<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 1878 345552 ruffle_core::avm2::object::array_object::ArrayObjectData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 1814 319264 ruffle_core::avm2::object::dispatch_object::DispatchObjectData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 1472 70656 ruffle_core::avm2::script::ScriptData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 1396 256864 ruffle_core::avm2::object::soundchannel_object::SoundChannelObjectData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 804 25728 ruffle_core::font::font_set::FontSetData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 792 880704 ruffle_core::display_object::edit_text::EditTextData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 706 84720 ruffle_core::avm2::e4x::E4XNodeData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 454 185232 ruffle_core::display_object::text::TextData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 442 84864 ruffle_core::avm2::object::event_object::EventObjectData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 424 13568 ruffle_core::display_object::edit_text::EditTextShared
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 360 28800 ruffle_core::display_object::text::TextShared
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 209 80256 ruffle_core::display_object::morph_shape::MorphShapeData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 189 49896 ruffle_core::display_object::morph_shape::MorphShapeShared
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 183 90768 ruffle_core::display_object::avm2_button::Avm2ButtonData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 115 31280 ruffle_core::display_object::avm2_button::ButtonShared
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 54 10800 ruffle_core::font::FontData
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 39 936 ruffle_core::avm2::op::LookupSwitch
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 32 5888 ruffle_core::avm2::object::vector_object::VectorObjectData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 26 3536 ruffle_core::avm2::object::dictionary_object::DictionaryObjectData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 20 2880 gc_arena::lock::RefLock<ruffle_core::bitmap::bitmap_data::BitmapRawData<'_>>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 20 2880 ruffle_core::avm2::object::bitmapdata_object::BitmapDataObjectData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 20 8480 ruffle_core::display_object::bitmap::BitmapGraphicData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 16 3712 ruffle_core::avm2::object::loaderinfo_object::LoaderInfoObjectData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 16 1408 ruffle_core::character::BitmapCharacter<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 14 2128 ruffle_core::avm2::object::date_object::DateObjectData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 14 6496 ruffle_core::display_object::loader_display::LoaderDisplayData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 13 2392 ruffle_core::avm2::object::bytearray_object::ByteArrayObjectData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 13 2080 ruffle_core::avm2::object::error_object::ErrorObjectData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 13 4472 ruffle_core::avm2::object::regexp_object::RegExpObjectData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 12 1152 ruffle_core::avm2::domain::DomainData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 12 1536 ruffle_core::avm2::script::TranslationUnitData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 10 1440 ruffle_core::avm2::object::domain_object::DomainObjectData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 9 1728 ruffle_core::avm2::object::sound_object::SoundObjectData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 4 704 ruffle_core::avm2::object::shared_object_object::SharedObjectObjectData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 4 704 ruffle_core::avm2::object::stage3d_object::Stage3DObjectData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 4 1376 ruffle_core::avm2::object::textformat_object::TextFormatObjectData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 3 456 ruffle_core::avm2::object::namespace_object::NamespaceObjectData<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 2 48 ruffle_core::avm1::scope::Scope<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 1 24 alloc::vec::Vec<ruffle_core::avm1::value::Value<'_>>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 1 8 gc_arena::dynamic_roots::Inner<'_>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 1 32 gc_arena::lock::RefLock<ruffle_core::avm2::call_stack::CallStack<'_>>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 1 7040 gc_arena::lock::RefLock<ruffle_core::player::GcRootData<'_>>
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 32015 0 as3:Object
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 22666 0 as3:[display] Shape
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 9667 0 as3:[display] MovieClip
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 6648 0 as3:[display] Head_Iris_Lightcopy7_54
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 6648 0 as3:[display] Head_Iris_Nonecopy7_53
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 1472 0 as3:global
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 380 0 as3:[display] TextField
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 185 0 as3:[display] CannedOption
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 146 0 as3:[display] Sprite
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 94 0 as3:[display] StaticText
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 71 0 as3:
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 70 0 as3:ColorTransform
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 68 0 as3:[display] SimpleButton
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 46 0 as3:Timer
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 32 0 as3:GlowFilter
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 20 0 as3:Rectangle
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 20 0 as3:[display] MorphShape
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 20 0 as3:[display] Bitmap
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 16 0 as3:[display] Graphics
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 16 0 as3:Avatar
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 16 0 as3:EventDispatcher
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 16 0 as3:ZSortItem
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 16 0 as3:UncaughtErrorEvents
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 15 0 as3:[display] MonsterMC
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 15 0 as3:[display] Plate_Monster_58
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 15 0 as3:[display] Invisible
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 14 0 as3:[display] Loader
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 13 0 as3:[display] ball
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 12 0 as3:e
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 10 0 as3:LoaderSlot
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 10 0 as3:[display] buttonComponent
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 10 0 as3:[display] Eyebrow_Skincopy8_56
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 10 0 as3:URLLoader
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 9 0 as3:LoaderContext
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 8 0 as3:Transform
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 8 0 as3:[display] uiTextLine
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 6 0 as3:[display] Male_5
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 6 0 as3:[display] actBar_icon_bgcopy2_330
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 6 0 as3:[display] Symbol10_8
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 6 0 as3:[display] ActMask
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 6 0 as3:[display] ib1
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 6 0 as3:[display] Symbol8_9
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 6 0 as3:[display] Male_6
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 6 0 as3:[display] DefaultMHair
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 6 0 as3:[display] icons_blank_layered_bg_499
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 6 0 as3:[display] Symbol12_3
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 6 0 as3:[display] ib2
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 5 0 as3:[display] Male_Face_Shade_mhair_6
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 5 0 as3:[display] Male_Face_Base_mhair_5
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 5 0 as3:[display] FaceNone_46
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 5 0 as3:[display] ChronoZHairM
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 5 0 as3:Point
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 5 0 as3:[display] game_1_Male_Master1_28_48
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 5 0 as3:[display] far0AQWCasCptrNoCCMHead
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 5 0 as3:[display] Symbol2FaceDark_47
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 5 0 as3:[display] CC_8
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 5 0 as3:[display] chkBox_32
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 4 0 as3:[display] crossedswords
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 3 0 as3:[display] Symbol23copy_65
+22:47:58.249 CENSUS script-after-full-gc t=20.0min 3 0 as3:[display] Symbol23copy2_38
+22:48:58.771 MEM script t=21.0min fp=1554 gfx=388 unmappedGfx=240 malloc=900 {"gcObjects":515527,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":146,"halTexMB":0,"halBuffers":7429,"halBufMB":0,"halEncoders":13,"halBindGroups":148,"halAllocs":0,"renders":4885}
+22:48:58.793 SAMPLE script t=21.0min rss=1211 MB framesRun=38113 tickBusyMs=407244 maxTickMs=26 maxTickGapMs=110 peakCmdBufs=291 framesEst=38205 ticks=111781 calls=599538 events=7890 playing=True map=icestormunder kills=114 deaths=0 drops=0 relogins=1
+22:49:58.329 MEM script t=22.0min fp=1528 gfx=357 unmappedGfx=240 malloc=904 {"gcObjects":599446,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":2,"offPoolTex":2,"offPoolMB":0,"halTextures":148,"halTexMB":0,"halBuffers":7435,"halBufMB":0,"halEncoders":13,"halBindGroups":153,"halAllocs":0,"renders":5114}
+22:49:58.354 SAMPLE script t=22.0min rss=1213 MB framesRun=39899 tickBusyMs=425396 maxTickMs=21 maxTickGapMs=27 peakCmdBufs=377 framesEst=39991 ticks=116998 calls=627843 events=8273 playing=True map=icestormunder kills=119 deaths=0 drops=0 relogins=1
+22:50:58.025 MEM script t=23.0min fp=1567 gfx=388 unmappedGfx=240 malloc=912 {"gcObjects":794756,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":145,"halTexMB":0,"halBuffers":7429,"halBufMB":0,"halEncoders":13,"halBindGroups":147,"halAllocs":0,"renders":5345}
+22:50:58.048 SAMPLE script t=23.0min rss=1203 MB framesRun=41690 tickBusyMs=439183 maxTickMs=22 maxTickGapMs=37 peakCmdBufs=310 framesEst=41782 ticks=122195 calls=655577 events=8663 playing=True map=icestormunder kills=125 deaths=0 drops=0 relogins=1
+22:51:58.730 MEM script t=24.0min fp=1575 gfx=387 unmappedGfx=240 malloc=921 {"gcObjects":951245,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":146,"halTexMB":0,"halBuffers":7433,"halBufMB":0,"halEncoders":13,"halBindGroups":148,"halAllocs":0,"renders":5579}
+22:51:58.753 SAMPLE script t=24.0min rss=1220 MB framesRun=43511 tickBusyMs=457518 maxTickMs=27 maxTickGapMs=27 peakCmdBufs=342 framesEst=43604 ticks=127423 calls=684198 events=9049 playing=True map=icestormunder kills=130 deaths=0 drops=0 relogins=1
+22:52:58.422 MEM script t=25.0min fp=1522 gfx=331 unmappedGfx=240 malloc=925 {"gcObjects":827178,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":147,"halTexMB":0,"halBuffers":7429,"halBufMB":0,"halEncoders":13,"halBindGroups":149,"halAllocs":0,"renders":5809}
+22:52:58.447 SAMPLE script t=25.0min rss=1230 MB framesRun=45302 tickBusyMs=474385 maxTickMs=25 maxTickGapMs=29 peakCmdBufs=377 framesEst=45394 ticks=132599 calls=712355 events=9436 playing=True map=icestormunder kills=135 deaths=0 drops=0 relogins=1
+22:53:58.097 MEM script t=26.0min fp=1591 gfx=386 unmappedGfx=243 malloc=935 {"gcObjects":721854,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":145,"halTexMB":0,"halBuffers":7429,"halBufMB":0,"halEncoders":13,"halBindGroups":147,"halAllocs":0,"renders":6040}
+22:53:58.121 SAMPLE script t=26.0min rss=1242 MB framesRun=47092 tickBusyMs=492681 maxTickMs=21 maxTickGapMs=27 peakCmdBufs=377 framesEst=47184 ticks=137746 calls=740394 events=9788 playing=True map=icestormunder kills=141 deaths=0 drops=0 relogins=1
+22:54:58.769 MEM script t=27.0min fp=1577 gfx=362 unmappedGfx=243 malloc=946 {"gcObjects":976070,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":147,"halTexMB":0,"halBuffers":7427,"halBufMB":0,"halEncoders":13,"halBindGroups":149,"halAllocs":0,"renders":6274}
+22:54:58.792 SAMPLE script t=27.0min rss=1253 MB framesRun=48913 tickBusyMs=511193 maxTickMs=21 maxTickGapMs=28 peakCmdBufs=320 framesEst=49005 ticks=142980 calls=768951 events=10172 playing=True map=icestormunder kills=147 deaths=0 drops=0 relogins=1
+22:55:58.434 MEM script t=28.0min fp=1555 gfx=337 unmappedGfx=245 malloc=947 {"gcObjects":957730,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":147,"halTexMB":0,"halBuffers":7427,"halBufMB":0,"halEncoders":13,"halBindGroups":149,"halAllocs":0,"renders":6505}
+22:55:58.464 SAMPLE script t=28.0min rss=1254 MB framesRun=50703 tickBusyMs=528457 maxTickMs=19 maxTickGapMs=56 peakCmdBufs=377 framesEst=50795 ticks=148145 calls=797067 events=10536 playing=True map=icestormunder kills=153 deaths=0 drops=0 relogins=1
+22:56:58.103 MEM script t=29.0min fp=1833 gfx=441 unmappedGfx=243 malloc=1122 {"gcObjects":748335,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":145,"halTexMB":0,"halBuffers":7433,"halBufMB":0,"halEncoders":13,"halBindGroups":147,"halAllocs":0,"renders":6735}
+22:56:58.127 SAMPLE script t=29.0min rss=828 MB framesRun=52493 tickBusyMs=542009 maxTickMs=23 maxTickGapMs=31 peakCmdBufs=336 framesEst=52585 ticks=153411 calls=824719 events=10907 playing=True map=icestormunder kills=158 deaths=0 drops=0 relogins=1
+22:57:58.624 MEM script t=30.0min fp=1790 gfx=387 unmappedGfx=243 malloc=1133 {"gcObjects":1027651,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":152,"halTexMB":0,"halBuffers":7431,"halBufMB":0,"halEncoders":13,"halBindGroups":209,"halAllocs":0,"renders":6969}
+22:57:58.654 SAMPLE script t=30.0min rss=823 MB framesRun=54308 tickBusyMs=558971 maxTickMs=24 maxTickGapMs=27 peakCmdBufs=307 framesEst=54400 ticks=158774 calls=853865 events=11256 playing=True map=icestormunder kills=162 deaths=0 drops=0 relogins=1
+22:57:59.058 MEM script-after-full-gc t=30.0min fp=1790 gfx=387 unmappedGfx=243 malloc=1133 {"gcObjects":399583,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":146,"halTexMB":0,"halBuffers":7429,"halBufMB":0,"halEncoders":13,"halBindGroups":148,"halAllocs":0,"renders":6971}
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 94333 3018656 ruffle_common::avm_string::repr::AvmStringRepr<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 66903 10169256 ruffle_core::avm2::object::stage_object::StageObjectData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 47822 6503792 ruffle_core::avm2::object::script_object::ScriptObjectData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 40661 16264400 ruffle_core::display_object::graphic::GraphicData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 39949 27484912 ruffle_core::display_object::movie_clip::MovieClipData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 21431 4286200 ruffle_core::avm2::object::function_object::FunctionObjectData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 14055 2473680 ruffle_core::avm2::method::MethodData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 10948 2102016 ruffle_core::avm2::vtable::VTableData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 10789 517872 ruffle_core::avm2::multiname::Multiname<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 7983 1788192 ruffle_core::display_object::graphic::GraphicShared
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 6433 1904168 ruffle_core::display_object::movie_clip::MovieClipShared<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 5716 1326112 ruffle_core::avm2::class::ClassData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 5353 128472 alloc::vec::Vec<ruffle_core::avm2::namespace::Namespace<'_>>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 4101 98424 alloc::vec::Vec<ruffle_core::avm2::scope::Scope<'_>>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 3401 54416 ruffle_core::avm2::namespace::NamespaceData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 2504 440704 ruffle_core::avm2::object::dispatch_object::DispatchObjectData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 2493 458712 ruffle_core::avm2::object::array_object::ArrayObjectData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 2086 383824 ruffle_core::avm2::object::soundchannel_object::SoundChannelObjectData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 2052 328320 gc_arena::lock::RefLock<ruffle_core::avm1::object::script_object::ObjectData<'_>>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 1880 466240 ruffle_core::avm2::object::class_object::ClassObjectData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 1878 45072 ruffle_core::avm1::function::FunctionObject<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 1472 70656 ruffle_core::avm2::script::ScriptData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 807 25824 ruffle_core::font::font_set::FontSetData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 792 880704 ruffle_core::display_object::edit_text::EditTextData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 708 135936 ruffle_core::avm2::object::event_object::EventObjectData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 706 84720 ruffle_core::avm2::e4x::E4XNodeData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 454 185232 ruffle_core::display_object::text::TextData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 424 13568 ruffle_core::display_object::edit_text::EditTextShared
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 360 28800 ruffle_core::display_object::text::TextShared
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 205 78720 ruffle_core::display_object::morph_shape::MorphShapeData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 189 49896 ruffle_core::display_object::morph_shape::MorphShapeShared
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 183 90768 ruffle_core::display_object::avm2_button::Avm2ButtonData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 115 31280 ruffle_core::display_object::avm2_button::ButtonShared
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 54 10800 ruffle_core::font::FontData
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 39 936 ruffle_core::avm2::op::LookupSwitch
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 32 5888 ruffle_core::avm2::object::vector_object::VectorObjectData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 29 4640 ruffle_core::avm2::object::error_object::ErrorObjectData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 26 3536 ruffle_core::avm2::object::dictionary_object::DictionaryObjectData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 19 2736 gc_arena::lock::RefLock<ruffle_core::bitmap::bitmap_data::BitmapRawData<'_>>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 19 2736 ruffle_core::avm2::object::bitmapdata_object::BitmapDataObjectData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 19 8056 ruffle_core::display_object::bitmap::BitmapGraphicData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 17 2584 ruffle_core::avm2::object::date_object::DateObjectData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 16 3712 ruffle_core::avm2::object::loaderinfo_object::LoaderInfoObjectData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 16 1408 ruffle_core::character::BitmapCharacter<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 14 6496 ruffle_core::display_object::loader_display::LoaderDisplayData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 13 2392 ruffle_core::avm2::object::bytearray_object::ByteArrayObjectData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 13 4472 ruffle_core::avm2::object::regexp_object::RegExpObjectData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 12 1152 ruffle_core::avm2::domain::DomainData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 12 1536 ruffle_core::avm2::script::TranslationUnitData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 10 1440 ruffle_core::avm2::object::domain_object::DomainObjectData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 9 1728 ruffle_core::avm2::object::sound_object::SoundObjectData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 4 704 ruffle_core::avm2::object::shared_object_object::SharedObjectObjectData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 4 704 ruffle_core::avm2::object::stage3d_object::Stage3DObjectData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 4 1376 ruffle_core::avm2::object::textformat_object::TextFormatObjectData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 3 456 ruffle_core::avm2::object::namespace_object::NamespaceObjectData<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 2 48 ruffle_core::avm1::scope::Scope<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 1 24 alloc::vec::Vec<ruffle_core::avm1::value::Value<'_>>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 1 8 gc_arena::dynamic_roots::Inner<'_>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 1 32 gc_arena::lock::RefLock<ruffle_core::avm2::call_stack::CallStack<'_>>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 1 7040 gc_arena::lock::RefLock<ruffle_core::player::GcRootData<'_>>
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 45885 0 as3:Object
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 32678 0 as3:[display] Shape
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 13005 0 as3:[display] MovieClip
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 9976 0 as3:[display] Head_Iris_Nonecopy7_53
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 9976 0 as3:[display] Head_Iris_Lightcopy7_54
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 1472 0 as3:global
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 380 0 as3:[display] TextField
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 185 0 as3:[display] CannedOption
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 146 0 as3:[display] Sprite
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 94 0 as3:ColorTransform
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 94 0 as3:[display] StaticText
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 76 0 as3:
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 68 0 as3:[display] SimpleButton
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 46 0 as3:Timer
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 32 0 as3:Transform
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 32 0 as3:GlowFilter
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 28 0 as3:e
+22:57:59.106 CENSUS script-after-full-gc t=30.0min 20 0 as3:Rectangle
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 19 0 as3:[display] Bitmap
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 16 0 as3:ZSortItem
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 16 0 as3:EventDispatcher
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 16 0 as3:[display] MorphShape
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 16 0 as3:[display] Graphics
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 16 0 as3:Avatar
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 16 0 as3:UncaughtErrorEvents
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 15 0 as3:[display] MonsterMC
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 15 0 as3:[display] Plate_Monster_58
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 15 0 as3:[display] Invisible
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 14 0 as3:[display] Loader
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 13 0 as3:[display] ball
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 10 0 as3:[display] Eyebrow_Skincopy8_56
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 10 0 as3:URLLoader
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 10 0 as3:LoaderSlot
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 10 0 as3:[display] buttonComponent
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 9 0 as3:LoaderContext
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 8 0 as3:[display] uiTextLine
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 7 0 as3:Point
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] ib1
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] ib2
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] Male_5
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] Male_6
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] Symbol8_9
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] Symbol10_8
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] Symbol12_3
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] icons_blank_layered_bg_499
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] actBar_icon_bgcopy2_330
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] DefaultMHair
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 5 0 as3:[display] Male_Face_Shade_mhair_6
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 5 0 as3:[display] ChronoZHairM
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 5 0 as3:[display] CC_8
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 5 0 as3:[display] game_1_Male_Master1_28_48
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 5 0 as3:[display] far0AQWCasCptrNoCCMHead
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 5 0 as3:[display] ActMask
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 5 0 as3:[display] Male_Face_Base_mhair_5
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 5 0 as3:[display] Symbol2FaceDark_47
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 5 0 as3:[display] FaceNone_46
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 5 0 as3:[display] chkBox_32
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 4 0 as3:[display] crossedswords
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 3 0 as3:[display] Symbol23copy2_38
+22:57:59.107 CENSUS script-after-full-gc t=30.0min 3 0 as3:User
+22:58:58.581 MEM script t=31.0min fp=1788 gfx=388 unmappedGfx=241 malloc=1133 {"gcObjects":693281,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":147,"halTexMB":0,"halBuffers":7429,"halBufMB":0,"halEncoders":13,"halBindGroups":149,"halAllocs":0,"renders":7201}
+22:58:58.605 SAMPLE script t=31.0min rss=887 MB framesRun=56107 tickBusyMs=574206 maxTickMs=27 maxTickGapMs=109 peakCmdBufs=377 framesEst=56199 ticks=164063 calls=882052 events=11641 playing=True map=icestormunder kills=168 deaths=0 drops=0 relogins=1
+22:59:58.082 MEM script t=32.0min fp=1812 gfx=408 unmappedGfx=240 malloc=1137 {"gcObjects":1001653,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":147,"halTexMB":0,"halBuffers":7427,"halBufMB":0,"halEncoders":13,"halBindGroups":149,"halAllocs":0,"renders":7431}
+22:59:58.106 SAMPLE script t=32.0min rss=880 MB framesRun=57892 tickBusyMs=588691 maxTickMs=31 maxTickGapMs=31 peakCmdBufs=393 framesEst=57984 ticks=169388 calls=910207 events=12011 playing=True map=icestormunder kills=173 deaths=0 drops=0 relogins=1
+23:00:58.606 MEM script t=33.0min fp=1741 gfx=336 unmappedGfx=240 malloc=1138 {"gcObjects":903454,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":147,"halTexMB":0,"halBuffers":7427,"halBufMB":0,"halEncoders":13,"halBindGroups":149,"halAllocs":0,"renders":7666}
+23:00:58.630 SAMPLE script t=33.0min rss=885 MB framesRun=59708 tickBusyMs=606499 maxTickMs=18 maxTickGapMs=29 peakCmdBufs=321 framesEst=59800 ticks=174760 calls=939304 events=12395 playing=True map=icestormunder kills=178 deaths=0 drops=0 relogins=1
+23:01:58.127 MEM script t=34.0min fp=1804 gfx=388 unmappedGfx=243 malloc=1147 {"gcObjects":893100,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":145,"halTexMB":0,"halBuffers":7429,"halBufMB":0,"halEncoders":13,"halBindGroups":147,"halAllocs":0,"renders":7897}
+23:01:58.151 SAMPLE script t=34.0min rss=912 MB framesRun=61493 tickBusyMs=620206 maxTickMs=20 maxTickGapMs=25 peakCmdBufs=377 framesEst=61585 ticks=180058 calls=968108 events=12775 playing=True map=icestormunder kills=184 deaths=0 drops=0 relogins=1
+23:02:58.630 MEM script t=35.0min fp=1761 gfx=336 unmappedGfx=243 malloc=1154 {"gcObjects":1177588,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":2,"offPoolTex":2,"offPoolMB":0,"halTextures":147,"halTexMB":0,"halBuffers":7432,"halBufMB":0,"halEncoders":13,"halBindGroups":149,"halAllocs":0,"renders":8132}
+23:02:58.650 SAMPLE script t=35.0min rss=921 MB framesRun=63308 tickBusyMs=632770 maxTickMs=17 maxTickGapMs=25 peakCmdBufs=342 framesEst=63400 ticks=185622 calls=997457 events=13155 playing=True map=icestormunder kills=189 deaths=0 drops=0 relogins=1
+23:03:58.110 MEM script t=36.0min fp=1823 gfx=388 unmappedGfx=244 malloc=1164 {"gcObjects":560167,"movies":82,"characters":19066,"swfBytes":18856718,"classRegistry":1538,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":146,"halTexMB":0,"halBuffers":7921,"halBufMB":0,"halEncoders":13,"halBindGroups":146,"halAllocs":0,"renders":8363}
+23:03:58.134 SAMPLE script t=36.0min rss=967 MB framesRun=65093 tickBusyMs=643869 maxTickMs=117 maxTickGapMs=117 peakCmdBufs=342 framesEst=65185 ticks=190921 calls=1023213 events=13449 playing=True map=icestormunder kills=192 deaths=0 drops=0 relogins=1
+23:04:58.574 MEM script t=37.0min fp=1828 gfx=388 unmappedGfx=243 malloc=1169 {"gcObjects":683852,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":145,"halTexMB":0,"halBuffers":7893,"halBufMB":0,"halEncoders":13,"halBindGroups":147,"halAllocs":0,"renders":8597}
+23:04:58.595 SAMPLE script t=37.0min rss=974 MB framesRun=66907 tickBusyMs=656349 maxTickMs=17 maxTickGapMs=26 peakCmdBufs=304 framesEst=66999 ticks=196379 calls=1052536 events=13794 playing=True map=icestormunder kills=196 deaths=0 drops=0 relogins=1
+23:05:58.052 MEM script t=38.0min fp=1856 gfx=403 unmappedGfx=245 malloc=1181 {"gcObjects":1092172,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":146,"halTexMB":0,"halBuffers":7429,"halBufMB":0,"halEncoders":13,"halBindGroups":148,"halAllocs":0,"renders":8828}
+23:05:58.073 SAMPLE script t=38.0min rss=986 MB framesRun=68691 tickBusyMs=668600 maxTickMs=19 maxTickGapMs=25 peakCmdBufs=377 framesEst=68783 ticks=201820 calls=1081368 events=14179 playing=True map=icestormunder kills=203 deaths=0 drops=0 relogins=1
+23:06:58.599 MEM script t=39.0min fp=1786 gfx=336 unmappedGfx=240 malloc=1182 {"gcObjects":1063476,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":146,"halTexMB":0,"halBuffers":7429,"halBufMB":0,"halEncoders":13,"halBindGroups":148,"halAllocs":0,"renders":9062}
+23:06:58.624 SAMPLE script t=39.0min rss=988 MB framesRun=70508 tickBusyMs=681188 maxTickMs=14 maxTickGapMs=25 peakCmdBufs=377 framesEst=70600 ticks=207310 calls=1110550 events=14569 playing=True map=icestormunder kills=208 deaths=0 drops=0 relogins=1
+23:07:58.240 MEM script-end t=40.0min fp=1855 gfx=388 unmappedGfx=243 malloc=1198 {"gcObjects":985576,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":143,"halTexMB":0,"halBuffers":7429,"halBufMB":0,"halEncoders":13,"halBindGroups":145,"halAllocs":0,"renders":9293}
+23:07:58.261 SAMPLE script-end t=40.0min rss=1003 MB framesRun=72297 tickBusyMs=693793 maxTickMs=16 maxTickGapMs=26 peakCmdBufs=377 framesEst=72389 ticks=212655 calls=1138806 events=14958 playing=True map=icestormunder kills=213 deaths=0 drops=0 relogins=1
+23:07:58.596 MEM script-end-after-full-gc t=40.0min fp=1853 gfx=388 unmappedGfx=240 malloc=1198 {"gcObjects":483174,"movies":43,"characters":15367,"swfBytes":16209243,"classRegistry":1332,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":147,"halTexMB":0,"halBuffers":7429,"halBufMB":0,"halEncoders":13,"halBindGroups":149,"halAllocs":0,"renders":9294}
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 114894 3676608 ruffle_common::avm_string::repr::AvmStringRepr<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 87056 13232512 ruffle_core::avm2::object::stage_object::StageObjectData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 61926 8421936 ruffle_core::avm2::object::script_object::ScriptObjectData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 50711 20284400 ruffle_core::display_object::graphic::GraphicData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 50171 34517648 ruffle_core::display_object::movie_clip::MovieClipData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 28148 5629600 ruffle_core::avm2::object::function_object::FunctionObjectData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 14055 2473680 ruffle_core::avm2::method::MethodData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 10958 2103936 ruffle_core::avm2::vtable::VTableData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 10817 519216 ruffle_core::avm2::multiname::Multiname<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 7983 1788192 ruffle_core::display_object::graphic::GraphicShared
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 6433 1904168 ruffle_core::display_object::movie_clip::MovieClipShared<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 5726 1328432 ruffle_core::avm2::class::ClassData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 5368 128832 alloc::vec::Vec<ruffle_core::avm2::namespace::Namespace<'_>>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 4100 98400 alloc::vec::Vec<ruffle_core::avm2::scope::Scope<'_>>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 3401 54416 ruffle_core::avm2::namespace::NamespaceData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 3171 558096 ruffle_core::avm2::object::dispatch_object::DispatchObjectData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 3151 579784 ruffle_core::avm2::object::array_object::ArrayObjectData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 2753 506552 ruffle_core::avm2::object::soundchannel_object::SoundChannelObjectData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 2052 328320 gc_arena::lock::RefLock<ruffle_core::avm1::object::script_object::ObjectData<'_>>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 1880 466240 ruffle_core::avm2::object::class_object::ClassObjectData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 1878 45072 ruffle_core::avm1::function::FunctionObject<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 1472 70656 ruffle_core::avm2::script::ScriptData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 799 25568 ruffle_core::font::font_set::FontSetData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 792 880704 ruffle_core::display_object::edit_text::EditTextData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 706 84720 ruffle_core::avm2::e4x::E4XNodeData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 454 185232 ruffle_core::display_object::text::TextData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 424 13568 ruffle_core::display_object::edit_text::EditTextShared
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 419 80448 ruffle_core::avm2::object::event_object::EventObjectData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 360 28800 ruffle_core::display_object::text::TextShared
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 212 81408 ruffle_core::display_object::morph_shape::MorphShapeData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 189 49896 ruffle_core::display_object::morph_shape::MorphShapeShared
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 183 90768 ruffle_core::display_object::avm2_button::Avm2ButtonData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 115 31280 ruffle_core::display_object::avm2_button::ButtonShared
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 54 10800 ruffle_core::font::FontData
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 40 960 ruffle_core::avm2::op::LookupSwitch
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 32 5888 ruffle_core::avm2::object::vector_object::VectorObjectData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 28 4032 gc_arena::lock::RefLock<ruffle_core::bitmap::bitmap_data::BitmapRawData<'_>>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 28 3808 ruffle_core::avm2::object::dictionary_object::DictionaryObjectData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 27 4104 ruffle_core::avm2::object::date_object::DateObjectData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 20 2880 ruffle_core::avm2::object::bitmapdata_object::BitmapDataObjectData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 20 8480 ruffle_core::display_object::bitmap::BitmapGraphicData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 18 3312 ruffle_core::avm2::object::bytearray_object::ByteArrayObjectData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 17 2720 ruffle_core::avm2::object::error_object::ErrorObjectData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 16 3712 ruffle_core::avm2::object::loaderinfo_object::LoaderInfoObjectData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 16 1408 ruffle_core::character::BitmapCharacter<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 15 5160 ruffle_core::avm2::object::regexp_object::RegExpObjectData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 14 6496 ruffle_core::display_object::loader_display::LoaderDisplayData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 12 1152 ruffle_core::avm2::domain::DomainData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 12 1536 ruffle_core::avm2::script::TranslationUnitData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 10 1440 ruffle_core::avm2::object::domain_object::DomainObjectData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 9 1728 ruffle_core::avm2::object::sound_object::SoundObjectData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 5 1720 ruffle_core::avm2::object::textformat_object::TextFormatObjectData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 4 704 ruffle_core::avm2::object::shared_object_object::SharedObjectObjectData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 4 704 ruffle_core::avm2::object::stage3d_object::Stage3DObjectData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 3 456 ruffle_core::avm2::object::namespace_object::NamespaceObjectData<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 2 48 ruffle_core::avm1::scope::Scope<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 1 24 alloc::vec::Vec<ruffle_core::avm1::value::Value<'_>>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 1 8 gc_arena::dynamic_roots::Inner<'_>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 1 32 gc_arena::lock::RefLock<ruffle_core::avm2::call_stack::CallStack<'_>>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 1 7040 gc_arena::lock::RefLock<ruffle_core::player::GcRootData<'_>>
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 59943 0 as3:Object
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 42728 0 as3:[display] Shape
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 16389 0 as3:[display] MovieClip
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 13298 0 as3:[display] Head_Iris_Lightcopy7_54
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 13298 0 as3:[display] Head_Iris_Nonecopy7_53
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 1472 0 as3:global
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 380 0 as3:[display] TextField
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 185 0 as3:[display] CannedOption
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 146 0 as3:[display] Sprite
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 115 0 as3:Point
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 94 0 as3:[display] StaticText
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 82 0 as3:
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 68 0 as3:[display] SimpleButton
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 62 0 as3:ColorTransform
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 46 0 as3:Timer
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 32 0 as3:GlowFilter
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 23 0 as3:[display] MorphShape
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 20 0 as3:Rectangle
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 20 0 as3:[display] Bitmap
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 18 0 as3:Avatar
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 18 0 as3:[display] Eyebrow_Skincopy8_56
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 16 0 as3:ZSortItem
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 16 0 as3:EventDispatcher
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 16 0 as3:[display] Graphics
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 16 0 as3:UncaughtErrorEvents
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 15 0 as3:[display] Invisible
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 15 0 as3:[display] Plate_Monster_58
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 15 0 as3:[display] MonsterMC
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 14 0 as3:[display] Loader
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 13 0 as3:[display] ball
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 12 0 as3:e
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 10 0 as3:[display] Male_6
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 10 0 as3:[display] Symbol8_9
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 10 0 as3:[display] DefaultMHair
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 10 0 as3:LoaderSlot
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 10 0 as3:[display] Symbol12_3
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 10 0 as3:[display] buttonComponent
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 10 0 as3:URLLoader
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 10 0 as3:[display] Male_5
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 10 0 as3:[display] Symbol10_8
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 9 0 as3:[display] Male_Face_Base_mhair_5
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 9 0 as3:[display] FaceNone_46
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 9 0 as3:[display] game_1_Male_Master1_28_48
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 9 0 as3:[display] Male_Face_Shade_mhair_6
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 9 0 as3:[display] CC_8
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 9 0 as3:[display] far0AQWCasCptrNoCCMHead
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 9 0 as3:[display] ChronoZHairM
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 9 0 as3:LoaderContext
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 9 0 as3:[display] Symbol2FaceDark_47
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 8 0 as3:[display] uiTextLine
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 6 0 as3:[display] ib2
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 6 0 as3:[display] ActMask
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 6 0 as3:[display] actBar_icon_bgcopy2_330
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 6 0 as3:[display] icons_blank_layered_bg_499
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 6 0 as3:Room
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 6 0 as3:[display] ib1
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 6 0 as3:User
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 5 0 as3:[display] chkBox_32
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 4 0 as3:[display] crossedswords
+23:07:58.653 CENSUS script-end-after-full-gc t=40.0min 4 0 as3:Transform
+23:08:02.411 Script stopped
+
+# census_diff t=10 -> t=30
+type/class                                                                 t10.0     t30.0    delta     dMB
+ruffle_common::avm_string::repr::AvmStringRepr<'_>                         52050     94333    42283    1.35
+ruffle_core::avm2::object::stage_object::StageObjectData<'_>               27061     66903    39842    6.06
+ruffle_core::avm2::object::script_object::ScriptObjectData<'_>             20075     47822    27747    3.77
+as3:Object                                                                 18217     45885    27668    0.00
+as3:[display] Shape                                                        12731     32678    19947    0.00
+ruffle_core::display_object::graphic::GraphicData<'_>                      20714     40661    19947    7.98
+ruffle_core::display_object::movie_clip::MovieClipData<'_>                 20179     39949    19770   13.60
+ruffle_core::avm2::object::function_object::FunctionObjectData<'_>          8186     21431    13245    2.65
+as3:[display] MovieClip                                                     6359     13005     6646    0.00
+as3:[display] Head_Iris_Nonecopy7_53                                        3340      9976     6636    0.00
+as3:[display] Head_Iris_Lightcopy7_54                                       3340      9976     6636    0.00
+ruffle_core::avm2::object::dispatch_object::DispatchObjectData<'_>          1111      2504     1393    0.25
+ruffle_core::avm2::object::soundchannel_object::SoundChannelObjectData       693      2086     1393    0.26
+ruffle_core::avm2::object::array_object::ArrayObjectData<'_>                1307      2493     1186    0.22
+ruffle_core::avm2::object::event_object::EventObjectData<'_>                 334       708      374    0.07
+as3:e                                                                          0        28       28    0.00
+ruffle_core::avm2::object::error_object::ErrorObjectData<'_>                   3        29       26    0.00
+as3:ColorTransform                                                            70        94       24    0.00
+as3:Transform                                                                 11        32       21    0.00
+as3:                                                                          72        76        4    0.00
