@@ -1,0 +1,44 @@
+# PROTOTYPE #17 offline runs, 2026-09-27 01:40 - 02:25 (no login). stress/crowd.py <swf> <secs> + host flags:
+# getter = 'C' getGameObject into the player every ~10 ms; fp/gfx = footprint / IOAccelerator MB (5 s samples);
+# render = submit_frame ms (render thread) or p.render() ms (sync). Other apps were running; interleaved runs only.
+
+## Render thread vs sync (gate config: pass budget 256, in-flight 16, no 0017), 250 ms interval
+Stress3 sync      getter p99 57.5-919 ms  renders 65-447 ms (bimodal)  fp 2.7-7.8 GB
+Stress3 thread    getter p99 1.5-2.0 ms   max 11-14 ms                  fp 5.5-6.8 GB
+Stress4 sync      getter p99 6,043 ms     renders 2,633 ms avg           fp 7-17 GB
+Stress4 thread    getter p99 119 ms, max 741 ms, tick gap 1,046 ms (memory pressure)  fp 7-19 GB
+
+## 0017 early layer draw (Stress4, bench.py 5 renders, sync)
+layer_flush=0  p50 2,900 ms  poolAllocs/frame 6,000  liveLayersMax 6,000   PNG md5 83a9e6b8a7b0aa07280fc37d7fff7233
+layer_flush=8  p50   659 ms  poolAllocs/frame     7  liveLayersMax     8   PNG md5 83a9e6b8a7b0aa07280fc37d7fff7233 (identical)
+Ruffle visual/ image tests (imgtests, local Metal): layer_flush 0, 1 and 8 all 145 passed, same 2 failed
+(edittext_bounds_vs_position, edittext_underline_scale2: local font rendering), 3 ignored.
+Stress4 thread + 0017: fp 17 GB -> 4.8 GB flat (gfx 3.7 GB = driver); getter p99 13.5 ms but max 1,205 ms and
+tick gap 925 ms from the main thread's non-blocking device poll waiting on wgpu's device lock during the render
+thread's blocking poll. Main-thread poll removed in threaded mode: tick gap 51 ms, getter max 54 ms.
+
+## Passes in flight (Stress4, thread, 0017; in-flight bound x pass budget), 30 s
+16 x 256 (4096)  render 753 ms  fp 4.8 GB  gfx 3.7 GB
+ 8 x 64  (512)   render 734 ms  fp 2.3 GB  gfx 1.5 GB
+ 4 x 128 (512)   render 717 ms  fp 2.5 GB  gfx 1.7 GB
+ 4 x 64  (256)   render 605 ms  fp 1.5 GB  gfx 0.8 GB
+ 8 x 16  (128)   render 323 ms  fp 1.0 GB  gfx 0.4 GB
+ 4 x 32  (128)   render 314 ms  fp 1.0 GB  gfx 0.4 GB
+ 2 x 64  (128)   render 317 ms  fp 1.1 GB  gfx 0.4 GB
+ 2 x 32  (64)    render 316 ms  fp 0.8 GB  gfx 0.2 GB
+ 1 x 64  (64)    render 319 ms  fp 0.9 GB  gfx 0.3 GB
+ 4 x 16  (64)    render 336 ms  fp 0.8 GB  gfx 0.2 GB
+All getter p99 2.3-3.0 ms.
+
+## Render budget (passes 64, in-flight 2, 0017), Stress4, 40 s
+thread + budget 10% (max 5 s)  render busy 9.9%  getter p99 9.6 ms max 17.7 ms  fp 1.1 GB
+sync   + budget 10% (max 5 s)  render busy 7.1%  getter p99 11.7 ms max 353 ms  fp 1.1 GB
+Stress3 (passes 64, in-flight 2, 0017): sync p99 79 ms / thread p99 0.5 ms (max 1.7), render 84 ms, fp 0.87 GB (was 5-7 GB)
+Stress2 (offscreen BitmapData.draw every frame): getter p99 112 ms in both modes (the AS3 tick itself is 110 ms);
+fp 0.75 GB vs 2.1 GB with the gate config.
+
+## Does a headless host still need interval renders? (passes 64, in-flight 2, 0017, thread), 90 s
+Stress2 no renders:   fp 0.87 -> 2.39 GB, +~18 MB/s, still rising
+Stress2 every 5 s:    fp 0.74-0.82 GB flat
+Stress2 every 250 ms: fp 0.70-0.80 GB flat
+Stress3 no renders: 39 MB (nothing is ever drawn).

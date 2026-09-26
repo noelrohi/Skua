@@ -59,3 +59,21 @@ Branch `prototype/gamehost-memory`. Verdict and numbers: the #13 resolution.
   (same for `ruffle_render`, `ruffle_render_wgpu`, `ruffle_frontend_utils`).
 - **Offline:** `stress/fp.py <label> <secs> <every> <swf> [flags]` samples footprint + `'M'`.
   **Live:** `bridge-console script <Leveling.cs> 120 --server Galanoth` with `SKUA_GAMEHOST_ARGS=--render-interval-ms=250`.
+
+## #17 (crowded maps) additions
+
+Branch `prototype/gamehost-crowded` (from `prototype/gamehost-memory`). Verdict and numbers: the #17 resolution;
+`results/run17-crowd-2026-09-27.txt` (live A/B, one login) and `results/run17-offline-2026-09-27.txt`.
+
+- **Ruffle `0017`** (on `0016`, `~/src/ruffle-17` branch `skua-17`): the wgpu command handler draws finished blend layers
+  (trivial and complex) onto its target after every 8 (`SKUA_LAYER_FLUSH`, 0 = upstream), so a frame holds ~8 stage-sized
+  layer textures instead of one per layer; plus a per-frame render census and a runtime in-flight bound.
+- **Host `src/proxy.rs`:** `ProxyBackend` owns the wgpu backend; with `--render-thread` the GPU half of a frame
+  (`submit_frame`) runs on a render thread while the main thread keeps ticking and servicing the Bridge; screenshots are
+  captured after the frame. `--render-budget-pct=N` / `--render-max-interval-ms=N` stretch the interval so rendering
+  takes at most N% of wall time. `'V'` knob frames change interval, budget, pass budget, layer flush, in-flight bound
+  and threading at runtime. `'Q'` reports render/prep times, main-thread blocking and the render census (`rc`).
+- **Proposed headless defaults:** `--render-thread --render-interval-ms=1000 --render-budget-pct=10
+  --render-max-interval-ms=5000`, `SKUA_FLUSH_PASSES=64 SKUA_MAX_INFLIGHT=2`, lag killer on.
+- **Offline:** `stress/crowd.py <label> <swf> <secs> [flags]` (getter latency + footprint while rendering; env `KNOBS`).
+  **Live:** `bridge-console crowd <final-min> --server Galanoth` (phases in battleon; `SKUA_PHASE_MIN`), `crowddry` offline.
