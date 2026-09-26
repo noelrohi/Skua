@@ -1,0 +1,15 @@
+<!-- PROTOTYPE (#6): throwaway headless Engine host driving the Rust Game Host. Not production code. -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>bridge-console</AssemblyName>
+    <NoWarn>CS8600;CS8602;CS8603;CS8604;CS8618;CS8625;CS1998</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Skua.Core\Skua.Core.csproj" />
+    <None Include="..\..\Skua.AS3\skua\src\skua\Externalizer.as" Link="Externalizer.as.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

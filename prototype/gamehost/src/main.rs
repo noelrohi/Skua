@@ -303,7 +303,10 @@ fn main() {
         .parse_lossy(std::env::var("SKUA_GAMEHOST_LOG").as_deref().unwrap_or("warn"));
     tracing_subscriber::registry()
         .with(filter)
-        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr).with_ansi(false))
+        // stderr copy only on request; log lines already travel as 'L' frames. Panics still hit stderr.
+        .with(std::env::var("SKUA_GAMEHOST_STDERR").is_ok().then(|| {
+            tracing_subscriber::fmt::layer().with_writer(std::io::stderr).with_ansi(false)
+        }))
         .with(FrameLayer { seen: Mutex::new(Default::default()) })
         .init();
 
