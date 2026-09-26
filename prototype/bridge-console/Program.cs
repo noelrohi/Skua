@@ -4,6 +4,7 @@
 //   bridge-console live [--server NAME]          login, maps, latency benchmark, event ordering
 //   bridge-console script <file.cs> <minutes>    login, run a Script, sample Game Host RSS every minute
 //   bridge-console flush <minutes> [--server NAME]   #14: login, render benches per pass budget, then idle
+//   bridge-console flushab <ab-min> <interval-min> [--server NAME] [--no-login]   #14: A/B pass budget vs no flush in battleon
 //   bridge-console idle <minutes>                login, stay in battleon, sample RSS (hidden-running check)
 //
 // Env: SKUA_GAMEHOST (binary), SKUA_SWF (skua.swf), SKUA_OUT (output dir), SKUA_SHOW_GAME=1.
@@ -79,6 +80,7 @@ public static class Program
             case "script": Login(Arg(args, "--server")); RunScript(args[1], double.Parse(args[2])); break;
             case "idle": Login(Arg(args, "--server")); Idle(double.Parse(args[1])); break;
             case "flush": Flush(Arg(args, "--server"), double.Parse(args[1])); break;
+            case "flushab": FlushAB(Arg(args, "--server"), double.Parse(args[1]), double.Parse(args[2]), args.Contains("--no-login")); break;
         }
         Log("done; closing Game Host");
         Flash.Dispose();
@@ -299,6 +301,48 @@ public static class Program
         }
         Log("RENDERBENCH battleon end " + Host.RenderBench(30));
         Shot("map-battleon-end");
+    }
+
+    const int NoFlush = 1_000_000_000;
+
+    static string Footprint()
+    {
+        var p = Process.Start(new ProcessStartInfo("footprint", $"{Host.Process.Id}") { RedirectStandardOutput = true, RedirectStandardError = true })!;
+        string o = p.StandardOutput.ReadToEnd();
+        p.WaitForExit();
+        var lines = o.Split('\n');
+        string pick(string key) => string.Join(' ', (lines.FirstOrDefault(l => l.Contains(key))?.Replace("phys_footprint:", "") ?? "?").Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2));
+        return $"footprint={pick("phys_footprint:")} gfxUnmapped={pick("Owned physical footprint (unmapped) (graphics)")} ioaccel={pick("IOAccelerator (graphics)")}";
+    }
+
+    // #14 second live run: in one login, A/B the mid-frame flush against no flush (needs the 65536 wgpu-hal build),
+    // then run with the flush and 250 ms interval renders to see whether a crowded battleon still stalls.
+    static void FlushAB(string? server, double abMinutes, double intervalMinutes, bool noLogin)
+    {
+        Host.SetRenderInterval(0);
+        if (!noLogin) { Login(server); Join("battleon"); }
+        var sw = Stopwatch.StartNew();
+        do
+        {
+            foreach (int b in new[] { 256, NoFlush, 256 })
+            {
+                Host.SetPassBudget(b);
+                Log($"AB t={sw.Elapsed.TotalMinutes:F1}min players={(noLogin ? -1 : Bot.Map.PlayerCount)} budget={(b == NoFlush ? "none" : b.ToString())} {Host.RenderBench(10)} {Footprint()}");
+            }
+            if (sw.Elapsed.TotalMinutes < abMinutes) Thread.Sleep(60_000);
+        } while (sw.Elapsed.TotalMinutes < abMinutes);
+        Host.SetPassBudget(256);
+        Host.Stats();
+        Host.SetRenderInterval(250);
+        sw.Restart();
+        while (sw.Elapsed.TotalMinutes < intervalMinutes)
+        {
+            Thread.Sleep(30_000);
+            var cell = Stopwatch.StartNew();
+            for (int i = 0; i < 20; i++) Host.Ping();
+            Log($"INTERVAL t={sw.Elapsed.TotalMinutes:F1}min players={(noLogin ? -1 : Bot.Map.PlayerCount)} ping20={cell.ElapsedMilliseconds}ms stats={Host.Stats()} {Footprint()}");
+        }
+        Shot("flushab-end");
     }
 
     static void Live(string? server)

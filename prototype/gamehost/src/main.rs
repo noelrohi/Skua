@@ -12,6 +12,7 @@
 //!   'Q' u32 id                               stats (JSON)
 //!   'B' u32 id | u32 n                       render n times, reply 'Q' with timings
 //!   'K' u32 id | u32 passes                  set the mid-frame flush pass budget (#14), reply 'P'
+//!   'V' u32 id | u32 ms                      set the headless render interval, 0 = off (#14), reply 'P'
 //! Game Host -> Engine
 //!   'R' u32 id | utf8 return XML             reply to 'C'
 //!   'I' u32 id | u32 w | u32 h | u64 frames | PNG bytes   reply to 'S'
@@ -111,6 +112,7 @@ enum Msg {
     Stats { id: u32 },
     RenderBench { id: u32, n: u32 },
     SetPassBudget { id: u32, passes: u32 },
+    SetRenderInterval { id: u32, ms: u32 },
 }
 
 fn start_reader(tx: Sender<Msg>) {
@@ -141,6 +143,7 @@ fn start_reader(tx: Sender<Msg>) {
                     b'P' => Msg::Ping { id },
                     b'Q' => Msg::Stats { id },
                     b'B' => Msg::RenderBench { id, n: u32::from_le_bytes(body[5..9].try_into().unwrap()) },
+                    b'V' => Msg::SetRenderInterval { id, ms: u32::from_le_bytes(body[5..9].try_into().unwrap()) },
                     b'K' => Msg::SetPassBudget { id, passes: u32::from_le_bytes(body[5..9].try_into().unwrap()) },
                     _ => continue,
                 };
@@ -425,6 +428,9 @@ fn main() {
     let mut calls: u64 = 0;
     let mut renders: u64 = 0;
     let mut last_render = Instant::now();
+    let mut render_interval = opts.render_interval;
+    // #14: interval-render timings since the last stats request.
+    let (mut render_n, mut render_sum, mut render_max) = (0u64, Duration::ZERO, Duration::ZERO);
     // Largest gap between two ticks since the last stats request: App Nap / timer throttling shows up here.
     let mut max_tick_gap = Duration::ZERO;
     let mut tick_busy = Duration::ZERO;
@@ -482,6 +488,10 @@ fn main() {
                 send_with_id(b'I', id, &rest);
             }
             Ok(Msg::Ping { id }) => send_with_id(b'P', id, &[]),
+            Ok(Msg::SetRenderInterval { id, ms }) => {
+                render_interval = (ms > 0).then(|| Duration::from_millis(ms as u64));
+                send_with_id(b'P', id, &[]);
+            }
             Ok(Msg::SetPassBudget { id, passes }) => {
                 // skua #14: mid-frame flush budget (render passes per submission), for measuring.
                 ruffle_render_wgpu::backend::set_max_passes_per_submit(passes);
@@ -513,7 +523,7 @@ fn main() {
             }
             Ok(Msg::Stats { id }) => {
                 let json = format!(
-                    "{{\"uptimeMs\":{},\"ticks\":{},\"framesEst\":{},\"calls\":{},\"events\":{},\"renders\":{},\"frameRate\":{},\"maxTickGapMs\":{},\"framesRun\":{},\"tickBusyMs\":{},\"maxTickMs\":{},\"maxOutstandingCmdBufs\":{}}}",
+                    "{{\"uptimeMs\":{},\"ticks\":{},\"framesEst\":{},\"calls\":{},\"events\":{},\"renders\":{},\"frameRate\":{},\"maxTickGapMs\":{},\"framesRun\":{},\"tickBusyMs\":{},\"maxTickMs\":{},\"maxOutstandingCmdBufs\":{},\"renderN\":{},\"renderMsAvg\":{:.1},\"renderMsMax\":{},\"passBudgetFlushes\":{}}}",
                     started.elapsed().as_millis(),
                     ticks,
                     frames_est as u64,
@@ -525,8 +535,13 @@ fn main() {
                     ruffle_core::SKUA_FRAMES_RUN.load(Ordering::Relaxed),
                     tick_busy.as_millis(),
                     max_tick.as_millis(),
-                    wgpu_hal::SKUA_MAX_OUTSTANDING.swap(0, Ordering::Relaxed)
+                    wgpu_hal::SKUA_MAX_OUTSTANDING.swap(0, Ordering::Relaxed),
+                    render_n,
+                    if render_n > 0 { render_sum.as_secs_f64() * 1000.0 / render_n as f64 } else { 0.0 },
+                    render_max.as_millis(),
+                    ruffle_render_wgpu::backend::SKUA_PASS_BUDGET_FLUSHES.load(Ordering::Relaxed)
                 );
+                (render_n, render_sum, render_max) = (0, Duration::ZERO, Duration::ZERO);
                 max_tick_gap = Duration::ZERO;
                 max_tick = Duration::ZERO;
                 send_with_id(b'Q', id, json.as_bytes());
@@ -563,12 +578,20 @@ fn main() {
         }
 
         // Headless still renders now and then: Ruffle accumulates CPU-side state until a frame is rendered.
-        let interval = if window.is_some() || opts.render_every_frame { Some(Duration::from_millis(33)) } else { opts.render_interval };
+        let interval = if window.is_some() || opts.render_every_frame { Some(Duration::from_millis(33)) } else { render_interval };
         if interval.is_some_and(|i| last_render.elapsed() >= i) {
             last_render = Instant::now();
             let mut p = lock(&player);
+            let t0 = Instant::now();
             guarded("render", || p.render());
+            let spent = t0.elapsed();
             renders += 1;
+            render_n += 1;
+            render_sum += spent;
+            render_max = render_max.max(spent);
+            if spent >= Duration::from_secs(1) {
+                tracing::warn!(target: "skua_gamehost", "slow render: {} ms", spent.as_millis());
+            }
             if let Some(w) = window.as_mut() {
                 let renderer = <dyn Any>::downcast_mut::<WgpuRenderBackend<TextureTarget>>(p.renderer_mut()).unwrap();
                 if let Some(img) = renderer.capture_frame() {
