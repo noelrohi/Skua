@@ -404,6 +404,8 @@ public static class Program
         Log($"SAMPLE {label} t={sw.Elapsed.TotalMinutes:F1}min rss={RssKb(Host.Pid) / 1024} MB framesRun={st["framesRun"]} tickBusyMs={st["tickBusyMs"]} maxTickMs={st["maxTickMs"]} maxTickGapMs={st["maxTickGapMs"]} peakCmdBufs={st["maxOutstandingCmdBufs"]} framesEst={st["framesEst"]} ticks={st["ticks"]} calls={st["calls"]} events={st["events"]} playing={Bot.Player.Playing} map={Bot.Map.Name} kills={Bot.Stats.Kills} deaths={Bot.Stats.Deaths} drops={Bot.Stats.Drops} relogins={Bot.Stats.Relogins}");
     }
 
+    static readonly int GcEveryMin = int.TryParse(Environment.GetEnvironmentVariable("SKUA_GC_EVERY_MIN"), out var g) && g > 0 ? g : 30;
+
     static void RunScript(string path, double minutes)
     {
         var mgr = Ioc.Default.GetRequiredService<IScriptManager>();
@@ -420,7 +422,7 @@ public static class Program
             {
                 lastMinute = m; Sample("script", sw);
                 if (m % 15 == 0) { Shot($"script-{m:D3}min"); if (Environment.GetEnvironmentVariable("SKUA_NO_RENDERBENCH") == null) Log($"RENDERBENCH script-{m}min " + Host.RenderBench(30)); }
-                if (m % 30 == 0 && m > 0) MemSample("script-after-full-gc", sw, gc: true);
+                if (m % GcEveryMin == 0 && m > 0) MemSample("script-after-full-gc", sw, gc: true);
             }
             if (!mgr.ScriptRunning) { Log("Script ended on its own"); break; }
             Thread.Sleep(1000);
