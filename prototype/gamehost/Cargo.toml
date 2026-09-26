@@ -19,6 +19,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
 minifb = "0.28"
+wgpu-hal = "=30.0.1" # patched below; read for instrumentation only
 
 [profile.release]
 debug = 1

@@ -1,0 +1,45 @@
+diff --git a/core/src/lib.rs b/core/src/lib.rs
+index d76c1cba7..760ec4447 100644
+--- a/core/src/lib.rs
++++ b/core/src/lib.rs
+@@ -62,7 +62,7 @@ pub use context_menu::ContextMenuItem;
+ pub use events::PlayerEvent;
+ pub use indexmap;
+ pub use loader::LoadBehavior;
+-pub use player::{Player, PlayerBuilder, PlayerMode, PlayerRuntime, StaticCallstack};
++pub use player::{Player, PlayerBuilder, PlayerMode, PlayerRuntime, StaticCallstack, SKUA_FRAMES_RUN};
+ pub use ruffle_common::duration::FloatDuration;
+ pub use ruffle_render::backend::ViewportDimensions;
+ pub use swf;
+diff --git a/core/src/player.rs b/core/src/player.rs
+index 675ef3a78..0be19dcaf 100644
+--- a/core/src/player.rs
++++ b/core/src/player.rs
+@@ -2050,6 +2050,7 @@ impl Player {
+ 
+     #[instrument(level = "debug", skip_all)]
+     pub fn run_frame(&mut self) {
++        SKUA_FRAMES_RUN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+         let frame_time = self.frame_time(750_000_000.0);
+         let frame_time = Duration::from_nanos(frame_time as u64);
+         let (mut execution_limit, may_execute_while_streaming) = match self.load_behavior {
+@@ -3320,3 +3321,6 @@ pub enum PlayerMode {
+     /// Represents the debug version of Flash Player, i.e. flashplayerdebugger.
+     Debug,
+ }
++
++/// skua #6 instrumentation: number of `run_frame` calls (real Flash frames executed).
++pub static SKUA_FRAMES_RUN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+diff --git a/render/wgpu/src/backend.rs b/render/wgpu/src/backend.rs
+index 5dcf43c0a..e6338ee7f 100644
+--- a/render/wgpu/src/backend.rs
++++ b/render/wgpu/src/backend.rs
+@@ -1279,7 +1279,7 @@ pub struct ActiveFrame {
+ }
+ 
+ impl ActiveFrame {
+-    const MAX_DRAWS_PER_FLUSH: u32 = 100;
++    const MAX_DRAWS_PER_FLUSH: u32 = 10; // skua #6: 100 multi-pass draws can exceed Metal's 4096 unsubmitted command buffers
+ 
+     pub fn new(descriptors: &Descriptors) -> Self {
+         Self {

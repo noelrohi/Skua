@@ -239,6 +239,8 @@ public static class Program
         Log($"Core Relogin returned {relog} after {sw.ElapsedMilliseconds} ms (its own wait is 30 x 100 ms); waiting up to 90 s for Playing && IsWorldLoaded");
         bool ok = SpinWait.SpinUntil(() => { Thread.Sleep(250); return Bot.Player.Playing && Bot.Flash.IsWorldLoaded; }, TimeSpan.FromSeconds(90));
         Log($"login {(ok ? "OK" : "FAILED")} in {sw.ElapsedMilliseconds} ms: Playing={Bot.Player.Playing} IsWorldLoaded={Bot.Flash.IsWorldLoaded} map={Bot.Map.Name} server={Bot.Servers.LastIP}");
+        Log("stats after login (before any render) " + Host.Stats());
+        Log("RENDERBENCH after-login " + Host.RenderBench(1));
         Shot("after-login");
         if (!ok) throw new Exception("login failed");
     }
@@ -251,6 +253,8 @@ public static class Program
         bool ok = SpinWait.SpinUntil(() => { Thread.Sleep(250); return string.Equals(Bot.Map.Name, map, StringComparison.OrdinalIgnoreCase) && Bot.Player.Playing && Bot.Flash.IsWorldLoaded; }, TimeSpan.FromSeconds(60));
         Thread.Sleep(1500);
         Log($"join {map}: {(ok ? "OK" : "FAILED")} in {sw.ElapsedMilliseconds} ms; map={Bot.Map.Name} cell={Bot.Player.Cell} players={Bot.Map.PlayerCount} IsWorldLoaded={Bot.Flash.IsWorldLoaded}");
+        Log($"RENDERBENCH {map} " + Host.RenderBench(30));
+        Log($"stats {map} " + Host.Stats());
         Shot("map-" + map);
         return ok;
     }
@@ -360,7 +364,7 @@ public static class Program
     static void Sample(string label, Stopwatch sw)
     {
         var st = JObject.Parse(Host.Stats());
-        Log($"SAMPLE {label} t={sw.Elapsed.TotalMinutes:F1}min rss={RssKb(Host.Pid) / 1024} MB framesEst={st["framesEst"]} ticks={st["ticks"]} calls={st["calls"]} events={st["events"]} playing={Bot.Player.Playing} map={Bot.Map.Name} kills={Bot.Stats.Kills} deaths={Bot.Stats.Deaths} drops={Bot.Stats.Drops} relogins={Bot.Stats.Relogins}");
+        Log($"SAMPLE {label} t={sw.Elapsed.TotalMinutes:F1}min rss={RssKb(Host.Pid) / 1024} MB framesRun={st["framesRun"]} tickBusyMs={st["tickBusyMs"]} maxTickMs={st["maxTickMs"]} maxTickGapMs={st["maxTickGapMs"]} peakCmdBufs={st["maxOutstandingCmdBufs"]} framesEst={st["framesEst"]} ticks={st["ticks"]} calls={st["calls"]} events={st["events"]} playing={Bot.Player.Playing} map={Bot.Map.Name} kills={Bot.Stats.Kills} deaths={Bot.Stats.Deaths} drops={Bot.Stats.Drops} relogins={Bot.Stats.Relogins}");
     }
 
     static void RunScript(string path, double minutes)
@@ -375,7 +379,11 @@ public static class Program
         while (sw.Elapsed.TotalMinutes < minutes)
         {
             int m = (int)sw.Elapsed.TotalMinutes;
-            if (m != lastMinute) { lastMinute = m; Sample("script", sw); if (m % 15 == 0) Shot($"script-{m:D3}min"); }
+            if (m != lastMinute)
+            {
+                lastMinute = m; Sample("script", sw);
+                if (m % 15 == 0) { Shot($"script-{m:D3}min"); Log($"RENDERBENCH script-{m}min " + Host.RenderBench(30)); }
+            }
             if (!mgr.ScriptRunning) { Log("Script ended on its own"); break; }
             Thread.Sleep(1000);
         }

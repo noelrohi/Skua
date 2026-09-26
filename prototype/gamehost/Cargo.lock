@@ -2962,6 +2962,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "wgpu-hal",
 ]
 
 [[package]]

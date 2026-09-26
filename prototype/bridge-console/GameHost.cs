@@ -139,6 +139,8 @@ public sealed class GameHost : IDisposable
 
     public void Ping() => Request('P', ReadOnlySpan<byte>.Empty, TimeSpan.FromSeconds(10));
 
+    public string RenderBench(int n) => Encoding.UTF8.GetString(Request('B', BitConverter.GetBytes(n), TimeSpan.FromSeconds(120)));
+
     public string Stats() => Encoding.UTF8.GetString(Request('Q', ReadOnlySpan<byte>.Empty, TimeSpan.FromSeconds(10)));
 
     public Shot Screenshot(int maxWidth = 0)

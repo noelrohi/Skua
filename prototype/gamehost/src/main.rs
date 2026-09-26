@@ -107,6 +107,7 @@ enum Msg {
     Screenshot { id: u32, max_width: u32 },
     Ping { id: u32 },
     Stats { id: u32 },
+    RenderBench { id: u32, n: u32 },
 }
 
 fn start_reader(tx: Sender<Msg>) {
@@ -136,6 +137,7 @@ fn start_reader(tx: Sender<Msg>) {
                     },
                     b'P' => Msg::Ping { id },
                     b'Q' => Msg::Stats { id },
+                    b'B' => Msg::RenderBench { id, n: u32::from_le_bytes(body[5..9].try_into().unwrap()) },
                     _ => continue,
                 };
                 if tx.send(msg).is_err() {
@@ -415,6 +417,8 @@ fn main() {
     let mut last_render = Instant::now();
     // Largest gap between two ticks since the last stats request: App Nap / timer throttling shows up here.
     let mut max_tick_gap = Duration::ZERO;
+    let mut tick_busy = Duration::ZERO;
+    let mut max_tick = Duration::ZERO;
 
     loop {
         let wait = lock(&player).time_til_next_frame().min(Duration::from_millis(33));
@@ -468,9 +472,32 @@ fn main() {
                 send_with_id(b'I', id, &rest);
             }
             Ok(Msg::Ping { id }) => send_with_id(b'P', id, &[]),
+            Ok(Msg::RenderBench { id, n }) => {
+                // Render the live stage n times back to back (with a GPU wait) and report per-frame render time.
+                let mut times = vec![];
+                let before = wgpu_hal::SKUA_MAX_OUTSTANDING.swap(0, Ordering::Relaxed);
+                for _ in 0..n {
+                    let t0 = Instant::now();
+                    let ok = guarded("render-bench", || {
+                        lock(&player).render();
+                        let _ = descriptors.device.poll(wgpu::PollType::Wait { submission_index: None, timeout: None });
+                    });
+                    if ok.is_none() {
+                        break;
+                    }
+                    times.push(t0.elapsed().as_secs_f64() * 1000.0);
+                }
+                renders += times.len() as u64;
+                let peak = wgpu_hal::SKUA_MAX_OUTSTANDING.load(Ordering::Relaxed);
+                wgpu_hal::SKUA_MAX_OUTSTANDING.fetch_max(before, Ordering::Relaxed);
+                times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                let pct = |q: f64| times.get(((times.len() as f64 - 1.0) * q) as usize).copied().unwrap_or(-1.0);
+                let json = format!("{{\"n\":{},\"p50Ms\":{:.2},\"p90Ms\":{:.2},\"maxMs\":{:.2},\"peakOutstandingCmdBufs\":{}}}", times.len(), pct(0.5), pct(0.9), pct(1.0), peak);
+                send_with_id(b'Q', id, json.as_bytes());
+            }
             Ok(Msg::Stats { id }) => {
                 let json = format!(
-                    "{{\"uptimeMs\":{},\"ticks\":{},\"framesEst\":{},\"calls\":{},\"events\":{},\"renders\":{},\"frameRate\":{},\"maxTickGapMs\":{}}}",
+                    "{{\"uptimeMs\":{},\"ticks\":{},\"framesEst\":{},\"calls\":{},\"events\":{},\"renders\":{},\"frameRate\":{},\"maxTickGapMs\":{},\"framesRun\":{},\"tickBusyMs\":{},\"maxTickMs\":{},\"maxOutstandingCmdBufs\":{}}}",
                     started.elapsed().as_millis(),
                     ticks,
                     frames_est as u64,
@@ -478,9 +505,14 @@ fn main() {
                     EVENTS_SENT.load(Ordering::Relaxed),
                     renders,
                     lock(&player).frame_rate(),
-                    max_tick_gap.as_millis()
+                    max_tick_gap.as_millis(),
+                    ruffle_core::SKUA_FRAMES_RUN.load(Ordering::Relaxed),
+                    tick_busy.as_millis(),
+                    max_tick.as_millis(),
+                    wgpu_hal::SKUA_MAX_OUTSTANDING.swap(0, Ordering::Relaxed)
                 );
                 max_tick_gap = Duration::ZERO;
+                max_tick = Duration::ZERO;
                 send_with_id(b'Q', id, json.as_bytes());
             }
             Err(RecvTimeoutError::Timeout) => {}
@@ -497,7 +529,11 @@ fn main() {
         if dt >= Duration::from_millis(4) {
             let mut p = lock(&player);
             let fr = p.frame_rate();
+            let t0 = Instant::now();
             guarded("tick", || p.tick(FloatDuration::from_std(dt)));
+            let spent = t0.elapsed();
+            tick_busy += spent;
+            max_tick = max_tick.max(spent);
             ticks += 1;
             if fr > 0.0 {
                 frames_est += dt.as_secs_f64() * fr;
