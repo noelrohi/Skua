@@ -15,6 +15,11 @@ namespace Skua.Core;
 /// </summary>
 public class Compiler : CSharpScriptExecution
 {
+    // #10 decision 4: MACOS preprocessor symbol on macOS (PROTOTYPE #6).
+    private static readonly CSharpParseOptions ScriptParseOptions = OperatingSystem.IsMacOS()
+        ? CSharpParseOptions.Default.WithPreprocessorSymbols("MACOS")
+        : CSharpParseOptions.Default;
+
     private const int _maxCachedAssemblies = 1024;
     private static readonly string _cacheDirectory = Path.Combine(ClientFileSources.SkuaScriptsDIR, "Cached-Scripts");
     private static readonly TimeSpan _cacheExpiration = TimeSpan.FromDays(7);
@@ -182,7 +187,7 @@ public class Compiler : CSharpScriptExecution
         ClearErrors();
         string sourceWithNamespaces = PrependNamespaces(source);
 
-        SyntaxTree tree = CSharpSyntaxTree.ParseText(sourceWithNamespaces.Trim());
+        SyntaxTree tree = CSharpSyntaxTree.ParseText(sourceWithNamespaces.Trim(), ScriptParseOptions);
 
         CSharpCompilation compilation = CSharpCompilation.Create(GeneratedClassName + ".cs")
             .WithOptions(_compilationOptions)
@@ -466,7 +471,7 @@ public class Compiler : CSharpScriptExecution
     {
         ClearErrors();
 
-        SyntaxTree tree = CSharpSyntaxTree.ParseText(source.Trim());
+        SyntaxTree tree = CSharpSyntaxTree.ParseText(source.Trim(), ScriptParseOptions);
 
         string fileName = Path.GetFileNameWithoutExtension(outputPath);
         int lastDash = fileName.LastIndexOf('-');

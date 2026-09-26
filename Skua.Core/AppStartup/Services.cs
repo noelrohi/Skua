@@ -265,6 +265,15 @@ public static class Services
                     }
 
                     refs.AddRange(refPaths.Select(s => MetadataReference.CreateFromFile(s)));
+                    // #10 decision 3: union the whole shared framework (PROTOTYPE #6).
+                    var have = new HashSet<string>(refs.Select(r => r.FilePath ?? ""), StringComparer.OrdinalIgnoreCase);
+                    foreach (var dll in Directory.GetFiles(System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory(), "*.dll"))
+                    {
+                        if (have.Add(dll))
+                        {
+                            try { refs.Add(MetadataReference.CreateFromFile(dll)); } catch { }
+                        }
+                    }
                     _cachedBaseReferences = refs;
                 }
             }
@@ -291,7 +300,6 @@ public static class Services
             "System.Threading",
             "System.Threading.Tasks",
             "System.Timers",
-            "System.Windows.Forms",
             "Skua.Core",
             "Skua.Core.Interfaces",
             "Skua.Core.Models",
@@ -310,6 +318,8 @@ public static class Services
             "Newtonsoft.Json",
             "Newtonsoft.Json.Linq",
         });
+        if (OperatingSystem.IsWindows()) // #10 decision 2 (PROTOTYPE #6)
+            compiler.AddNamespaces(new[] { "System.Windows.Forms" });
         compiler.SaveGeneratedCode = true;
         return compiler;
     }

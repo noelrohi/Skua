@@ -55,6 +55,18 @@ public static class Program
         MacFlashUtil.ShowGame = Environment.GetEnvironmentVariable("SKUA_SHOW_GAME") == "1";
 
         StartEngine();
+        if (mode == "compile")
+        {
+            var mgr = Ioc.Default.GetRequiredService<IScriptManager>();
+            foreach (var f in args.Skip(1))
+            {
+                var sw = Stopwatch.StartNew();
+                try { var o = mgr.Compile(File.ReadAllText(f)); Log($"compile {f}: {(o != null ? "OK" : "null")} in {sw.ElapsedMilliseconds} ms"); }
+                catch (Exception e) { Log($"compile {f}: FAILED {e.Message[..Math.Min(e.Message.Length, 2000)]}"); }
+            }
+            Flash.Dispose();
+            return 0;
+        }
         if (!WaitLoaded()) return 2;
         switch (mode)
         {
