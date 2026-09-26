@@ -1,0 +1,80 @@
+diff --color -ru a/src/arena.rs b/src/arena.rs
+--- a/src/arena.rs	2006-07-24 09:21:28
++++ b/src/arena.rs	2026-09-26 21:29:53
+@@ -238,6 +238,11 @@
+     }
+ 
+     #[inline]
++    /// skua #13 census: (type name, live objects, bytes) of every allocation in the arena.
++    pub fn skua_census(&self) -> alloc::vec::Vec<(&'static str, usize, usize)> {
++        self.context.skua_census()
++    }
++
+     pub fn metrics(&self) -> &Metrics {
+         self.context.metrics()
+     }
+diff --color -ru a/src/context.rs b/src/context.rs
+--- a/src/context.rs	2006-07-24 09:21:28
++++ b/src/context.rs	2026-09-26 21:29:53
+@@ -187,6 +187,23 @@
+     gray_again: Queue<GcPtr>,
+ }
+ 
++impl Context {
++    /// skua #13 census: (type name, live objects, bytes) for every allocation on the `all` list.
++    pub(crate) fn skua_census(&self) -> alloc::vec::Vec<(&'static str, usize, usize)> {
++        let mut map: alloc::collections::BTreeMap<&'static str, (usize, usize)> = Default::default();
++        let mut cur = self.all.get();
++        while let Some(p) = cur {
++            let h = p.header();
++            let vt = h.vtable();
++            let e = map.entry((vt.type_name)()).or_insert((0, 0));
++            e.0 += 1;
++            e.1 += vt.value_layout.size();
++            cur = h.next();
++        }
++        map.into_iter().map(|(k, (n, b))| (k, n, b)).collect()
++    }
++}
++
+ impl Drop for Context {
+     fn drop(&mut self) {
+         struct DropAll<'a>(&'a Metrics, Option<GcPtr>);
+diff --color -ru a/src/types.rs b/src/types.rs
+--- a/src/types.rs	2006-07-24 09:21:28
++++ b/src/types.rs	2026-09-26 21:30:52
+@@ -187,7 +187,7 @@
+     }
+ 
+     #[inline(always)]
+-    fn vtable(&self) -> &'static CollectVtable {
++    pub(crate) fn vtable(&self) -> &'static CollectVtable {
+         let ptr = tagged_ptr::untag(self.tagged_vtable.get());
+         // SAFETY:
+         // - the pointer was properly untagged.
+@@ -265,13 +265,15 @@
+ /// We use a custom vtable instead of `dyn Collect` for extra flexibility. The type is over-aligned
+ /// so that `GcHeader` can store flags into the LSBs of the vtable pointer.
+ #[repr(align(16))]
+-struct CollectVtable {
++pub(crate) struct CollectVtable {
+     /// Traces the value at the given pointer.
+     trace_value: unsafe fn(*const (), &mut Context),
+     /// Drops the value at the given pointer.
+     drop_value: unsafe fn(*mut ()),
+     /// The layout of the value stored in this `GcPtr`.
+-    value_layout: Layout,
++    pub(crate) value_layout: Layout,
++    /// skua #13 census: the Rust type stored in this `GcPtr`.
++    pub(crate) type_name: fn() -> &'static str,
+ }
+ 
+ impl CollectVtable {
+@@ -288,6 +290,7 @@
+                 ptr::drop_in_place(ptr.cast::<T>());
+             },
+             value_layout: Layout::new::<T>(),
++            type_name: core::any::type_name::<T>,
+         }
+     }
+ }

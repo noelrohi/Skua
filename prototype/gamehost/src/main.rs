@@ -110,6 +110,7 @@ enum Msg {
     RenderBench { id: u32, n: u32 },
     Mem { id: u32 },
     FullGc { id: u32 },
+    Census { id: u32 },
 }
 
 fn start_reader(tx: Sender<Msg>) {
@@ -142,6 +143,7 @@ fn start_reader(tx: Sender<Msg>) {
                     b'B' => Msg::RenderBench { id, n: u32::from_le_bytes(body[5..9].try_into().unwrap()) },
                     b'M' => Msg::Mem { id },
                     b'G' => Msg::FullGc { id },
+                    b'Y' => Msg::Census { id },
                     _ => continue,
                 };
                 if tx.send(msg).is_err() {
@@ -495,6 +497,11 @@ fn main() {
                 let renderer = <dyn Any>::downcast_mut::<WgpuRenderBackend<TextureTarget>>(p.renderer_mut()).unwrap();
                 let json = format!("{{{core},{},\"renders\":{renders}}}", renderer.skua_mem_stats());
                 send_with_id(b'Q', id, json.as_bytes());
+            }
+            Ok(Msg::Census { id }) => {
+                // #13: live GC objects by Rust type (needs the patched gc-arena; run after 'G').
+                let text = lock(&player).skua_census(60);
+                send_with_id(b'Q', id, text.as_bytes());
             }
             Ok(Msg::FullGc { id }) => {
                 lock(&player).skua_full_gc();

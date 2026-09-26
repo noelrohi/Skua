@@ -143,6 +143,8 @@ public sealed class GameHost : IDisposable
 
     public string Mem() => Encoding.UTF8.GetString(Request('M', ReadOnlySpan<byte>.Empty, TimeSpan.FromSeconds(10)));
 
+    public string Census() => Encoding.UTF8.GetString(Request('Y', ReadOnlySpan<byte>.Empty, TimeSpan.FromSeconds(60)));
+
     public void FullGc() => Request('G', ReadOnlySpan<byte>.Empty, TimeSpan.FromSeconds(60));
 
     public string Stats() => Encoding.UTF8.GetString(Request('Q', ReadOnlySpan<byte>.Empty, TimeSpan.FromSeconds(10)));

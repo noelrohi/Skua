@@ -392,6 +392,9 @@ public static class Program
     {
         if (gc) Host.FullGc();
         Log($"MEM {label} t={sw.Elapsed.TotalMinutes:F1}min {Footprint(Host.Pid)} {Host.Mem()}");
+        // #13: live GC objects by Rust type after a full GC (census build of the Game Host only).
+        if (gc && Environment.GetEnvironmentVariable("SKUA_CENSUS") == "1")
+            foreach (var line in Host.Census().Split('\n')) Log($"CENSUS {label} t={sw.Elapsed.TotalMinutes:F1}min {line}");
     }
 
     static void Sample(string label, Stopwatch sw)
