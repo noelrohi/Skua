@@ -1,0 +1,5 @@
+17:06:07.185 'loaded' after 986 ms; callbacks registered: 73
+17:06:08.697 callbacks: expected 73 (Externalizer.as), registered 73, missing []
+17:06:08.707 callbacks called with no args: 65 replied, 0 transport errors, 9 skipped as state-changing
+17:06:08.783 screenshot login-screen: 958x550 frames~74 169833 B in 75 ms -> login-screen.png
+17:06:08.834 BENCH idle-prelogin: n=2000 p50=0.021 p90=0.028 p99=0.057 max=1.396 ms (last value '"Init"')
