@@ -301,20 +301,26 @@ struct Opts {
     swf: String,
     show_game: bool,
     render_every_frame: bool,
+    render_interval: Option<Duration>,
 }
 
 fn parse_args() -> Opts {
     let mut swf = None;
     let mut show_game = false;
     let mut render_every_frame = false;
+    let mut render_interval = None;
     for a in std::env::args().skip(1) {
+        if let Some(ms) = a.strip_prefix("--render-interval-ms=") {
+            render_interval = Some(Duration::from_millis(ms.parse().unwrap()));
+            continue;
+        }
         match a.as_str() {
             "--show-game" => show_game = true,
             "--render-every-frame" => render_every_frame = true,
             _ => swf = Some(a),
         }
     }
-    Opts { swf: swf.expect("usage: skua-gamehost [--show-game] [--render-every-frame] <skua.swf>"), show_game, render_every_frame }
+    Opts { swf: swf.expect("usage: skua-gamehost [--show-game] [--render-every-frame] [--render-interval-ms=N] <skua.swf>"), show_game, render_every_frame, render_interval }
 }
 
 const WIDTH: u32 = 958;
@@ -531,6 +537,11 @@ fn main() {
             let fr = p.frame_rate();
             let t0 = Instant::now();
             guarded("tick", || p.tick(FloatDuration::from_std(dt)));
+            // Without a per-frame render nothing polls the device, so finished submissions,
+            // staging-belt chunks and map callbacks are never reclaimed. Poll without blocking.
+            if std::env::var_os("SKUA_NO_POLL").is_none() {
+                let _ = descriptors.device.poll(wgpu::PollType::Poll);
+            }
             let spent = t0.elapsed();
             tick_busy += spent;
             max_tick = max_tick.max(spent);
@@ -541,11 +552,12 @@ fn main() {
             last_tick = now;
         }
 
-        let want_render = window.is_some() || opts.render_every_frame;
-        if want_render && last_render.elapsed() >= Duration::from_millis(33) {
+        // Headless still renders now and then: Ruffle accumulates CPU-side state until a frame is rendered.
+        let interval = if window.is_some() || opts.render_every_frame { Some(Duration::from_millis(33)) } else { opts.render_interval };
+        if interval.is_some_and(|i| last_render.elapsed() >= i) {
             last_render = Instant::now();
             let mut p = lock(&player);
-            p.render();
+            guarded("render", || p.render());
             renders += 1;
             if let Some(w) = window.as_mut() {
                 let renderer = <dyn Any>::downcast_mut::<WgpuRenderBackend<TextureTarget>>(p.renderer_mut()).unwrap();
