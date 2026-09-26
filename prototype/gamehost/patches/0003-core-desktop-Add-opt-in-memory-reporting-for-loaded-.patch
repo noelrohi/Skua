@@ -1,0 +1,372 @@
+From 824b0386a5c5cda2206a76a1858b02b20a5846f0 Mon Sep 17 00:00:00 2001
+From: Farhan Riaz <its-forum@techlogix.com>
+Date: Wed, 2 Sep 2026 03:05:07 +0500
+Subject: [PATCH 03/11] core, desktop: Add opt-in memory reporting for loaded
+ SWFs
+
+Ruffle keeps one MovieLibrary per SwfMovie in a map that is weakly keyed
+on the movie, so a movie's characters stay resident for exactly as long
+as somebody holds a strong Arc<SwfMovie>. That makes "content was
+unloaded but its memory was not returned" measurable, but only if the
+state is actually walked, so add a reporter that does.
+
+`--memory-report <FILE>` writes one CSV row per interval pairing the
+process' resident set size with Ruffle's own accounting of every movie
+still held: its characters, its bitmaps (both still-compressed and
+decoded), its SWF data, and how many of its strong references come from
+inside its own library rather than from anything that still needs it.
+
+Off by default, and only walked when a report is being written.
+---
+ core/src/avm2.rs          |   8 ++
+ core/src/character.rs     |  18 ++++
+ core/src/lib.rs           |   1 +
+ core/src/library.rs       |  56 +++++++++++++
+ core/src/loader.rs        |  12 +++
+ core/src/memory_report.rs | 170 ++++++++++++++++++++++++++++++++++++++
+ 6 files changed, 265 insertions(+)
+ create mode 100644 core/src/memory_report.rs
+
+diff --git a/core/src/avm2.rs b/core/src/avm2.rs
+index 8937f7820..5007f9102 100644
+--- a/core/src/avm2.rs
++++ b/core/src/avm2.rs
+@@ -249,6 +249,14 @@ impl<'gc> Avm2<'gc> {
+         globals::load_playerglobal(context, globals);
+     }
+ 
++    /// Number of `registerClassAlias` registrations currently held.
++    ///
++    /// These maps are strong and are never evicted, so every entry pins a
++    /// class, its translation unit, and the movie that defined it.
++    pub fn class_alias_count(&self) -> usize {
++        self.alias_to_class_map.len()
++    }
++
+     pub fn playerglobals_domain(&self) -> Domain<'gc> {
+         self.playerglobals_domain
+     }
+diff --git a/core/src/character.rs b/core/src/character.rs
+index f1843308c..8d7b5eb4c 100644
+--- a/core/src/character.rs
++++ b/core/src/character.rs
+@@ -57,6 +57,14 @@ impl<'gc> BitmapCharacter<'gc> {
+         &self.compressed
+     }
+ 
++    /// Whether this bitmap has already been uploaded to the render backend.
++    ///
++    /// An uploaded bitmap also costs GPU memory, which is only reclaimed when
++    /// the character itself is dropped.
++    pub fn is_uploaded(&self) -> bool {
++        self.handle.get().is_some()
++    }
++
+     pub fn avm2_class(&self) -> BitmapClass<'gc> {
+         self.avm2_class.get()
+     }
+@@ -109,6 +117,16 @@ impl CompressedBitmap {
+             },
+         }
+     }
++    /// Bytes of still-compressed image data held in memory for this bitmap.
++    pub fn source_bytes(&self) -> usize {
++        match self {
++            CompressedBitmap::Jpeg { data, alpha, .. } => {
++                data.len() + alpha.as_ref().map_or(0, |alpha| alpha.len())
++            }
++            CompressedBitmap::Lossless(define_bits_lossless) => define_bits_lossless.data.len(),
++        }
++    }
++
+     pub fn decode(&self) -> Result<RenderBitmap<'static>, RenderError> {
+         match self {
+             CompressedBitmap::Jpeg {
+diff --git a/core/src/lib.rs b/core/src/lib.rs
+index 760ec4447..f7dac7d6f 100644
+--- a/core/src/lib.rs
++++ b/core/src/lib.rs
+@@ -34,6 +34,7 @@ mod library;
+ pub mod limits;
+ pub mod loader;
+ mod local_connection;
++pub mod memory_report;
+ mod net_connection;
+ mod orphan_manager;
+ pub mod pixel_bender;
+diff --git a/core/src/library.rs b/core/src/library.rs
+index 74188cd5e..823ad6e78 100644
+--- a/core/src/library.rs
++++ b/core/src/library.rs
+@@ -2,6 +2,7 @@ use crate::avm1::{PropertyMap as Avm1PropertyMap, PropertyMap};
+ use crate::avm2::{Class as Avm2Class, Domain as Avm2Domain};
+ use crate::backend::audio::SoundHandle;
+ use crate::character::Character;
++use crate::memory_report::LibraryMemoryUsage;
+ 
+ use crate::display_object::{Bitmap, Graphic, MorphShape, Text};
+ use crate::font::{Font, FontDescriptor, FontLike, FontQuery, FontType};
+@@ -142,6 +143,61 @@ impl<'gc> MovieLibrary<'gc> {
+         }
+     }
+ 
++    /// Totals up everything this library is currently keeping resident.
++    ///
++    /// Used by [`crate::memory_report`] to attribute retained memory to the
++    /// movie that owns it.
++    pub fn memory_usage(&self) -> LibraryMemoryUsage {
++        let mut usage = LibraryMemoryUsage {
++            characters: self.characters.len(),
++            has_domain: self.avm2_domain.is_some(),
++            ..Default::default()
++        };
++
++        for character in self.characters.values() {
++            // Does this character hold a strong `Arc` back to the very movie
++            // this library is weakly keyed on? Counting these is what
++            // distinguishes "somebody still needs this movie" from "this
++            // library is the only thing keeping its own key alive".
++            let character_movie = match character {
++                Character::EditText(o) => Some(o.movie()),
++                Character::Graphic(o) => Some(o.movie()),
++                Character::MovieClip(o) => Some(o.movie()),
++                Character::Avm1Button(o) => Some(o.movie()),
++                Character::Avm2Button(o) => Some(o.movie()),
++                Character::MorphShape(o) => Some(o.movie()),
++                Character::Text(o) => Some(o.movie()),
++                Character::Video(o) => Some(o.movie()),
++                _ => None,
++            };
++            if let Some(m) = character_movie
++                && Arc::ptr_eq(&m, &self.swf)
++            {
++                usage.self_refs += 1;
++            }
++
++            match character {
++                Character::Bitmap(bitmap) => {
++                    let compressed = bitmap.compressed();
++                    let size = compressed.size();
++                    usage.bitmaps += 1;
++                    if bitmap.is_uploaded() {
++                        usage.uploaded_bitmaps += 1;
++                    }
++                    usage.bitmap_source_bytes += compressed.source_bytes();
++                    // Four bytes per pixel once decoded to RGBA, which is what
++                    // both the decoded copy and the GPU texture cost.
++                    usage.bitmap_decoded_bytes += size.width as usize * size.height as usize * 4;
++                }
++                Character::Sound(_) => usage.sounds += 1,
++                Character::Font(_) => usage.fonts += 1,
++                _ => {}
++            }
++        }
++
++        usage
++    }
++
+     /// Registers a character; returns `true` if successful, or `false` if a character with
+     /// the given ID already exists.
+     pub fn register_character(&mut self, id: CharacterId, character: Character<'gc>) -> bool {
+diff --git a/core/src/loader.rs b/core/src/loader.rs
+index 5d69fb97b..5e3dbeafb 100644
+--- a/core/src/loader.rs
++++ b/core/src/loader.rs
+@@ -243,6 +243,18 @@ impl<'gc> LoadManager<'gc> {
+         handle
+     }
+ 
++    /// How many loaders are currently registered.
++    ///
++    /// Loaders are meant to be removed once their load settles, so a count
++    /// that only grows means load state is being retained.
++    pub fn len(&self) -> usize {
++        self.0.len()
++    }
++
++    pub fn is_empty(&self) -> bool {
++        self.0.is_empty()
++    }
++
+     /// Remove a completed loader.
+     /// This is used to remove a loader after the loading or unloading process has completed.
+     pub fn remove_loader(&mut self, handle: LoaderHandle) {
+diff --git a/core/src/memory_report.rs b/core/src/memory_report.rs
+new file mode 100644
+index 000000000..882fabc73
+--- /dev/null
++++ b/core/src/memory_report.rs
+@@ -0,0 +1,170 @@
++//! Live-memory accounting for loaded SWFs.
++//!
++//! Ruffle keeps one [`MovieLibrary`] per `SwfMovie`, and that map is *weakly*
++//! keyed on the movie (see [`crate::library::Library`]). A movie's decoded
++//! characters therefore stay resident for exactly as long as somebody still
++//! holds a strong `Arc<SwfMovie>`. When content is unloaded but its memory is
++//! never returned, the movie is still in this report and its strong count is
++//! above the one reference the library itself holds.
++//!
++//! This module walks that state so a leak can be measured instead of guessed
++//! at: run it once per interval while switching zones, and a movie that should
++//! be gone shows up as a row that never disappears.
++
++use std::fmt::Write as _;
++
++use crate::context::UpdateContext;
++
++/// What a single still-resident movie is keeping alive.
++#[derive(Debug, Clone)]
++pub struct MovieMemory {
++    pub url: String,
++    /// Strong `Arc<SwfMovie>` references, excluding the one this report holds.
++    ///
++    /// A movie that only its own library still references reads as 1. Anything
++    /// higher is an outside reference keeping the movie (and its whole library)
++    /// alive.
++    pub strong_refs: usize,
++    /// Size of the movie's decompressed SWF data.
++    pub swf_bytes: usize,
++    pub characters: usize,
++    /// Strong `Arc<SwfMovie>` clones held from inside this movie's own library
++    /// - its characters plus the library's own handle on the movie.
++    ///
++    /// When this equals `strong_refs`, nothing outside the library needs the
++    /// movie any more and the only thing keeping it resident is the library
++    /// that is keyed on it.
++    pub self_refs: usize,
++    pub bitmaps: usize,
++    /// Bitmaps that have been uploaded to the render backend, and so are also
++    /// holding GPU memory. Ruffle never releases these handles on its own.
++    pub uploaded_bitmaps: usize,
++    /// Bytes of still-compressed bitmap data held by the library.
++    pub bitmap_source_bytes: usize,
++    /// Bytes those bitmaps occupy once decoded to RGBA, whether or not they
++    /// have been uploaded yet. This is the dominant cost for AQW-style content.
++    pub bitmap_decoded_bytes: usize,
++    pub sounds: usize,
++    pub fonts: usize,
++    /// Whether the movie's library still points at an AVM2 `ApplicationDomain`.
++    pub has_domain: bool,
++}
++
++/// A whole-player snapshot, cheap enough to take every frame.
++#[derive(Debug, Clone, Default)]
++pub struct MemoryReport {
++    pub movies: Vec<MovieMemory>,
++    pub swf_bytes: usize,
++    pub bitmap_source_bytes: usize,
++    pub bitmap_decoded_bytes: usize,
++    pub characters: usize,
++    /// Loaders still registered with the `LoadManager`. Should return to zero
++    /// once every load settles; a number that only grows is itself a leak.
++    pub pending_loaders: usize,
++    /// `registerClassAlias` entries. These are strong roots with no eviction,
++    /// so each one pins a class, its translation unit and its movie forever.
++    pub class_aliases: usize,
++    pub gc_allocation: usize,
++    pub gc_objects: usize,
++}
++
++impl MemoryReport {
++    pub fn capture(context: &mut UpdateContext<'_>) -> Self {
++        let mut report = MemoryReport {
++            pending_loaders: context.load_manager.len(),
++            class_aliases: context.avm2.class_alias_count(),
++            gc_allocation: context.gc_context.metrics().total_allocation(),
++            gc_objects: context.gc_context.metrics().total_gc_count(),
++            ..Default::default()
++        };
++
++        let movies: Vec<_> = context.library.known_movies().collect();
++        for movie in movies {
++            let Some(library) = context.library.library_for_movie(movie.clone()) else {
++                continue;
++            };
++            let usage = library.memory_usage();
++
++            report.swf_bytes += movie.uncompressed_len().max(0) as usize;
++            report.bitmap_source_bytes += usage.bitmap_source_bytes;
++            report.bitmap_decoded_bytes += usage.bitmap_decoded_bytes;
++            report.characters += usage.characters;
++
++            report.movies.push(MovieMemory {
++                url: movie.url().to_owned(),
++                // Subtract the reference held by the `movies` vec above, so
++                // that the number reads as "references other than ours".
++                strong_refs: std::sync::Arc::strong_count(&movie) - 1,
++                swf_bytes: movie.uncompressed_len().max(0) as usize,
++                characters: usage.characters,
++                self_refs: usage.self_refs + 1, // + the library's own `swf` field
++                bitmaps: usage.bitmaps,
++                uploaded_bitmaps: usage.uploaded_bitmaps,
++                bitmap_source_bytes: usage.bitmap_source_bytes,
++                bitmap_decoded_bytes: usage.bitmap_decoded_bytes,
++                sounds: usage.sounds,
++                fonts: usage.fonts,
++                has_domain: usage.has_domain,
++            });
++        }
++
++        report
++            .movies
++            .sort_by(|a, b| b.bitmap_decoded_bytes.cmp(&a.bitmap_decoded_bytes));
++        report
++    }
++
++    /// One CSV row, for logging a time series across a zone-change run.
++    pub fn csv_header() -> &'static str {
++        "elapsed_s,movies,characters,swf_bytes,bitmap_source_bytes,bitmap_decoded_bytes,pending_loaders,class_aliases,gc_allocation,gc_objects"
++    }
++
++    pub fn to_csv_row(&self, elapsed_s: f64) -> String {
++        format!(
++            "{:.1},{},{},{},{},{},{},{},{},{}",
++            elapsed_s,
++            self.movies.len(),
++            self.characters,
++            self.swf_bytes,
++            self.bitmap_source_bytes,
++            self.bitmap_decoded_bytes,
++            self.pending_loaders,
++            self.class_aliases,
++            self.gc_allocation,
++            self.gc_objects,
++        )
++    }
++
++    /// The heaviest movies still resident, for a human reading the log.
++    pub fn top_movies(&self, count: usize) -> String {
++        let mut out = String::new();
++        for movie in self.movies.iter().take(count) {
++            let _ = write!(
++                out,
++                "\n    {:>4} refs ({:>4} internal)  {:>9} KiB decoded  {:>5} chars  {}",
++                movie.strong_refs,
++                movie.self_refs,
++                movie.bitmap_decoded_bytes / 1024,
++                movie.characters,
++                movie.url,
++            );
++        }
++        out
++    }
++}
++
++/// Per-library totals, gathered inside `library.rs` where the fields live.
++#[derive(Debug, Clone, Default)]
++pub struct LibraryMemoryUsage {
++    pub characters: usize,
++    /// Strong `Arc<SwfMovie>` clones this library's own characters hold
++    /// pointing back at the movie it is keyed on.
++    pub self_refs: usize,
++    pub bitmaps: usize,
++    pub uploaded_bitmaps: usize,
++    pub bitmap_source_bytes: usize,
++    pub bitmap_decoded_bytes: usize,
++    pub sounds: usize,
++    pub fonts: usize,
++    pub has_domain: bool,
++}
+-- 
+2.47.1
+

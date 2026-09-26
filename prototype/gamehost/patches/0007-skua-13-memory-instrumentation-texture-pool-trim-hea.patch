@@ -1,21 +1,21 @@
+From e5462001974ff03347672ea102d824856c5113c3 Mon Sep 17 00:00:00 2001
+From: Rohi <noelrohi59@gmail.com>
+Date: Sat, 26 Sep 2026 19:43:28 +0800
+Subject: [PATCH 07/11] skua #13: memory instrumentation, texture pool trim,
+ headless trim
+
+---
+ core/src/library.rs            | 11 ++++++++++
+ core/src/player.rs             | 14 ++++++++++++
+ render/wgpu/src/backend.rs     | 40 ++++++++++++++++++++++++++++++++++
+ render/wgpu/src/buffer_pool.rs | 29 ++++++++++++++++++++++++
+ 4 files changed, 94 insertions(+)
+
 diff --git a/core/src/library.rs b/core/src/library.rs
-index 74188cd5e..c5d9eb34e 100644
+index fa2914c43..aed0b63ea 100644
 --- a/core/src/library.rs
 +++ b/core/src/library.rs
-@@ -52,6 +52,12 @@ pub struct Avm2ClassRegistry<'gc> {
-     class_map: WeakValueHashMap<Avm2Class<'gc>, WeakMovieSymbol>,
- }
- 
-+impl<'gc> Avm2ClassRegistry<'gc> {
-+    pub fn skua_len(&self) -> usize {
-+        self.class_map.len()
-+    }
-+}
-+
- unsafe impl<'gc> Collect<'gc> for Avm2ClassRegistry<'gc> {
-     fn trace<C: Trace<'gc>>(&self, cc: &mut C) {
-         for (k, _) in self.class_map.iter() {
-@@ -490,6 +496,17 @@ impl<'gc> Library<'gc> {
+@@ -834,6 +834,17 @@ impl<'gc> Library<'gc> {
          self.movie_libraries.known_movies()
      }
  
@@ -27,18 +27,18 @@ index 74188cd5e..c5d9eb34e 100644
 +            chars += lib.characters.len();
 +            bytes += movie.data().len();
 +        }
-+        (n, chars, bytes, self.avm2_class_registry.skua_len())
++        (n, chars, bytes, self.avm2_class_registry.class_map.len())
 +    }
 +
-     /// Returns the default Font implementations behind the built in names (ie `_sans`)
-     pub fn default_font(
-         &mut self,
+     /// Marks `movie` as the movie the player was started with, whose library
+     /// is never released. See [`Pin::Root`].
+     pub fn set_root_movie(&mut self, movie: Arc<SwfMovie>) {
 diff --git a/core/src/player.rs b/core/src/player.rs
-index 0be19dcaf..72e93d6cd 100644
+index f29b3633f..5b6b5f144 100644
 --- a/core/src/player.rs
 +++ b/core/src/player.rs
-@@ -2446,6 +2446,20 @@ impl Player {
-         rval
+@@ -2578,6 +2578,20 @@ impl Player {
+         self.collect_garbage(true);
      }
  
 +    /// skua #13 instrumentation: JSON with GC object count and movie library totals.
@@ -50,19 +50,19 @@ index 0be19dcaf..72e93d6cd 100644
 +        )
 +    }
 +
-+    /// skua #13 instrumentation: finish the current GC cycle (a full collection).
++    /// skua #13 instrumentation: a full collection, including the library finalization pass.
 +    pub fn skua_full_gc(&mut self) {
-+        self.gc_arena.borrow_mut().finish_cycle();
++        self.collect_all_garbage();
 +    }
 +
      pub fn flush_shared_objects(&mut self) {
          self.update(|context| {
              if let Some(mut avm1_activation) =
 diff --git a/render/wgpu/src/backend.rs b/render/wgpu/src/backend.rs
-index e6338ee7f..c12dba9cb 100644
+index d51741722..458b26339 100644
 --- a/render/wgpu/src/backend.rs
 +++ b/render/wgpu/src/backend.rs
-@@ -380,6 +380,32 @@ impl<T: RenderTarget> WgpuRenderBackend<T> {
+@@ -375,6 +375,32 @@ impl<T: RenderTarget> WgpuRenderBackend<T> {
          }
      }
  
@@ -95,7 +95,7 @@ index e6338ee7f..c12dba9cb 100644
      pub fn descriptors(&self) -> &Arc<Descriptors> {
          &self.descriptors
      }
-@@ -669,6 +695,9 @@ impl<T: RenderTarget + 'static> RenderBackend for WgpuRenderBackend<T> {
+@@ -681,6 +707,9 @@ impl<T: RenderTarget + 'static> RenderBackend for WgpuRenderBackend<T> {
          self.active_frame
              .submit_for_target(&self.descriptors, &self.target, frame_output);
          self.offscreen_texture_pool = TexturePool::new();
@@ -105,7 +105,7 @@ index e6338ee7f..c12dba9cb 100644
          self.profiler
              .end_frame()
              .expect("Frame should end successfully");
-@@ -1341,3 +1370,14 @@ impl ActiveFrame {
+@@ -1332,3 +1361,14 @@ impl ActiveFrame {
          }
      }
  }
@@ -121,12 +121,12 @@ index e6338ee7f..c12dba9cb 100644
 +    })
 +}
 diff --git a/render/wgpu/src/buffer_pool.rs b/render/wgpu/src/buffer_pool.rs
-index 7d36ac70c..6d89f5cc3 100644
+index 1b6db3ea7..ac98c4e97 100644
 --- a/render/wgpu/src/buffer_pool.rs
 +++ b/render/wgpu/src/buffer_pool.rs
-@@ -12,6 +12,9 @@ type Constructor<Type, Description> = Box<dyn Fn(&Descriptors, &Description) ->
+@@ -30,6 +30,9 @@ impl Drop for PooledTexture {
  pub struct TexturePool {
-     pools: FnvHashMap<TextureKey, BufferPool<(wgpu::Texture, wgpu::TextureView), AlwaysCompatible>>,
+     pools: FnvHashMap<TextureKey, BufferPool<PooledTexture, AlwaysCompatible>>,
      globals_cache: FnvHashMap<GlobalsKey, Arc<Globals>>,
 +    /// skua #13: frame of last use per key, so sizes that stop being used can be evicted.
 +    last_used: FnvHashMap<TextureKey, u64>,
@@ -134,7 +134,7 @@ index 7d36ac70c..6d89f5cc3 100644
  }
  
  impl TexturePool {
-@@ -19,6 +22,31 @@ impl TexturePool {
+@@ -37,6 +40,31 @@ impl TexturePool {
          Default::default()
      }
  
@@ -166,7 +166,7 @@ index 7d36ac70c..6d89f5cc3 100644
      pub fn get_texture(
          &mut self,
          descriptors: &Descriptors,
-@@ -33,6 +61,7 @@ impl TexturePool {
+@@ -51,6 +79,7 @@ impl TexturePool {
              format,
              sample_count,
          };
@@ -174,3 +174,6 @@ index 7d36ac70c..6d89f5cc3 100644
          let pool = self.pools.entry(key).or_insert_with(|| {
              let label = if cfg!(feature = "render_debug_labels") {
                  use std::sync::atomic::{AtomicU32, Ordering};
+-- 
+2.47.1
+

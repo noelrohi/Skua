@@ -1,0 +1,1326 @@
+From 7cbdd5567198c01acd8c1e2536ae39bd108a4dbd Mon Sep 17 00:00:00 2001
+From: Farhan Riaz <its-forum@techlogix.com>
+Date: Wed, 2 Sep 2026 20:50:59 +0500
+Subject: [PATCH 06/11] core, render, desktop: Stop unloadAndStop collection
+ storms; make resident assets cheap
+
+Live testing of AdventureQuest Worlds after the corrected library lifetime
+fix reported two things after ten map switches: the process at 3.5 GB, and
+"lagging hard".
+
+The lag was ours. `Loader.unloadAndStop(true)` charged the collector a
+whole collection's worth of debt on every call, gc-arena carries artificial
+debt across cycles and pays all of it in one call, and a game disposes one
+loader per asset when it tears a zone down - dozens of calls in a frame,
+each buying a full mark-and-sweep of a heap that grows with the session.
+The call now sets a request on the update context; `Player::update` grants
+it with one full cycle at the end of the update, at most once every ten
+frames, and leaves requests inside that window to the paced collector,
+which the libraries' external-memory accounting already keeps in step.
+Forty loaders disposed in one frame on a 100k-object heap: 4.4 s of stalls
+over the following sixty frames before, 2.0 s (the frame budget) after.
+
+The memory was mostly what a resident asset costs, multiplied by the several
+hundred assets the game keeps resolvable in its ApplicationDomain on purpose:
+
+* Every DefineShape was tessellated into a GPU mesh at load, and kept, with
+  up to four scaled variants, for as long as its library lived. Shapes are
+  now tessellated on first draw, and `Player::update` drops the meshes of
+  shapes not drawn for twenty seconds.
+* Every shape kept its parsed records (`swf::Shape`), tens of kilobytes for
+  a few hundred bytes of SWF. `Graphic` keeps the tag's slice instead and
+  reads the records back on demand; they are dropped with the meshes.
+* `BitmapData` pixel buffers and `cacheAsBitmap`/filter textures were
+  invisible to the collector's pacing: a room's worth of discarded avatar
+  bitmaps sat unreachable until a cycle happened to run. Both now report
+  their bytes to `Metrics` as external allocations.
+
+The memory report gains the render backend's counters (wgpu `counters`
+feature), Ruffle's own counts of live meshes and textures with their bytes,
+and the bytes live in the Rust allocator (a counting global allocator in the
+desktop player), so a run can be attributed instead of guessed at.
+
+In a logged-in session with ten zone changes between three busy rooms the
+process went from 1.9 GB (Rust heap 790 MB, most of it parsed shapes and
+lingering bitmaps) to about 1.0 GB (Rust heap 480 MB, of which the
+ActionScript heap is 160 MB), with no growth from the fifth switch on and
+no change in what is rendered.
+---
+ core/src/avm2/globals/flash/display/loader.rs |  12 +-
+ core/src/bitmap/bitmap_data.rs                | 111 +++++++++--
+ core/src/context.rs                           |   5 +
+ core/src/display_object.rs                    |  62 +++++-
+ core/src/display_object/graphic.rs            | 176 ++++++++++++++----
+ core/src/display_object/movie_clip.rs         |   6 +-
+ core/src/library.rs                           |  21 +++
+ core/src/memory_report.rs                     |  44 ++++-
+ core/src/player.rs                            |  59 +++++-
+ core/src/tessellation_cache.rs                |   8 +
+ render/src/backend.rs                         |  30 +++
+ render/wgpu/Cargo.toml                        |   2 +-
+ render/wgpu/src/backend.rs                    |  53 +++---
+ render/wgpu/src/buffer_pool.rs                |  24 ++-
+ render/wgpu/src/lib.rs                        |  56 ++++++
+ render/wgpu/src/mesh.rs                       |  41 ++++
+ render/wgpu/src/surface/target.rs             |   8 +-
+ 17 files changed, 610 insertions(+), 108 deletions(-)
+
+diff --git a/core/src/avm2/globals/flash/display/loader.rs b/core/src/avm2/globals/flash/display/loader.rs
+index 07042bfe8..0a6d58322 100644
+--- a/core/src/avm2/globals/flash/display/loader.rs
++++ b/core/src/avm2/globals/flash/display/loader.rs
+@@ -345,13 +345,11 @@ pub fn unload_and_stop<'gc>(
+     loader_info.unload(activation.context);
+ 
+     if run_gc {
+-        // Ruffle's collector is incremental and paced by how much has been
+-        // allocated since it last ran, so on its own it would not react to a
+-        // movie that has just dropped several megabytes. Charging it the
+-        // memory currently in play makes the next collection step run the
+-        // cycle to completion, which is the behaviour Flash documents here.
+-        let metrics = activation.gc().metrics();
+-        metrics.add_debt(metrics.total_allocation());
++        // Flash collects immediately here. Ask the player for a full cycle at
++        // the end of this update rather than charging the collector directly:
++        // content commonly calls this once per loader it owns when it tears a
++        // scene down, and each of those must not cost a collection of its own.
++        *activation.context.full_gc_requested = true;
+     }
+ 
+     Ok(Value::Undefined)
+diff --git a/core/src/bitmap/bitmap_data.rs b/core/src/bitmap/bitmap_data.rs
+index 851671aa1..35ddea927 100644
+--- a/core/src/bitmap/bitmap_data.rs
++++ b/core/src/bitmap/bitmap_data.rs
+@@ -3,6 +3,7 @@ use crate::context::RenderContext;
+ use crate::display_object::{BoundsMode, DisplayObject, DisplayObjectWeak, TDisplayObject};
+ use bitflags::bitflags;
+ use gc_arena::lock::GcRefLock;
++use gc_arena::metrics::Metrics;
+ use gc_arena::{Collect, Gc, Mutation};
+ use ruffle_render::backend::RenderBackend;
+ use ruffle_render::bitmap::{
+@@ -233,7 +234,7 @@ impl<'gc> BitmapData<'gc> {
+         transparency: bool,
+         fill_color: u32,
+     ) -> Self {
+-        let data = BitmapRawData::new(width, height, transparency, fill_color);
++        let data = BitmapRawData::new(mc, width, height, transparency, fill_color);
+         let data = BitmapRawDataWrapper::new(Gc::new(mc, data.into()));
+ 
+         Self(data)
+@@ -246,7 +247,7 @@ impl<'gc> BitmapData<'gc> {
+         transparency: bool,
+         pixels: Vec<Color>,
+     ) -> Self {
+-        let data = BitmapRawData::new_with_pixels(width, height, transparency, pixels);
++        let data = BitmapRawData::new_with_pixels(mc, width, height, transparency, pixels);
+         let data = BitmapRawDataWrapper::new(Gc::new(mc, data.into()));
+ 
+         Self(data)
+@@ -368,7 +369,7 @@ impl<'gc> BitmapData<'gc> {
+ pub struct BitmapRawData<'gc> {
+     /// The pixels in the bitmap, stored as a array of pre-multiplied ARGB colour values
+     #[collect(require_static)]
+-    pixels: Vec<Color>,
++    pixels: TrackedPixels,
+ 
+     width: u32,
+     height: u32,
+@@ -476,7 +477,7 @@ mod wrapper {
+             BitmapRawDataWrapper(Gc::new(
+                 mc,
+                 BitmapRawData {
+-                    pixels: Vec::new(),
++                    pixels: super::TrackedPixels::untracked(Vec::new()),
+                     width: 0,
+                     height: 0,
+                     transparency: false,
+@@ -730,12 +731,21 @@ impl std::fmt::Debug for BitmapRawData<'_> {
+ }
+ 
+ impl<'gc> BitmapRawData<'gc> {
+-    pub fn new(width: u32, height: u32, transparency: bool, fill_color: u32) -> Self {
++    pub fn new(
++        mc: &Mutation<'gc>,
++        width: u32,
++        height: u32,
++        transparency: bool,
++        fill_color: u32,
++    ) -> Self {
+         Self {
+-            pixels: vec![
+-                Color::bgra_u32(fill_color).to_premultiplied_alpha(transparency);
+-                width as usize * height as usize
+-            ],
++            pixels: TrackedPixels::new(
++                vec![
++                    Color::bgra_u32(fill_color).to_premultiplied_alpha(transparency);
++                    width as usize * height as usize
++                ],
++                Some(mc.metrics().clone()),
++            ),
+             width,
+             height,
+             transparency,
+@@ -750,13 +760,14 @@ impl<'gc> BitmapRawData<'gc> {
+     }
+ 
+     pub fn new_with_pixels(
++        mc: &Mutation<'gc>,
+         width: u32,
+         height: u32,
+         transparency: bool,
+         pixels: Vec<Color>,
+     ) -> Self {
+         Self {
+-            pixels,
++            pixels: TrackedPixels::new(pixels, Some(mc.metrics().clone())),
+             width,
+             height,
+             transparency,
+@@ -777,7 +788,7 @@ impl<'gc> BitmapRawData<'gc> {
+     pub fn dispose(&mut self) {
+         self.width = 0;
+         self.height = 0;
+-        self.pixels = Vec::new(); // free the CPU pixel buffer
++        self.pixels.clear_and_free(); // free the CPU pixel buffer
+         self.bitmap_handle = None;
+         // There's no longer a handle to update
+         self.dirty_state = DirtyState::Clean;
+@@ -1041,3 +1052,81 @@ impl ThresholdOperation {
+         }
+     }
+ }
++
++/// A `BitmapData`'s pixel buffer, with its size reported to the garbage
++/// collector's pacing.
++///
++/// The collector only counts the `Gc` box a `BitmapData` lives in; the pixel
++/// buffer behind it is often thousands of times larger. Content that draws
++/// bitmaps by the dozen - a game rendering every avatar in a room to a bitmap
++/// - would otherwise pile up megabytes of unreachable pixels between the
++/// collector's cycles, and the GPU textures that go with them.
++pub struct TrackedPixels {
++    pixels: Vec<Color>,
++    metrics: Option<Metrics>,
++}
++
++impl std::fmt::Debug for TrackedPixels {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        f.debug_struct("TrackedPixels")
++            .field("len", &self.pixels.len())
++            .field("tracked", &self.metrics.is_some())
++            .finish()
++    }
++}
++
++impl TrackedPixels {
++    fn bytes(pixels: &[Color]) -> usize {
++        std::mem::size_of_val(pixels)
++    }
++
++    pub fn new(pixels: Vec<Color>, metrics: Option<Metrics>) -> Self {
++        if let Some(metrics) = &metrics {
++            metrics.mark_external_allocation(Self::bytes(&pixels));
++        }
++        Self { pixels, metrics }
++    }
++
++    pub fn untracked(pixels: Vec<Color>) -> Self {
++        Self {
++            pixels,
++            metrics: None,
++        }
++    }
++
++    /// Drops the buffer, reporting it freed.
++    pub fn clear_and_free(&mut self) {
++        let old = std::mem::take(&mut self.pixels);
++        if let Some(metrics) = &self.metrics {
++            metrics.mark_external_deallocation(Self::bytes(&old));
++        }
++    }
++}
++
++impl Clone for TrackedPixels {
++    fn clone(&self) -> Self {
++        Self::new(self.pixels.clone(), self.metrics.clone())
++    }
++}
++
++impl Drop for TrackedPixels {
++    fn drop(&mut self) {
++        if let Some(metrics) = &self.metrics {
++            metrics.mark_external_deallocation(Self::bytes(&self.pixels));
++        }
++    }
++}
++
++impl std::ops::Deref for TrackedPixels {
++    type Target = Vec<Color>;
++
++    fn deref(&self) -> &Vec<Color> {
++        &self.pixels
++    }
++}
++
++impl std::ops::DerefMut for TrackedPixels {
++    fn deref_mut(&mut self) -> &mut Vec<Color> {
++        &mut self.pixels
++    }
++}
+diff --git a/core/src/context.rs b/core/src/context.rs
+index ae35a6df0..05c46a831 100644
+--- a/core/src/context.rs
++++ b/core/src/context.rs
+@@ -90,6 +90,11 @@ pub struct UpdateContext<'gc> {
+     /// Requests that the player re-renders after this execution (e.g. due to `updateAfterEvent`).
+     pub needs_render: &'gc mut bool,
+ 
++    /// Requests a full garbage collection once this update has finished
++    /// (`Loader.unloadAndStop(true)`). Any number of requests in one update
++    /// cost one collection; see `Player::collect_garbage`.
++    pub full_gc_requested: &'gc mut bool,
++
+     /// The root SWF file.
+     pub root_swf: &'gc mut Arc<SwfMovie>,
+ 
+diff --git a/core/src/display_object.rs b/core/src/display_object.rs
+index 8bf56d432..3f438dd08 100644
+--- a/core/src/display_object.rs
++++ b/core/src/display_object.rs
+@@ -16,6 +16,7 @@ use crate::vminterface::Instantiator;
+ use bitflags::bitflags;
+ use gc_arena::barrier::{Write, unlock};
+ use gc_arena::lock::Lock;
++use gc_arena::metrics::Metrics;
+ use gc_arena::{Collect, Finalization, Gc, Mutation};
+ use ruffle_macros::{enum_trait_object, istr};
+ use ruffle_render::perspective_projection::PerspectiveProjection;
+@@ -109,7 +110,7 @@ pub struct BitmapCache {
+     draw_offset: Point<i32>,
+ 
+     /// The current contents of the cache, if any. Values are post-filters.
+-    bitmap: Option<BitmapInfo>,
++    bitmap: Option<std::rc::Rc<TrackedCacheBitmap>>,
+ 
+     /// Whether we warned that this bitmap was too large to be cached
+     warned_for_oversize: bool,
+@@ -139,6 +140,7 @@ impl BitmapCache {
+     fn update(
+         &mut self,
+         renderer: &mut dyn RenderBackend,
++        metrics: &Metrics,
+         matrix: Matrix,
+         source_width: u32,
+         source_height: u32,
+@@ -155,8 +157,8 @@ impl BitmapCache {
+         self.source_height = source_height;
+         self.draw_offset = draw_offset;
+         if let Some(current) = &mut self.bitmap
+-            && current.width == actual_width
+-            && current.height == actual_height
++            && current.info.width == actual_width
++            && current.info.height == actual_height
+         {
+             return; // No need to resize it
+         }
+@@ -173,10 +175,15 @@ impl BitmapCache {
+             && acceptable_size
+         {
+             let handle = renderer.create_empty_texture(actual_width, actual_height);
+-            self.bitmap = handle.ok().map(|handle| BitmapInfo {
+-                width: actual_width.get(),
+-                height: actual_height.get(),
+-                handle,
++            self.bitmap = handle.ok().map(|handle| {
++                std::rc::Rc::new(TrackedCacheBitmap::new(
++                    BitmapInfo {
++                        width: actual_width.get(),
++                        height: actual_height.get(),
++                        handle,
++                    },
++                    metrics.clone(),
++                ))
+             });
+         } else {
+             self.bitmap = None;
+@@ -191,7 +198,45 @@ impl BitmapCache {
+     }
+ 
+     fn bitmap(&self) -> Option<BitmapInfo> {
+-        self.bitmap.clone()
++        self.bitmap.as_ref().map(|bitmap| bitmap.info.clone())
++    }
++}
++
++/// A `cacheAsBitmap` texture whose size is reported to the collector's
++/// pacing, like `BitmapData` pixels: the display object it belongs to is a
++/// small `Gc` box, but the texture behind it can be the size of the screen,
++/// and a room full of filtered display objects being removed would
++/// otherwise leave their textures alive until the collector happened to run.
++struct TrackedCacheBitmap {
++    info: BitmapInfo,
++    bytes: usize,
++    metrics: Metrics,
++}
++
++impl std::fmt::Debug for TrackedCacheBitmap {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        f.debug_struct("TrackedCacheBitmap")
++            .field("width", &self.info.width)
++            .field("height", &self.info.height)
++            .finish()
++    }
++}
++
++impl TrackedCacheBitmap {
++    fn new(info: BitmapInfo, metrics: Metrics) -> Self {
++        let bytes = info.width as usize * info.height as usize * 4;
++        metrics.mark_external_allocation(bytes);
++        Self {
++            info,
++            bytes,
++            metrics,
++        }
++    }
++}
++
++impl Drop for TrackedCacheBitmap {
++    fn drop(&mut self) {
++        self.metrics.mark_external_deallocation(self.bytes);
+     }
+ }
+ 
+@@ -1021,6 +1066,7 @@ pub fn render_base<'gc>(
+                 if cache.is_dirty(&base_transform.matrix, width, height) {
+                     cache.update(
+                         context.renderer,
++                        context.gc_context.metrics(),
+                         base_transform.matrix,
+                         width,
+                         height,
+diff --git a/core/src/display_object/graphic.rs b/core/src/display_object/graphic.rs
+index b0eb1d7ff..460f718e9 100644
+--- a/core/src/display_object/graphic.rs
++++ b/core/src/display_object/graphic.rs
+@@ -8,7 +8,7 @@ use crate::display_object::{BoundsMode, DisplayObjectBase};
+ use crate::drawing::Drawing;
+ use crate::library::MovieLibrarySource;
+ use crate::prelude::*;
+-use crate::tag_utils::SwfMovie;
++use crate::tag_utils::{SwfMovie, SwfSlice};
+ use crate::tessellation_cache::TessellationCache;
+ use crate::vminterface::Instantiator;
+ use core::fmt;
+@@ -17,9 +17,11 @@ use gc_arena::lock::Lock;
+ use gc_arena::{Collect, Finalization, Gc, Mutation};
+ use ruffle_common::utils::HasPrefixField;
+ use ruffle_render::backend::ShapeHandle;
++use ruffle_render::backend::null::NullBitmapSource;
+ use ruffle_render::commands::CommandHandler;
+-use std::cell::{OnceCell, RefCell, RefMut};
++use std::cell::{Cell, OnceCell, RefCell, RefMut};
+ use std::sync::Arc;
++use web_time::Instant;
+ 
+ #[derive(Clone, Collect, Copy)]
+ #[collect(no_drop)]
+@@ -56,24 +58,26 @@ impl<'gc> Graphic<'gc> {
+     }
+ 
+     /// Construct a `Graphic` from it's associated `Shape` tag.
++    ///
++    /// `source` is the `DefineShape` tag body the shape was read from, with
++    /// the tag version. When given, the parsed shape can be dropped while
++    /// the graphic is not in use and read again from the movie's data when
++    /// it is; see [`Self::evict_stale_tessellation`].
+     pub fn from_swf_tag(
+         context: &mut UpdateContext<'gc>,
+         swf_shape: swf::Shape,
++        source: Option<(SwfSlice, u8)>,
+         movie: Arc<SwfMovie>,
+     ) -> Self {
+-        let library = context.library.library_for_movie(movie.clone()).unwrap();
+         let shared = GraphicShared {
+             id: swf_shape.id,
+             shape_bounds: swf_shape.shape_bounds,
+             edge_bounds: swf_shape.edge_bounds,
+-            render_handle: Some(
+-                context
+-                    .renderer
+-                    .register_shape((&swf_shape).into(), &MovieLibrarySource { library }),
+-            ),
+-            shape: swf_shape,
++            shape: RefCell::new(Some(Box::new(swf_shape))),
++            shape_source: source,
+             movie,
+             scaled_handle: RefCell::new(TessellationCache::new()),
++            last_drawn: Cell::new(None),
+         };
+ 
+         Graphic(Gc::new(
+@@ -94,8 +98,7 @@ impl<'gc> Graphic<'gc> {
+             id: 0,
+             shape_bounds: Default::default(),
+             edge_bounds: Default::default(),
+-            render_handle: None,
+-            shape: swf::Shape {
++            shape: RefCell::new(Some(Box::new(swf::Shape {
+                 version: 32,
+                 id: 0,
+                 shape_bounds: Default::default(),
+@@ -106,9 +109,11 @@ impl<'gc> Graphic<'gc> {
+                     line_styles: Vec::new(),
+                 },
+                 shape: Vec::new(),
+-            },
++            }))),
++            shape_source: None,
+             movie: context.root_swf.clone(),
+             scaled_handle: RefCell::new(TessellationCache::new()),
++            last_drawn: Cell::new(None),
+         };
+ 
+         Graphic(Gc::new(
+@@ -139,16 +144,24 @@ impl<'gc> Graphic<'gc> {
+         unlock!(Gc::write(mc, self.0), GraphicData, shared).set(shared);
+     }
+ 
+-    /// Returns the best shape handle for the current scale, retessellating if necessary.
++    /// Returns the best shape handle for the current scale, tessellating if necessary.
++    ///
++    /// Shapes are tessellated on first draw rather than when their movie is
++    /// loaded. A loaded SWF's shapes stay resident for as long as anything can
++    /// still reach the SWF (see `MovieLibrary`), and a game that keeps assets
++    /// resolvable in an `ApplicationDomain` keeps hundreds of them; their
++    /// meshes are by far the largest thing per shape, and most of them are
++    /// never on screen at once. Meshes of shapes that have not been drawn for
++    /// a while are dropped again by [`Self::evict_stale_tessellation`].
+     fn get_or_retessellate_handle(
+         self,
+         context: &mut RenderContext,
+-        base_handle: &ShapeHandle,
+         current_scale: f32,
+     ) -> ShapeHandle {
+         // Since graphics are created from a shared shape, we may be able to reuse a
+         // cached tessellation from another instance at a similar scale.
+         let shared = self.0.shared.get();
++        shared.touch();
+ 
+         {
+             let mut cache = shared.scaled_handle.borrow_mut();
+@@ -158,30 +171,104 @@ impl<'gc> Graphic<'gc> {
+             }
+         }
+ 
+-        // Retessellate at the new scale
++        // Tessellate at the current scale. Bitmap fills come from the movie's
++        // library; a shape whose library is gone can only draw its solid fills.
+         let library = context.library.library_for_movie(shared.movie.clone());
+-        if let Some(library) = library {
+-            let new_handle = context.renderer.register_shape_with_scale(
+-                (&shared.shape).into(),
++        let new_handle = shared.with_shape(|shape| match library {
++            Some(library) => context.renderer.register_shape_with_scale(
++                shape.into(),
+                 &MovieLibrarySource { library },
+                 current_scale,
++            ),
++            None => context.renderer.register_shape_with_scale(
++                shape.into(),
++                &NullBitmapSource,
++                current_scale,
++            ),
++        });
++
++        {
++            let mut cache = shared.scaled_handle.borrow_mut();
++            tracing::debug!(
++                "Graphic id={} tessellated: scale={:.2}, cache_size={}",
++                shared.id,
++                current_scale,
++                cache.len()
+             );
++            cache.insert(current_scale, new_handle.clone());
++        }
+ 
+-            {
+-                let mut cache = shared.scaled_handle.borrow_mut();
+-                tracing::debug!(
+-                    "Graphic id={} retessellated: new_scale={:.2}, cache_size={}",
+-                    shared.id,
+-                    current_scale,
+-                    cache.len()
+-                );
+-                cache.insert(current_scale, new_handle.clone());
+-            }
++        new_handle
++    }
+ 
+-            new_handle
+-        } else {
+-            base_handle.clone()
++    /// Drops this shape's tessellations, and its parsed shape records if
++    /// they can be read back from the movie, if it has not been drawn or
++    /// hit-tested since `before`. Both are rebuilt on the next use.
++    pub fn evict_stale_tessellation(self, before: Instant) -> bool {
++        let shared = self.0.shared.get();
++        let stale = match shared.last_drawn.get() {
++            Some(last) => last < before,
++            None => true,
++        };
++        if !stale {
++            return false;
++        }
++        let mut evicted = false;
++        let mut cache = shared.scaled_handle.borrow_mut();
++        if cache.len() > 0 {
++            cache.clear();
++            evicted = true;
++        }
++        if shared.shape_source.is_some() && shared.shape.borrow_mut().take().is_some() {
++            evicted = true;
++        }
++        evicted
++    }
++}
++
++impl GraphicShared {
++    fn touch(&self) {
++        self.last_drawn.set(Some(Instant::now()));
++    }
++
++    /// Whether this graphic has any shape to draw or hit-test at all.
++    fn has_shape(&self) -> bool {
++        self.shape_source.is_some()
++            || self
++                .shape
++                .borrow()
++                .as_ref()
++                .is_some_and(|shape| !shape.shape.is_empty())
++    }
++
++    /// Runs `f` on the parsed shape, reading it back from the movie's data
++    /// first if it has been dropped.
++    fn with_shape<R>(&self, f: impl FnOnce(&swf::Shape) -> R) -> R {
++        let mut slot = self.shape.borrow_mut();
++        if slot.is_none() {
++            let parsed = self.shape_source.as_ref().and_then(|(source, version)| {
++                match source.read_from(0).read_define_shape(*version) {
++                    Ok(shape) => Some(shape),
++                    Err(e) => {
++                        tracing::error!("Could not re-read shape {}: {e}", self.id);
++                        None
++                    }
++                }
++            });
++            *slot = Some(Box::new(parsed.unwrap_or_else(|| swf::Shape {
++                version: 32,
++                id: self.id,
++                shape_bounds: self.shape_bounds,
++                edge_bounds: self.edge_bounds,
++                flags: swf::ShapeFlag::empty(),
++                styles: swf::ShapeStyles {
++                    fill_styles: Vec::new(),
++                    line_styles: Vec::new(),
++                },
++                shape: Vec::new(),
++            })));
+         }
++        f(slot.as_ref().expect("shape was just parsed"))
+     }
+ }
+ 
+@@ -263,7 +350,7 @@ impl<'gc> TDisplayObject<'gc> for Graphic<'gc> {
+ 
+         if let Some(drawing) = self.0.drawing.get() {
+             drawing.borrow().render(context);
+-        } else if let Some(base_handle) = self.0.shared.get().render_handle.clone() {
++        } else if self.0.shared.get().has_shape() {
+             let transform = context.transform_stack.transform();
+ 
+             // Calculate the current scale from the transform, to determine if
+@@ -273,7 +360,7 @@ impl<'gc> TDisplayObject<'gc> for Graphic<'gc> {
+             let scale_y = f32::abs(matrix.b + matrix.d);
+             let current_scale = ((scale_x * scale_x + scale_y * scale_y) / 2.0).sqrt();
+ 
+-            let handle = self.get_or_retessellate_handle(context, &base_handle, current_scale);
++            let handle = self.get_or_retessellate_handle(context, current_scale);
+ 
+             context.commands.render_shape(handle, transform)
+         }
+@@ -298,8 +385,11 @@ impl<'gc> TDisplayObject<'gc> for Graphic<'gc> {
+                     return true;
+                 }
+             } else {
+-                let shape = &self.0.shared.get().shape;
+-                return ruffle_render::shape_utils::shape_hit_test(shape, point, &local_matrix);
++                let shared = self.0.shared.get();
++                shared.touch();
++                return shared.with_shape(|shape| {
++                    ruffle_render::shape_utils::shape_hit_test(shape, point, &local_matrix)
++                });
+             }
+         }
+ 
+@@ -345,11 +435,23 @@ impl<'gc> TDisplayObject<'gc> for Graphic<'gc> {
+ #[collect(require_static)]
+ struct GraphicShared {
+     id: CharacterId,
+-    shape: swf::Shape,
+-    render_handle: Option<ShapeHandle>,
++    /// The parsed shape. `None` while it has been dropped to save memory;
++    /// see `with_shape`. Never `None` for a graphic without `shape_source`.
++    #[collect(require_static)]
++    shape: RefCell<Option<Box<swf::Shape>>>,
++    /// The `DefineShape` tag this shape was read from, and its version, so
++    /// that the parsed shape can be dropped and read again on demand.
++    #[collect(require_static)]
++    shape_source: Option<(SwfSlice, u8)>,
+     shape_bounds: Rectangle<Twips>,
+     edge_bounds: Rectangle<Twips>,
+     movie: Arc<SwfMovie>,
++    /// Tessellations of `shape` at the scales it has been drawn at. Built on
++    /// first draw and dropped again when the shape goes undrawn for a while;
++    /// see `Graphic::get_or_retessellate_handle`.
+     #[collect(require_static)]
+     scaled_handle: RefCell<TessellationCache>,
++    /// When any instance of this shape was last drawn or hit-tested.
++    #[collect(require_static)]
++    last_drawn: Cell<Option<Instant>>,
+ }
+diff --git a/core/src/display_object/movie_clip.rs b/core/src/display_object/movie_clip.rs
+index 30ab0e9f7..095aed3de 100644
+--- a/core/src/display_object/movie_clip.rs
++++ b/core/src/display_object/movie_clip.rs
+@@ -3583,9 +3583,13 @@ impl<'gc, 'a> MovieClipShared<'gc> {
+         reader: &mut SwfStream<'a>,
+         version: u8,
+     ) -> Result<(), Error> {
++        // Keep hold of the tag itself, so that the parsed shape can be
++        // dropped and read back while the graphic is not in use.
++        let source = self.swf.resize_to_reader(reader);
+         let swf_shape = reader.read_define_shape(version)?;
+         let id = swf_shape.id;
+-        let graphic = Graphic::from_swf_tag(context, swf_shape, self.movie());
++        let graphic =
++            Graphic::from_swf_tag(context, swf_shape, Some((source, version)), self.movie());
+         self.library_mut(context)
+             .register_character(id, Character::Graphic(graphic));
+         Ok(())
+diff --git a/core/src/library.rs b/core/src/library.rs
+index 3f1e575c6..fa2914c43 100644
+--- a/core/src/library.rs
++++ b/core/src/library.rs
+@@ -840,6 +840,27 @@ impl<'gc> Library<'gc> {
+         self.movie_libraries.set_root(movie);
+     }
+ 
++    /// Drops the tessellated meshes of every shape that has not been drawn
++    /// since `before`. Returns how many shapes were affected.
++    ///
++    /// A library keeps its shapes for as long as anything can reach the
++    /// movie, which for content that keeps assets in a long-lived
++    /// `ApplicationDomain` is a long time; their meshes are the largest thing
++    /// about them and are cheap to rebuild on the next draw.
++    pub fn evict_stale_tessellations(&self, before: web_time::Instant) -> usize {
++        let mut evicted = 0;
++        for (_, library) in self.movie_libraries.0.iter() {
++            for character in library.characters.values() {
++                if let Character::Graphic(graphic) = character
++                    && graphic.evict_stale_tessellation(before)
++                {
++                    evicted += 1;
++                }
++            }
++        }
++        evicted
++    }
++
+     /// The finalization step of a collection cycle: decides which loaded
+     /// movies' libraries live and which die, now that marking has finished.
+     ///
+diff --git a/core/src/memory_report.rs b/core/src/memory_report.rs
+index e214a1227..55bcc430a 100644
+--- a/core/src/memory_report.rs
++++ b/core/src/memory_report.rs
+@@ -68,8 +68,27 @@ pub struct MemoryReport {
+     /// `registerClassAlias` entries. These are strong roots with no eviction,
+     /// so each one pins a class, its translation unit and its movie forever.
+     pub class_aliases: usize,
++    /// Bytes of live `Gc` objects.
+     pub gc_allocation: usize,
+     pub gc_objects: usize,
++    /// Bytes reported to the collector as external allocations owned by
++    /// `Gc` objects: movie libraries' SWF data and bitmap sources,
++    /// `BitmapData` pixels, `cacheAsBitmap` textures.
++    pub gc_external_bytes: usize,
++    /// GPU memory the render backend reports holding, if it can tell: this
++    /// is where decoded bitmaps, cached display objects and filter targets
++    /// end up, and it is not part of any movie library's accounting.
++    pub gpu_textures: usize,
++    pub gpu_texture_bytes: usize,
++    pub gpu_buffer_bytes: usize,
++    /// Tessellated shape meshes alive in the renderer and their vertex and
++    /// index bytes. Counted by Ruffle itself, so available on every backend.
++    pub meshes: usize,
++    pub mesh_bytes: usize,
++    /// Textures Ruffle created and still holds, and their approximate pixel
++    /// bytes; counted by Ruffle, so available on every backend.
++    pub tracked_textures: usize,
++    pub tracked_texture_bytes: usize,
+ }
+ 
+ impl MemoryReport {
+@@ -77,11 +96,22 @@ impl MemoryReport {
+         let mut report = MemoryReport {
+             pending_loaders: context.load_manager.len(),
+             class_aliases: context.avm2.class_alias_count(),
+-            gc_allocation: context.gc_context.metrics().total_allocation(),
++            gc_allocation: context.gc_context.metrics().total_gc_allocation(),
+             gc_objects: context.gc_context.metrics().total_gc_count(),
++            gc_external_bytes: context.gc_context.metrics().total_external_allocation(),
+             ..Default::default()
+         };
+ 
++        if let Some(gpu) = context.renderer.memory_usage() {
++            report.gpu_textures = gpu.textures;
++            report.gpu_texture_bytes = gpu.texture_bytes;
++            report.gpu_buffer_bytes = gpu.buffer_bytes;
++            report.meshes = gpu.meshes;
++            report.mesh_bytes = gpu.mesh_bytes;
++            report.tracked_textures = gpu.tracked_textures;
++            report.tracked_texture_bytes = gpu.tracked_texture_bytes;
++        }
++
+         let movies: Vec<_> = context.library.known_movies().collect();
+         for movie in movies {
+             let Some(library) = context.library.library_for_movie(movie.clone()) else {
+@@ -122,12 +152,12 @@ impl MemoryReport {
+ 
+     /// One CSV row, for logging a time series across a zone-change run.
+     pub fn csv_header() -> &'static str {
+-        "elapsed_s,movies,characters,swf_bytes,bitmap_source_bytes,bitmap_decoded_bytes,pending_loaders,class_aliases,gc_allocation,gc_objects"
++        "elapsed_s,movies,characters,swf_bytes,bitmap_source_bytes,bitmap_decoded_bytes,pending_loaders,class_aliases,gc_allocation,gc_objects,gc_external_bytes,gpu_textures,gpu_texture_bytes,gpu_buffer_bytes,meshes,mesh_bytes,tracked_textures,tracked_texture_bytes"
+     }
+ 
+     pub fn to_csv_row(&self, elapsed_s: f64) -> String {
+         format!(
+-            "{:.1},{},{},{},{},{},{},{},{},{}",
++            "{:.1},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+             elapsed_s,
+             self.movies.len(),
+             self.characters,
+@@ -138,6 +168,14 @@ impl MemoryReport {
+             self.class_aliases,
+             self.gc_allocation,
+             self.gc_objects,
++            self.gc_external_bytes,
++            self.gpu_textures,
++            self.gpu_texture_bytes,
++            self.gpu_buffer_bytes,
++            self.meshes,
++            self.mesh_bytes,
++            self.tracked_textures,
++            self.tracked_texture_bytes,
+         )
+     }
+ 
+diff --git a/core/src/player.rs b/core/src/player.rs
+index 67c20f08a..f29b3633f 100644
+--- a/core/src/player.rs
++++ b/core/src/player.rs
+@@ -335,6 +335,20 @@ pub struct Player {
+     run_state: RunState,
+     needs_render: bool,
+ 
++    /// Set by content asking for an immediate collection (`unloadAndStop(true)`);
++    /// consumed by the next `update`.
++    full_gc_requested: bool,
++
++    /// When shapes that have gone undrawn last had their meshes dropped.
++    last_tessellation_eviction: Instant,
++
++    /// Frames since the last collection requested by content was granted, so
++    /// that a burst of requests - a game disposing dozens of loaders as a
++    /// zone changes - costs one full cycle every few frames, not one per
++    /// request. Counted in frames rather than time so that tests behave the
++    /// same however fast they run.
++    frames_since_requested_gc: u32,
++
+     renderer: Box<dyn RenderBackend>,
+     audio: Box<dyn AudioBackend>,
+     navigator: Box<dyn NavigatorBackend>,
+@@ -2352,6 +2366,7 @@ impl Player {
+                 timers,
+                 current_context_menu,
+                 needs_render: &mut this.needs_render,
++                full_gc_requested: &mut this.full_gc_requested,
+                 avm1,
+                 avm2,
+                 external_interface,
+@@ -2448,8 +2463,45 @@ impl Player {
+             context.library.report_external_allocation(context.gc());
+         });
+ 
+-        // GC
+-        self.collect_garbage(false);
++        // Drop the meshes of shapes that have not been on screen for a while.
++        // They are rebuilt on the next draw; keeping them for every shape of
++        // every resident movie is what makes a long session's memory grow
++        // with the assets it has *seen* rather than the ones it is showing.
++        const TESSELLATION_EVICTION_INTERVAL: Duration = Duration::from_secs(2);
++        const TESSELLATION_MAX_IDLE: Duration = Duration::from_secs(20);
++        if self.last_tessellation_eviction.elapsed() >= TESSELLATION_EVICTION_INTERVAL {
++            self.last_tessellation_eviction = Instant::now();
++            if let Some(before) = Instant::now().checked_sub(TESSELLATION_MAX_IDLE) {
++                self.mutate_with_update_context(|context| {
++                    let evicted = context.library.evict_stale_tessellations(before);
++                    if evicted > 0 {
++                        tracing::debug!(
++                            "Dropped the meshes of {evicted} shapes not drawn recently"
++                        );
++                    }
++                });
++            }
++        }
++
++        // GC. Content can ask for a full collection (`unloadAndStop(true)`),
++        // which Flash honours by collecting immediately. Any number of
++        // requests in one update cost one cycle, and a request is only
++        // granted once every `REQUESTED_GC_MIN_FRAMES` frames: a game tears a
++        // zone down by disposing every loader it owns, one `unloadAndStop`
++        // each, spread over the frames in which their loads finish, and
++        // honouring each of those with a full cycle of its own would keep
++        // the collector running flat out for the whole transition. Requests
++        // that fall inside the window are not lost - the collector is paced
++        // by the memory the libraries report, and its next cycle picks the
++        // content up - they are just not granted immediately.
++        const REQUESTED_GC_MIN_FRAMES: u32 = 10;
++        self.frames_since_requested_gc = self.frames_since_requested_gc.saturating_add(1);
++        let full = std::mem::take(&mut self.full_gc_requested)
++            && self.frames_since_requested_gc >= REQUESTED_GC_MIN_FRAMES;
++        if full {
++            self.frames_since_requested_gc = 0;
++        }
++        self.collect_garbage(full);
+ 
+         rval
+     }
+@@ -3196,6 +3248,9 @@ impl PlayerBuilder {
+                     RunState::Suspended
+                 },
+                 needs_render: true,
++                full_gc_requested: false,
++                frames_since_requested_gc: u32::MAX,
++                last_tessellation_eviction: Instant::now(),
+                 self_reference: self_ref.clone(),
+                 load_behavior: self.load_behavior,
+                 spoofed_url: self.spoofed_url.clone(),
+diff --git a/core/src/tessellation_cache.rs b/core/src/tessellation_cache.rs
+index cacd85384..8b614288e 100644
+--- a/core/src/tessellation_cache.rs
++++ b/core/src/tessellation_cache.rs
+@@ -88,6 +88,14 @@ impl TessellationCache {
+         self.len
+     }
+ 
++    /// Drops every cached tessellation.
++    pub(crate) fn clear(&mut self) {
++        for entry in &mut self.entries {
++            *entry = None;
++        }
++        self.len = 0;
++    }
++
+     /// Moves the entry at the given index to the most recently used position and returns its shape handle.
+     fn touch_entry(&mut self, index: usize) -> ShapeHandle {
+         if index == self.len - 1 {
+diff --git a/render/src/backend.rs b/render/src/backend.rs
+index 0200a4677..8d9119f0c 100644
+--- a/render/src/backend.rs
++++ b/render/src/backend.rs
+@@ -25,6 +25,29 @@ pub struct BitmapCacheEntry {
+     pub filters: Vec<Filter>,
+ }
+ 
++/// GPU memory held by a render backend at one moment.
++#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
++pub struct RenderMemoryUsage {
++    /// Number of textures alive in the backend.
++    pub textures: usize,
++    /// Bytes of texture memory those textures occupy.
++    pub texture_bytes: usize,
++    /// Number of buffers alive in the backend.
++    pub buffers: usize,
++    /// Bytes of buffer memory those buffers occupy.
++    pub buffer_bytes: usize,
++    /// Number of tessellated shape meshes alive.
++    pub meshes: usize,
++    /// Bytes of vertex and index data those meshes hold.
++    pub mesh_bytes: usize,
++    /// Textures Ruffle itself created and still holds (bitmaps, cached
++    /// display objects, pooled render targets), counted by Ruffle so that the
++    /// figure exists on every backend.
++    pub tracked_textures: usize,
++    /// Approximate bytes of those textures' pixels.
++    pub tracked_texture_bytes: usize,
++}
++
+ pub trait RenderBackend: Any {
+     fn viewport_dimensions(&self) -> ViewportDimensions;
+     // Do not call this method directly - use `player.set_viewport_dimensions`,
+@@ -104,6 +127,13 @@ pub trait RenderBackend: Any {
+     fn create_context3d(&mut self, profile: Context3DProfile) -> Result<Box<dyn Context3D>, Error>;
+ 
+     fn debug_info(&self) -> Cow<'static, str>;
++
++    /// How much memory this backend currently holds in GPU resources, if it
++    /// can tell. Used by memory diagnostics; `None` means "not available".
++    fn memory_usage(&self) -> Option<RenderMemoryUsage> {
++        None
++    }
++
+     /// An internal name that is used to identify the render-backend.
+     fn name(&self) -> &'static str;
+ 
+diff --git a/render/wgpu/Cargo.toml b/render/wgpu/Cargo.toml
+index 6615fc36b..150d8008d 100644
+--- a/render/wgpu/Cargo.toml
++++ b/render/wgpu/Cargo.toml
+@@ -11,7 +11,7 @@ version.workspace = true
+ workspace = true
+ 
+ [dependencies]
+-wgpu = { workspace = true, features = ["naga-ir"] }
++wgpu = { workspace = true, features = ["naga-ir", "counters"] }
+ tracing = { workspace = true }
+ ruffle_render = { path = "..", features = ["tessellator", "wgpu"] }
+ bytemuck = { workspace = true, features = ["derive"] }
+diff --git a/render/wgpu/src/backend.rs b/render/wgpu/src/backend.rs
+index e6338ee7f..d51741722 100644
+--- a/render/wgpu/src/backend.rs
++++ b/render/wgpu/src/backend.rs
+@@ -17,7 +17,7 @@ use image::imageops::FilterType;
+ use ruffle_render::backend::{
+     BitmapCacheEntry, Context3D, Context3DProfile, PixelBenderOutput, PixelBenderTarget,
+ };
+-use ruffle_render::backend::{RenderBackend, ShapeHandle, ViewportDimensions};
++use ruffle_render::backend::{RenderBackend, RenderMemoryUsage, ShapeHandle, ViewportDimensions};
+ use ruffle_render::bitmap::{
+     Bitmap, BitmapFormat, BitmapHandle, BitmapSource, PixelRegion, RgbaBufRead, SyncHandle,
+ };
+@@ -31,7 +31,6 @@ use ruffle_render::shape_utils::DistilledShape;
+ use ruffle_render::tessellator::ShapeTessellator;
+ use std::any::Any;
+ use std::borrow::Cow;
+-use std::cell::Cell;
+ use std::num::NonZeroU32;
+ use std::sync::Arc;
+ use swf::Color;
+@@ -347,11 +346,7 @@ impl<T: RenderTarget> WgpuRenderBackend<T> {
+             .map(|d| d.finish(&self.descriptors, &uniform_buffer, &gradients))
+             .collect();
+ 
+-        Mesh {
+-            draws,
+-            vertex_buffer,
+-            index_buffer,
+-        }
++        Mesh::new(draws, vertex_buffer, index_buffer)
+     }
+ 
+     fn clamp_bitmap(&self, bitmap: &mut Bitmap) -> bool {
+@@ -465,6 +460,23 @@ impl<T: RenderTarget + 'static> RenderBackend for WgpuRenderBackend<T> {
+         )))
+     }
+ 
++    fn memory_usage(&self) -> Option<RenderMemoryUsage> {
++        let counters = self.descriptors.device.get_internal_counters().hal;
++        let read = |value: isize| value.max(0) as usize;
++        let (meshes, mesh_bytes) = Mesh::live_totals();
++        let (tracked_textures, tracked_texture_bytes) = crate::tracked_texture_totals();
++        Some(RenderMemoryUsage {
++            textures: read(counters.textures.read()),
++            texture_bytes: read(counters.texture_memory.read()),
++            buffers: read(counters.buffers.read()),
++            buffer_bytes: read(counters.buffer_memory.read()),
++            meshes,
++            mesh_bytes,
++            tracked_textures,
++            tracked_texture_bytes,
++        })
++    }
++
+     fn debug_info(&self) -> Cow<'static, str> {
+         let mut result = vec![];
+         result.push("Renderer: wgpu".to_string());
+@@ -722,14 +734,7 @@ impl<T: RenderTarget + 'static> RenderBackend for WgpuRenderBackend<T> {
+             extent,
+         );
+ 
+-        let handle = BitmapHandle(Arc::new(Texture {
+-            texture,
+-            repeating_linear: Default::default(),
+-            repeating_nearest: Default::default(),
+-            clamped_linear: Default::default(),
+-            clamped_nearest: Default::default(),
+-            copy_count: Cell::new(0),
+-        }));
++        let handle = BitmapHandle(Arc::new(Texture::new(texture)));
+ 
+         Ok(handle)
+     }
+@@ -1000,14 +1005,7 @@ impl<T: RenderTarget + 'static> RenderBackend for WgpuRenderBackend<T> {
+                             | wgpu::TextureUsages::RENDER_ATTACHMENT
+                             | wgpu::TextureUsages::COPY_SRC,
+                     });
+-                BitmapHandle(Arc::new(Texture {
+-                    texture,
+-                    repeating_linear: Default::default(),
+-                    repeating_nearest: Default::default(),
+-                    clamped_linear: Default::default(),
+-                    clamped_nearest: Default::default(),
+-                    copy_count: Cell::new(0),
+-                }))
++                BitmapHandle(Arc::new(Texture::new(texture)))
+             }
+         };
+ 
+@@ -1160,14 +1158,7 @@ impl<T: RenderTarget + 'static> RenderBackend for WgpuRenderBackend<T> {
+                     | wgpu::TextureUsages::RENDER_ATTACHMENT
+                     | wgpu::TextureUsages::COPY_SRC,
+             });
+-        Ok(BitmapHandle(Arc::new(Texture {
+-            texture,
+-            repeating_linear: Default::default(),
+-            repeating_nearest: Default::default(),
+-            clamped_linear: Default::default(),
+-            clamped_nearest: Default::default(),
+-            copy_count: Cell::new(0),
+-        })))
++        Ok(BitmapHandle(Arc::new(Texture::new(texture))))
+     }
+ 
+     fn resolve_sync_handle(
+diff --git a/render/wgpu/src/buffer_pool.rs b/render/wgpu/src/buffer_pool.rs
+index 7d36ac70c..1b6db3ea7 100644
+--- a/render/wgpu/src/buffer_pool.rs
++++ b/render/wgpu/src/buffer_pool.rs
+@@ -8,9 +8,27 @@ use std::sync::{Arc, Mutex, Weak};
+ type PoolInner<T> = Mutex<Vec<T>>;
+ type Constructor<Type, Description> = Box<dyn Fn(&Descriptors, &Description) -> Type>;
+ 
++/// A pooled render target. Accounted for in the memory report like any other
++/// texture Ruffle creates; see `tracked_texture_totals`.
++#[derive(Debug)]
++pub struct PooledTexture(pub wgpu::Texture, pub wgpu::TextureView);
++
++impl PooledTexture {
++    fn new(texture: wgpu::Texture, view: wgpu::TextureView) -> Self {
++        crate::track_texture_created(&texture);
++        Self(texture, view)
++    }
++}
++
++impl Drop for PooledTexture {
++    fn drop(&mut self) {
++        crate::track_texture_dropped(&self.0);
++    }
++}
++
+ #[derive(Debug, Default)]
+ pub struct TexturePool {
+-    pools: FnvHashMap<TextureKey, BufferPool<(wgpu::Texture, wgpu::TextureView), AlwaysCompatible>>,
++    pools: FnvHashMap<TextureKey, BufferPool<PooledTexture, AlwaysCompatible>>,
+     globals_cache: FnvHashMap<GlobalsKey, Arc<Globals>>,
+ }
+ 
+@@ -26,7 +44,7 @@ impl TexturePool {
+         usage: wgpu::TextureUsages,
+         format: wgpu::TextureFormat,
+         sample_count: u32,
+-    ) -> PoolEntry<(wgpu::Texture, wgpu::TextureView), AlwaysCompatible> {
++    ) -> PoolEntry<PooledTexture, AlwaysCompatible> {
+         let key = TextureKey {
+             size,
+             usage,
+@@ -54,7 +72,7 @@ impl TexturePool {
+                     usage,
+                 });
+                 let view = texture.create_view(&Default::default());
+-                (texture, view)
++                PooledTexture::new(texture, view)
+             }))
+         });
+         pool.take(descriptors, AlwaysCompatible)
+diff --git a/render/wgpu/src/lib.rs b/render/wgpu/src/lib.rs
+index 1787a84bf..d16d3a0bd 100644
+--- a/render/wgpu/src/lib.rs
++++ b/render/wgpu/src/lib.rs
+@@ -277,7 +277,63 @@ pub struct Texture {
+     copy_count: Cell<u8>,
+ }
+ 
++/// Bytes of texture memory Ruffle itself has asked for and not yet released
++/// - bitmap textures, cached display objects, pooled render targets - and
++/// how many such textures there are. Not every backend can report texture
++/// memory, so this is counted here for the memory report.
++static TEXTURE_BYTES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
++static TEXTURE_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
++
++/// Approximate memory of a texture: its pixels at the format's block size.
++pub(crate) fn texture_bytes(texture: &wgpu::Texture) -> usize {
++    let size = texture.size();
++    let bytes_per_block = texture.format().block_copy_size(None).unwrap_or(4) as usize;
++    size.width as usize
++        * size.height as usize
++        * size.depth_or_array_layers as usize
++        * bytes_per_block
++}
++
++pub(crate) fn track_texture_created(texture: &wgpu::Texture) {
++    use std::sync::atomic::Ordering;
++    TEXTURE_BYTES.fetch_add(texture_bytes(texture), Ordering::Relaxed);
++    TEXTURE_COUNT.fetch_add(1, Ordering::Relaxed);
++}
++
++pub(crate) fn track_texture_dropped(texture: &wgpu::Texture) {
++    use std::sync::atomic::Ordering;
++    TEXTURE_BYTES.fetch_sub(texture_bytes(texture), Ordering::Relaxed);
++    TEXTURE_COUNT.fetch_sub(1, Ordering::Relaxed);
++}
++
++/// `(textures alive, their bytes)` as tracked by Ruffle.
++pub fn tracked_texture_totals() -> (usize, usize) {
++    use std::sync::atomic::Ordering;
++    (
++        TEXTURE_COUNT.load(Ordering::Relaxed),
++        TEXTURE_BYTES.load(Ordering::Relaxed),
++    )
++}
++
++impl Drop for Texture {
++    fn drop(&mut self) {
++        track_texture_dropped(&self.texture);
++    }
++}
++
+ impl Texture {
++    pub(crate) fn new(texture: wgpu::Texture) -> Self {
++        track_texture_created(&texture);
++        Self {
++            texture,
++            repeating_linear: Default::default(),
++            repeating_nearest: Default::default(),
++            clamped_linear: Default::default(),
++            clamped_nearest: Default::default(),
++            copy_count: Cell::new(0),
++        }
++    }
++
+     pub fn bind_group(
+         &self,
+         repeating: bool,
+diff --git a/render/wgpu/src/mesh.rs b/render/wgpu/src/mesh.rs
+index f733f23f6..e4cbace48 100644
+--- a/render/wgpu/src/mesh.rs
++++ b/render/wgpu/src/mesh.rs
+@@ -3,6 +3,7 @@ use crate::target::RenderTarget;
+ use crate::{Descriptors, GradientUniforms, PosColorVertex, PosUvVertex, as_texture};
+ use std::any::Any;
+ use std::ops::Range;
++use std::sync::atomic::{AtomicUsize, Ordering};
+ use wgpu::util::DeviceExt;
+ 
+ use crate::buffer_builder::BufferBuilder;
+@@ -21,6 +22,46 @@ pub struct Mesh {
+     pub index_buffer: wgpu::Buffer,
+ }
+ 
++/// Bytes of vertex and index buffers held by live meshes, and how many
++/// meshes there are. Kept for memory diagnostics: not every backend reports
++/// buffer memory, and tessellated shapes are the largest thing a resident
++/// movie owns.
++static MESH_BYTES: AtomicUsize = AtomicUsize::new(0);
++static MESH_COUNT: AtomicUsize = AtomicUsize::new(0);
++
++impl Mesh {
++    pub fn new(draws: Vec<Draw>, vertex_buffer: wgpu::Buffer, index_buffer: wgpu::Buffer) -> Self {
++        MESH_BYTES.fetch_add(
++            (vertex_buffer.size() + index_buffer.size()) as usize,
++            Ordering::Relaxed,
++        );
++        MESH_COUNT.fetch_add(1, Ordering::Relaxed);
++        Self {
++            draws,
++            vertex_buffer,
++            index_buffer,
++        }
++    }
++
++    /// `(meshes alive, bytes of their vertex and index buffers)`.
++    pub fn live_totals() -> (usize, usize) {
++        (
++            MESH_COUNT.load(Ordering::Relaxed),
++            MESH_BYTES.load(Ordering::Relaxed),
++        )
++    }
++}
++
++impl Drop for Mesh {
++    fn drop(&mut self) {
++        MESH_BYTES.fetch_sub(
++            (self.vertex_buffer.size() + self.index_buffer.size()) as usize,
++            Ordering::Relaxed,
++        );
++        MESH_COUNT.fetch_sub(1, Ordering::Relaxed);
++    }
++}
++
+ impl ShapeHandleImpl for Mesh {}
+ 
+ pub fn as_mesh(handle: &ShapeHandle) -> &Mesh {
+diff --git a/render/wgpu/src/surface/target.rs b/render/wgpu/src/surface/target.rs
+index 1cfe3dc5b..7563f3a13 100644
+--- a/render/wgpu/src/surface/target.rs
++++ b/render/wgpu/src/surface/target.rs
+@@ -1,5 +1,5 @@
+ use crate::backend::RenderTargetMode;
+-use crate::buffer_pool::{AlwaysCompatible, PoolEntry, TexturePool};
++use crate::buffer_pool::{AlwaysCompatible, PoolEntry, PooledTexture, TexturePool};
+ use crate::descriptors::Descriptors;
+ use crate::globals::Globals;
+ use crate::utils::run_copy_pipeline;
+@@ -65,7 +65,7 @@ pub struct FrameBuffer {
+ /// (when rendering to the main screen), or rendering to a non-pooled `Texture`
+ /// (when doing an offscreen render to a BitmapData texture)
+ pub enum PoolOrArcTexture {
+-    Pool(PoolEntry<(wgpu::Texture, wgpu::TextureView), AlwaysCompatible>),
++    Pool(PoolEntry<PooledTexture, AlwaysCompatible>),
+     Manual((wgpu::Texture, wgpu::TextureView)),
+ }
+ 
+@@ -136,7 +136,7 @@ impl FrameBuffer {
+ 
+ #[derive(Debug)]
+ pub struct BlendBuffer {
+-    texture: PoolEntry<(wgpu::Texture, wgpu::TextureView), AlwaysCompatible>,
++    texture: PoolEntry<PooledTexture, AlwaysCompatible>,
+ }
+ 
+ impl BlendBuffer {
+@@ -163,7 +163,7 @@ impl BlendBuffer {
+ 
+ #[derive(Debug)]
+ pub struct StencilBuffer {
+-    texture: PoolEntry<(wgpu::Texture, wgpu::TextureView), AlwaysCompatible>,
++    texture: PoolEntry<PooledTexture, AlwaysCompatible>,
+ }
+ 
+ impl StencilBuffer {
+-- 
+2.47.1
+

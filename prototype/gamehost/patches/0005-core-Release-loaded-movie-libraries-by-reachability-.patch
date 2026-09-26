@@ -1,0 +1,1743 @@
+From 02cc8a5107023906b56857fac8c5fcbcea3b830f Mon Sep 17 00:00:00 2001
+From: Farhan Riaz <its-forum@techlogix.com>
+Date: Wed, 2 Sep 2026 15:58:27 +0500
+Subject: [PATCH 05/11] core: Release loaded movie libraries by reachability,
+ not by content root
+
+The libraries of loaded movies were released once the display object the
+movie was loaded into had been collected. That is the wrong condition:
+content can keep a class out of a loaded SWF's ApplicationDomain, throw
+the loaded content away, and instantiate the class later - which is how
+AdventureQuest Worlds handles equipment - and the class then needs the
+movie's characters, which were gone. Live testing of the game reproduced
+this as "Tried to instantiate a non-registered character" and Error #2136
+on every equipment load.
+
+The right condition is the one Flash uses: a loaded SWF's definitions live
+for as long as anything can still reach them - its ApplicationDomain, a
+class, a method, a closure, an instance of one of its characters, or the
+content itself - and not a moment longer. That is a question only the
+collector can answer, because a library's own references to its movie and
+its characters must not count, and they are what dominated the reference
+counts before.
+
+A movie library is now traced as an ephemeron. The root only traces its
+anchors, all weak: the content root, the translation units of the movie's
+ABC code (a class, method or script that is still reachable keeps its unit
+alive), and - checked directly at the end of marking - the definition data
+each character shares with its instances. Its contents are left untraced.
+When marking has finished, `Library::resolve_releasable_libraries` asks
+whether any anchor was reached; if so the contents are resurrected and
+marking resumes from them, repeated to a fixpoint so that one library's
+contents can keep another alive; the libraries nothing reached are dropped
+and swept with everything else. The root movie's library and libraries
+fetched by `ImportAssets`, which nothing traceable could anchor, are pinned.
+
+`Player::collect_garbage` drives this using gc-arena's `MarkedArena` and
+`Finalization`. `Player::collect_all_garbage` runs a full cycle for tests.
+
+The weakly held class registry, the external-allocation accounting and the
+`Loader.unloadAndStop` implementation are kept; the accounting is now
+reported every frame rather than only when a library is released.
+
+Dropping dead libraries does not use `PtrWeakKeyHashMap::retain`: that
+implementation shifts the following entries back into the slot it has just
+emptied and skips them, which here would leave a library holding pointers
+to swept objects.
+
+Adds a test that loads a SWF into a child domain, keeps a class from it,
+unloads and drops the content, and instantiates the class later - which
+has to find the class's SymbolClass-linked sprite and its shape - and then
+releases the class. Two Rust-side tests check the library from the outside
+at both points, after forced full collections: still resident while the
+class is held, gone once it is released.
+---
+ core/src/avm2.rs                              |  15 +-
+ core/src/avm2/class.rs                        |   8 +-
+ core/src/avm2/script.rs                       |  24 +-
+ core/src/character.rs                         |  34 +-
+ core/src/context.rs                           |   4 +-
+ core/src/display_object.rs                    |  16 +-
+ core/src/display_object/avm1_button.rs        |  10 +-
+ core/src/display_object/avm2_button.rs        |  10 +-
+ core/src/display_object/bitmap.rs             |   7 +-
+ core/src/display_object/edit_text.rs          |  10 +-
+ core/src/display_object/graphic.rs            |  10 +-
+ core/src/display_object/loader_display.rs     |   7 +-
+ core/src/display_object/morph_shape.rs        |  10 +-
+ core/src/display_object/movie_clip.rs         |  19 +-
+ core/src/display_object/text.rs               |  10 +-
+ core/src/display_object/video.rs              |  16 +-
+ core/src/library.rs                           | 334 ++++++++++++++----
+ core/src/loader.rs                            |   9 +-
+ core/src/player.rs                            |  94 ++++-
+ tests/tests/movie_library/mod.rs              | 126 ++++++-
+ tests/tests/regression_tests.rs               |  14 +-
+ .../README.md                                 |  20 ++
+ .../Test.as                                   |  92 +++++
+ .../build.py                                  | 163 +++++++++
+ .../child/Child.as                            |  12 +
+ .../child/child.swf                           | Bin 0 -> 395 bytes
+ .../output.txt                                |   5 +
+ .../test.swf                                  | Bin 0 -> 2052 bytes
+ .../test.toml                                 |   1 +
+ 29 files changed, 968 insertions(+), 112 deletions(-)
+ create mode 100644 tests/tests/swfs/avm2/loader_unload_retains_linked_class/README.md
+ create mode 100644 tests/tests/swfs/avm2/loader_unload_retains_linked_class/Test.as
+ create mode 100644 tests/tests/swfs/avm2/loader_unload_retains_linked_class/build.py
+ create mode 100644 tests/tests/swfs/avm2/loader_unload_retains_linked_class/child/Child.as
+ create mode 100644 tests/tests/swfs/avm2/loader_unload_retains_linked_class/child/child.swf
+ create mode 100644 tests/tests/swfs/avm2/loader_unload_retains_linked_class/output.txt
+ create mode 100644 tests/tests/swfs/avm2/loader_unload_retains_linked_class/test.swf
+ create mode 100644 tests/tests/swfs/avm2/loader_unload_retains_linked_class/test.toml
+
+diff --git a/core/src/avm2.rs b/core/src/avm2.rs
+index 09805ad25..3cc01d364 100644
+--- a/core/src/avm2.rs
++++ b/core/src/avm2.rs
+@@ -15,6 +15,7 @@ use crate::avm2::globals::{
+ use crate::avm2::method::{Method, NativeMethodImpl};
+ use crate::avm2::object::FunctionObject;
+ use crate::avm2::scope::ScopeChain;
++pub use crate::avm2::script::TranslationUnitWeak;
+ use crate::avm2::script::{Script, TranslationUnit};
+ use crate::avm2::stack::Stack;
+ use crate::character::Character;
+@@ -543,7 +544,19 @@ impl<'gc> Avm2<'gc> {
+         }
+ 
+         let num_scripts = abc.scripts.len();
+-        let tunit = TranslationUnit::from_abc(abc, domain, name, movie, activation.gc());
++        let tunit = TranslationUnit::from_abc(abc, domain, name, movie.clone(), activation.gc());
++
++        // Let the movie's library know about this code. Once the movie's
++        // content is gone, this is how the library tells whether anything
++        // still needs it: a class, method or script that is still reachable
++        // keeps its translation unit alive, and the library holds the unit
++        // weakly so that the question can be asked without pinning it.
++        activation
++            .context
++            .library
++            .library_for_movie_mut(movie)
++            .register_translation_unit(tunit.downgrade());
++
+         tunit.load_classes(&mut activation)?;
+         for i in 0..num_scripts {
+             tunit.load_script(i as u32, &mut activation)?;
+diff --git a/core/src/avm2/class.rs b/core/src/avm2/class.rs
+index d04ea9c2b..4cda1f774 100644
+--- a/core/src/avm2/class.rs
++++ b/core/src/avm2/class.rs
+@@ -22,7 +22,7 @@ use bitflags::bitflags;
+ use fnv::FnvHashMap;
+ use gc_arena::barrier::unlock;
+ use gc_arena::lock::{OnceLock, RefLock};
+-use gc_arena::{Collect, Gc, GcWeak, Lock, Mutation};
++use gc_arena::{Collect, Finalization, Gc, GcWeak, Lock, Mutation};
+ use swf::avm2::types::Trait as AbcTrait;
+ 
+ use std::cell::{Cell, Ref};
+@@ -259,6 +259,12 @@ impl<'gc> ClassWeak<'gc> {
+     pub fn is_dropped(self) -> bool {
+         GcWeak::is_dropped(self.0)
+     }
++
++    /// Whether the class this points at was not reached from the root by the
++    /// marking phase that this finalization concludes.
++    pub fn is_dead(self, fc: &Finalization<'gc>) -> bool {
++        GcWeak::is_dead(self.0, fc)
++    }
+ }
+ 
+ impl<'gc> Class<'gc> {
+diff --git a/core/src/avm2/script.rs b/core/src/avm2/script.rs
+index 460db42ae..aacf5448d 100644
+--- a/core/src/avm2/script.rs
++++ b/core/src/avm2/script.rs
+@@ -18,7 +18,7 @@ use crate::string::{AvmAtom, AvmString};
+ use crate::tag_utils::SwfMovie;
+ use gc_arena::barrier::field;
+ use gc_arena::lock::OnceLock;
+-use gc_arena::{Collect, Gc, Mutation};
++use gc_arena::{Collect, Finalization, Gc, GcWeak, Mutation};
+ use std::cell::Cell;
+ use std::fmt::Debug;
+ use std::rc::Rc;
+@@ -32,6 +32,24 @@ use swf::avm2::types::{
+ #[collect(no_drop)]
+ pub struct TranslationUnit<'gc>(Gc<'gc, TranslationUnitData<'gc>>);
+ 
++/// A weak reference to a [`TranslationUnit`].
++///
++/// A movie's library remembers the translation units loaded from that movie
++/// this way, so that it can tell whether any of the movie's code - a class, a
++/// method, a script - is still reachable, without keeping that code alive
++/// itself. See `MovieLibrary` in `library.rs`.
++#[derive(Copy, Clone, Collect)]
++#[collect(no_drop)]
++pub struct TranslationUnitWeak<'gc>(GcWeak<'gc, TranslationUnitData<'gc>>);
++
++impl<'gc> TranslationUnitWeak<'gc> {
++    /// Whether the translation unit has been dropped, or was not reached from
++    /// the root by the marking phase that this finalization concludes.
++    pub fn is_dead(self, fc: &Finalization<'gc>) -> bool {
++        self.0.is_dropped() || self.0.is_dead(fc)
++    }
++}
++
+ /// A loaded ABC file, with any loaded ABC items alongside it.
+ ///
+ /// A `TranslationUnit` is constructed when ABC loading begins, and it stores
+@@ -83,6 +101,10 @@ struct TranslationUnitData<'gc> {
+ }
+ 
+ impl<'gc> TranslationUnit<'gc> {
++    pub fn downgrade(self) -> TranslationUnitWeak<'gc> {
++        TranslationUnitWeak(Gc::downgrade(self.0))
++    }
++
+     /// Construct a new `TranslationUnit` for a given ABC file intended to
+     /// execute within a particular domain.
+     pub fn from_abc(
+diff --git a/core/src/character.rs b/core/src/character.rs
+index 8d7b5eb4c..80774792c 100644
+--- a/core/src/character.rs
++++ b/core/src/character.rs
+@@ -8,7 +8,7 @@ use crate::display_object::{
+ use crate::font::Font;
+ use gc_arena::barrier::unlock;
+ use gc_arena::lock::Lock;
+-use gc_arena::{Collect, Gc, Mutation};
++use gc_arena::{Collect, Finalization, Gc, Mutation};
+ use ruffle_render::backend::RenderBackend;
+ use ruffle_render::bitmap::{Bitmap as RenderBitmap, BitmapHandle, BitmapSize};
+ use ruffle_render::error::Error as RenderError;
+@@ -31,6 +31,38 @@ pub enum Character<'gc> {
+     BinaryData(Gc<'gc, BinaryData>),
+ }
+ 
++impl<'gc> Character<'gc> {
++    /// Whether an instance of this character - or anything else outside the
++    /// library that defines it - still reaches the definition data the
++    /// character shares with its instances.
++    ///
++    /// Only meaningful during finalization, once marking has completed. The
++    /// character templates in a movie's library are deliberately not traced
++    /// from the library (see [`crate::library::MovieLibrary`]), so if their
++    /// shared data has been marked, it was marked through an instance that is
++    /// on the display list or held by ActionScript.
++    ///
++    /// Bitmaps, fonts, sounds and binary data do not count: their instances
++    /// copy or own what they need at creation and never look back at the
++    /// library, so they do not need it kept alive.
++    pub fn has_reachable_instances(&self, fc: &Finalization<'gc>) -> bool {
++        match self {
++            Character::EditText(o) => o.shared_data_is_reachable(fc),
++            Character::Graphic(o) => o.shared_data_is_reachable(fc),
++            Character::MovieClip(o) => o.shared_data_is_reachable(fc),
++            Character::Avm1Button(o) => o.shared_data_is_reachable(fc),
++            Character::Avm2Button(o) => o.shared_data_is_reachable(fc),
++            Character::MorphShape(o) => o.shared_data_is_reachable(fc),
++            Character::Text(o) => o.shared_data_is_reachable(fc),
++            Character::Video(o) => o.shared_data_is_reachable(fc),
++            Character::Bitmap(_)
++            | Character::Font(_)
++            | Character::Sound(_)
++            | Character::BinaryData(_) => false,
++        }
++    }
++}
++
+ #[derive(Collect, Debug)]
+ #[collect(no_drop)]
+ pub struct BitmapCharacter<'gc> {
+diff --git a/core/src/context.rs b/core/src/context.rs
+index 7c36d00a9..ae35a6df0 100644
+--- a/core/src/context.rs
++++ b/core/src/context.rs
+@@ -386,10 +386,12 @@ impl<'gc> UpdateContext<'gc> {
+         let stage_domain = self.avm2.stage_domain();
+         let mut activation = Avm2Activation::from_domain(self, stage_domain);
+ 
++        let root_swf = activation.context.root_swf.clone();
++        activation.context.library.set_root_movie(root_swf.clone());
+         activation
+             .context
+             .library
+-            .library_for_movie_mut(activation.context.root_swf.clone())
++            .library_for_movie_mut(root_swf)
+             .set_avm2_domain(stage_domain);
+         activation.context.ui.set_mouse_visible(true);
+ 
+diff --git a/core/src/display_object.rs b/core/src/display_object.rs
+index 944537536..8bf56d432 100644
+--- a/core/src/display_object.rs
++++ b/core/src/display_object.rs
+@@ -16,7 +16,7 @@ use crate::vminterface::Instantiator;
+ use bitflags::bitflags;
+ use gc_arena::barrier::{Write, unlock};
+ use gc_arena::lock::Lock;
+-use gc_arena::{Collect, Gc, Mutation};
++use gc_arena::{Collect, Finalization, Gc, Mutation};
+ use ruffle_macros::{enum_trait_object, istr};
+ use ruffle_render::perspective_projection::PerspectiveProjection;
+ use ruffle_render::pixel_bender::PixelBenderShaderHandle;
+@@ -3298,4 +3298,18 @@ impl<'gc> DisplayObjectWeak<'gc> {
+             DisplayObjectWeak::Bitmap(b) => b.upgrade(mc).map(|ld| ld.into()),
+         }
+     }
++
++    /// Whether the object this points at has been dropped, or was not reached
++    /// from the root by the marking phase that this finalization concludes.
++    ///
++    /// This is a different question from whether [`Self::upgrade`] succeeds:
++    /// during marking an upgrade succeeds for any object that has not been
++    /// dropped *yet*, whereas this answers whether the object is about to be.
++    pub fn is_dead(&self, fc: &Finalization<'gc>) -> bool {
++        match self {
++            DisplayObjectWeak::MovieClip(mc) => mc.is_dead(fc),
++            DisplayObjectWeak::LoaderDisplay(ld) => ld.is_dead(fc),
++            DisplayObjectWeak::Bitmap(b) => b.is_dead(fc),
++        }
++    }
+ }
+diff --git a/core/src/display_object/avm1_button.rs b/core/src/display_object/avm1_button.rs
+index d01078715..9274f7439 100644
+--- a/core/src/display_object/avm1_button.rs
++++ b/core/src/display_object/avm1_button.rs
+@@ -18,7 +18,7 @@ use crate::vminterface::Instantiator;
+ use core::fmt;
+ use gc_arena::barrier::unlock;
+ use gc_arena::lock::{Lock, RefLock};
+-use gc_arena::{Collect, Gc, Mutation};
++use gc_arena::{Collect, Finalization, Gc, Mutation};
+ use ruffle_common::utils::HasPrefixField;
+ use ruffle_macros::istr;
+ use ruffle_render::filters::Filter;
+@@ -63,6 +63,14 @@ struct Avm1ButtonDataMut<'gc> {
+ }
+ 
+ impl<'gc> Avm1Button<'gc> {
++    /// Whether the definition data this object shares with every other
++    /// instance of the same character was reached from the root by the
++    /// marking phase that this finalization concludes.
++    /// See [`crate::display_object::MovieClip::shared_data_is_reachable`].
++    pub fn shared_data_is_reachable(self, fc: &Finalization<'gc>) -> bool {
++        !Gc::is_dead(fc, self.0.shared)
++    }
++
+     pub fn from_swf_tag(button: &swf::Button, source_movie: &SwfSlice, mc: &Mutation<'gc>) -> Self {
+         let actions = button
+             .actions
+diff --git a/core/src/display_object/avm2_button.rs b/core/src/display_object/avm2_button.rs
+index 8c9840573..a2b1465b8 100644
+--- a/core/src/display_object/avm2_button.rs
++++ b/core/src/display_object/avm2_button.rs
+@@ -24,7 +24,7 @@ use core::fmt;
+ use either::Either;
+ use gc_arena::barrier::unlock;
+ use gc_arena::lock::Lock;
+-use gc_arena::{Collect, Gc, Mutation};
++use gc_arena::{Collect, Finalization, Gc, Mutation};
+ use ruffle_common::utils::HasPrefixField;
+ use ruffle_render::filters::Filter;
+ use std::cell::{Cell, RefCell};
+@@ -100,6 +100,14 @@ pub struct Avm2ButtonData<'gc> {
+ }
+ 
+ impl<'gc> Avm2Button<'gc> {
++    /// Whether the definition data this object shares with every other
++    /// instance of the same character was reached from the root by the
++    /// marking phase that this finalization concludes.
++    /// See [`crate::display_object::MovieClip::shared_data_is_reachable`].
++    pub fn shared_data_is_reachable(self, fc: &Finalization<'gc>) -> bool {
++        !Gc::is_dead(fc, self.0.shared)
++    }
++
+     pub fn from_swf_tag(
+         button: &swf::Button,
+         source_movie: &SwfSlice,
+diff --git a/core/src/display_object/bitmap.rs b/core/src/display_object/bitmap.rs
+index 719f61a69..551d787e6 100644
+--- a/core/src/display_object/bitmap.rs
++++ b/core/src/display_object/bitmap.rs
+@@ -15,7 +15,7 @@ use crate::vminterface::Instantiator;
+ use core::fmt;
+ use gc_arena::barrier::unlock;
+ use gc_arena::lock::Lock;
+-use gc_arena::{Collect, Gc, GcWeak, Mutation};
++use gc_arena::{Collect, Finalization, Gc, GcWeak, Mutation};
+ use ruffle_common::utils::HasPrefixField;
+ use ruffle_render::bitmap::{BitmapFormat, PixelSnapping};
+ use std::cell::Cell;
+@@ -30,6 +30,11 @@ impl<'gc> BitmapWeak<'gc> {
+         self.0.upgrade(mc).map(Bitmap)
+     }
+ 
++    /// See [`crate::display_object::DisplayObjectWeak::is_dead`].
++    pub fn is_dead(self, fc: &Finalization<'gc>) -> bool {
++        self.0.is_dropped() || self.0.is_dead(fc)
++    }
++
+     pub fn as_ptr(self) -> *const DisplayObjectPtr {
+         self.0.as_ptr() as *const DisplayObjectPtr
+     }
+diff --git a/core/src/display_object/edit_text.rs b/core/src/display_object/edit_text.rs
+index 54f495949..efdf31a97 100644
+--- a/core/src/display_object/edit_text.rs
++++ b/core/src/display_object/edit_text.rs
+@@ -35,7 +35,7 @@ use chrono::Utc;
+ use core::fmt;
+ use gc_arena::barrier::unlock;
+ use gc_arena::lock::{Lock, RefLock};
+-use gc_arena::{Collect, Gc, Mutation};
++use gc_arena::{Collect, Finalization, Gc, Mutation};
+ use ruffle_common::utils::HasPrefixField;
+ use ruffle_macros::istr;
+ use ruffle_render::commands::Command as RenderCommand;
+@@ -245,6 +245,14 @@ impl EditTextData<'_> {
+ }
+ 
+ impl<'gc> EditText<'gc> {
++    /// Whether the definition data this object shares with every other
++    /// instance of the same character was reached from the root by the
++    /// marking phase that this finalization concludes.
++    /// See [`crate::display_object::MovieClip::shared_data_is_reachable`].
++    pub fn shared_data_is_reachable(self, fc: &Finalization<'gc>) -> bool {
++        !Gc::is_dead(fc, self.0.shared)
++    }
++
+     const ANY_NEWLINE: [char; 2] = ['\n', '\r'];
+ 
+     // This seems to be OS-independent
+diff --git a/core/src/display_object/graphic.rs b/core/src/display_object/graphic.rs
+index 8b139136b..b0eb1d7ff 100644
+--- a/core/src/display_object/graphic.rs
++++ b/core/src/display_object/graphic.rs
+@@ -14,7 +14,7 @@ use crate::vminterface::Instantiator;
+ use core::fmt;
+ use gc_arena::barrier::unlock;
+ use gc_arena::lock::Lock;
+-use gc_arena::{Collect, Gc, Mutation};
++use gc_arena::{Collect, Finalization, Gc, Mutation};
+ use ruffle_common::utils::HasPrefixField;
+ use ruffle_render::backend::ShapeHandle;
+ use ruffle_render::commands::CommandHandler;
+@@ -47,6 +47,14 @@ pub struct GraphicData<'gc> {
+ }
+ 
+ impl<'gc> Graphic<'gc> {
++    /// Whether the definition data this object shares with every other
++    /// instance of the same character was reached from the root by the
++    /// marking phase that this finalization concludes.
++    /// See [`crate::display_object::MovieClip::shared_data_is_reachable`].
++    pub fn shared_data_is_reachable(self, fc: &Finalization<'gc>) -> bool {
++        !Gc::is_dead(fc, self.0.shared.get())
++    }
++
+     /// Construct a `Graphic` from it's associated `Shape` tag.
+     pub fn from_swf_tag(
+         context: &mut UpdateContext<'gc>,
+diff --git a/core/src/display_object/loader_display.rs b/core/src/display_object/loader_display.rs
+index 65532a936..508d13931 100644
+--- a/core/src/display_object/loader_display.rs
++++ b/core/src/display_object/loader_display.rs
+@@ -16,7 +16,7 @@ use crate::vminterface::Instantiator;
+ use core::fmt;
+ use gc_arena::barrier::unlock;
+ use gc_arena::lock::{Lock, RefLock};
+-use gc_arena::{Collect, Gc, GcWeak, Mutation};
++use gc_arena::{Collect, Finalization, Gc, GcWeak, Mutation};
+ use ruffle_common::utils::HasPrefixField;
+ use std::cell::{Ref, RefMut};
+ use std::sync::Arc;
+@@ -224,6 +224,11 @@ impl<'gc> LoaderDisplayWeak<'gc> {
+         self.0.upgrade(mc).map(LoaderDisplay)
+     }
+ 
++    /// See [`crate::display_object::DisplayObjectWeak::is_dead`].
++    pub fn is_dead(self, fc: &Finalization<'gc>) -> bool {
++        self.0.is_dropped() || self.0.is_dead(fc)
++    }
++
+     pub fn as_ptr(self) -> *const DisplayObjectPtr {
+         self.0.as_ptr() as *const DisplayObjectPtr
+     }
+diff --git a/core/src/display_object/morph_shape.rs b/core/src/display_object/morph_shape.rs
+index 7d81315aa..0ef4df74d 100644
+--- a/core/src/display_object/morph_shape.rs
++++ b/core/src/display_object/morph_shape.rs
+@@ -9,7 +9,7 @@ use crate::vminterface::Instantiator;
+ use core::fmt;
+ use gc_arena::barrier::unlock;
+ use gc_arena::lock::Lock;
+-use gc_arena::{Collect, Gc, Mutation};
++use gc_arena::{Collect, Finalization, Gc, Mutation};
+ use ruffle_common::utils::HasPrefixField;
+ use ruffle_render::backend::ShapeHandle;
+ use ruffle_render::commands::CommandHandler;
+@@ -40,6 +40,14 @@ pub struct MorphShapeData<'gc> {
+ }
+ 
+ impl<'gc> MorphShape<'gc> {
++    /// Whether the definition data this object shares with every other
++    /// instance of the same character was reached from the root by the
++    /// marking phase that this finalization concludes.
++    /// See [`crate::display_object::MovieClip::shared_data_is_reachable`].
++    pub fn shared_data_is_reachable(self, fc: &Finalization<'gc>) -> bool {
++        !Gc::is_dead(fc, self.0.shared.get())
++    }
++
+     pub fn from_swf_tag(
+         gc_context: &Mutation<'gc>,
+         tag: swf::DefineMorphShape,
+diff --git a/core/src/display_object/movie_clip.rs b/core/src/display_object/movie_clip.rs
+index 1225a9cd8..30ab0e9f7 100644
+--- a/core/src/display_object/movie_clip.rs
++++ b/core/src/display_object/movie_clip.rs
+@@ -43,7 +43,7 @@ use bitflags::bitflags;
+ use core::fmt;
+ use gc_arena::barrier::unlock;
+ use gc_arena::lock::{Lock, RefLock};
+-use gc_arena::{Collect, DynamicRoot, Gc, GcWeak, Mutation, Rootable};
++use gc_arena::{Collect, DynamicRoot, Finalization, Gc, GcWeak, Mutation, Rootable};
+ use ruffle_common::utils::HasPrefixField;
+ use ruffle_macros::istr;
+ use ruffle_render::perspective_projection::PerspectiveProjection;
+@@ -144,6 +144,11 @@ impl<'gc> MovieClipWeak<'gc> {
+         self.0.upgrade(mc).map(MovieClip)
+     }
+ 
++    /// See [`crate::display_object::DisplayObjectWeak::is_dead`].
++    pub fn is_dead(self, fc: &Finalization<'gc>) -> bool {
++        self.0.is_dropped() || self.0.is_dead(fc)
++    }
++
+     pub fn as_ptr(self) -> *const DisplayObjectPtr {
+         self.0.as_ptr() as *const DisplayObjectPtr
+     }
+@@ -366,6 +371,18 @@ impl<'gc> MovieClip<'gc> {
+         Self(Gc::new(mc, (*self.0).clone()))
+     }
+ 
++    /// Whether the definition data this clip shares with every other instance
++    /// of the same character was reached from the root by the marking phase
++    /// that this finalization concludes.
++    ///
++    /// Asked of the character templates in a movie's library, which are not
++    /// themselves traced from the library, so a marked answer means an
++    /// instance of the character is still in use somewhere. See
++    /// [`crate::library::MovieLibrary`].
++    pub fn shared_data_is_reachable(self, fc: &Finalization<'gc>) -> bool {
++        !Gc::is_dead(fc, self.0.shared.get())
++    }
++
+     /// Replace the current MovieClipData with a completely new SwfMovie.
+     ///
+     /// If no movie is provided, then the movie clip will be replaced with an
+diff --git a/core/src/display_object/text.rs b/core/src/display_object/text.rs
+index 5d5eb147a..8a954cda3 100644
+--- a/core/src/display_object/text.rs
++++ b/core/src/display_object/text.rs
+@@ -9,7 +9,7 @@ use crate::vminterface::Instantiator;
+ use core::fmt;
+ use gc_arena::Lock;
+ use gc_arena::barrier::unlock;
+-use gc_arena::{Collect, Gc, Mutation};
++use gc_arena::{Collect, Finalization, Gc, Mutation};
+ use ruffle_common::utils::HasPrefixField;
+ use ruffle_render::transform::Transform;
+ use ruffle_wstr::{WStr, WString};
+@@ -40,6 +40,14 @@ pub struct TextData<'gc> {
+ }
+ 
+ impl<'gc> Text<'gc> {
++    /// Whether the definition data this object shares with every other
++    /// instance of the same character was reached from the root by the
++    /// marking phase that this finalization concludes.
++    /// See [`crate::display_object::MovieClip::shared_data_is_reachable`].
++    pub fn shared_data_is_reachable(self, fc: &Finalization<'gc>) -> bool {
++        !Gc::is_dead(fc, self.0.shared.get())
++    }
++
+     pub fn from_swf_tag(
+         context: &mut UpdateContext<'gc>,
+         swf: Arc<SwfMovie>,
+diff --git a/core/src/display_object/video.rs b/core/src/display_object/video.rs
+index 54ccab443..d472cb511 100644
+--- a/core/src/display_object/video.rs
++++ b/core/src/display_object/video.rs
+@@ -14,7 +14,7 @@ use crate::vminterface::{AvmObject, Instantiator};
+ use core::fmt;
+ use gc_arena::barrier::unlock;
+ use gc_arena::lock::{Lock, RefLock};
+-use gc_arena::{Collect, Gc, Mutation};
++use gc_arena::{Collect, Finalization, Gc, Mutation};
+ use ruffle_common::utils::HasPrefixField;
+ use ruffle_macros::istr;
+ use ruffle_render::bitmap::{BitmapInfo, PixelSnapping};
+@@ -129,6 +129,20 @@ pub struct SwfVideoSource {
+ }
+ 
+ impl<'gc> Video<'gc> {
++    /// Whether the embedded video data this object shares with every other
++    /// instance of the same character was reached from the root by the
++    /// marking phase that this finalization concludes.
++    /// See [`crate::display_object::MovieClip::shared_data_is_reachable`].
++    ///
++    /// A video that has been attached to a `NetStream` no longer needs its
++    /// character's data, and so does not count.
++    pub fn shared_data_is_reachable(self, fc: &Finalization<'gc>) -> bool {
++        match self.0.source.get() {
++            VideoSource::Swf(source) => !Gc::is_dead(fc, source),
++            _ => false,
++        }
++    }
++
+     /// Construct a Video object that is tied to a SWF file's video stream.
+     pub fn from_swf_tag(
+         movie: Arc<SwfMovie>,
+diff --git a/core/src/library.rs b/core/src/library.rs
+index cc36dfa07..3f1e575c6 100644
+--- a/core/src/library.rs
++++ b/core/src/library.rs
+@@ -1,5 +1,8 @@
+ use crate::avm1::{PropertyMap as Avm1PropertyMap, PropertyMap};
+-use crate::avm2::{Class as Avm2Class, ClassWeak as Avm2ClassWeak, Domain as Avm2Domain};
++use crate::avm2::{
++    Class as Avm2Class, ClassWeak as Avm2ClassWeak, Domain as Avm2Domain,
++    TranslationUnitWeak as Avm2TranslationUnitWeak,
++};
+ use crate::backend::audio::SoundHandle;
+ use crate::character::Character;
+ use crate::memory_report::LibraryMemoryUsage;
+@@ -10,7 +13,7 @@ use crate::prelude::*;
+ use crate::string::AvmString;
+ use crate::tag_utils::SwfMovie;
+ use gc_arena::collect::Trace;
+-use gc_arena::{Collect, Mutation};
++use gc_arena::{Collect, Finalization, Gc, GcWeak, Mutation};
+ use ruffle_render::backend::RenderBackend;
+ use ruffle_render::bitmap::BitmapHandle;
+ use ruffle_render::utils::remove_invalid_jpeg_data;
+@@ -78,13 +81,15 @@ impl<'gc> Avm2ClassRegistry<'gc> {
+         Some((entry.movie.upgrade()?, entry.symbol))
+     }
+ 
+-    /// Forgets the entries of classes that have been collected.
++    /// Forgets the entries of classes that are dead: already collected, or
++    /// not reached by the marking phase this finalization concludes.
+     ///
+-    /// Uses `is_dropped` rather than upgrading, so that asking the question
+-    /// never keeps a class alive for another collection cycle.
+-    fn remove_dead_classes(&mut self) {
+-        self.class_map
+-            .retain(|_, entry| !entry.class.is_dropped() && entry.movie.strong_count() > 0);
++    /// Neither check upgrades the class, so asking the question never keeps
++    /// a class alive for another collection cycle.
++    fn remove_dead_classes(&mut self, fc: &Finalization<'gc>) {
++        self.class_map.retain(|_, entry| {
++            !entry.class.is_dropped() && !entry.class.is_dead(fc) && entry.movie.strong_count() > 0
++        });
+     }
+ 
+     /// Associate an AVM2 class definition with a given library symbol.
+@@ -131,9 +136,54 @@ impl<'gc> Avm2ClassRegistry<'gc> {
+     }
+ }
+ 
++/// Why a movie's library is exempt from being released.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++enum Pin {
++    /// Released like any other library once nothing needs it any more.
++    None,
++
++    /// The movie the player was started with. Everything else is loaded from
++    /// it, directly or indirectly, and it can never be unloaded.
++    Root,
++
++    /// A movie fetched by an `ImportAssets` tag. Its characters are copied
++    /// into the importing movie's library, which then asks for their
++    /// definitions by movie rather than through any object of its own, so
++    /// nothing traceable would keep this library alive.
++    ImportedAssets,
++}
++
+ /// Symbol library for a single given SWF.
+-#[derive(Collect)]
+-#[collect(no_drop)]
++///
++/// # Lifetime
++///
++/// A library is not an ordinary garbage-collected value, and it is not an
++/// ordinary root either. It is stored by the [`Library`] root, but the
++/// collector is only told about its *anchors* - the things outside the
++/// library that would need it - and not about its *contents*:
++///
++/// * the display object the movie was loaded into (`content_root`);
++/// * the translation units of the movie's ABC code (`translation_units`),
++///   which every class, method and script from the movie keeps alive;
++/// * the definition data each character shares with its instances, which
++///   is checked directly at the end of marking.
++///
++/// When marking has finished, [`Library::resolve_releasable_libraries`] asks
++/// whether any anchor was reached from the root. If one was, the contents are
++/// resurrected and marking resumes from them; if none was, the library is
++/// dropped and its contents are swept with everything else.
++///
++/// This is what lets a loaded SWF go away once it is genuinely finished
++/// with, while still keeping it for exactly as long as Flash would: a class
++/// taken out of its `ApplicationDomain` keeps its symbols instantiable, a
++/// clip moved out of the loaded content keeps its timeline working, a domain
++/// that is still referenced keeps its definitions. The library's own strong
++/// references to its movie and its characters - which are what made it
++/// immortal before, since the map it lives in is weakly keyed on that very
++/// movie - no longer count for anything, because they are never traced.
++///
++/// Libraries that nothing traceable could ever anchor are pinned instead;
++/// see [`Pin`].
+ pub struct MovieLibrary<'gc> {
+     swf: Arc<SwfMovie>,
+     characters: HashMap<CharacterId, Character<'gc>>,
+@@ -144,20 +194,28 @@ pub struct MovieLibrary<'gc> {
+     avm2_domain: Option<Avm2Domain<'gc>>,
+ 
+     /// The display object this movie was loaded into, for movies that were
+-    /// loaded by a `Loader` or `loadMovie` rather than being the root movie.
+-    ///
+-    /// Held weakly on purpose. A library's characters keep strong
+-    /// `Arc<SwfMovie>` clones of the very movie this library is keyed on, so
+-    /// the weak key can never expire on its own and the entry would live
+-    /// forever (see [`MovieLibraries`]). This handle is what lets the entry be
+-    /// dropped instead: once the loaded content is gone from both the display
+-    /// list and ActionScript, nothing can ask this library for a character any
+-    /// more, so the whole library is dead weight.
+-    ///
+-    /// `None` means "never sweep me" - that is the case for the root movie and
+-    /// for libraries created on demand for movies with no content of their own.
++    /// loaded by a `Loader` or `loadMovie`. An anchor; held weakly so that
++    /// the library itself never keeps its content alive.
+     content_root: Option<DisplayObjectWeak<'gc>>,
+ 
++    /// The translation units loaded from this movie's `DoAbc` tags. Anchors;
++    /// held weakly so that the library never keeps the movie's code alive.
++    ///
++    /// Every class, method and script from the movie holds its translation
++    /// unit strongly, so if any of them is reachable - from an
++    /// `ApplicationDomain` that still lists its definitions, from an instance,
++    /// from a closure or a timer - the unit is marked, and the library has to
++    /// stay because that code can still ask for the movie's characters.
++    translation_units: Vec<Avm2TranslationUnitWeak<'gc>>,
++
++    /// Whether this library is exempt from being released. See [`Pin`].
++    pin: Pin,
++
++    /// Set by the finalization pass of the current collection cycle once it
++    /// has decided to keep this library; cleared again when the cycle's dead
++    /// libraries are dropped.
++    kept: bool,
++
+     /// Bytes of non-garbage-collected memory this library keeps alive: the
+     /// movie's own SWF data plus the still-compressed source of every bitmap it
+     /// has registered.
+@@ -171,6 +229,31 @@ pub struct MovieLibrary<'gc> {
+     external_bytes: usize,
+ }
+ 
++unsafe impl<'gc> Collect<'gc> for MovieLibrary<'gc> {
++    /// Traces the whole library. Only used for pinned libraries, and by the
++    /// resurrection pass; see [`MovieLibraries`].
++    fn trace<C: Trace<'gc>>(&self, cc: &mut C) {
++        self.trace_anchors(cc);
++        self.trace_contents(cc);
++    }
++}
++
++/// A tracer that resurrects instead of marks: every strong pointer it is
++/// handed is brought back for the current collection cycle, along with -
++/// once marking resumes - everything reachable from it.
++struct Resurrector<'a, 'gc>(&'a Finalization<'gc>);
++
++impl<'gc> Trace<'gc> for Resurrector<'_, 'gc> {
++    fn trace_gc(&mut self, gc: Gc<'gc, ()>) {
++        Gc::resurrect(self.0, gc);
++    }
++
++    fn trace_gc_weak(&mut self, _weak: GcWeak<'gc, ()>) {
++        // Weak pointers were already traced from the root, and resurrecting
++        // through them would defeat their purpose.
++    }
++}
++
+ impl<'gc> MovieLibrary<'gc> {
+     pub fn new(swf: Arc<SwfMovie>) -> Self {
+         Self {
+@@ -183,7 +266,67 @@ impl<'gc> MovieLibrary<'gc> {
+             fonts: Default::default(),
+             avm2_domain: None,
+             content_root: None,
++            translation_units: Vec::new(),
++            pin: Pin::None,
++            kept: false,
++        }
++    }
++
++    /// Traces the weak handles on the things outside this library that would
++    /// need it. These are traced from the root for every library, pinned or
++    /// not: a weak pointer that is not traced cannot tell that its target is
++    /// about to be collected.
++    fn trace_anchors<C: Trace<'gc>>(&self, cc: &mut C) {
++        cc.trace(&self.content_root);
++        cc.trace(&self.translation_units);
++    }
++
++    /// Traces everything this library owns: its characters, fonts, export
++    /// names and domain. Only traced from the root for pinned libraries; for
++    /// every other library this is what the finalization pass resurrects
++    /// once it knows the library is still needed.
++    fn trace_contents<C: Trace<'gc>>(&self, cc: &mut C) {
++        cc.trace(&self.characters);
++        cc.trace(&self.export_characters);
++        cc.trace(&self.imported_assets);
++        cc.trace(&self.fonts);
++        cc.trace(&self.avm2_domain);
++    }
++
++    /// Whether anything outside this library still reaches something that
++    /// needs it. Only meaningful during finalization, once marking has
++    /// finished and before anything is swept.
++    fn is_needed(&self, fc: &Finalization<'gc>) -> bool {
++        if self.content_root.is_some_and(|root| !root.is_dead(fc)) {
++            return true;
++        }
++        if self.translation_units.iter().any(|unit| !unit.is_dead(fc)) {
++            return true;
+         }
++        self.characters
++            .values()
++            .any(|character| character.has_reachable_instances(fc))
++    }
++
++    fn is_pinned(&self) -> bool {
++        self.pin != Pin::None
++    }
++
++    /// Marks this library as fetched by `ImportAssets`, which keeps it for
++    /// the rest of the session. See [`Pin::ImportedAssets`].
++    pub fn pin_for_imported_assets(&mut self) {
++        self.pin = Pin::ImportedAssets;
++    }
++
++    /// Records a translation unit loaded from this movie's ABC code. See
++    /// [`Self::translation_units`].
++    pub fn register_translation_unit(&mut self, unit: Avm2TranslationUnitWeak<'gc>) {
++        self.translation_units.push(unit);
++    }
++
++    /// Forgets translation units that have been collected.
++    fn remove_dead_translation_units(&mut self, fc: &Finalization<'gc>) {
++        self.translation_units.retain(|unit| !unit.is_dead(fc));
+     }
+ 
+     /// Non-GC bytes this library is keeping resident.
+@@ -199,20 +342,12 @@ impl<'gc> MovieLibrary<'gc> {
+         self.content_root = Some(root);
+     }
+ 
+-    /// Whether the content this library was loaded for is still reachable.
+-    ///
+-    /// A library with no recorded content root is always considered in use.
+-    fn is_content_alive(&self, mc: &Mutation<'gc>) -> bool {
+-        match self.content_root {
+-            Some(root) => root.upgrade(mc).is_some(),
+-            None => true,
+-        }
+-    }
+-
+     /// Whether this library was loaded for content that is still reachable.
+     ///
+-    /// Reported by [`crate::memory_report`]: a library whose content is gone
+-    /// but which is still listed has not been swept yet.
++    /// Reported by [`crate::memory_report`]. A library whose content is gone
++    /// but which is still listed is either still needed by something else -
++    /// a class held out of its `ApplicationDomain`, say - or has not been
++    /// through a collection yet.
+     pub fn has_live_content(&self, mc: &Mutation<'gc>) -> bool {
+         self.content_root
+             .is_some_and(|root| root.upgrade(mc).is_some())
+@@ -534,13 +669,27 @@ impl ruffle_render::bitmap::BitmapSource for MovieLibrarySource<'_, '_> {
+     }
+ }
+ 
++/// One library per movie.
++///
++/// Weakly keyed on the movie, but note that this on its own never releases
++/// anything: a library and nearly every character in it hold strong
++/// `Arc<SwfMovie>` clones of the very movie they are filed under, so the key
++/// cannot expire while the entry exists. Entries are released by the
++/// finalization pass instead; see [`MovieLibrary`].
+ struct MovieLibraries<'gc>(PtrWeakKeyHashMap<Weak<SwfMovie>, MovieLibrary<'gc>>);
+ 
+ unsafe impl<'gc> Collect<'gc> for MovieLibraries<'gc> {
+     #[inline]
+     fn trace<C: Trace<'gc>>(&self, cc: &mut C) {
+-        for (_, val) in self.0.iter() {
+-            cc.trace(val);
++        for (_, library) in self.0.iter() {
++            if library.is_pinned() {
++                cc.trace(library);
++            } else {
++                // The contents are deliberately left untraced. They are
++                // resurrected at the end of marking if the library turns
++                // out to be needed, and dropped with the library otherwise.
++                library.trace_anchors(cc);
++            }
+         }
+     }
+ }
+@@ -564,20 +713,59 @@ impl<'gc> MovieLibraries<'gc> {
+         self.0.keys()
+     }
+ 
+-    /// Drops every library whose loaded content has been collected.
++    /// Keeps every releasable library that something outside it still
++    /// reaches, by resurrecting its contents.
++    ///
++    /// Returns whether anything was resurrected. If so, marking has to be
++    /// resumed - the resurrected contents may reach the anchors of other
++    /// libraries - and this asked again once it has finished.
++    fn resurrect_needed(&mut self, fc: &Finalization<'gc>) -> bool {
++        let mut resurrected = false;
++        for (_, library) in self.0.iter_mut() {
++            if library.is_pinned() || library.kept {
++                continue;
++            }
++            if library.is_needed(fc) {
++                library.kept = true;
++                library.trace_contents(&mut Resurrector(fc));
++                resurrected = true;
++            }
++        }
++        resurrected
++    }
++
++    /// Drops every releasable library that the finalization pass did not
++    /// keep, and clears the marks of the ones it did for the next cycle.
+     ///
+     /// Returns the number of libraries dropped.
+-    fn release_unreachable(&mut self, mc: &Mutation<'gc>, root_swf: &Arc<SwfMovie>) -> usize {
+-        let mut released = 0;
+-        self.0.retain(|movie, library| {
+-            // Never touch the movie the player was started with.
+-            if Arc::ptr_eq(&movie, root_swf) || library.is_content_alive(mc) {
+-                return true;
++    fn drop_unneeded(&mut self, fc: &Finalization<'gc>) -> usize {
++        // Not `retain`: `weak_table`'s implementation walks bucket indices
++        // and, after removing an entry, shifts the following entries back
++        // into the slot it has already passed, so it can skip entries. A
++        // skipped library here would survive the sweep with its contents
++        // untraced. Decide first, then remove by key.
++        let mut dead = Vec::new();
++        for (movie, library) in self.0.iter_mut() {
++            if library.is_pinned() || std::mem::take(&mut library.kept) {
++                library.remove_dead_translation_units(fc);
++            } else {
++                dead.push(movie);
+             }
+-            released += 1;
+-            false
+-        });
+-        released
++        }
++        let dropped = dead.len();
++        for movie in dead {
++            self.0.remove(&movie);
++        }
++        dropped
++    }
++
++    fn set_root(&mut self, movie: Arc<SwfMovie>) {
++        for (_, library) in self.0.iter_mut() {
++            if library.pin == Pin::Root {
++                library.pin = Pin::None;
++            }
++        }
++        self.get_or_insert_mut(movie).pin = Pin::Root;
+     }
+ }
+ 
+@@ -646,27 +834,39 @@ impl<'gc> Library<'gc> {
+         self.movie_libraries.known_movies()
+     }
+ 
+-    /// Drops the libraries of loaded movies whose content is no longer
+-    /// reachable, releasing their characters, decoded bitmaps and SWF data.
++    /// Marks `movie` as the movie the player was started with, whose library
++    /// is never released. See [`Pin::Root`].
++    pub fn set_root_movie(&mut self, movie: Arc<SwfMovie>) {
++        self.movie_libraries.set_root(movie);
++    }
++
++    /// The finalization step of a collection cycle: decides which loaded
++    /// movies' libraries live and which die, now that marking has finished.
+     ///
+-    /// This has to be done explicitly. Libraries are stored in a map that is
+-    /// weakly keyed on the movie, but a library's own characters hold strong
+-    /// `Arc<SwfMovie>` clones of that same movie, so the key's strong count
+-    /// never reaches zero and the entry would otherwise be immortal. A library
+-    /// is only dropped once the display object its movie was loaded into has
+-    /// been garbage collected, which means no timeline and no ActionScript
+-    /// object can reach into it any more.
++    /// The collector was only told about each library's anchors, not its
++    /// contents (see [`MovieLibrary`]). Any library with a live anchor has
++    /// its contents resurrected; in that case this returns `true`, and the
++    /// caller has to resume marking and call this again, because the
++    /// resurrected contents may reach the anchors of other libraries. Once
++    /// nothing more is resurrected, every remaining unpinned library is
++    /// dropped, its objects are left for the sweep, and this returns
++    /// `false`.
+     ///
+-    /// Returns the number of libraries dropped.
+-    pub fn release_unreachable_movies(
+-        &mut self,
+-        mc: &Mutation<'gc>,
+-        root_swf: &Arc<SwfMovie>,
+-    ) -> usize {
+-        self.avm2_class_registry.remove_dead_classes();
+-        let released = self.movie_libraries.release_unreachable(mc, root_swf);
+-        self.report_external_allocation(mc);
+-        released
++    /// Must be called between the end of marking and the start of sweeping,
++    /// every cycle: an untraced library whose contents were neither
++    /// resurrected nor dropped would be left pointing at swept objects.
++    pub fn resolve_releasable_libraries(&mut self, fc: &Finalization<'gc>) -> bool {
++        if self.movie_libraries.resurrect_needed(fc) {
++            return true;
++        }
++
++        let dropped = self.movie_libraries.drop_unneeded(fc);
++        if dropped > 0 {
++            tracing::debug!("Released {dropped} unreachable movie librar(y/ies)");
++        }
++        self.avm2_class_registry.remove_dead_classes(fc);
++        self.report_external_allocation(fc);
++        false
+     }
+ 
+     /// Keeps the collector's idea of how much memory is in play in step with
+@@ -676,7 +876,7 @@ impl<'gc> Library<'gc> {
+     /// movie library is a rounding error next to the buffers those allocations
+     /// point at, and it ends up pacing itself far too slowly to keep up with
+     /// content that loads and drops megabytes of assets at a time.
+-    fn report_external_allocation(&mut self, mc: &Mutation<'gc>) {
++    pub fn report_external_allocation(&mut self, mc: &Mutation<'gc>) {
+         let total: usize = self
+             .movie_libraries
+             .0
+diff --git a/core/src/loader.rs b/core/src/loader.rs
+index cc80e76a6..0f77cc303 100644
+--- a/core/src/loader.rs
++++ b/core/src/loader.rs
+@@ -377,8 +377,13 @@ impl<'gc> LoadManager<'gc> {
+ 
+                             tracing::debug!("Preloading swf to run exports {:?}", url);
+ 
+-                            // Create library for exports before preloading
+-                            uc.library.library_for_movie_mut(clip.movie());
++                            // Create library for exports before preloading.
++                            // Nothing of the importing movie ever points at
++                            // this library, only at the characters it copies
++                            // out of it, so it has to be kept explicitly.
++                            uc.library
++                                .library_for_movie_mut(clip.movie())
++                                .pin_for_imported_assets();
+                             let res = clip.preload(uc, &mut execution_limit);
+                             tracing::debug!(
+                                 "Preloaded swf to run exports result {:?} {}",
+diff --git a/core/src/player.rs b/core/src/player.rs
+index c95265a7b..67c20f08a 100644
+--- a/core/src/player.rs
++++ b/core/src/player.rs
+@@ -61,6 +61,7 @@ use crate::vminterface::Instantiator;
+ use async_channel::Sender;
+ use enumset::EnumSet;
+ use fnv::FnvHashSet;
++use gc_arena::arena::CollectionPhase;
+ use gc_arena::lock::GcRefLock;
+ use gc_arena::{Collect, DynamicRootSet, Mutation, Rootable};
+ use ruffle_common::duration::FloatDuration;
+@@ -2440,26 +2441,91 @@ impl Player {
+         });
+         self.update_mouse_state(EnumSet::empty(), false, &mut false);
+ 
+-        // GC
+-        self.gc_arena.borrow_mut().collect_debt();
+-
+-        // Loaded content that did not survive collection can no longer be
+-        // reached by any timeline or script, so its library is dropped here.
+-        // This cannot happen on its own: a movie library holds strong
+-        // `Arc<SwfMovie>` clones of the movie it is weakly keyed on.
++        // Keep the collector's pacing in step with the SWF data and bitmaps
++        // the movie libraries hold, which dwarf the `Gc` objects pointing at
++        // them.
+         self.mutate_with_update_context(|context| {
+-            let root_swf = context.root_swf.clone();
+-            let released = context
+-                .library
+-                .release_unreachable_movies(context.gc(), &root_swf);
+-            if released > 0 {
+-                tracing::debug!("Released {released} unreachable movie librar(y/ies)");
+-            }
++            context.library.report_external_allocation(context.gc());
+         });
+ 
++        // GC
++        self.collect_garbage(false);
++
+         rval
+     }
+ 
++    /// Runs the garbage collector.
++    ///
++    /// Ruffle's collector is incremental: normally each call does a slice of
++    /// marking or sweeping work paid for by the allocation debt built up since
++    /// the last one. `full` instead runs a whole cycle to completion, which is
++    /// what tests use to make collection deterministic.
++    ///
++    /// This is not a plain `collect_debt` because the libraries of loaded
++    /// movies are not ordinary roots. The collector is only told about the
++    /// things outside a library that would need it, so at the point where
++    /// marking has finished - and before anything is swept - the libraries
++    /// have to be asked which of them are still needed. Those are resurrected
++    /// and marking resumes from them; the rest are dropped. See
++    /// [`crate::library::MovieLibrary`] for the ownership model, and
++    /// [`Library::resolve_releasable_libraries`] for the pass itself.
++    fn collect_garbage(&mut self, full: bool) {
++        let mut arena = self.gc_arena.borrow_mut();
++
++        if full && arena.collection_phase() == CollectionPhase::Sweeping {
++            // Finish the cycle in progress first, so that the one run below
++            // starts from a clean slate and sees everything dropped so far.
++            arena.finish_cycle();
++        }
++
++        let marked = if full {
++            arena.finish_marking()
++        } else {
++            arena.mark_debt()
++        };
++        let Some(mut marked) = marked else {
++            // Marking is either still under way with the debt paid off, or the
++            // collector is sweeping or asleep. Neither needs the libraries
++            // consulted; carry on with whatever the cycle has left to do.
++            arena.cycle_debt();
++            return;
++        };
++
++        // Marking has finished. Ask the libraries whether they are needed,
++        // resuming marking after every round of resurrections until there is
++        // nothing more to resurrect. Only then is it safe to sweep.
++        loop {
++            let resume_marking = marked.finalize(|fc, root| {
++                let mut data = root
++                    .data
++                    .try_borrow_mut(fc)
++                    .expect("Arena root borrowed during garbage collection");
++                data.library.resolve_releasable_libraries(fc)
++            });
++            marked = arena
++                .finish_marking()
++                .expect("Collector cannot be sweeping while its libraries are being resolved");
++            if !resume_marking {
++                break;
++            }
++        }
++
++        marked.start_sweeping();
++        if full {
++            arena.finish_cycle();
++        } else {
++            arena.cycle_debt();
++        }
++    }
++
++    /// Runs a complete garbage collection cycle now, marking and sweeping
++    /// everything, instead of the incremental slice a frame normally does.
++    ///
++    /// Used by tests that need to know that anything unreachable is gone.
++    pub fn collect_all_garbage(&mut self) {
++        self.collect_garbage(true);
++    }
++
+     pub fn flush_shared_objects(&mut self) {
+         self.update(|context| {
+             if let Some(mut avm1_activation) =
+diff --git a/tests/tests/movie_library/mod.rs b/tests/tests/movie_library/mod.rs
+index 07e2d9e3f..e414d6824 100644
+--- a/tests/tests/movie_library/mod.rs
++++ b/tests/tests/movie_library/mod.rs
+@@ -1,5 +1,6 @@
+ //! Lifetime tests for the libraries of dynamically loaded movies.
+ 
++use ruffle_core::Player;
+ use ruffle_test_framework::environment::Environment;
+ use ruffle_test_framework::options::TestOptions;
+ use ruffle_test_framework::runner::TestStatus;
+@@ -7,6 +8,24 @@ use ruffle_test_framework::test::Test;
+ use ruffle_test_framework::vfs::{PhysicalFS, VfsPath};
+ use std::thread::sleep;
+ 
++/// The movies the player currently holds a library for, by URL.
++fn resident_movies(player: &mut Player) -> Vec<String> {
++    player.mutate_with_update_context(|context| {
++        context
++            .library
++            .known_movies()
++            .map(|movie| movie.url().to_owned())
++            .collect()
++    })
++}
++
++fn resident_children(player: &mut Player) -> Vec<String> {
++    resident_movies(player)
++        .into_iter()
++        .filter(|url| url.ends_with("child.swf"))
++        .collect()
++}
++
+ /// A SWF that has been loaded and unloaded must not leave its library behind.
+ ///
+ /// Ruffle stores one library per movie in a map that is weakly keyed on the
+@@ -46,18 +65,7 @@ pub fn loader_unload_releases_library(
+     }
+ 
+     let mut player = runner.player().lock().unwrap();
+-    let resident: Vec<String> = player.mutate_with_update_context(|context| {
+-        context
+-            .library
+-            .known_movies()
+-            .map(|movie| movie.url().to_owned())
+-            .collect()
+-    });
+-
+-    let children: Vec<&String> = resident
+-        .iter()
+-        .filter(|url| url.ends_with("child.swf"))
+-        .collect();
++    let children = resident_children(&mut player);
+ 
+     // The tail of the run is allowed: the last cycle or two may not have been
+     // through a collection yet, so a small constant can still be resident. What
+@@ -75,3 +83,97 @@ pub fn loader_unload_releases_library(
+ 
+     Ok(())
+ }
++
++/// Runs `loader_unload_retains_linked_class` and, `frame` frames in, forces
++/// a full collection and hands the player to `check`. The run then continues
++/// to the end, where the movie's trace output is compared as usual.
++///
++/// The movie loads a child SWF into a child `ApplicationDomain`, keeps a
++/// class from that domain, unloads and drops the content, instantiates the
++/// class at frame 90, and releases the class and domain at frame 150.
++fn run_linked_class_test(
++    environment: &impl Environment,
++    frame: u32,
++    check: impl FnOnce(&mut Player) -> Result<(), String>,
++) -> Result<(), libtest_mimic::Failed> {
++    let test = &Test::from_options(
++        TestOptions {
++            num_frames: Some(240),
++            output_path: "output.txt".into(),
++            ..Default::default()
++        },
++        VfsPath::new(PhysicalFS::new(
++            "tests/swfs/avm2/loader_unload_retains_linked_class/",
++        )),
++        "loader_unload_retains_linked_class".to_string(),
++    )?;
++
++    let mut runner = test.create_test_runner(environment)?;
++    let mut frames = 0;
++    let mut check = Some(check);
++    loop {
++        let status = runner.tick()?;
++        if runner.is_preloaded() {
++            frames += 1;
++        }
++        if frames == frame
++            && let Some(check) = check.take()
++        {
++            let mut player = runner.player().lock().unwrap();
++            // Two full cycles: the first may only get as far as dropping a
++            // library, whose objects are then swept by the second.
++            player.collect_all_garbage();
++            player.collect_all_garbage();
++            check(&mut player)?;
++        }
++        match status {
++            TestStatus::Continue => {}
++            TestStatus::Sleep(duration) => sleep(duration),
++            TestStatus::Finished => break,
++        }
++    }
++
++    if check.is_some() {
++        return Err(format!("the movie never reached frame {frame}").into());
++    }
++    Ok(())
++}
++
++/// A class taken out of a loaded SWF's `ApplicationDomain` keeps that SWF's
++/// library alive after the content has been unloaded and collected - the
++/// class can still be instantiated, and instantiating it still finds the
++/// characters it is linked to.
++///
++/// The instantiation itself is checked by the movie's trace output; this
++/// checks the library from the outside, after a full collection, at a point
++/// where the content is long gone but the class is still held.
++pub fn retained_class_keeps_library(
++    environment: &impl Environment,
++) -> Result<(), libtest_mimic::Failed> {
++    run_linked_class_test(environment, 60, |player| {
++        let children = resident_children(player);
++        if children.len() != 1 {
++            return Err(format!(
++                "expected the child movie to still be resident while its class is held, \
++                 found {children:?}"
++            ));
++        }
++        Ok(())
++    })
++}
++
++/// Once the class and the domain are released as well, nothing needs the
++/// loaded SWF any more and its library goes away.
++pub fn released_class_frees_library(
++    environment: &impl Environment,
++) -> Result<(), libtest_mimic::Failed> {
++    run_linked_class_test(environment, 200, |player| {
++        let children = resident_children(player);
++        if !children.is_empty() {
++            return Err(format!(
++                "expected the child movie to be released once its class was, found {children:?}"
++            ));
++        }
++        Ok(())
++    })
++}
+diff --git a/tests/tests/regression_tests.rs b/tests/tests/regression_tests.rs
+index 7f818e15a..a02dc499d 100644
+--- a/tests/tests/regression_tests.rs
++++ b/tests/tests/regression_tests.rs
+@@ -4,7 +4,9 @@
+ 
+ use crate::environment::NativeEnvironment;
+ use crate::external_interface::tests::{external_interface_avm1, external_interface_avm2};
+-use crate::movie_library::loader_unload_releases_library;
++use crate::movie_library::{
++    loader_unload_releases_library, released_class_frees_library, retained_class_keeps_library,
++};
+ use crate::shared_object::{shared_object_avm1, shared_object_avm2, shared_object_self_ref_avm1};
+ use anyhow::Context;
+ use clap::Parser;
+@@ -109,6 +111,16 @@ fn main() {
+         loader_unload_releases_library(&*env_clone)
+     }));
+ 
++    let env_clone = env.clone();
++    runner.with_additional_test(Trial::test("retained_class_keeps_library", move || {
++        retained_class_keeps_library(&*env_clone)
++    }));
++
++    let env_clone = env.clone();
++    runner.with_additional_test(Trial::test("released_class_frees_library", move || {
++        released_class_frees_library(&*env_clone)
++    }));
++
+     let env_clone = env.clone();
+     runner.with_additional_test(Trial::test("external_interface_avm1", move || {
+         external_interface_avm1(&*env_clone)
+diff --git a/tests/tests/swfs/avm2/loader_unload_retains_linked_class/README.md b/tests/tests/swfs/avm2/loader_unload_retains_linked_class/README.md
+new file mode 100644
+index 000000000..7db9b1192
+--- /dev/null
++++ b/tests/tests/swfs/avm2/loader_unload_retains_linked_class/README.md
+@@ -0,0 +1,20 @@
++Regression test for a loaded SWF's library being released while a class from
++that SWF is still in use.
++
++`test.swf` loads `child/child.swf` into a child `ApplicationDomain`, takes the
++`Child` class out of that domain, then unloads the `Loader` and drops every
++reference to the loaded content. Later it instantiates the held class. `Child`
++is linked by `SymbolClass` to a sprite containing a 100x100 shape, so the
++instantiation has to find both characters in the child movie's library:
++
++* `instantiated children=1 width=100` means the library was still there;
++* `Error #2136` means the player had released it out from under the class.
++
++Finally the class and domain are released. The Rust tests
++`retained_class_keeps_library` and `released_class_frees_library` in
++`tests/tests/movie_library/mod.rs` run this movie and check the library's
++lifetime from the outside at both points: still resident while the class is
++held, and gone once it is released.
++
++Both SWFs are built from the `.as` sources next to them by `build.py`, using
++`asc.jar` (`tools/asc/asc.jar`) and a hand-assembled SWF container.
+diff --git a/tests/tests/swfs/avm2/loader_unload_retains_linked_class/Test.as b/tests/tests/swfs/avm2/loader_unload_retains_linked_class/Test.as
+new file mode 100644
+index 000000000..f1fa2333f
+--- /dev/null
++++ b/tests/tests/swfs/avm2/loader_unload_retains_linked_class/Test.as
+@@ -0,0 +1,92 @@
++package {
++    import flash.display.DisplayObject;
++    import flash.display.DisplayObjectContainer;
++    import flash.display.Loader;
++    import flash.display.MovieClip;
++    import flash.events.Event;
++    import flash.events.IOErrorEvent;
++    import flash.net.URLRequest;
++    import flash.system.ApplicationDomain;
++    import flash.system.LoaderContext;
++
++    // The pattern a game uses for equipment: load an asset SWF into a child
++    // domain, take a linked class out of that domain, throw the loaded
++    // content away, and instantiate the class later. The class is what stays
++    // reachable - not the Loader and not the loaded content - so the player
++    // must keep the movie's characters for as long as the class is held, and
++    // must let all of it go once the class is released.
++    public class Test extends MovieClip {
++        private static const INSTANTIATE_AT:int = 90;
++        private static const RELEASE_AT:int = 150;
++        private static const DONE_AT:int = 230;
++
++        private var loader:Loader;
++        private var domain:ApplicationDomain;
++        private var heldClass:Class = null;
++        private var frame:int = 0;
++
++        public function Test() {
++            addEventListener(Event.ENTER_FRAME, onFrame);
++            domain = new ApplicationDomain(ApplicationDomain.currentDomain);
++            loader = new Loader();
++            loader.contentLoaderInfo.addEventListener(Event.COMPLETE, onLoaded);
++            loader.contentLoaderInfo.addEventListener(IOErrorEvent.IO_ERROR, onError);
++            addChild(loader);
++            loader.load(new URLRequest("./child/child.swf"), new LoaderContext(false, domain));
++        }
++
++        private function onLoaded(e:Event):void {
++            try {
++                heldClass = domain.getDefinition("Child") as Class;
++            } catch (err:Error) {
++                trace("getDefinition failed: " + err);
++            }
++            trace("loaded, class held: " + (heldClass != null));
++
++            // Discard the content but keep the class.
++            loader.contentLoaderInfo.removeEventListener(Event.COMPLETE, onLoaded);
++            loader.contentLoaderInfo.removeEventListener(IOErrorEvent.IO_ERROR, onError);
++            loader.unloadAndStop(true);
++            if (loader.parent != null) {
++                loader.parent.removeChild(loader);
++            }
++            loader = null;
++            trace("unloaded");
++        }
++
++        private function onError(e:IOErrorEvent):void {
++            trace("error " + e.text);
++        }
++
++        private function onFrame(e:Event):void {
++            frame++;
++            if (frame == INSTANTIATE_AT) {
++                instantiate();
++            } else if (frame == RELEASE_AT) {
++                heldClass = null;
++                domain = null;
++                trace("released");
++            } else if (frame == DONE_AT) {
++                trace("done");
++            }
++        }
++
++        private function instantiate():void {
++            if (heldClass == null) {
++                trace("no class to instantiate");
++                return;
++            }
++            try {
++                var inst:Object = new heldClass();
++                var children:int = -1;
++                if (inst is DisplayObjectContainer) {
++                    children = DisplayObjectContainer(inst).numChildren;
++                }
++                var width:int = (inst is DisplayObject) ? int(DisplayObject(inst).width) : -1;
++                trace("instantiated children=" + children + " width=" + width);
++            } catch (err:Error) {
++                trace("instantiation threw " + err);
++            }
++        }
++    }
++}
+diff --git a/tests/tests/swfs/avm2/loader_unload_retains_linked_class/build.py b/tests/tests/swfs/avm2/loader_unload_retains_linked_class/build.py
+new file mode 100644
+index 000000000..e0d37a931
+--- /dev/null
++++ b/tests/tests/swfs/avm2/loader_unload_retains_linked_class/build.py
+@@ -0,0 +1,163 @@
++#!/usr/bin/env python3
++"""Builds test.swf and child/child.swf from the .as sources next to them.
++
++Compiles each class to ABC with the asc.jar Ruffle uses for playerglobal, and
++wraps the ABC in a hand-assembled SWF container. The child additionally gets
++a DefineShape (a 100x100 square) placed inside a DefineSprite, with a
++SymbolClass tag linking that sprite to the `Child` class.
++
++Usage: build.py <path to playerglobal_import.abc>
++"""
++
++import struct
++import subprocess
++import sys
++import tempfile
++from pathlib import Path
++
++HERE = Path(__file__).resolve().parent
++ASC_JAR = HERE.parents[4] / "tools/asc/asc.jar"
++
++SWF_VERSION = 15
++STAGE_W, STAGE_H, FPS = 550, 400, 30
++
++
++class Bits:
++    """Big-endian bit writer, as SWF bit fields require."""
++
++    def __init__(self):
++        self.bits = []
++
++    def ub(self, value, nbits):
++        for i in range(nbits - 1, -1, -1):
++            self.bits.append((value >> i) & 1)
++
++    def sb(self, value, nbits):
++        self.ub(value & ((1 << nbits) - 1), nbits)
++
++    def bytes(self):
++        bits = self.bits + [0] * (-len(self.bits) % 8)
++        return bytes(
++            int("".join(map(str, bits[i : i + 8])), 2) for i in range(0, len(bits), 8)
++        )
++
++
++def signed_bits(*values):
++    return max(abs(v).bit_length() for v in values) + 1
++
++
++def rect(xmin, xmax, ymin, ymax):
++    nbits = signed_bits(xmin, xmax, ymin, ymax)
++    b = Bits()
++    b.ub(nbits, 5)
++    for v in (xmin, xmax, ymin, ymax):
++        b.sb(v, nbits)
++    return b.bytes()
++
++
++def tag(code, body):
++    if len(body) < 0x3F:
++        return struct.pack("<H", (code << 6) | len(body)) + body
++    return struct.pack("<HI", (code << 6) | 0x3F, len(body)) + body
++
++
++def define_shape(shape_id, size_twips, rgb):
++    """DefineShape: one solid fill, one square of `size_twips` a side."""
++    body = struct.pack("<H", shape_id) + rect(0, size_twips, 0, size_twips)
++    body += bytes([1, 0x00]) + bytes(rgb)  # one fill style: solid colour
++    body += bytes([0])  # no line styles
++    b = Bits()
++    b.ub(1, 4)  # NumFillBits
++    b.ub(0, 4)  # NumLineBits
++    # Style change: move to (0, 0), use fill style 0.
++    b.ub(0, 1)  # not an edge
++    b.ub(0b00011, 5)  # new styles, line, fill1, fill0=1, move=1
++    b.ub(1, 5)  # MoveBits
++    b.sb(0, 1)
++    b.sb(0, 1)
++    b.ub(1, 1)  # FillStyle0 = 1
++    nbits = signed_bits(size_twips)
++    for dx, dy in ((size_twips, 0), (0, size_twips), (-size_twips, 0), (0, -size_twips)):
++        b.ub(1, 1)  # edge
++        b.ub(1, 1)  # straight
++        b.ub(nbits - 2, 4)
++        b.ub(1, 1)  # general line
++        b.sb(dx, nbits)
++        b.sb(dy, nbits)
++    b.ub(0, 6)  # end of shape
++    return tag(2, body + b.bytes())
++
++
++def define_sprite(sprite_id, shape_id):
++    place = tag(26, bytes([0x02]) + struct.pack("<HH", 1, shape_id))  # PlaceObject2
++    return tag(39, struct.pack("<HH", sprite_id, 1) + place + tag(1, b"") + tag(0, b""))
++
++
++def symbol_class(links):
++    body = struct.pack("<H", len(links))
++    for character_id, name in links:
++        body += struct.pack("<H", character_id) + name.encode() + b"\x00"
++    return tag(76, body)
++
++
++def do_abc(abc, lazy):
++    return tag(82, struct.pack("<I", 1 if lazy else 0) + b"\x00" + abc)
++
++
++def swf(tags):
++    body = rect(0, STAGE_W * 20, 0, STAGE_H * 20)
++    body += struct.pack("<HH", FPS << 8, 1)
++    body += tag(69, struct.pack("<I", 0x08))  # FileAttributes: ActionScript 3
++    body += b"".join(tags)
++    body += tag(1, b"") + tag(0, b"")
++    header = b"FWS" + bytes([SWF_VERSION])
++    return header + struct.pack("<I", len(header) + 4 + len(body)) + body
++
++
++def compile_abc(source, playerglobal):
++    with tempfile.TemporaryDirectory() as tmp:
++        subprocess.run(
++            [
++                "java",
++                "-classpath",
++                str(ASC_JAR),
++                "macromedia.asc.embedding.ScriptCompiler",
++                "-optimize",
++                "-import",
++                str(playerglobal),
++                "-outdir",
++                tmp,
++                "-out",
++                source.stem,
++                str(source),
++            ],
++            check=True,
++            capture_output=True,
++            text=True,
++        )
++        return (Path(tmp) / f"{source.stem}.abc").read_bytes()
++
++
++def main():
++    playerglobal = Path(sys.argv[1])
++
++    test_abc = compile_abc(HERE / "Test.as", playerglobal)
++    (HERE / "test.swf").write_bytes(
++        swf([do_abc(test_abc, lazy=True), symbol_class([(0, "Test")])])
++    )
++
++    child_abc = compile_abc(HERE / "child/Child.as", playerglobal)
++    (HERE / "child/child.swf").write_bytes(
++        swf(
++            [
++                define_shape(1, 100 * 20, (0x40, 0x80, 0xC0)),
++                define_sprite(2, 1),
++                do_abc(child_abc, lazy=False),
++                symbol_class([(2, "Child")]),
++            ]
++        )
++    )
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/tests/tests/swfs/avm2/loader_unload_retains_linked_class/child/Child.as b/tests/tests/swfs/avm2/loader_unload_retains_linked_class/child/Child.as
+new file mode 100644
+index 000000000..e76aa299f
+--- /dev/null
++++ b/tests/tests/swfs/avm2/loader_unload_retains_linked_class/child/Child.as
+@@ -0,0 +1,12 @@
++package {
++    import flash.display.MovieClip;
++
++    // Linked by SymbolClass to a sprite that places a 100x100 shape, so that
++    // instantiating it has to find the sprite's character - and the shape's -
++    // in this movie's library. That lookup is exactly what fails if the
++    // library has been released while the class is still alive.
++    public class Child extends MovieClip {
++        public function Child() {
++        }
++    }
++}
+diff --git a/tests/tests/swfs/avm2/loader_unload_retains_linked_class/child/child.swf b/tests/tests/swfs/avm2/loader_unload_retains_linked_class/child/child.swf
+new file mode 100644
+index 0000000000000000000000000000000000000000..e6856c2839e93d44ea7df8ad1a5d6c43c6c8775c
+GIT binary patch
+literal 395
+zcmY+Ay-or_5Xb*B_p$782t;$*U}xyaK7k<tH55h@3hmqz*4&xPLEu8PFrl&XC5)|&
+zZ=i4BJ%*3r!r3_4?0-IfGufTft8w#%fCqRtK=TziBn;a%0B;~@9Ix#m^w(c#h28fb
+zh)X=}d}ws~9O7HDrJj8zD}CGaxp!ozZLNjgMniamB+aIcyDVNNy=l6fXYr#vpRH0e
+z$kMrgaeHqjMOc;1%H+ked9snAMdM<Um_=jb+O7(1kMhDS;z^ONOqGfL)d#b@h|}CG
+z{PBE|7DhxAIR_m19`=b{V$Tl*v0zt_CtM-8CRhp%1lOfYPWAl1n~0@jKL-#Kxda=K
+z44hJ(*%VPw_e)idU?aAG?3T(vJ4(AsdrJFC3#DsHv(oY!oyrojc(6-gY<II=-7i2y
+BO``w+
+
+literal 0
+HcmV?d00001
+
+diff --git a/tests/tests/swfs/avm2/loader_unload_retains_linked_class/output.txt b/tests/tests/swfs/avm2/loader_unload_retains_linked_class/output.txt
+new file mode 100644
+index 000000000..a91c127d2
+--- /dev/null
++++ b/tests/tests/swfs/avm2/loader_unload_retains_linked_class/output.txt
+@@ -0,0 +1,5 @@
++loaded, class held: true
++unloaded
++instantiated children=1 width=100
++released
++done
+diff --git a/tests/tests/swfs/avm2/loader_unload_retains_linked_class/test.swf b/tests/tests/swfs/avm2/loader_unload_retains_linked_class/test.swf
+new file mode 100644
+index 0000000000000000000000000000000000000000..73ab7327cd3236a59888afa706066f15f19dfd2d
+GIT binary patch
+literal 2052
+zcmZWqTXWM!6yBrTYHcgAW5-FH1O(&)jtK(7C4m4Yu~TP4+;P&O!;FcIwW`&zrBqe|
+zy!EY5oj!Di=e+l&GyH(|CkWcYKj3fBBZ-?^&v<vwerLaP`PS>|!@W^SCFB{A4+t4O
+zA><U0%?$34KXQLlLI77JO_qsF9=(8fXl@hf*tN}+)oTyB%lw!-{y?sTQ>s?4c%JJ;
+zhP2NIz7{)~_TaGBe$F1a$2Q;S*@sHcZJXRvcH+r&`)%9#z&Ln5@OeK|K0NH%owjeg
+z&SnI&F7KHe7<3@Vqvf^xT(liub)AUFq^=VsfO9njleRPP+m3IyeLhm#-P<qk?$^ru
+zm4otrqEXqYl=s3V-K_71bGmJsQR+K3X5esdVkrByPub^&_xBDx+vjt`o11aT^(Wu+
+zj=$kLJ{HKm)5A_R$LC(V<J-qPcAOr@he&2(EN=K(lxT>z{Z5yA$;$42rEySglpj>I
+z&XMP#9C6z+9Sn|E-0GTRx#~v!!Ph&L{fb(vA5<ERdPBv^H@bGuOnlSWY49J8P&yWe
+zbGV;bzSIf9cw8PlwX~QlEQ>$$r5>s%N9VQgxWCCQ+p$C4WFL#;`Jp}CYTG?-uIah(
+z6gNwHCzMnV#a+|09`C!yd`JcD$O&D`j=AT%hst3)tSuQkMnTosftzw9zQ{cfxPqhW
+z=~9@W>hT_L54b6ruEUkM)f0~UA++!6U)+=YP}4stmvoN$Q8bLM4Y|lqZPV}Ozo0Pn
+zs9)&0PW1>~&wYlmF}mON_)}d9H`R~6qyLdK^S|4n#5XOIhrF1llZs68DVa<_K`9gp
+z(}kJBY~fVlbbgVhWD2Up63LV{GOB%P2t$@KWQjvoT0#!-D+&S?Bq|_@LPeFzjEV^=
+zC#j-Qd4$3!mD3b5R34*pmdZIQk5f5M<q0ZJvMFGaz;s|aV4BFz080W(NQ?nH3+x=Q
+zF<`R5=742^%>!GI*#(gmft7%b0viE#5tsq&GO#Pat^$Q?6s}YC23rM|29^gl4r~J0
+zBto~@9f{oqc28m%U}d0cg{oDmmZ`8s#d{QM5${m3##9C0wfF-d5CK5McMezKYZs0<
+zOEQxPs0tyJ;A6;0f{<h?l_Ep~aRl8)frx1!QU>s46vq_M1Tm`!nkeQJQIkYaK#~AY
+z3s~_)U_2h1d(<6!oSlCG-R$Gs{5$C8wlI(kiR6>O2x_D`-pX4Ofi+nl7lP(gYsxBY
+zPeFG&XwGcUknU_?&043><#b@_p-W_*vCan8IW(JdxKW=29Gml{^V{>#Tv!aO>Fouf
+zz9?WML6VZ`pCK?F7T*{gUiBeBxU^I~53LJ7b&Kg4LIUHp@rV@P7LBDoG?z-tT<F0`
+zeF<h&5zR}1Rn&ib5pE16QyNYtG8gI>Bd29On?zzvb~#M&5(Ij87P(fCWDAm0v&Ln(
+zLa_OwC?t|2fq~e~SJu@q2xct_QX*N${uJL>D}TOy{a1TM6;+J4(z=#IVS@T~k}ib-
+zR$4c5SzPGdB7UclW(_IQ=@`42L(OsTR!l2PVlw@E)Qo?y8TyZ_ec&)h`a(2{VWA;C
+zo>&i0a0s@G<b&7y(5nZnwU=Ya&Y`&$n$<P1ZVf^x0&l+@8^`nO&D#-p8>~Ckbr_`a
+ze$Blf^uu=EM?^R&ZJgjNhV{l0yb2|F^HGA$&k_h*aN!sD6^zT`T>`7*9uYKBCZa|Z
+xyu)lUFgR(g8m;?AYr|-58m)@asv0fXXl;E<X5&v+!lvS{4exmP|BM`j{0rb0|Kb1u
+
+literal 0
+HcmV?d00001
+
+diff --git a/tests/tests/swfs/avm2/loader_unload_retains_linked_class/test.toml b/tests/tests/swfs/avm2/loader_unload_retains_linked_class/test.toml
+new file mode 100644
+index 000000000..b320b74eb
+--- /dev/null
++++ b/tests/tests/swfs/avm2/loader_unload_retains_linked_class/test.toml
+@@ -0,0 +1 @@
++num_frames = 240
+-- 
+2.47.1
+

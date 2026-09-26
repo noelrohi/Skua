@@ -418,7 +418,8 @@ fn main() {
         None
     };
 
-    let trim_every: Option<u32> = std::env::var("SKUA_TRIM_TICKS").ok().and_then(|v| v.parse().ok());
+    // #13: default on (every 30 ticks); SKUA_TRIM_TICKS=0 turns it off.
+    let trim_every: Option<u32> = Some(std::env::var("SKUA_TRIM_TICKS").ok().and_then(|v| v.parse().ok()).unwrap_or(30)).filter(|n| *n > 0);
     let mut ticks_since_trim = 0u32;
     let started = Instant::now();
     let mut last_tick = Instant::now();

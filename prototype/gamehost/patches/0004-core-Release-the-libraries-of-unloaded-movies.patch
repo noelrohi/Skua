@@ -1,0 +1,1038 @@
+From 08228372d9f212f359b7c63fae4d130cbcae2c66 Mon Sep 17 00:00:00 2001
+From: Farhan Riaz <its-forum@techlogix.com>
+Date: Wed, 2 Sep 2026 03:21:39 +0500
+Subject: [PATCH 04/11] core: Release the libraries of unloaded movies
+
+A movie's library was kept in a map weakly keyed on the movie, on the
+assumption that the library would go away with the movie. It cannot: the
+library holds a strong `Arc<SwfMovie>` of its own, and so does nearly
+every character in it, so the key's strong count never reaches zero. Once
+a SWF had been loaded, its characters, decoded bitmaps and SWF data
+stayed resident for the rest of the session, whether or not anything
+could still reach them. Content that loads and unloads assets - a game
+changing zone, or swapping equipment - grew without bound.
+
+Three things kept that memory alive, and all three had to go:
+
+* The library now records, weakly, the display object its movie was
+  loaded into. Once that object has been collected, no timeline and no
+  script can ask the library for a character any more, so the library is
+  dropped and its movie with it. Movies without such a content root - the
+  root movie above all - are never swept.
+
+* `Avm2ClassRegistry` traced its keys, which made every class named by a
+  `SymbolClass` tag a GC root. A class owns its translation unit, which
+  owns the movie, which was the entry's own weak value, so the entry
+  could never expire and the SWF behind it was pinned along with its
+  scripts and their globals. Classes are now held weakly and dead entries
+  are swept.
+
+* The collector paced itself against the size of its own allocations
+  only. A movie's characters are small objects pointing at very large
+  buffers, so a session could hold hundreds of megabytes of dead content
+  while the collector believed it had almost nothing to do. Libraries now
+  report the SWF data and bitmap sources they keep resident.
+
+`Loader.unloadAndStop` stops being a stub while we are here, since it is
+what content calls to say it is finished with an asset: it now stops the
+sounds and timelines of the content it is discarding, and its `gc`
+argument charges the collector so the memory comes back promptly instead
+of whenever the collector next has reason to run.
+
+Adds a test that loads and unloads the same SWF ten times over and checks
+that what stays resident does not grow with the number of loads.
+---
+ core/src/avm2.rs                              |   2 +-
+ core/src/avm2/class.rs                        |  26 +-
+ core/src/avm2/globals/flash/display/Loader.as |   5 +-
+ core/src/avm2/globals/flash/display/loader.rs |  70 ++++-
+ core/src/display_object.rs                    |  17 +-
+ core/src/display_object/movie_clip.rs         |  13 +-
+ core/src/library.rs                           | 241 ++++++++++++++----
+ core/src/loader.rs                            |  11 +
+ core/src/memory_report.rs                     |  13 +-
+ core/src/player.rs                            |  14 +
+ tests/tests/movie_library/mod.rs              |  77 ++++++
+ tests/tests/regression_tests.rs               |   7 +
+ .../loader_unload_releases_library/README.md  |  12 +
+ .../loader_unload_releases_library/Test.as    |  73 ++++++
+ .../child/Child.as                            |  12 +
+ .../child/child.swf                           | Bin 0 -> 330 bytes
+ .../loader_unload_releases_library/output.txt |  11 +
+ .../loader_unload_releases_library/test.swf   | Bin 0 -> 1497 bytes
+ .../loader_unload_releases_library/test.toml  |   1 +
+ 19 files changed, 545 insertions(+), 60 deletions(-)
+ create mode 100644 tests/tests/movie_library/mod.rs
+ create mode 100644 tests/tests/swfs/avm2/loader_unload_releases_library/README.md
+ create mode 100644 tests/tests/swfs/avm2/loader_unload_releases_library/Test.as
+ create mode 100644 tests/tests/swfs/avm2/loader_unload_releases_library/child/Child.as
+ create mode 100644 tests/tests/swfs/avm2/loader_unload_releases_library/child/child.swf
+ create mode 100644 tests/tests/swfs/avm2/loader_unload_releases_library/output.txt
+ create mode 100644 tests/tests/swfs/avm2/loader_unload_releases_library/test.swf
+ create mode 100644 tests/tests/swfs/avm2/loader_unload_releases_library/test.toml
+
+diff --git a/core/src/avm2.rs b/core/src/avm2.rs
+index 5007f9102..09805ad25 100644
+--- a/core/src/avm2.rs
++++ b/core/src/avm2.rs
+@@ -86,7 +86,7 @@ mod vtable;
+ pub use crate::avm2::activation::Activation;
+ pub use crate::avm2::array::ArrayStorage;
+ pub use crate::avm2::call_stack::CallStack;
+-pub use crate::avm2::class::Class;
++pub use crate::avm2::class::{Class, ClassWeak};
+ #[allow(unused)] // For debug_ui
+ pub use crate::avm2::domain::{Domain, DomainPtr};
+ pub use crate::avm2::error::Error;
+diff --git a/core/src/avm2/class.rs b/core/src/avm2/class.rs
+index 438da1167..d04ea9c2b 100644
+--- a/core/src/avm2/class.rs
++++ b/core/src/avm2/class.rs
+@@ -22,7 +22,7 @@ use bitflags::bitflags;
+ use fnv::FnvHashMap;
+ use gc_arena::barrier::unlock;
+ use gc_arena::lock::{OnceLock, RefLock};
+-use gc_arena::{Collect, Gc, Lock, Mutation};
++use gc_arena::{Collect, Gc, GcWeak, Lock, Mutation};
+ use swf::avm2::types::Trait as AbcTrait;
+ 
+ use std::cell::{Cell, Ref};
+@@ -241,7 +241,31 @@ impl<'gc> ClassData<'gc> {
+     }
+ }
+ 
++/// A weak reference to a [`Class`].
++///
++/// Used where a class should be remembered but not kept alive: a class owns its
++/// translation unit, which owns the `SwfMovie` it was loaded from, so holding a
++/// class strongly pins the whole SWF it came from.
++#[derive(Copy, Clone, Collect)]
++#[collect(no_drop)]
++pub struct ClassWeak<'gc>(GcWeak<'gc, ClassData<'gc>>);
++
++impl<'gc> ClassWeak<'gc> {
++    pub fn upgrade(self, mc: &Mutation<'gc>) -> Option<Class<'gc>> {
++        GcWeak::upgrade(self.0, mc).map(Class)
++    }
++
++    /// Whether the class this points at has already been collected.
++    pub fn is_dropped(self) -> bool {
++        GcWeak::is_dropped(self.0)
++    }
++}
++
+ impl<'gc> Class<'gc> {
++    pub fn downgrade(self) -> ClassWeak<'gc> {
++        ClassWeak(Gc::downgrade(self.0))
++    }
++
+     pub fn as_ptr(self) -> *const () {
+         Gc::as_ptr(self.0).cast()
+     }
+diff --git a/core/src/avm2/globals/flash/display/Loader.as b/core/src/avm2/globals/flash/display/Loader.as
+index 0cafdf03b..2c9bae161 100644
+--- a/core/src/avm2/globals/flash/display/Loader.as
++++ b/core/src/avm2/globals/flash/display/Loader.as
+@@ -30,10 +30,7 @@ package flash.display {
+         public native function unload():void;
+ 
+         [API("662")]
+-        public function unloadAndStop(gc:Boolean = true):void {
+-            stub_method("flash.display.Loader", "unloadAndStop");
+-            this.unload();
+-        }
++        public native function unloadAndStop(gc:Boolean = true):void;
+ 
+         public function close():void {
+             stub_method("flash.display.Loader", "close");
+diff --git a/core/src/avm2/globals/flash/display/loader.rs b/core/src/avm2/globals/flash/display/loader.rs
+index 64c293d8e..07042bfe8 100644
+--- a/core/src/avm2/globals/flash/display/loader.rs
++++ b/core/src/avm2/globals/flash/display/loader.rs
+@@ -18,8 +18,11 @@ use crate::avm2::value::Value;
+ use crate::avm2::{Error, Object};
+ use crate::avm2_stub_method;
+ use crate::backend::navigator::{NavigationMethod, Request};
+-use crate::display_object::LoaderDisplay;
++use crate::context::UpdateContext;
+ use crate::display_object::MovieClip;
++use crate::display_object::{
++    DisplayObject, LoaderDisplay, TDisplayObject as _, TDisplayObjectContainer as _,
++};
+ use crate::loader::LoadManager;
+ use crate::loader::MovieLoaderVMData;
+ use crate::tag_utils::SwfMovie;
+@@ -302,6 +305,71 @@ pub fn load_bytes<'gc>(
+     Ok(Value::Undefined)
+ }
+ 
++/// `Loader.unloadAndStop`
++///
++/// Unloads like `unload`, and additionally stops the content on its way out:
++/// Flash guarantees that sounds and timelines belonging to unloaded content
++/// stop running, so that a movie which is done with an asset does not keep
++/// paying for it. The `gc` argument asks the player to reclaim the memory now
++/// rather than whenever the collector next gets round to it, which is what
++/// makes repeated load/unload cycles reach a steady state instead of drifting
++/// upwards for as long as the collector stays idle.
++pub fn unload_and_stop<'gc>(
++    activation: &mut Activation<'_, 'gc>,
++    this: Value<'gc>,
++    args: FunctionArgs<'_, 'gc>,
++) -> Result<Value<'gc>, Error<'gc>> {
++    let this = this.as_object().unwrap();
++    let run_gc = args.get_bool(0);
++
++    let loader_info = this
++        .get_slot(loader_slots::_CONTENT_LOADER_INFO)
++        .as_object()
++        .unwrap();
++
++    let loader_info = loader_info.as_loader_info_object().unwrap();
++
++    // Take a handle on the content before `unload` resets the stream.
++    let content = match &*loader_info.loader_stream() {
++        LoaderStream::Swf(_, root) => Some(*root),
++        LoaderStream::NotYetLoaded(_, root, _) => *root,
++    };
++
++    if let Some(content) = content {
++        activation
++            .context
++            .stop_sounds_on_parent_and_children(content);
++        stop_timelines(activation.context, content);
++    }
++
++    loader_info.unload(activation.context);
++
++    if run_gc {
++        // Ruffle's collector is incremental and paced by how much has been
++        // allocated since it last ran, so on its own it would not react to a
++        // movie that has just dropped several megabytes. Charging it the
++        // memory currently in play makes the next collection step run the
++        // cycle to completion, which is the behaviour Flash documents here.
++        let metrics = activation.gc().metrics();
++        metrics.add_debt(metrics.total_allocation());
++    }
++
++    Ok(Value::Undefined)
++}
++
++/// Stops every timeline in `content` and below it.
++fn stop_timelines<'gc>(context: &mut UpdateContext<'gc>, content: DisplayObject<'gc>) {
++    if let Some(clip) = content.as_movie_clip() {
++        clip.stop(context);
++    }
++
++    if let Some(container) = content.as_container() {
++        for child in container.iter_render_list() {
++            stop_timelines(context, child);
++        }
++    }
++}
++
+ pub fn unload<'gc>(
+     activation: &mut Activation<'_, 'gc>,
+     this: Value<'gc>,
+diff --git a/core/src/display_object.rs b/core/src/display_object.rs
+index 64e3a3258..944537536 100644
+--- a/core/src/display_object.rs
++++ b/core/src/display_object.rs
+@@ -2968,11 +2968,20 @@ impl<'gc> DisplayObject<'gc> {
+     }
+ 
+     pub fn downgrade(self) -> DisplayObjectWeak<'gc> {
++        self.try_downgrade()
++            .unwrap_or_else(|| panic!("Downgrade not yet implemented for {self:?}"))
++    }
++
++    /// Like [`Self::downgrade`], but returns `None` instead of panicking for
++    /// the display object types that have no weak variant yet.
++    pub fn try_downgrade(self) -> Option<DisplayObjectWeak<'gc>> {
+         match self {
+-            DisplayObject::MovieClip(mc) => DisplayObjectWeak::MovieClip(mc.downgrade()),
+-            DisplayObject::LoaderDisplay(l) => DisplayObjectWeak::LoaderDisplay(l.downgrade()),
+-            DisplayObject::Bitmap(b) => DisplayObjectWeak::Bitmap(b.downgrade()),
+-            _ => panic!("Downgrade not yet implemented for {self:?}"),
++            DisplayObject::MovieClip(mc) => Some(DisplayObjectWeak::MovieClip(mc.downgrade())),
++            DisplayObject::LoaderDisplay(l) => {
++                Some(DisplayObjectWeak::LoaderDisplay(l.downgrade()))
++            }
++            DisplayObject::Bitmap(b) => Some(DisplayObjectWeak::Bitmap(b.downgrade())),
++            _ => None,
+         }
+     }
+ }
+diff --git a/core/src/display_object/movie_clip.rs b/core/src/display_object/movie_clip.rs
+index 4bdf9fd31..1225a9cd8 100644
+--- a/core/src/display_object/movie_clip.rs
++++ b/core/src/display_object/movie_clip.rs
+@@ -397,12 +397,23 @@ impl<'gc> MovieClip<'gc> {
+ 
+         unlock!(write, MovieClipData, shared).set(Gc::new(
+             context.gc(),
+-            MovieClipShared::with_data(0, movie.into(), total_frames, loader_info, None),
++            MovieClipShared::with_data(0, movie.clone().into(), total_frames, loader_info, None),
+         ));
+         write.tag_stream_pos.set(0);
+         write.flags.set(MovieClipFlags::PLAYING);
+         write.current_frame.set(0);
+         write.audio_stream.take();
++
++        // Remember that this clip is what the movie was loaded into, so that
++        // the movie's library can be released once the clip is gone. Without
++        // this the library would outlive the content forever, because its own
++        // characters keep the movie alive.
++        if let Some(root) = self.as_displayobject().try_downgrade() {
++            context
++                .library
++                .library_for_movie_mut(movie)
++                .set_content_root(root);
++        }
+     }
+ 
+     pub fn set_initialized(self) {
+diff --git a/core/src/library.rs b/core/src/library.rs
+index 823ad6e78..cc36dfa07 100644
+--- a/core/src/library.rs
++++ b/core/src/library.rs
+@@ -1,10 +1,10 @@
+ use crate::avm1::{PropertyMap as Avm1PropertyMap, PropertyMap};
+-use crate::avm2::{Class as Avm2Class, Domain as Avm2Domain};
++use crate::avm2::{Class as Avm2Class, ClassWeak as Avm2ClassWeak, Domain as Avm2Domain};
+ use crate::backend::audio::SoundHandle;
+ use crate::character::Character;
+ use crate::memory_report::LibraryMemoryUsage;
+ 
+-use crate::display_object::{Bitmap, Graphic, MorphShape, Text};
++use crate::display_object::{Bitmap, DisplayObjectWeak, Graphic, MorphShape, Text};
+ use crate::font::{Font, FontDescriptor, FontLike, FontQuery, FontType};
+ use crate::prelude::*;
+ use crate::string::AvmString;
+@@ -21,57 +21,52 @@ use crate::font::DefaultFont;
+ use fnv::{FnvHashMap, FnvHashSet};
+ use std::collections::HashMap;
+ use std::sync::{Arc, Weak};
+-use weak_table::{PtrWeakKeyHashMap, WeakValueHashMap, traits::WeakElement};
+-
+-#[derive(Clone)]
+-struct MovieSymbol(Arc<SwfMovie>, CharacterId);
++use weak_table::PtrWeakKeyHashMap;
++
++/// Identity key for an AVM2 class.
++///
++/// A [`Avm2ClassWeak`] keeps its own allocation alive even after the class it
++/// points at is collected, so while an entry exists its address cannot be
++/// reused by a different class and pointer identity stays sound.
++fn class_key(class: Avm2Class<'_>) -> usize {
++    class.as_ptr() as usize
++}
+ 
+-#[derive(Clone)]
+-struct WeakMovieSymbol(Weak<SwfMovie>, CharacterId);
++/// One `SymbolClass` mapping: which character of which movie a class builds.
++///
++/// Both halves are weak. The class must not be held strongly, because a class
++/// owns its translation unit, which owns a strong `Arc<SwfMovie>` of the movie
++/// it was loaded from - a strong class here would pin the entire SWF, and with
++/// it this entry's own weak movie reference, so the entry could never expire.
++#[derive(Collect)]
++#[collect(no_drop)]
++struct ClassSymbol<'gc> {
++    class: Avm2ClassWeak<'gc>,
+ 
+-impl WeakElement for WeakMovieSymbol {
+-    type Strong = MovieSymbol;
++    #[collect(require_static)]
++    movie: Weak<SwfMovie>,
+ 
+-    fn new(view: &Self::Strong) -> Self {
+-        Self(Arc::downgrade(&view.0), view.1)
+-    }
+-
+-    fn view(&self) -> Option<Self::Strong> {
+-        if let Some(strong) = self.0.upgrade() {
+-            Some(MovieSymbol(strong, self.1))
+-        } else {
+-            None
+-        }
+-    }
++    #[collect(require_static)]
++    symbol: CharacterId,
+ }
+ 
+ /// The mappings between class objects and library characters defined by
+ /// `SymbolClass`.
++#[derive(Collect, Default)]
++#[collect(no_drop)]
+ pub struct Avm2ClassRegistry<'gc> {
+-    /// A list of AVM2 class objects and the character IDs they are expected to
+-    /// instantiate.
+-    class_map: WeakValueHashMap<Avm2Class<'gc>, WeakMovieSymbol>,
+-}
+-
+-unsafe impl<'gc> Collect<'gc> for Avm2ClassRegistry<'gc> {
+-    fn trace<C: Trace<'gc>>(&self, cc: &mut C) {
+-        for (k, _) in self.class_map.iter() {
+-            cc.trace(k);
+-        }
+-    }
+-}
+-
+-impl Default for Avm2ClassRegistry<'_> {
+-    fn default() -> Self {
+-        Self::new()
+-    }
++    /// The character each AVM2 class is expected to instantiate, keyed by class
++    /// identity.
++    ///
++    /// Dead entries are cleared out by [`Self::remove_dead_classes`]; until
++    /// then their weak references keep the addresses they were keyed on unique,
++    /// so a stale entry can never be mistaken for a newer class.
++    class_map: FnvHashMap<usize, ClassSymbol<'gc>>,
+ }
+ 
+ impl<'gc> Avm2ClassRegistry<'gc> {
+     pub fn new() -> Self {
+-        Self {
+-            class_map: WeakValueHashMap::new(),
+-        }
++        Self::default()
+     }
+ 
+     /// Retrieve the library symbol for a given AVM2 class object.
+@@ -79,10 +74,17 @@ impl<'gc> Avm2ClassRegistry<'gc> {
+     /// A value of `None` indicates that this AVM2 class is not associated with
+     /// a library symbol.
+     pub fn class_symbol(&self, class_def: Avm2Class<'gc>) -> Option<(Arc<SwfMovie>, CharacterId)> {
+-        match self.class_map.get(&class_def) {
+-            Some(MovieSymbol(movie, symbol)) => Some((movie, symbol)),
+-            None => None,
+-        }
++        let entry = self.class_map.get(&class_key(class_def))?;
++        Some((entry.movie.upgrade()?, entry.symbol))
++    }
++
++    /// Forgets the entries of classes that have been collected.
++    ///
++    /// Uses `is_dropped` rather than upgrading, so that asking the question
++    /// never keeps a class alive for another collection cycle.
++    fn remove_dead_classes(&mut self) {
++        self.class_map
++            .retain(|_, entry| !entry.class.is_dropped() && entry.movie.strong_count() > 0);
+     }
+ 
+     /// Associate an AVM2 class definition with a given library symbol.
+@@ -92,7 +94,12 @@ impl<'gc> Avm2ClassRegistry<'gc> {
+         movie: Arc<SwfMovie>,
+         symbol: CharacterId,
+     ) {
+-        if let Some(old) = self.class_map.get(&class_def) {
++        let key = class_key(class_def);
++        if let Some(old) = self
++            .class_map
++            .get(&key)
++            .and_then(|entry| Some((entry.movie.upgrade()?, entry.symbol)))
++        {
+             if Arc::ptr_eq(&movie, &old.0) && symbol != old.1 {
+                 // Flash player actually allows using the same class in multiple SymbolClass
+                 // entries in the same swf, with *different* symbol ids. Whichever one
+@@ -113,7 +120,14 @@ impl<'gc> Avm2ClassRegistry<'gc> {
+             // instantiates the clip on the timeline.
+             return;
+         }
+-        self.class_map.insert(class_def, MovieSymbol(movie, symbol));
++        self.class_map.insert(
++            key,
++            ClassSymbol {
++                class: class_def.downgrade(),
++                movie: Arc::downgrade(&movie),
++                symbol,
++            },
++        );
+     }
+ }
+ 
+@@ -128,11 +142,39 @@ pub struct MovieLibrary<'gc> {
+     jpeg_tables: Option<Vec<u8>>,
+     fonts: FontMap<'gc>,
+     avm2_domain: Option<Avm2Domain<'gc>>,
++
++    /// The display object this movie was loaded into, for movies that were
++    /// loaded by a `Loader` or `loadMovie` rather than being the root movie.
++    ///
++    /// Held weakly on purpose. A library's characters keep strong
++    /// `Arc<SwfMovie>` clones of the very movie this library is keyed on, so
++    /// the weak key can never expire on its own and the entry would live
++    /// forever (see [`MovieLibraries`]). This handle is what lets the entry be
++    /// dropped instead: once the loaded content is gone from both the display
++    /// list and ActionScript, nothing can ask this library for a character any
++    /// more, so the whole library is dead weight.
++    ///
++    /// `None` means "never sweep me" - that is the case for the root movie and
++    /// for libraries created on demand for movies with no content of their own.
++    content_root: Option<DisplayObjectWeak<'gc>>,
++
++    /// Bytes of non-garbage-collected memory this library keeps alive: the
++    /// movie's own SWF data plus the still-compressed source of every bitmap it
++    /// has registered.
++    ///
++    /// The collector paces itself against the memory it can see, and it can
++    /// only see the size of the `Gc` allocations themselves. A movie's
++    /// characters are small objects pointing at very large buffers, so without
++    /// telling the collector about those buffers a session can hold hundreds of
++    /// megabytes of dead content while the collector believes it has almost
++    /// nothing to do. See [`Library::release_unreachable_movies`].
++    external_bytes: usize,
+ }
+ 
+ impl<'gc> MovieLibrary<'gc> {
+     pub fn new(swf: Arc<SwfMovie>) -> Self {
+         Self {
++            external_bytes: swf.uncompressed_len().max(0) as usize,
+             swf,
+             characters: HashMap::new(),
+             imported_assets: HashMap::new(),
+@@ -140,9 +182,42 @@ impl<'gc> MovieLibrary<'gc> {
+             jpeg_tables: None,
+             fonts: Default::default(),
+             avm2_domain: None,
++            content_root: None,
+         }
+     }
+ 
++    /// Non-GC bytes this library is keeping resident.
++    fn external_bytes(&self) -> usize {
++        self.external_bytes
++    }
++
++    /// Records the display object a loaded movie was placed into.
++    ///
++    /// Only call this for movies loaded by `Loader`/`loadMovie`; the root movie
++    /// deliberately has no content root, so that its library is never swept.
++    pub fn set_content_root(&mut self, root: DisplayObjectWeak<'gc>) {
++        self.content_root = Some(root);
++    }
++
++    /// Whether the content this library was loaded for is still reachable.
++    ///
++    /// A library with no recorded content root is always considered in use.
++    fn is_content_alive(&self, mc: &Mutation<'gc>) -> bool {
++        match self.content_root {
++            Some(root) => root.upgrade(mc).is_some(),
++            None => true,
++        }
++    }
++
++    /// Whether this library was loaded for content that is still reachable.
++    ///
++    /// Reported by [`crate::memory_report`]: a library whose content is gone
++    /// but which is still listed has not been swept yet.
++    pub fn has_live_content(&self, mc: &Mutation<'gc>) -> bool {
++        self.content_root
++            .is_some_and(|root| root.upgrade(mc).is_some())
++    }
++
+     /// Totals up everything this library is currently keeping resident.
+     ///
+     /// Used by [`crate::memory_report`] to attribute retained memory to the
+@@ -207,6 +282,9 @@ impl<'gc> MovieLibrary<'gc> {
+                 if let Character::Font(font) = character {
+                     self.fonts.register(font);
+                 }
++                if let Character::Bitmap(bitmap) = character {
++                    self.external_bytes += bitmap.compressed().source_bytes();
++                }
+                 e.insert(character);
+                 true
+             }
+@@ -485,6 +563,22 @@ impl<'gc> MovieLibraries<'gc> {
+     fn known_movies(&self) -> impl Iterator<Item = Arc<SwfMovie>> {
+         self.0.keys()
+     }
++
++    /// Drops every library whose loaded content has been collected.
++    ///
++    /// Returns the number of libraries dropped.
++    fn release_unreachable(&mut self, mc: &Mutation<'gc>, root_swf: &Arc<SwfMovie>) -> usize {
++        let mut released = 0;
++        self.0.retain(|movie, library| {
++            // Never touch the movie the player was started with.
++            if Arc::ptr_eq(&movie, root_swf) || library.is_content_alive(mc) {
++                return true;
++            }
++            released += 1;
++            false
++        });
++        released
++    }
+ }
+ 
+ /// Symbol library for multiple movies.
+@@ -518,6 +612,11 @@ pub struct Library<'gc> {
+     /// A list of the symbols associated with specific AVM2 constructor
+     /// prototypes.
+     avm2_class_registry: Avm2ClassRegistry<'gc>,
++
++    /// The non-GC memory currently reported to the collector, so that only the
++    /// change since the last sweep has to be reported.
++    #[collect(require_static)]
++    reported_external_bytes: usize,
+ }
+ 
+ impl<'gc> Library<'gc> {
+@@ -531,6 +630,7 @@ impl<'gc> Library<'gc> {
+             default_font_names: Default::default(),
+             default_font_cache: Default::default(),
+             avm2_class_registry: Default::default(),
++            reported_external_bytes: 0,
+         }
+     }
+ 
+@@ -546,6 +646,53 @@ impl<'gc> Library<'gc> {
+         self.movie_libraries.known_movies()
+     }
+ 
++    /// Drops the libraries of loaded movies whose content is no longer
++    /// reachable, releasing their characters, decoded bitmaps and SWF data.
++    ///
++    /// This has to be done explicitly. Libraries are stored in a map that is
++    /// weakly keyed on the movie, but a library's own characters hold strong
++    /// `Arc<SwfMovie>` clones of that same movie, so the key's strong count
++    /// never reaches zero and the entry would otherwise be immortal. A library
++    /// is only dropped once the display object its movie was loaded into has
++    /// been garbage collected, which means no timeline and no ActionScript
++    /// object can reach into it any more.
++    ///
++    /// Returns the number of libraries dropped.
++    pub fn release_unreachable_movies(
++        &mut self,
++        mc: &Mutation<'gc>,
++        root_swf: &Arc<SwfMovie>,
++    ) -> usize {
++        self.avm2_class_registry.remove_dead_classes();
++        let released = self.movie_libraries.release_unreachable(mc, root_swf);
++        self.report_external_allocation(mc);
++        released
++    }
++
++    /// Keeps the collector's idea of how much memory is in play in step with
++    /// the SWF data and bitmap sources the movie libraries actually hold.
++    ///
++    /// Without this the collector only counts its own allocations, which for a
++    /// movie library is a rounding error next to the buffers those allocations
++    /// point at, and it ends up pacing itself far too slowly to keep up with
++    /// content that loads and drops megabytes of assets at a time.
++    fn report_external_allocation(&mut self, mc: &Mutation<'gc>) {
++        let total: usize = self
++            .movie_libraries
++            .0
++            .iter()
++            .map(|(_, library)| library.external_bytes())
++            .sum();
++
++        let metrics = mc.metrics();
++        if total > self.reported_external_bytes {
++            metrics.mark_external_allocation(total - self.reported_external_bytes);
++        } else {
++            metrics.mark_external_deallocation(self.reported_external_bytes - total);
++        }
++        self.reported_external_bytes = total;
++    }
++
+     /// Returns the default Font implementations behind the built in names (ie `_sans`)
+     pub fn default_font(
+         &mut self,
+diff --git a/core/src/loader.rs b/core/src/loader.rs
+index 5e3dbeafb..cc80e76a6 100644
+--- a/core/src/loader.rs
++++ b/core/src/loader.rs
+@@ -2207,6 +2207,17 @@ impl<'gc> MovieLoader<'gc> {
+             // in `MovieClip.on_exit_frame`
+             MovieLoaderVMData::Avm2 { loader_info, .. } => {
+                 let current_movie = { loader_info.loader_stream().movie().clone() };
++
++                // Tie the loaded movie's library to the object it was loaded
++                // into, so it can be released once that object is gone. SWF
++                // content is already registered by `replace_with_movie`; this
++                // also covers loaded images, whose root is a `Bitmap`.
++                if let Some(root) = dobj.and_then(|dobj| dobj.try_downgrade()) {
++                    uc.library
++                        .library_for_movie_mut(current_movie.clone())
++                        .set_content_root(root);
++                }
++
+                 loader_info
+                     .set_loader_stream(LoaderStream::Swf(current_movie, dobj.unwrap()), uc.gc());
+ 
+diff --git a/core/src/memory_report.rs b/core/src/memory_report.rs
+index 882fabc73..e214a1227 100644
+--- a/core/src/memory_report.rs
++++ b/core/src/memory_report.rs
+@@ -48,6 +48,10 @@ pub struct MovieMemory {
+     pub fonts: usize,
+     /// Whether the movie's library still points at an AVM2 `ApplicationDomain`.
+     pub has_domain: bool,
++    /// Whether the display object this movie was loaded into is still
++    /// reachable. Content that is gone but still listed here has not been
++    /// swept yet.
++    pub content_alive: bool,
+ }
+ 
+ /// A whole-player snapshot, cheap enough to take every frame.
+@@ -84,6 +88,7 @@ impl MemoryReport {
+                 continue;
+             };
+             let usage = library.memory_usage();
++            let content_alive = library.has_live_content(context.gc());
+ 
+             report.swf_bytes += movie.uncompressed_len().max(0) as usize;
+             report.bitmap_source_bytes += usage.bitmap_source_bytes;
+@@ -105,6 +110,7 @@ impl MemoryReport {
+                 sounds: usage.sounds,
+                 fonts: usage.fonts,
+                 has_domain: usage.has_domain,
++                content_alive,
+             });
+         }
+ 
+@@ -141,9 +147,14 @@ impl MemoryReport {
+         for movie in self.movies.iter().take(count) {
+             let _ = write!(
+                 out,
+-                "\n    {:>4} refs ({:>4} internal)  {:>9} KiB decoded  {:>5} chars  {}",
++                "\n    {:>4} refs ({:>4} internal){}  {:>9} KiB decoded  {:>5} chars  {}",
+                 movie.strong_refs,
+                 movie.self_refs,
++                if movie.content_alive {
++                    "  live"
++                } else {
++                    "  dead"
++                },
+                 movie.bitmap_decoded_bytes / 1024,
+                 movie.characters,
+                 movie.url,
+diff --git a/core/src/player.rs b/core/src/player.rs
+index 0be19dcaf..c95265a7b 100644
+--- a/core/src/player.rs
++++ b/core/src/player.rs
+@@ -2443,6 +2443,20 @@ impl Player {
+         // GC
+         self.gc_arena.borrow_mut().collect_debt();
+ 
++        // Loaded content that did not survive collection can no longer be
++        // reached by any timeline or script, so its library is dropped here.
++        // This cannot happen on its own: a movie library holds strong
++        // `Arc<SwfMovie>` clones of the movie it is weakly keyed on.
++        self.mutate_with_update_context(|context| {
++            let root_swf = context.root_swf.clone();
++            let released = context
++                .library
++                .release_unreachable_movies(context.gc(), &root_swf);
++            if released > 0 {
++                tracing::debug!("Released {released} unreachable movie librar(y/ies)");
++            }
++        });
++
+         rval
+     }
+ 
+diff --git a/tests/tests/movie_library/mod.rs b/tests/tests/movie_library/mod.rs
+new file mode 100644
+index 000000000..07e2d9e3f
+--- /dev/null
++++ b/tests/tests/movie_library/mod.rs
+@@ -0,0 +1,77 @@
++//! Lifetime tests for the libraries of dynamically loaded movies.
++
++use ruffle_test_framework::environment::Environment;
++use ruffle_test_framework::options::TestOptions;
++use ruffle_test_framework::runner::TestStatus;
++use ruffle_test_framework::test::Test;
++use ruffle_test_framework::vfs::{PhysicalFS, VfsPath};
++use std::thread::sleep;
++
++/// A SWF that has been loaded and unloaded must not leave its library behind.
++///
++/// Ruffle stores one library per movie in a map that is weakly keyed on the
++/// movie, but a library's characters hold strong `Arc<SwfMovie>` clones of that
++/// same movie, so the key's strong count never falls to zero on its own. Before
++/// this was handled, every SWF a movie loaded stayed resident - with all of its
++/// characters and decoded bitmaps - for the rest of the session.
++///
++/// The test movie loads the same child ten times over, unloading each one
++/// before the next, so afterwards none of them can be reached from the display
++/// list or from ActionScript.
++/// How many load/unload cycles `test.swf` performs.
++const CYCLES: usize = 10;
++
++pub fn loader_unload_releases_library(
++    environment: &impl Environment,
++) -> Result<(), libtest_mimic::Failed> {
++    let test = &Test::from_options(
++        TestOptions {
++            num_frames: Some(150),
++            output_path: "output.txt".into(),
++            ..Default::default()
++        },
++        VfsPath::new(PhysicalFS::new(
++            "tests/swfs/avm2/loader_unload_releases_library/",
++        )),
++        "loader_unload_releases_library".to_string(),
++    )?;
++
++    let mut runner = test.create_test_runner(environment)?;
++    loop {
++        match runner.tick()? {
++            TestStatus::Continue => {}
++            TestStatus::Sleep(duration) => sleep(duration),
++            TestStatus::Finished => break,
++        }
++    }
++
++    let mut player = runner.player().lock().unwrap();
++    let resident: Vec<String> = player.mutate_with_update_context(|context| {
++        context
++            .library
++            .known_movies()
++            .map(|movie| movie.url().to_owned())
++            .collect()
++    });
++
++    let children: Vec<&String> = resident
++        .iter()
++        .filter(|url| url.ends_with("child.swf"))
++        .collect();
++
++    // The tail of the run is allowed: the last cycle or two may not have been
++    // through a collection yet, so a small constant can still be resident. What
++    // must not happen is retention that grows with the number of loads, which
++    // is what leaves all ten of them here.
++    const ALLOWED: usize = 2;
++    if children.len() > ALLOWED {
++        return Err(format!(
++            "{} of the {CYCLES} unloaded child movies are still resident, expected at most \
++             {ALLOWED}: {children:?}",
++            children.len(),
++        )
++        .into());
++    }
++
++    Ok(())
++}
+diff --git a/tests/tests/regression_tests.rs b/tests/tests/regression_tests.rs
+index 0d5d47d2c..7f818e15a 100644
+--- a/tests/tests/regression_tests.rs
++++ b/tests/tests/regression_tests.rs
+@@ -4,6 +4,7 @@
+ 
+ use crate::environment::NativeEnvironment;
+ use crate::external_interface::tests::{external_interface_avm1, external_interface_avm2};
++use crate::movie_library::loader_unload_releases_library;
+ use crate::shared_object::{shared_object_avm1, shared_object_avm2, shared_object_self_ref_avm1};
+ use anyhow::Context;
+ use clap::Parser;
+@@ -21,6 +22,7 @@ use std::thread::sleep;
+ 
+ mod environment;
+ mod external_interface;
++mod movie_library;
+ mod shared_object;
+ 
+ const TEST_TOML_NAME: &str = "test.toml";
+@@ -102,6 +104,11 @@ fn main() {
+         shared_object_avm2(&*env_clone)
+     }));
+ 
++    let env_clone = env.clone();
++    runner.with_additional_test(Trial::test("loader_unload_releases_library", move || {
++        loader_unload_releases_library(&*env_clone)
++    }));
++
+     let env_clone = env.clone();
+     runner.with_additional_test(Trial::test("external_interface_avm1", move || {
+         external_interface_avm1(&*env_clone)
+diff --git a/tests/tests/swfs/avm2/loader_unload_releases_library/README.md b/tests/tests/swfs/avm2/loader_unload_releases_library/README.md
+new file mode 100644
+index 000000000..26f3a3abd
+--- /dev/null
++++ b/tests/tests/swfs/avm2/loader_unload_releases_library/README.md
+@@ -0,0 +1,12 @@
++Regression test for a loaded SWF's library outliving the content it was loaded
++for.
++
++`test.swf` loads `child/child.swf` five times over, unloading each one before
++loading the next. The trace output only checks that the cycles ran; the
++interesting assertion is in the `loader_unload_releases_library` test in
++`tests/tests/movie_library.rs`, which checks that the player is no longer
++holding a library for any of those children afterwards.
++
++Both SWFs are built from the `.as` sources next to them with `asc.jar`
++(`tools/asc/asc.jar`) plus a minimal AVM2 SWF container, rather than from a
++`.fla`.
+diff --git a/tests/tests/swfs/avm2/loader_unload_releases_library/Test.as b/tests/tests/swfs/avm2/loader_unload_releases_library/Test.as
+new file mode 100644
+index 000000000..fa21e6cb3
+--- /dev/null
++++ b/tests/tests/swfs/avm2/loader_unload_releases_library/Test.as
+@@ -0,0 +1,73 @@
++package {
++    import flash.display.MovieClip;
++    import flash.display.Loader;
++    import flash.events.Event;
++    import flash.events.IOErrorEvent;
++    import flash.net.URLRequest;
++    import flash.system.ApplicationDomain;
++    import flash.system.LoaderContext;
++
++    // Loads and unloads the same child SWF several times over, finishing each
++    // cycle before starting the next. By the time this movie traces "done",
++    // every child it loaded has been unloaded and dropped, so the player must
++    // not still be holding any of them.
++    public class Test extends MovieClip {
++        private static const CYCLES:int = 10;
++
++        private var cycle:int = 0;
++        private var loader:Loader = null;
++        private var unloadPending:Boolean = false;
++
++        public function Test() {
++            addEventListener(Event.ENTER_FRAME, onFrame);
++            startCycle();
++        }
++
++        private function onFrame(e:Event):void {
++            // Unload on the frame after the load settles, rather than from
++            // inside the event handler itself.
++            if (unloadPending) {
++                unloadPending = false;
++                finishCycle();
++            }
++        }
++
++        private function startCycle():void {
++            loader = new Loader();
++            loader.contentLoaderInfo.addEventListener(Event.COMPLETE, onComplete);
++            loader.contentLoaderInfo.addEventListener(IOErrorEvent.IO_ERROR, onError);
++            addChild(loader);
++            loader.load(
++                new URLRequest("./child/child.swf"),
++                new LoaderContext(false, new ApplicationDomain(ApplicationDomain.currentDomain))
++            );
++        }
++
++        private function onComplete(e:Event):void {
++            trace("loaded child " + cycle);
++            unloadPending = true;
++        }
++
++        private function onError(e:IOErrorEvent):void {
++            trace("error " + e.text);
++            unloadPending = true;
++        }
++
++        private function finishCycle():void {
++            loader.contentLoaderInfo.removeEventListener(Event.COMPLETE, onComplete);
++            loader.contentLoaderInfo.removeEventListener(IOErrorEvent.IO_ERROR, onError);
++            loader.unloadAndStop(true);
++            if (loader.parent != null) {
++                loader.parent.removeChild(loader);
++            }
++            loader = null;
++
++            cycle++;
++            if (cycle < CYCLES) {
++                startCycle();
++            } else {
++                trace("done");
++            }
++        }
++    }
++}
+diff --git a/tests/tests/swfs/avm2/loader_unload_releases_library/child/Child.as b/tests/tests/swfs/avm2/loader_unload_releases_library/child/Child.as
+new file mode 100644
+index 000000000..c502faa68
+--- /dev/null
++++ b/tests/tests/swfs/avm2/loader_unload_releases_library/child/Child.as
+@@ -0,0 +1,12 @@
++package {
++    import flash.display.Sprite;
++
++    // Deliberately quiet: the parent's trace output is what the test compares,
++    // and this class exists so that the child SWF carries an ABC and a
++    // SymbolClass entry, which is what pins a loaded movie when the class
++    // registry holds classes strongly.
++    public class Child extends Sprite {
++        public function Child() {
++        }
++    }
++}
+diff --git a/tests/tests/swfs/avm2/loader_unload_releases_library/child/child.swf b/tests/tests/swfs/avm2/loader_unload_releases_library/child/child.swf
+new file mode 100644
+index 0000000000000000000000000000000000000000..64847865d38d7e24cf3518e1fdc9c9494707cbd3
+GIT binary patch
+literal 330
+zcmY*V!AiqG5S^K9cCyh@i#2*t0^ZAhf{?1zi-#WcxG`NxB*c;|MZeBp$S3$I-6SA5
+z49uH(Z(!y<ylm%B2=E1516=$9+#swM5ddVArs>ae=~<ruXRsQ|34~c$)w|hyop<GG
+zS9SY3|CZZ*TRAJA-#%>NPAASDY~#B5{ZQ6km%F00?QDR4Ws)v7jk9fDxawf1N%D`+
+zJ{y-;jcqx>B)FnPhH!}_kV2^#iAgYqESM=`QcSTD7z~I01tO_n`~eA3AovC&74-Vi
+wzlNw{+3S7-z9TP)ZhLLP1lkB~LT#irtPN=sy~6bvC3<OmKDaVk0e2o90SBT$2LJ#7
+
+literal 0
+HcmV?d00001
+
+diff --git a/tests/tests/swfs/avm2/loader_unload_releases_library/output.txt b/tests/tests/swfs/avm2/loader_unload_releases_library/output.txt
+new file mode 100644
+index 000000000..5e93ce9a0
+--- /dev/null
++++ b/tests/tests/swfs/avm2/loader_unload_releases_library/output.txt
+@@ -0,0 +1,11 @@
++loaded child 0
++loaded child 1
++loaded child 2
++loaded child 3
++loaded child 4
++loaded child 5
++loaded child 6
++loaded child 7
++loaded child 8
++loaded child 9
++done
+diff --git a/tests/tests/swfs/avm2/loader_unload_releases_library/test.swf b/tests/tests/swfs/avm2/loader_unload_releases_library/test.swf
+new file mode 100644
+index 0000000000000000000000000000000000000000..3ad2cfea5a0adcd51c2b5ff11306f35c7a9bef7e
+GIT binary patch
+literal 1497
+zcmZWp-E!MR6y76gwOYxlEhn)P=g&#pI89SW{R5^~1jk{LNl?cL16-I|*efi?k&LW_
+z=54s(J>U^kW?+Up9)%;RQzFpC?tc57pYNRG^~qP4<-aH)ZwZ?cvh+708$gaNjS$k6
+zn$6~~i@zWX2uX!>h)i@sJ|W6&=#NX@)SXW{;#LIloc7YKbn5h?D2y_oT#0#X=0;<G
+zKAXCC{35*dMR)4Y=;&@V6|x`1>NIr6B2v$@&AbUx{8|KKKlq+~7KT&d1}qFtBKKP8
+z^Vp5zZtALsK{vdfO+_q_&9WMvANcc0MyuU#y63&iiaQ=>V$S_}ECLbL3wmCC(6d;)
+zznn#WELz3O<GcvxyC1|T?uJ3^`WSJuXmlFHB63Hue=Bms)goUAvX*ms3tweIQ{Ih7
+z6A>A`FRpt1Hz)n0i=H*YblBj$NvDAqYF+2z^?C2Ar=2=)di}oB*Ra;^#Gj7!FZ<_x
+z@#77)pXUhz5nG+ZQA*}(Xa19C=E2fJ#M}7&H0O8Nr)%qIHk<k*H}=EeIK0L>&CyL1
+zp@1AI>5OQMbqX^*ig7aw-c&_8{-%;fT!_SVcq<C+e?Q)%V0;;eGj-;sF^$|X)2@ue
+zK&W}=%KvGIS?HbhzfRW*{D%Rl`7o^-)Z`jlRw<#R4h^+YYt$Rdjg>~Dv0B@%J!B=S
+z0#h`u8zu9Bc^^mxBo|P*fGP^ckUwG|F-c((WuP)yW0W({88w((V$@{tfYCCe6-F&a
+ztBfu%y2zJ+D-vG=UItzPZUSEbUXr;1d>!}(a0@t<_$Kfw@Fwsrg|{f*rMwM%5BMYC
+z9QXn7C%`+v4}sgj7lFYuCOv2J3nsrzg~=atO--M7_5nz^<MYlA0CJ9UPN7^Ops9o~
+zkkN&gO8EK>T`vKVOd#?DAW9hstpHI8SXj9vV?sp%q7ezW&J+7vtEEq@&oP4xx=~B)
+z<dh7m!v$|K@s^yblsGkltRzXgQAO6PS20!6p41a(Ib~!O{VtFhtemZoNh9$Z-YWX9
+zCEj}KpTP}pGx3@T2U~dIYyqx=?Sq}OZ5Zsd2d!btdwAA@vmMFVl`yCx=jjIRgZ;$Y
+z``KwjvOB3GL;qzSzw;j5V^mqzjY%r;o`C(LfDG<BkJJ3#L36>tQqmJH&J#$QD1ZMC
+zZ|}E1-~I0HX_AI^d&5pCtr+`IVT7Qfr>F*%FbROS6I+nsp*^(i;Zu9~%pN|shcE0Q
+awTCaiChPe(QP3QJEjYIHKbL%phkpPPqilWv
+
+literal 0
+HcmV?d00001
+
+diff --git a/tests/tests/swfs/avm2/loader_unload_releases_library/test.toml b/tests/tests/swfs/avm2/loader_unload_releases_library/test.toml
+new file mode 100644
+index 000000000..19c19808b
+--- /dev/null
++++ b/tests/tests/swfs/avm2/loader_unload_releases_library/test.toml
+@@ -0,0 +1 @@
++num_frames = 150
+-- 
+2.47.1
+

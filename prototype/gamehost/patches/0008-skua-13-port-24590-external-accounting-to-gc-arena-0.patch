@@ -1,0 +1,119 @@
+From c50a9d449c93ab9e2ceed77272483d4a42aff76d Mon Sep 17 00:00:00 2001
+From: Rohi <noelrohi59@gmail.com>
+Date: Sat, 26 Sep 2026 19:49:17 +0800
+Subject: [PATCH 08/11] skua #13: port #24590 external accounting to gc-arena
+ 0.7 (adjust_debt shim)
+
+---
+ core/src/bitmap/bitmap_data.rs | 6 +++---
+ core/src/display_object.rs     | 4 ++--
+ core/src/lib.rs                | 9 +++++++++
+ core/src/library.rs            | 4 ++--
+ core/src/memory_report.rs      | 4 ++--
+ 5 files changed, 18 insertions(+), 9 deletions(-)
+
+diff --git a/core/src/bitmap/bitmap_data.rs b/core/src/bitmap/bitmap_data.rs
+index 35ddea927..a74ce1326 100644
+--- a/core/src/bitmap/bitmap_data.rs
++++ b/core/src/bitmap/bitmap_data.rs
+@@ -1082,7 +1082,7 @@ impl TrackedPixels {
+ 
+     pub fn new(pixels: Vec<Color>, metrics: Option<Metrics>) -> Self {
+         if let Some(metrics) = &metrics {
+-            metrics.mark_external_allocation(Self::bytes(&pixels));
++            crate::skua_external_allocation(&metrics, Self::bytes(&pixels));
+         }
+         Self { pixels, metrics }
+     }
+@@ -1098,7 +1098,7 @@ impl TrackedPixels {
+     pub fn clear_and_free(&mut self) {
+         let old = std::mem::take(&mut self.pixels);
+         if let Some(metrics) = &self.metrics {
+-            metrics.mark_external_deallocation(Self::bytes(&old));
++            crate::skua_external_deallocation(&metrics, Self::bytes(&old));
+         }
+     }
+ }
+@@ -1112,7 +1112,7 @@ impl Clone for TrackedPixels {
+ impl Drop for TrackedPixels {
+     fn drop(&mut self) {
+         if let Some(metrics) = &self.metrics {
+-            metrics.mark_external_deallocation(Self::bytes(&self.pixels));
++            crate::skua_external_deallocation(&metrics, Self::bytes(&self.pixels));
+         }
+     }
+ }
+diff --git a/core/src/display_object.rs b/core/src/display_object.rs
+index 3f438dd08..616c21aec 100644
+--- a/core/src/display_object.rs
++++ b/core/src/display_object.rs
+@@ -225,7 +225,7 @@ impl std::fmt::Debug for TrackedCacheBitmap {
+ impl TrackedCacheBitmap {
+     fn new(info: BitmapInfo, metrics: Metrics) -> Self {
+         let bytes = info.width as usize * info.height as usize * 4;
+-        metrics.mark_external_allocation(bytes);
++        crate::skua_external_allocation(&metrics, bytes);
+         Self {
+             info,
+             bytes,
+@@ -236,7 +236,7 @@ impl TrackedCacheBitmap {
+ 
+ impl Drop for TrackedCacheBitmap {
+     fn drop(&mut self) {
+-        self.metrics.mark_external_deallocation(self.bytes);
++        crate::skua_external_deallocation(&self.metrics, self.bytes);
+     }
+ }
+ 
+diff --git a/core/src/lib.rs b/core/src/lib.rs
+index f7dac7d6f..2eb0d4598 100644
+--- a/core/src/lib.rs
++++ b/core/src/lib.rs
+@@ -78,3 +78,12 @@ pub const DEFAULT_PLAYER_VERSION: u8 = 32;
+ 
+ /// Path to the raw playerglobal ABC, for use as an `asc.jar` import library.
+ pub const PLAYERGLOBAL_ABC_PATH: &str = env!("RUFFLE_PLAYERGLOBAL_ABC_PATH");
++
++/// skua #13: gc-arena 0.7 has no external-allocation accounting (0.5 did, and the ported
++/// library-lifetime fix relied on it). Debt is counted in `Gc` objects there, so charge
++/// external bytes as object-equivalents; frees can't be credited.
++pub(crate) fn skua_external_allocation(metrics: &gc_arena::metrics::Metrics, bytes: usize) {
++    metrics.adjust_debt(bytes as f64 / 128.0);
++}
++
++pub(crate) fn skua_external_deallocation(_metrics: &gc_arena::metrics::Metrics, _bytes: usize) {}
+diff --git a/core/src/library.rs b/core/src/library.rs
+index aed0b63ea..5f0572328 100644
+--- a/core/src/library.rs
++++ b/core/src/library.rs
+@@ -918,9 +918,9 @@ impl<'gc> Library<'gc> {
+ 
+         let metrics = mc.metrics();
+         if total > self.reported_external_bytes {
+-            metrics.mark_external_allocation(total - self.reported_external_bytes);
++            crate::skua_external_allocation(&metrics, total - self.reported_external_bytes);
+         } else {
+-            metrics.mark_external_deallocation(self.reported_external_bytes - total);
++            crate::skua_external_deallocation(&metrics, self.reported_external_bytes - total);
+         }
+         self.reported_external_bytes = total;
+     }
+diff --git a/core/src/memory_report.rs b/core/src/memory_report.rs
+index 55bcc430a..6df0576d0 100644
+--- a/core/src/memory_report.rs
++++ b/core/src/memory_report.rs
+@@ -96,9 +96,9 @@ impl MemoryReport {
+         let mut report = MemoryReport {
+             pending_loaders: context.load_manager.len(),
+             class_aliases: context.avm2.class_alias_count(),
+-            gc_allocation: context.gc_context.metrics().total_gc_allocation(),
++            gc_allocation: context.gc_context.metrics().total_gc_count(),
+             gc_objects: context.gc_context.metrics().total_gc_count(),
+-            gc_external_bytes: context.gc_context.metrics().total_external_allocation(),
++            gc_external_bytes: 0,
+             ..Default::default()
+         };
+ 
+-- 
+2.47.1
+

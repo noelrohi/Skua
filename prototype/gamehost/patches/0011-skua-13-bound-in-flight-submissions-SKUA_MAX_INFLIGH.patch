@@ -1,0 +1,61 @@
+From 05d2426f64a699fd38269adb6ba0632f34911786 Mon Sep 17 00:00:00 2001
+From: Rohi <noelrohi59@gmail.com>
+Date: Sat, 26 Sep 2026 19:54:43 +0800
+Subject: [PATCH 11/11] skua #13: bound in-flight submissions
+ (SKUA_MAX_INFLIGHT, default 16)
+
+---
+ render/wgpu/src/backend.rs | 27 +++++++++++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+
+diff --git a/render/wgpu/src/backend.rs b/render/wgpu/src/backend.rs
+index 953037064..7bb5e954e 100644
+--- a/render/wgpu/src/backend.rs
++++ b/render/wgpu/src/backend.rs
+@@ -1360,9 +1360,35 @@ fn submit_encoder(
+     );
+     let index = descriptors.queue.submit(Some(draw_encoder.finish()));
+     staging_belt.recall();
++    skua_bound_in_flight(descriptors, index.clone());
+     index
+ }
+ 
++/// skua #13: backpressure. Nothing stops the CPU from recording offscreen draws faster than the
++/// GPU runs them, and every queued submission holds Metal driver memory until it completes
++/// (`Stress2`: ~1 GB/s). Keep at most `SKUA_MAX_INFLIGHT` (default 16, 0 = off) submissions
++/// outstanding by waiting for the oldest.
++fn skua_bound_in_flight(descriptors: &Descriptors, index: SubmissionIndex) {
++    static MAX: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
++    static IN_FLIGHT: std::sync::Mutex<std::collections::VecDeque<SubmissionIndex>> =
++        std::sync::Mutex::new(std::collections::VecDeque::new());
++    let max = *MAX.get_or_init(|| {
++        std::env::var("SKUA_MAX_INFLIGHT").ok().and_then(|v| v.parse().ok()).unwrap_or(16)
++    });
++    if max == 0 {
++        return;
++    }
++    let mut q = IN_FLIGHT.lock().unwrap();
++    q.push_back(index);
++    while q.len() > max {
++        let oldest = q.pop_front().unwrap();
++        let _ = descriptors.device.poll(wgpu::PollType::Wait {
++            submission_index: Some(oldest),
++            timeout: None,
++        });
++    }
++}
++
+ pub struct ActiveFrame {
+     pub staging_belt: wgpu::util::StagingBelt,
+     pub command_encoder: wgpu::CommandEncoder,
+@@ -1404,6 +1430,7 @@ impl ActiveFrame {
+             frame,
+         );
+         self.staging_belt.recall();
++        skua_bound_in_flight(descriptors, index.clone());
+         index
+     }
+ 
+-- 
+2.47.1
+

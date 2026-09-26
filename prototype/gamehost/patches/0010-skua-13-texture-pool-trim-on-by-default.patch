@@ -1,0 +1,26 @@
+From 182e5dc9739833de686e9fcdb41bf8b55c10905c Mon Sep 17 00:00:00 2001
+From: Rohi <noelrohi59@gmail.com>
+Date: Sat, 26 Sep 2026 19:54:02 +0800
+Subject: [PATCH 10/11] skua #13: texture pool trim on by default
+
+---
+ render/wgpu/src/backend.rs | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/render/wgpu/src/backend.rs b/render/wgpu/src/backend.rs
+index 27946b7f6..953037064 100644
+--- a/render/wgpu/src/backend.rs
++++ b/render/wgpu/src/backend.rs
+@@ -1436,7 +1436,8 @@ impl ActiveFrame {
+ fn skua_pool_trim() -> Option<(u64, usize)> {
+     static V: std::sync::OnceLock<Option<(u64, usize)>> = std::sync::OnceLock::new();
+     *V.get_or_init(|| {
+-        let v = std::env::var("SKUA_POOL_TRIM").ok()?;
++        // Default on (30 frames, 4 per size); `SKUA_POOL_TRIM=off` restores upstream behaviour.
++        let v = std::env::var("SKUA_POOL_TRIM").unwrap_or_else(|_| "30,4".into());
+         let (a, k) = v.split_once(',')?;
+         Some((a.parse().ok()?, k.parse().ok()?))
+     })
+-- 
+2.47.1
+
