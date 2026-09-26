@@ -272,6 +272,29 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for FrameLayer {
 
 // ---------------------------------------------------------------- main
 
+/// A panic inside Ruffle poisons the player mutex; keep going with the inner value (prototype).
+fn lock(p: &Arc<Mutex<Player>>) -> std::sync::MutexGuard<'_, Player> {
+    p.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Runs `f`, turning a panic into an 'L' frame instead of killing the Game Host.
+fn guarded<R>(what: &str, f: impl FnOnce() -> R) -> Option<R> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(r) => Some(r),
+        Err(e) => {
+            let msg = e
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
+                .unwrap_or_default();
+            let mut p = vec![1u8];
+            p.extend_from_slice(format!("[panic] recovered in {what}: {msg}").as_bytes());
+            send_frame(b'L', &p);
+            None
+        }
+    }
+}
+
 struct Opts {
     swf: String,
     show_game: bool,
@@ -298,6 +321,14 @@ const HEIGHT: u32 = 550;
 fn main() {
     let opts = parse_args();
     start_writer();
+    std::panic::set_hook(Box::new(|info| {
+        let bt = std::backtrace::Backtrace::force_capture();
+        let text = format!("[panic] {info}\n{bt}");
+        eprintln!("{text}");
+        let mut p = vec![1u8];
+        p.extend_from_slice(text.as_bytes());
+        send_frame(b'L', &p);
+    }));
 
     let filter = tracing_subscriber::EnvFilter::builder()
         .parse_lossy(std::env::var("SKUA_GAMEHOST_LOG").as_deref().unwrap_or("warn"));
@@ -386,18 +417,18 @@ fn main() {
     let mut max_tick_gap = Duration::ZERO;
 
     loop {
-        let wait = player.lock().unwrap().time_til_next_frame().min(Duration::from_millis(33));
+        let wait = lock(&player).time_til_next_frame().min(Duration::from_millis(33));
         let msg = rx.recv_timeout(wait);
         match msg {
             Ok(Msg::Task(r)) => {
-                r.run();
+                guarded("task", || r.run());
             }
             Ok(Msg::Call { id, xml: req }) => {
                 calls += 1;
                 let reply = match xml::parse_invoke(&req) {
                     Ok((name, args)) => {
-                        let v = player.lock().unwrap().call_internal_interface(&name, args);
-                        xml::value(&v)
+                        guarded(&name, || xml::value(&lock(&player).call_internal_interface(&name, args)))
+                            .unwrap_or_else(|| "<undefined/>".to_string())
                     }
                     Err(e) => {
                         tracing::warn!("bad invoke: {e}");
@@ -407,12 +438,14 @@ fn main() {
                 send_with_id(b'R', id, reply.as_bytes());
             }
             Ok(Msg::Screenshot { id, max_width }) => {
-                let mut p = player.lock().unwrap();
-                p.render();
+                let img = guarded("screenshot", || {
+                    let mut p = lock(&player);
+                    p.render();
+                    let renderer = <dyn Any>::downcast_mut::<WgpuRenderBackend<TextureTarget>>(p.renderer_mut()).unwrap();
+                    renderer.capture_frame()
+                })
+                .flatten();
                 renders += 1;
-                let renderer = <dyn Any>::downcast_mut::<WgpuRenderBackend<TextureTarget>>(p.renderer_mut()).unwrap();
-                let img = renderer.capture_frame();
-                drop(p);
                 let (w, h, png) = match img {
                     Some(mut img) => {
                         if max_width > 0 && img.width() > max_width {
@@ -444,7 +477,7 @@ fn main() {
                     calls,
                     EVENTS_SENT.load(Ordering::Relaxed),
                     renders,
-                    player.lock().unwrap().frame_rate(),
+                    lock(&player).frame_rate(),
                     max_tick_gap.as_millis()
                 );
                 max_tick_gap = Duration::ZERO;
@@ -460,9 +493,9 @@ fn main() {
             max_tick_gap = dt;
         }
         if dt.as_micros() > 0 {
-            let mut p = player.lock().unwrap();
+            let mut p = lock(&player);
             let fr = p.frame_rate();
-            p.tick(FloatDuration::from_std(dt));
+            guarded("tick", || p.tick(FloatDuration::from_std(dt)));
             ticks += 1;
             if fr > 0.0 {
                 frames_est += dt.as_secs_f64() * fr;
@@ -473,7 +506,7 @@ fn main() {
         let want_render = window.is_some() || opts.render_every_frame;
         if want_render && last_render.elapsed() >= Duration::from_millis(33) {
             last_render = Instant::now();
-            let mut p = player.lock().unwrap();
+            let mut p = lock(&player);
             p.render();
             renders += 1;
             if let Some(w) = window.as_mut() {

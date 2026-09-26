@@ -74,6 +74,7 @@ public static class Program
             case "smoke": Smoke(); break;
             case "hold": Log("holding"); Thread.Sleep(Timeout.Infinite); break;
             case "live": Live(Arg(args, "--server")); break;
+            case "full": Live(Arg(args, "--server")); RunScript(Path.GetFullPath(args[1]), double.Parse(args[2])); break;
             case "script": Login(Arg(args, "--server")); RunScript(args[1], double.Parse(args[2])); break;
             case "idle": Login(Arg(args, "--server")); Idle(double.Parse(args[1])); break;
         }
@@ -183,6 +184,7 @@ public static class Program
     {
         var sw = Stopwatch.StartNew();
         var s = Host.Screenshot(maxWidth);
+        if (s.Png.Length == 0) { Log($"screenshot {name}: FAILED (Game Host returned no image)"); return; }
         var path = Path.Combine(OutDir, $"{name}.png");
         File.WriteAllBytes(path, s.Png);
         Log($"screenshot {name}: {s.Width}x{s.Height} frames~{s.Frames} {s.Png.Length} B in {sw.ElapsedMilliseconds} ms -> {path}");
