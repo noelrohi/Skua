@@ -30,3 +30,24 @@ dotnet bridge-console/bin/Release/net10.0/bridge-console.dll full Scripts/Farm/L
 ```
 
 `live`/`full`/`script` read the Test Account from Keychain (`skua-test-account`) and redact it from all output.
+
+## #13 (Game Host memory) additions
+
+Branch `prototype/gamehost-memory`. Verdict and numbers: the #13 resolution.
+
+- **Measure `footprint`, not RSS.** On macOS, RSS hides compressed pages and most GPU memory. `stress/`-style runs can reach
+  tens of GB of footprint while RSS falls. The host answers `'M'` (memory stats JSON: movie libraries, characters, GC objects,
+  texture pools, wgpu resource counts) and `'G'` (full GC). `bridge-console` logs a `MEM` line (footprint buckets + `'M'`)
+  every minute, plus a full-GC sample every 30 min. New mode: `loginscreen <min>` (no login).
+- **Host fixes:** an autorelease pool per loop iteration (Metal objects were never released), an offscreen pool trim every 30
+  ticks (`SKUA_TRIM_TICKS`, 0 = off), host flags via `SKUA_GAMEHOST_ARGS`, and `SKUA_NO_RENDERBENCH=1`.
+- **Ruffle patch series** on `a1277c0` + `0001` (apply with `git am patches/00{03..11}-*.patch`):
+  `0003`–`0006` upstream PR #24590 (movie-library lifetime by reachability; `unloadAndStop`; lazy tessellation),
+  `0007` stats + texture-pool trim, `0008` gc-arena 0.7 external-accounting shim, `0009` #14's pass-budget flush,
+  `0010` pool trim on by default (`SKUA_POOL_TRIM=off`), `0011` at most 16 in-flight submissions (`SKUA_MAX_INFLIGHT`).
+  `0002` is only a peak counter now (stock wgpu-hal 4096 limit).
+- **Build of the gate config** (`~/src/ruffle-13lib` = pin + 0001 + 0003..0011):
+  `cargo build --release --target-dir target-lib --config 'patch."https://github.com/ruffle-rs/ruffle".ruffle_core.path="<ruffle>/core"'`
+  (same for `ruffle_render`, `ruffle_render_wgpu`, `ruffle_frontend_utils`).
+- **Offline:** `stress/fp.py <label> <secs> <every> <swf> [flags]` samples footprint + `'M'`.
+  **Live:** `bridge-console script <Leveling.cs> 120 --server Galanoth` with `SKUA_GAMEHOST_ARGS=--render-interval-ms=250`.
