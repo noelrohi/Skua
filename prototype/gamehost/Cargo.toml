@@ -1,0 +1,24 @@
+# PROTOTYPE (#6): throwaway Game Host spike. Not production code.
+[package]
+name = "skua-gamehost"
+version = "0.0.0-prototype"
+edition = "2024"
+publish = false
+
+[dependencies]
+ruffle_core = { git = "https://github.com/ruffle-rs/ruffle", rev = "a1277c06e5d46c03726d813c3cc1faa49a238c54", features = ["default_font", "lzma", "default_compatibility_rules"] }
+ruffle_render = { git = "https://github.com/ruffle-rs/ruffle", rev = "a1277c06e5d46c03726d813c3cc1faa49a238c54" }
+ruffle_render_wgpu = { git = "https://github.com/ruffle-rs/ruffle", rev = "a1277c06e5d46c03726d813c3cc1faa49a238c54" }
+ruffle_frontend_utils = { git = "https://github.com/ruffle-rs/ruffle", rev = "a1277c06e5d46c03726d813c3cc1faa49a238c54", features = ["navigator"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+async-task = "4.7.1"
+futures = "0.3"
+image = { version = "0.25", default-features = false, features = ["png"] }
+roxmltree = "0.20"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = "2"
+minifb = "0.28"
+
+[profile.release]
+debug = 1
