@@ -198,6 +198,8 @@ public static class Program
         {
             var psi = new ProcessStartInfo("security") { RedirectStandardOutput = true, RedirectStandardError = true };
             foreach (var x in a) psi.ArgumentList.Add(x);
+            // HOME may point at a scratch SkuaDIR; name the real login keychain explicitly.
+            psi.ArgumentList.Add(Path.Combine(Environment.GetEnvironmentVariable("REAL_HOME") ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library/Keychains/login.keychain-db"));
             var p = Process.Start(psi)!;
             string o = p.StandardOutput.ReadToEnd();
             p.WaitForExit();
