@@ -111,6 +111,7 @@ enum Msg {
     Mem { id: u32 },
     FullGc { id: u32 },
     Census { id: u32 },
+    Retainers { id: u32, class: String },
 }
 
 fn start_reader(tx: Sender<Msg>) {
@@ -144,6 +145,7 @@ fn start_reader(tx: Sender<Msg>) {
                     b'M' => Msg::Mem { id },
                     b'G' => Msg::FullGc { id },
                     b'Y' => Msg::Census { id },
+                    b'Z' => Msg::Retainers { id, class: String::from_utf8_lossy(&body[5..]).into_owned() },
                     _ => continue,
                 };
                 if tx.send(msg).is_err() {
@@ -501,6 +503,11 @@ fn main() {
             Ok(Msg::Census { id }) => {
                 // #13: live GC objects by Rust type (needs the patched gc-arena; run after 'G').
                 let text = lock(&player).skua_census(60);
+                send_with_id(b'Q', id, text.as_bytes());
+            }
+            Ok(Msg::Retainers { id, class }) => {
+                // #13: who keeps the oldest live instance of an AS3 class alive (run after 'G').
+                let text = lock(&player).skua_retainers(&class, 40);
                 send_with_id(b'Q', id, text.as_bytes());
             }
             Ok(Msg::FullGc { id }) => {

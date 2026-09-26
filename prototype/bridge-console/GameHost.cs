@@ -145,6 +145,8 @@ public sealed class GameHost : IDisposable
 
     public string Census() => Encoding.UTF8.GetString(Request('Y', ReadOnlySpan<byte>.Empty, TimeSpan.FromSeconds(60)));
 
+    public string Retainers(string cls) => Encoding.UTF8.GetString(Request('Z', Encoding.UTF8.GetBytes(cls), TimeSpan.FromSeconds(120)));
+
     public void FullGc() => Request('G', ReadOnlySpan<byte>.Empty, TimeSpan.FromSeconds(60));
 
     public string Stats() => Encoding.UTF8.GetString(Request('Q', ReadOnlySpan<byte>.Empty, TimeSpan.FromSeconds(10)));

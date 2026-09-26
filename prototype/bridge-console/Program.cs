@@ -395,6 +395,10 @@ public static class Program
         // #13: live GC objects by Rust type after a full GC (census build of the Game Host only).
         if (gc && Environment.GetEnvironmentVariable("SKUA_CENSUS") == "1")
             foreach (var line in Host.Census().Split('\n')) Log($"CENSUS {label} t={sw.Elapsed.TotalMinutes:F1}min {line}");
+        // #13: retainer path of the oldest live instance of these AS3 classes (comma-separated).
+        if (gc && Environment.GetEnvironmentVariable("SKUA_RETAIN_CLASSES") is { Length: > 0 } classes)
+            foreach (var cls in classes.Split(','))
+                foreach (var line in Host.Retainers(cls).Split('\n')) Log($"RETAIN {label} t={sw.Elapsed.TotalMinutes:F1}min {cls}: {line}");
     }
 
     static void Sample(string label, Stopwatch sw)
@@ -405,6 +409,8 @@ public static class Program
     }
 
     static readonly int GcEveryMin = int.TryParse(Environment.GetEnvironmentVariable("SKUA_GC_EVERY_MIN"), out var g) && g > 0 ? g : 30;
+
+    static readonly HashSet<int>? GcAt = Environment.GetEnvironmentVariable("SKUA_GC_AT") is { Length: > 0 } v ? v.Split(',').Select(int.Parse).ToHashSet() : null;
 
     static void RunScript(string path, double minutes)
     {
@@ -422,7 +428,7 @@ public static class Program
             {
                 lastMinute = m; Sample("script", sw);
                 if (m % 15 == 0) { Shot($"script-{m:D3}min"); if (Environment.GetEnvironmentVariable("SKUA_NO_RENDERBENCH") == null) Log($"RENDERBENCH script-{m}min " + Host.RenderBench(30)); }
-                if (m % GcEveryMin == 0 && m > 0) MemSample("script-after-full-gc", sw, gc: true);
+                if (m > 0 && (GcAt != null ? GcAt.Contains(m) : m % GcEveryMin == 0)) MemSample("script-after-full-gc", sw, gc: true);
             }
             if (!mgr.ScriptRunning) { Log("Script ended on its own"); break; }
             Thread.Sleep(1000);
