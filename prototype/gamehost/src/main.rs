@@ -382,6 +382,8 @@ fn main() {
     let mut calls: u64 = 0;
     let mut renders: u64 = 0;
     let mut last_render = Instant::now();
+    // Largest gap between two ticks since the last stats request: App Nap / timer throttling shows up here.
+    let mut max_tick_gap = Duration::ZERO;
 
     loop {
         let wait = player.lock().unwrap().time_til_next_frame().min(Duration::from_millis(33));
@@ -435,15 +437,17 @@ fn main() {
             Ok(Msg::Ping { id }) => send_with_id(b'P', id, &[]),
             Ok(Msg::Stats { id }) => {
                 let json = format!(
-                    "{{\"uptimeMs\":{},\"ticks\":{},\"framesEst\":{},\"calls\":{},\"events\":{},\"renders\":{},\"frameRate\":{}}}",
+                    "{{\"uptimeMs\":{},\"ticks\":{},\"framesEst\":{},\"calls\":{},\"events\":{},\"renders\":{},\"frameRate\":{},\"maxTickGapMs\":{}}}",
                     started.elapsed().as_millis(),
                     ticks,
                     frames_est as u64,
                     calls,
                     EVENTS_SENT.load(Ordering::Relaxed),
                     renders,
-                    player.lock().unwrap().frame_rate()
+                    player.lock().unwrap().frame_rate(),
+                    max_tick_gap.as_millis()
                 );
+                max_tick_gap = Duration::ZERO;
                 send_with_id(b'Q', id, json.as_bytes());
             }
             Err(RecvTimeoutError::Timeout) => {}
@@ -452,6 +456,9 @@ fn main() {
 
         let now = Instant::now();
         let dt = now - last_tick;
+        if dt > max_tick_gap {
+            max_tick_gap = dt;
+        }
         if dt.as_micros() > 0 {
             let mut p = player.lock().unwrap();
             let fr = p.frame_rate();

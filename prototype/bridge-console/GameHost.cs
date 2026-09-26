@@ -22,6 +22,7 @@ public sealed class GameHost : IDisposable
     public event Action<string>? FlashLog;       // trace / uncaught AS3 errors
     public event Action<string>? DebugLog;       // Ruffle/wgpu log lines, stderr
     public int Pid => _proc.Id;
+    public int MaxQueueDepth;
     public Process Process => _proc;
 
     public GameHost(string exe, string swf, bool showGame = false, string? extraArgs = null)
@@ -80,6 +81,7 @@ public sealed class GameHost : IDisposable
                         break;
                     case 'E':
                         _events.Add(Encoding.UTF8.GetString(body, 1, len - 1));
+                        if (_events.Count > MaxQueueDepth) MaxQueueDepth = _events.Count;
                         break;
                     case 'F':
                         FlashLog?.Invoke(Encoding.UTF8.GetString(body, 1, len - 1));

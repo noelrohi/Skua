@@ -35,6 +35,7 @@ public static class Program
     public static void Log(string s)
     {
         if (Secret != null && Secret.Length > 0) s = s.Replace(Secret, "***");
+        s = Regex.Replace(s, @"<pword>.*?</pword>", "<pword>***</pword>"); // game's own login-token trace
         var line = $"{DateTime.Now:HH:mm:ss.fff} {s}";
         lock (LogLock)
         {
@@ -226,12 +227,15 @@ public static class Program
 
     static void Login(string? server)
     {
+        WatchConnDetail(CancellationToken.None);
         var (user, pass) = ReadKeychain();
         if (user.Length == 0 || pass.Length == 0) throw new Exception("Test Account not found in Keychain");
         Log($"login as {user} (password from Keychain, redacted) server={server ?? "(auto)"}");
         Bot.Servers.SetLoginInfo(user, pass);
         var sw = Stopwatch.StartNew();
-        bool ok = server != null ? Bot.Servers.Relogin(server) : Bot.Servers.Relogin();
+        bool relog = server != null ? Bot.Servers.Relogin(server) : Bot.Servers.Relogin();
+        Log($"Core Relogin returned {relog} after {sw.ElapsedMilliseconds} ms (its own wait is 30 x 100 ms); waiting up to 90 s for Playing && IsWorldLoaded");
+        bool ok = SpinWait.SpinUntil(() => { Thread.Sleep(250); return Bot.Player.Playing && Bot.Flash.IsWorldLoaded; }, TimeSpan.FromSeconds(90));
         Log($"login {(ok ? "OK" : "FAILED")} in {sw.ElapsedMilliseconds} ms: Playing={Bot.Player.Playing} IsWorldLoaded={Bot.Flash.IsWorldLoaded} map={Bot.Map.Name} server={Bot.Servers.LastIP}");
         Shot("after-login");
         if (!ok) throw new Exception("login failed");
@@ -241,11 +245,26 @@ public static class Program
     {
         var sw = Stopwatch.StartNew();
         Bot.Map.Join(map, cell, pad);
-        bool ok = Bot.Wait.ForMapLoad(map, 30);
+        Bot.Wait.ForMapLoad(map, 30);
+        bool ok = SpinWait.SpinUntil(() => { Thread.Sleep(250); return string.Equals(Bot.Map.Name, map, StringComparison.OrdinalIgnoreCase) && Bot.Player.Playing && Bot.Flash.IsWorldLoaded; }, TimeSpan.FromSeconds(60));
         Thread.Sleep(1500);
         Log($"join {map}: {(ok ? "OK" : "FAILED")} in {sw.ElapsedMilliseconds} ms; map={Bot.Map.Name} cell={Bot.Player.Cell} players={Bot.Map.PlayerCount} IsWorldLoaded={Bot.Flash.IsWorldLoaded}");
         Shot("map-" + map);
         return ok;
+    }
+
+    static void WatchConnDetail(CancellationToken ct)
+    {
+        new Thread(() =>
+        {
+            string last = "";
+            while (!ct.IsCancellationRequested)
+            {
+                string cd = Bot.Flash.IsNull("mcConnDetail.stage") ? "null" : Bot.Flash.GetGameObject("mcConnDetail.txtDetail.text", "null")!;
+                if (cd != last) { Log($"[mcConnDetail] '{last}' -> '{cd}'"); last = cd; }
+                Thread.Sleep(100);
+            }
+        }) { IsBackground = true }.Start();
     }
 
     static void Live(string? server)
@@ -324,7 +343,7 @@ public static class Program
         Log($"event ordering: dispatch timestamps monotonic={mono}; pext json cmds={pext.Count}, in-order matches in packetFromServer={matched}; max dispatch queue depth={GameHostQueueNote}");
     }
 
-    static string GameHostQueueNote => "n/a";
+    static string GameHostQueueNote => Host.MaxQueueDepth.ToString();
 
     // ------------------------------------------------------------------ long runs
 
