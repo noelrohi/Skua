@@ -1,0 +1,922 @@
+# PROTOTYPE #13 final gate-4 run, 2026-09-26 23:27 - 2026-09-27 01:27 (sanitized: MEM/SAMPLE/CENSUS/RETAIN/summary lines)
+# Game Host: target-fix = pin a1277c0 + 0001 + 0003..0016 + gc-arena census patch + autorelease pool; stock wgpu-hal 4096; --render-interval-ms=250; script mode, Farm/Leveling.cs, Galanoth; full GC + census at t=10,30,60,90,120
+# fp=footprint MB (gate metric), gfx=IOAccelerator (graphics), unmappedGfx=Owned physical footprint (unmapped) (graphics), malloc=Malloc zones
+23:27:22.466 login OK in 4027 ms: Playing=True IsWorldLoaded=True map=battleon server=sock8.aq.com
+23:27:22.466 stats after login (before any render) {"uptimeMs":6362,"ticks":486,"framesEst":190,"calls":696,"events":14,"renders":24,"frameRate":30,"maxTickGapMs":165,"framesRun":190,"tickBusyMs":587,"maxTickMs":46,"maxOutstandingCmdBufs":769}
+23:27:22.626 MEM after-login-before-render t=0.0min fp=2408 gfx=1372 unmappedGfx=507 malloc=510 {"gcObjects":188515,"movies":12,"characters":18723,"swfBytes":17437516,"classRegistry":1698,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":667,"halTexMB":0,"halBuffers":9474,"halBufMB":0,"halEncoders":7,"halBindGroups":1018,"halAllocs":0,"renders":25}
+23:27:23.004 MEM after-login-after-render t=0.0min fp=3080 gfx=1884 unmappedGfx=565 malloc=605 {"gcObjects":202496,"movies":35,"characters":19191,"swfBytes":17560294,"classRegistry":1793,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":485,"halTexMB":0,"halBuffers":9520,"halBufMB":0,"halEncoders":8,"halBindGroups":836,"halAllocs":0,"renders":27}
+23:27:23.567 MEM script t=0.0min fp=3573 gfx=2046 unmappedGfx=867 malloc=639 {"gcObjects":181701,"movies":51,"characters":19191,"swfBytes":17560294,"classRegistry":1793,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":937,"halTexMB":0,"halBuffers":10010,"halBufMB":0,"halEncoders":8,"halBindGroups":1356,"halAllocs":0,"renders":30}
+23:27:23.592 SAMPLE script t=0.0min rss=1155 MB framesRun=219 tickBusyMs=711 maxTickMs=14 maxTickGapMs=223 peakCmdBufs=769 framesEst=223 ticks=538 calls=796 events=44 playing=True map=battleon kills=0 deaths=0 drops=0 relogins=1
+23:28:23.609 MEM script t=1.0min fp=1508 gfx=439 unmappedGfx=240 malloc=805 {"gcObjects":291199,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7425,"halBufMB":0,"halEncoders":11,"halBindGroups":228,"halAllocs":0,"renders":261}
+23:28:23.627 SAMPLE script t=1.0min rss=1437 MB framesRun=2007 tickBusyMs=16625 maxTickMs=35 maxTickGapMs=555 peakCmdBufs=769 framesEst=2025 ticks=5794 calls=28047 events=386 playing=True map=icestormunder kills=5 deaths=0 drops=0 relogins=1
+23:29:24.082 MEM script t=2.0min fp=1428 gfx=348 unmappedGfx=243 malloc=813 {"gcObjects":439132,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7425,"halBufMB":0,"halEncoders":11,"halBindGroups":229,"halAllocs":0,"renders":494}
+23:29:24.101 SAMPLE script t=2.0min rss=1450 MB framesRun=3822 tickBusyMs=35198 maxTickMs=21 maxTickGapMs=35 peakCmdBufs=342 framesEst=3839 ticks=11190 calls=56903 events=798 playing=True map=icestormunder kills=10 deaths=0 drops=0 relogins=1
+23:30:23.555 MEM script t=3.0min fp=1551 gfx=470 unmappedGfx=242 malloc=814 {"gcObjects":320164,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":2,"offPoolTex":2,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7424,"halBufMB":0,"halEncoders":11,"halBindGroups":230,"halAllocs":0,"renders":721}
+23:30:23.577 SAMPLE script t=3.0min rss=1455 MB framesRun=5606 tickBusyMs=53328 maxTickMs=23 maxTickGapMs=33 peakCmdBufs=385 framesEst=5623 ticks=16448 calls=85229 events=1198 playing=True map=icestormunder kills=17 deaths=0 drops=0 relogins=1
+23:31:24.053 MEM script t=4.0min fp=1398 gfx=317 unmappedGfx=240 malloc=816 {"gcObjects":454076,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":2,"offPoolTex":2,"offPoolMB":0,"halTextures":230,"halTexMB":0,"halBuffers":7424,"halBufMB":0,"halEncoders":11,"halBindGroups":234,"halAllocs":0,"renders":954}
+23:31:24.075 SAMPLE script t=4.0min rss=1458 MB framesRun=7421 tickBusyMs=71581 maxTickMs=20 maxTickGapMs=27 peakCmdBufs=342 framesEst=7438 ticks=21877 calls=114120 events=1589 playing=True map=icestormunder kills=22 deaths=0 drops=0 relogins=1
+23:32:23.546 MEM script t=5.0min fp=1434 gfx=354 unmappedGfx=240 malloc=816 {"gcObjects":323430,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7425,"halBufMB":0,"halEncoders":11,"halBindGroups":229,"halAllocs":0,"renders":1182}
+23:32:23.567 SAMPLE script t=5.0min rss=1404 MB framesRun=9206 tickBusyMs=89493 maxTickMs=25 maxTickGapMs=34 peakCmdBufs=377 framesEst=9223 ticks=27122 calls=142461 events=1964 playing=True map=icestormunder kills=28 deaths=0 drops=0 relogins=1
+23:33:23.983 MEM script t=6.0min fp=1438 gfx=354 unmappedGfx=242 malloc=817 {"gcObjects":457970,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":230,"halAllocs":0,"renders":1414}
+23:33:24.002 SAMPLE script t=6.0min rss=1395 MB framesRun=11019 tickBusyMs=107702 maxTickMs=27 maxTickGapMs=30 peakCmdBufs=377 framesEst=11036 ticks=32500 calls=171286 events=2359 playing=True map=icestormunder kills=34 deaths=0 drops=0 relogins=1
+23:34:24.453 MEM script t=7.0min fp=1415 gfx=330 unmappedGfx=242 malloc=817 {"gcObjects":335769,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":229,"halAllocs":0,"renders":1645}
+23:34:24.474 SAMPLE script t=7.0min rss=1395 MB framesRun=12833 tickBusyMs=126154 maxTickMs=25 maxTickGapMs=26 peakCmdBufs=377 framesEst=12850 ticks=37867 calls=200096 events=2743 playing=True map=icestormunder kills=39 deaths=0 drops=0 relogins=1
+23:35:23.943 MEM script t=8.0min fp=1411 gfx=328 unmappedGfx=240 malloc=818 {"gcObjects":462487,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":229,"halAllocs":0,"renders":1874}
+23:35:23.963 SAMPLE script t=8.0min rss=1388 MB framesRun=14617 tickBusyMs=143957 maxTickMs=22 maxTickGapMs=33 peakCmdBufs=310 framesEst=14635 ticks=43194 calls=228515 events=3091 playing=True map=icestormunder kills=45 deaths=0 drops=0 relogins=1
+23:36:24.455 MEM script t=9.0min fp=1397 gfx=310 unmappedGfx=244 malloc=818 {"gcObjects":335569,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":228,"halAllocs":0,"renders":2106}
+23:36:24.474 SAMPLE script t=9.0min rss=1338 MB framesRun=16433 tickBusyMs=162125 maxTickMs=28 maxTickGapMs=28 peakCmdBufs=342 framesEst=16450 ticks=48591 calls=257471 events=3467 playing=True map=icestormunder kills=50 deaths=0 drops=0 relogins=1
+23:37:23.931 MEM script t=10.0min fp=1463 gfx=379 unmappedGfx=240 malloc=818 {"gcObjects":465859,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":2,"offPoolTex":2,"offPoolMB":0,"halTextures":229,"halTexMB":0,"halBuffers":7426,"halBufMB":0,"halEncoders":11,"halBindGroups":233,"halAllocs":0,"renders":2335}
+23:37:23.950 SAMPLE script t=10.0min rss=1296 MB framesRun=18217 tickBusyMs=179988 maxTickMs=22 maxTickGapMs=28 peakCmdBufs=291 framesEst=18234 ticks=53912 calls=285916 events=3830 playing=True map=icestormunder kills=56 deaths=0 drops=0 relogins=1
+23:37:24.204 MEM script-after-full-gc t=10.0min fp=1466 gfx=379 unmappedGfx=242 malloc=818 {"gcObjects":155790,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":2,"offPoolTex":2,"offPoolMB":0,"halTextures":230,"halTexMB":0,"halBuffers":7424,"halBufMB":0,"halEncoders":11,"halBindGroups":232,"halAllocs":0,"renders":2336}
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 32695 1046240 ruffle_common::avm_string::repr::AvmStringRepr<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 14299 2516624 ruffle_core::avm2::method::MethodData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 11402 2189184 ruffle_core::avm2::vtable::VTableData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 11011 4404400 ruffle_core::display_object::graphic::GraphicData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 11003 528144 ruffle_core::avm2::multiname::Multiname<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 10389 7147632 ruffle_core::display_object::movie_clip::MovieClipData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 8097 1813728 ruffle_core::display_object::graphic::GraphicShared
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 7525 1143800 ruffle_core::avm2::object::stage_object::StageObjectData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 7472 1016192 ruffle_core::avm2::object::script_object::ScriptObjectData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 6607 1955672 ruffle_core::display_object::movie_clip::MovieClipShared<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 5978 1386896 ruffle_core::avm2::class::ClassData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 5419 130056 alloc::vec::Vec<ruffle_core::avm2::namespace::Namespace<'_>>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 4226 101424 alloc::vec::Vec<ruffle_core::avm2::scope::Scope<'_>>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 3716 59456 ruffle_core::avm2::namespace::NamespaceData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 2052 328320 gc_arena::lock::RefLock<ruffle_core::avm1::object::script_object::ObjectData<'_>>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 1944 482112 ruffle_core::avm2::object::class_object::ClassObjectData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 1878 45072 ruffle_core::avm1::function::FunctionObject<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 1877 375400 ruffle_core::avm2::object::function_object::FunctionObjectData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 1536 73728 ruffle_core::avm2::script::ScriptData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 1281 235704 ruffle_core::avm2::object::array_object::ArrayObjectData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 798 25536 ruffle_core::font::font_set::FontSetData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 794 882928 ruffle_core::display_object::edit_text::EditTextData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 706 84720 ruffle_core::avm2::e4x::E4XNodeData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 453 184824 ruffle_core::display_object::text::TextData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 424 13568 ruffle_core::display_object::edit_text::EditTextShared
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 423 74448 ruffle_core::avm2::object::dispatch_object::DispatchObjectData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 360 28800 ruffle_core::display_object::text::TextShared
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 337 64704 ruffle_core::avm2::object::event_object::EventObjectData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 212 81408 ruffle_core::display_object::morph_shape::MorphShapeData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 189 49896 ruffle_core::display_object::morph_shape::MorphShapeShared
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 183 90768 ruffle_core::display_object::avm2_button::Avm2ButtonData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 115 31280 ruffle_core::display_object::avm2_button::ButtonShared
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 54 10800 ruffle_core::font::FontData
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 39 936 ruffle_core::avm2::op::LookupSwitch
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 32 5888 ruffle_core::avm2::object::vector_object::VectorObjectData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 26 3744 ruffle_core::avm2::object::dictionary_object::DictionaryObjectData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 22 3168 gc_arena::lock::RefLock<ruffle_core::bitmap::bitmap_data::BitmapRawData<'_>>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 20 2880 ruffle_core::avm2::object::bitmapdata_object::BitmapDataObjectData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 20 8480 ruffle_core::display_object::bitmap::BitmapGraphicData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 17 2584 ruffle_core::avm2::object::date_object::DateObjectData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 17 2176 ruffle_core::avm2::script::TranslationUnitData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 16 2944 ruffle_core::avm2::object::bytearray_object::ByteArrayObjectData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 16 3712 ruffle_core::avm2::object::loaderinfo_object::LoaderInfoObjectData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 16 1408 ruffle_core::character::BitmapCharacter<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 14 4816 ruffle_core::avm2::object::regexp_object::RegExpObjectData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 14 6496 ruffle_core::display_object::loader_display::LoaderDisplayData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 13 1248 ruffle_core::avm2::domain::DomainData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 10 1440 ruffle_core::avm2::object::domain_object::DomainObjectData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 9 1728 ruffle_core::avm2::object::sound_object::SoundObjectData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 4 704 ruffle_core::avm2::object::shared_object_object::SharedObjectObjectData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 4 704 ruffle_core::avm2::object::stage3d_object::Stage3DObjectData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 4 1376 ruffle_core::avm2::object::textformat_object::TextFormatObjectData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 3 480 ruffle_core::avm2::object::error_object::ErrorObjectData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 3 456 ruffle_core::avm2::object::namespace_object::NamespaceObjectData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 3 552 ruffle_core::avm2::object::soundchannel_object::SoundChannelObjectData<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 2 48 ruffle_core::avm1::scope::Scope<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 1 24 alloc::vec::Vec<ruffle_core::avm1::value::Value<'_>>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 1 8 gc_arena::dynamic_roots::Inner<'_>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 1 32 gc_arena::lock::RefLock<ruffle_core::avm2::call_stack::CallStack<'_>>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 1 7064 gc_arena::lock::RefLock<ruffle_core::player::GcRootData<'_>>
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 5498 0 as3:Object
+23:37:24.215 CENSUS script-after-full-gc t=10.0min 3156 0 as3:[display] MovieClip
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 2914 0 as3:[display] Shape
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 1536 0 as3:global
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 382 0 as3:[display] TextField
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 185 0 as3:[display] CannedOption
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 146 0 as3:[display] Sprite
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 93 0 as3:[display] StaticText
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 83 0 as3:ColorTransform
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 70 0 as3:
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 68 0 as3:[display] SimpleButton
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 46 0 as3:Timer
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 38 0 as3:Point
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 32 0 as3:GlowFilter
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 24 0 as3:[display] daarmfglow_50
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 23 0 as3:[display] MorphShape
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 21 0 as3:Rectangle
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 20 0 as3:[display] Bitmap
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 17 0 as3:[display] Graphics
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 17 0 as3:Transform
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 16 0 as3:UncaughtErrorEvents
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 16 0 as3:ZSortItem
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 16 0 as3:Avatar
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 16 0 as3:EventDispatcher
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 15 0 as3:[display] Plate_Monster_58
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 15 0 as3:[display] Invisible
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 15 0 as3:[display] MonsterMC
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 14 0 as3:[display] Loader
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 13 0 as3:[display] ball
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 10 0 as3:URLLoader
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 10 0 as3:[display] buttonComponent
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 10 0 as3:LoaderSlot
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 9 0 as3:LoaderContext
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 8 0 as3:[display] Head_Iris_Nonecopy7_53
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 8 0 as3:[display] Head_Iris_Lightcopy7_54
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 8 0 as3:[display] uiTextLine
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] dathighg1_113
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] daarmg2_47
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] ActMask
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] dathighg_112
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] daarmg_46
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] dathighg2_114
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] icons_blank_layered_bg_499
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] ib1
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] dathglow_53
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] dagg2_18
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] dakneeeg2_92
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] Head_64
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] dagg4_20
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] dakneeeg_91
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] ib2
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] dagg3_19
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] actBar_icon_bgcopy2_330
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 6 0 as3:[display] dashinglow_87
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 5 0 as3:[display] chkBox_32
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 4 0 as3:[display] daarmglow_43
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 4 0 as3:[display] dasheglow2_108
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 4 0 as3:[display] Eyebrow_Skincopy8_56
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 4 0 as3:[display] dashglow_102
+23:37:24.216 CENSUS script-after-full-gc t=10.0min 4 0 as3:[display] crossedswords
+23:37:24.389 RETAIN script-after-full-gc t=10.0min Head_Iris_Nonecopy7_53: 10 live Head_Iris_Nonecopy7_53; 7 layers; shortest root path from the oldest:
+23:37:24.389 RETAIN script-after-full-gc t=10.0min Head_Iris_Nonecopy7_53: not reachable from the root (collectable?)
+23:38:23.855 MEM script t=11.0min fp=1408 gfx=318 unmappedGfx=242 malloc=822 {"gcObjects":299081,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7419,"halBufMB":0,"halEncoders":11,"halBindGroups":230,"halAllocs":0,"renders":2565}
+23:38:23.877 SAMPLE script t=11.0min rss=1262 MB framesRun=20015 tickBusyMs=197716 maxTickMs=26 maxTickGapMs=174 peakCmdBufs=377 framesEst=20032 ticks=59262 calls=314447 events=4233 playing=True map=icestormunder kills=61 deaths=0 drops=0 relogins=1
+23:39:24.447 MEM script t=12.0min fp=1405 gfx=309 unmappedGfx=242 malloc=828 {"gcObjects":437588,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7425,"halBufMB":0,"halEncoders":11,"halBindGroups":230,"halAllocs":0,"renders":2800}
+23:39:24.482 SAMPLE script t=12.0min rss=1022 MB framesRun=21829 tickBusyMs=215803 maxTickMs=78 maxTickGapMs=78 peakCmdBufs=350 framesEst=21850 ticks=65282 calls=340800 events=4593 playing=True map=icestormunder kills=66 deaths=0 drops=0 relogins=1
+23:40:23.954 MEM script t=13.0min fp=1542 gfx=362 unmappedGfx=240 malloc=915 {"gcObjects":330476,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7419,"halBufMB":0,"halEncoders":11,"halBindGroups":229,"halAllocs":0,"renders":3032}
+23:40:23.979 SAMPLE script t=13.0min rss=653 MB framesRun=23614 tickBusyMs=229796 maxTickMs=44 maxTickGapMs=44 peakCmdBufs=342 framesEst=23635 ticks=71822 calls=366612 events=4965 playing=True map=icestormunder kills=71 deaths=0 drops=0 relogins=1
+23:41:24.442 MEM script t=14.0min fp=1511 gfx=330 unmappedGfx=240 malloc=916 {"gcObjects":469975,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":2,"offPoolTex":2,"offPoolMB":0,"halTextures":230,"halTexMB":0,"halBuffers":7426,"halBufMB":0,"halEncoders":11,"halBindGroups":234,"halAllocs":0,"renders":3267}
+23:41:24.466 SAMPLE script t=14.0min rss=678 MB framesRun=25429 tickBusyMs=242721 maxTickMs=20 maxTickGapMs=24 peakCmdBufs=377 framesEst=25450 ticks=77230 calls=396094 events=5328 playing=True map=icestormunder kills=76 deaths=0 drops=0 relogins=1
+23:42:23.922 MEM script t=15.0min fp=1513 gfx=330 unmappedGfx=242 malloc=916 {"gcObjects":319715,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7419,"halBufMB":0,"halEncoders":11,"halBindGroups":230,"halAllocs":0,"renders":3498}
+23:42:23.943 SAMPLE script t=15.0min rss=674 MB framesRun=27213 tickBusyMs=253308 maxTickMs=13 maxTickGapMs=27 peakCmdBufs=333 framesEst=27234 ticks=82570 calls=424995 events=5698 playing=True map=icestormunder kills=82 deaths=0 drops=0 relogins=1
+23:43:24.403 MEM script t=16.0min fp=1562 gfx=379 unmappedGfx=242 malloc=916 {"gcObjects":470474,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":228,"halAllocs":0,"renders":3734}
+23:43:24.423 SAMPLE script t=16.0min rss=694 MB framesRun=29027 tickBusyMs=264722 maxTickMs=18 maxTickGapMs=25 peakCmdBufs=377 framesEst=29049 ticks=88072 calls=454324 events=6084 playing=True map=icestormunder kills=88 deaths=0 drops=0 relogins=1
+23:44:23.911 MEM script t=17.0min fp=1532 gfx=348 unmappedGfx=242 malloc=916 {"gcObjects":331097,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7423,"halBufMB":0,"halEncoders":11,"halBindGroups":229,"halAllocs":0,"renders":3961}
+23:44:23.932 SAMPLE script t=17.0min rss=693 MB framesRun=30813 tickBusyMs=283524 maxTickMs=25 maxTickGapMs=50 peakCmdBufs=291 framesEst=30834 ticks=93309 calls=482623 events=6474 playing=True map=icestormunder kills=93 deaths=0 drops=0 relogins=1
+23:45:24.377 MEM script t=18.0min fp=1530 gfx=348 unmappedGfx=240 malloc=917 {"gcObjects":477152,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7419,"halBufMB":0,"halEncoders":11,"halBindGroups":228,"halAllocs":0,"renders":4194}
+23:45:24.398 SAMPLE script t=18.0min rss=694 MB framesRun=32627 tickBusyMs=300167 maxTickMs=23 maxTickGapMs=33 peakCmdBufs=336 framesEst=32648 ticks=98715 calls=511636 events=6821 playing=True map=icestormunder kills=97 deaths=0 drops=0 relogins=1
+23:46:24.025 MEM script t=19.0min fp=1505 gfx=323 unmappedGfx=240 malloc=917 {"gcObjects":356513,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":228,"halAllocs":0,"renders":4425}
+23:46:24.087 SAMPLE script t=19.0min rss=515 MB framesRun=34375 tickBusyMs=314044 maxTickMs=226 maxTickGapMs=281 peakCmdBufs=310 framesEst=34437 ticks=105084 calls=535814 events=7189 playing=True map=icestormunder kills=103 deaths=0 drops=0 relogins=1
+23:47:23.570 MEM script t=20.0min fp=1565 gfx=379 unmappedGfx=242 malloc=917 {"gcObjects":419668,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":230,"halAllocs":0,"renders":4655}
+23:47:23.591 SAMPLE script t=20.0min rss=569 MB framesRun=36155 tickBusyMs=332005 maxTickMs=95 maxTickGapMs=130 peakCmdBufs=342 framesEst=36224 ticks=110774 calls=562368 events=7554 playing=True map=icestormunder kills=108 deaths=0 drops=0 relogins=1
+23:48:24.266 MEM script t=21.0min fp=1537 gfx=354 unmappedGfx=240 malloc=917 {"gcObjects":412200,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":230,"halAllocs":0,"renders":4886}
+23:48:24.320 SAMPLE script t=21.0min rss=634 MB framesRun=37922 tickBusyMs=350301 maxTickMs=376 maxTickGapMs=651 peakCmdBufs=298 framesEst=38044 ticks=116409 calls=588195 events=7922 playing=True map=icestormunder kills=113 deaths=0 drops=0 relogins=1
+23:49:23.797 MEM script t=22.0min fp=1562 gfx=379 unmappedGfx=240 malloc=917 {"gcObjects":342417,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7423,"halBufMB":0,"halEncoders":11,"halBindGroups":228,"halAllocs":0,"renders":5114}
+23:49:23.816 SAMPLE script t=22.0min rss=608 MB framesRun=39651 tickBusyMs=369875 maxTickMs=488 maxTickGapMs=841 peakCmdBufs=310 framesEst=39830 ticks=122041 calls=612340 events=8296 playing=True map=icestormunder kills=119 deaths=0 drops=0 relogins=1
+23:50:24.322 MEM script t=23.0min fp=1517 gfx=330 unmappedGfx=243 malloc=918 {"gcObjects":450670,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":230,"halAllocs":0,"renders":5345}
+23:50:24.343 SAMPLE script t=23.0min rss=614 MB framesRun=41402 tickBusyMs=388721 maxTickMs=443 maxTickGapMs=445 peakCmdBufs=377 framesEst=41646 ticks=128216 calls=636350 events=8669 playing=True map=icestormunder kills=124 deaths=0 drops=0 relogins=1
+23:51:23.783 MEM script t=24.0min fp=1566 gfx=379 unmappedGfx=242 malloc=918 {"gcObjects":365345,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":229,"halAllocs":0,"renders":5575}
+23:51:23.805 SAMPLE script t=24.0min rss=669 MB framesRun=43186 tickBusyMs=406879 maxTickMs=46 maxTickGapMs=48 peakCmdBufs=320 framesEst=43430 ticks=133541 calls=664757 events=9042 playing=True map=icestormunder kills=130 deaths=0 drops=0 relogins=1
+23:52:24.364 MEM script t=25.0min fp=1511 gfx=323 unmappedGfx=244 malloc=918 {"gcObjects":429549,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7430,"halBufMB":0,"halEncoders":11,"halBindGroups":230,"halAllocs":0,"renders":5807}
+23:52:24.386 SAMPLE script t=25.0min rss=677 MB framesRun=45004 tickBusyMs=425604 maxTickMs=26 maxTickGapMs=28 peakCmdBufs=377 framesEst=45247 ticks=138881 calls=693473 events=9453 playing=True map=icestormunder kills=136 deaths=0 drops=0 relogins=1
+23:53:23.973 MEM script t=26.0min fp=1561 gfx=377 unmappedGfx=240 malloc=918 {"gcObjects":387795,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":239,"halTexMB":0,"halBuffers":7425,"halBufMB":0,"halEncoders":11,"halBindGroups":290,"halAllocs":0,"renders":6037}
+23:53:23.997 SAMPLE script t=26.0min rss=679 MB framesRun=46792 tickBusyMs=444238 maxTickMs=26 maxTickGapMs=28 peakCmdBufs=342 framesEst=47036 ticks=144066 calls=721323 events=9812 playing=True map=icestormunder kills=142 deaths=0 drops=0 relogins=1
+23:54:23.665 MEM script t=27.0min fp=1545 gfx=361 unmappedGfx=240 malloc=918 {"gcObjects":396477,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":230,"halTexMB":0,"halBuffers":7423,"halBufMB":0,"halEncoders":11,"halBindGroups":233,"halAllocs":0,"renders":6266}
+23:54:23.685 SAMPLE script t=27.0min rss=685 MB framesRun=48583 tickBusyMs=462762 maxTickMs=23 maxTickGapMs=28 peakCmdBufs=377 framesEst=48826 ticks=149250 calls=749247 events=10211 playing=True map=icestormunder kills=147 deaths=0 drops=0 relogins=1
+23:55:24.355 MEM script t=28.0min fp=1507 gfx=323 unmappedGfx=240 malloc=918 {"gcObjects":418332,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":230,"halAllocs":0,"renders":6500}
+23:55:24.375 SAMPLE script t=28.0min rss=685 MB framesRun=50403 tickBusyMs=481386 maxTickMs=24 maxTickGapMs=28 peakCmdBufs=342 framesEst=50647 ticks=154581 calls=777692 events=10582 playing=True map=icestormunder kills=153 deaths=0 drops=0 relogins=1
+23:56:24.011 MEM script t=29.0min fp=1527 gfx=343 unmappedGfx=240 malloc=918 {"gcObjects":373821,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7425,"halBufMB":0,"halEncoders":11,"halBindGroups":230,"halAllocs":0,"renders":6730}
+23:56:24.033 SAMPLE script t=29.0min rss=691 MB framesRun=52193 tickBusyMs=499856 maxTickMs=38 maxTickGapMs=38 peakCmdBufs=377 framesEst=52437 ticks=159809 calls=805514 events=10974 playing=True map=icestormunder kills=158 deaths=0 drops=0 relogins=1
+23:57:23.656 MEM script t=30.0min fp=1535 gfx=348 unmappedGfx=243 malloc=918 {"gcObjects":454320,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7419,"halBufMB":0,"halEncoders":11,"halBindGroups":229,"halAllocs":0,"renders":6959}
+23:57:23.680 SAMPLE script t=30.0min rss=670 MB framesRun=53982 tickBusyMs=517970 maxTickMs=25 maxTickGapMs=29 peakCmdBufs=304 framesEst=54226 ticks=165017 calls=833497 events=11322 playing=True map=icestormunder kills=164 deaths=0 drops=0 relogins=1
+23:57:23.965 MEM script-after-full-gc t=30.0min fp=1512 gfx=328 unmappedGfx=240 malloc=918 {"gcObjects":160751,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7419,"halBufMB":0,"halEncoders":11,"halBindGroups":230,"halAllocs":0,"renders":6962}
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 34702 1110464 ruffle_common::avm_string::repr::AvmStringRepr<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 14299 2516624 ruffle_core::avm2::method::MethodData<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 11402 2189184 ruffle_core::avm2::vtable::VTableData<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 11092 532416 ruffle_core::avm2::multiname::Multiname<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 11030 4412000 ruffle_core::display_object::graphic::GraphicData<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 10424 7171712 ruffle_core::display_object::movie_clip::MovieClipData<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 8734 1187824 ruffle_core::avm2::object::script_object::ScriptObjectData<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 8097 1813728 ruffle_core::display_object::graphic::GraphicShared
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 7604 1155808 ruffle_core::avm2::object::stage_object::StageObjectData<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 6607 1955672 ruffle_core::display_object::movie_clip::MovieClipShared<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 5978 1386896 ruffle_core::avm2::class::ClassData<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 5502 132048 alloc::vec::Vec<ruffle_core::avm2::namespace::Namespace<'_>>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 4228 101472 alloc::vec::Vec<ruffle_core::avm2::scope::Scope<'_>>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 3719 59504 ruffle_core::avm2::namespace::NamespaceData<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 2480 456320 ruffle_core::avm2::object::array_object::ArrayObjectData<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 2052 328320 gc_arena::lock::RefLock<ruffle_core::avm1::object::script_object::ObjectData<'_>>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 1944 482112 ruffle_core::avm2::object::class_object::ClassObjectData<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 1878 45072 ruffle_core::avm1::function::FunctionObject<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 1874 374800 ruffle_core::avm2::object::function_object::FunctionObjectData<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 1536 73728 ruffle_core::avm2::script::ScriptData<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 804 25728 ruffle_core::font::font_set::FontSetData<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 796 885152 ruffle_core::display_object::edit_text::EditTextData<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 706 84720 ruffle_core::avm2::e4x::E4XNodeData<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 511 98112 ruffle_core::avm2::object::event_object::EventObjectData<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 453 184824 ruffle_core::display_object::text::TextData<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 424 74624 ruffle_core::avm2::object::dispatch_object::DispatchObjectData<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 424 13568 ruffle_core::display_object::edit_text::EditTextShared
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 360 28800 ruffle_core::display_object::text::TextShared
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 212 81408 ruffle_core::display_object::morph_shape::MorphShapeData<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 189 49896 ruffle_core::display_object::morph_shape::MorphShapeShared
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 183 90768 ruffle_core::display_object::avm2_button::Avm2ButtonData<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 115 31280 ruffle_core::display_object::avm2_button::ButtonShared
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 54 10800 ruffle_core::font::FontData
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 39 936 ruffle_core::avm2::op::LookupSwitch
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 32 5888 ruffle_core::avm2::object::vector_object::VectorObjectData<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 26 3744 ruffle_core::avm2::object::dictionary_object::DictionaryObjectData<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 22 3168 gc_arena::lock::RefLock<ruffle_core::bitmap::bitmap_data::BitmapRawData<'_>>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 20 2880 ruffle_core::avm2::object::bitmapdata_object::BitmapDataObjectData<'_>
+23:57:23.977 CENSUS script-after-full-gc t=30.0min 20 3040 ruffle_core::avm2::object::date_object::DateObjectData<'_>
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 20 8480 ruffle_core::display_object::bitmap::BitmapGraphicData<'_>
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 17 2176 ruffle_core::avm2::script::TranslationUnitData<'_>
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 16 2944 ruffle_core::avm2::object::bytearray_object::ByteArrayObjectData<'_>
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 16 3712 ruffle_core::avm2::object::loaderinfo_object::LoaderInfoObjectData<'_>
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 16 1408 ruffle_core::character::BitmapCharacter<'_>
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 14 4816 ruffle_core::avm2::object::regexp_object::RegExpObjectData<'_>
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 14 6496 ruffle_core::display_object::loader_display::LoaderDisplayData<'_>
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 13 1248 ruffle_core::avm2::domain::DomainData<'_>
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 10 1440 ruffle_core::avm2::object::domain_object::DomainObjectData<'_>
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 9 1728 ruffle_core::avm2::object::sound_object::SoundObjectData<'_>
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 4 704 ruffle_core::avm2::object::shared_object_object::SharedObjectObjectData<'_>
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 4 736 ruffle_core::avm2::object::soundchannel_object::SoundChannelObjectData<'_>
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 4 704 ruffle_core::avm2::object::stage3d_object::Stage3DObjectData<'_>
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 4 1376 ruffle_core::avm2::object::textformat_object::TextFormatObjectData<'_>
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 3 456 ruffle_core::avm2::object::namespace_object::NamespaceObjectData<'_>
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 2 48 ruffle_core::avm1::scope::Scope<'_>
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 2 320 ruffle_core::avm2::object::error_object::ErrorObjectData<'_>
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 1 24 alloc::vec::Vec<ruffle_core::avm1::value::Value<'_>>
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 1 8 gc_arena::dynamic_roots::Inner<'_>
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 1 32 gc_arena::lock::RefLock<ruffle_core::avm2::call_stack::CallStack<'_>>
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 1 7064 gc_arena::lock::RefLock<ruffle_core::player::GcRootData<'_>>
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 6710 0 as3:Object
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 3165 0 as3:[display] MovieClip
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 2933 0 as3:[display] Shape
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 1536 0 as3:global
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 384 0 as3:[display] TextField
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 185 0 as3:[display] CannedOption
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 146 0 as3:[display] Sprite
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 99 0 as3:ColorTransform
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 93 0 as3:[display] StaticText
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 73 0 as3:
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 68 0 as3:[display] SimpleButton
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 46 0 as3:Timer
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 38 0 as3:Point
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 33 0 as3:Transform
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 32 0 as3:GlowFilter
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 24 0 as3:[display] daarmfglow_50
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 23 0 as3:[display] MorphShape
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 21 0 as3:Rectangle
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 20 0 as3:[display] Bitmap
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 17 0 as3:[display] Graphics
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 16 0 as3:EventDispatcher
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 16 0 as3:ZSortItem
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 16 0 as3:Avatar
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 16 0 as3:UncaughtErrorEvents
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 15 0 as3:[display] Invisible
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 15 0 as3:FrameLabel
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 15 0 as3:[display] Plate_Monster_58
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 15 0 as3:[display] MonsterMC
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 14 0 as3:[display] Loader
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 13 0 as3:[display] ball
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 12 0 as3:[display] Head_Iris_Lightcopy7_54
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 12 0 as3:[display] Head_Iris_Nonecopy7_53
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 10 0 as3:[display] buttonComponent
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 10 0 as3:URLLoader
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 10 0 as3:LoaderSlot
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 9 0 as3:LoaderContext
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 8 0 as3:[display] uiTextLine
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] daarmg2_47
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] Head_64
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] dagg4_20
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] ib1
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] ActMask
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] dakneeeg2_92
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] dathighg1_113
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] ib2
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] actBar_icon_bgcopy2_330
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] dakneeeg_91
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] dashinglow_87
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] daarmg_46
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] dathglow_53
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] dathighg2_114
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] dagg2_18
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] dathighg_112
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] dagg3_19
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 6 0 as3:[display] icons_blank_layered_bg_499
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 5 0 as3:[display] chkBox_32
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 4 0 as3:[display] dasheglow_107
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 4 0 as3:[display] crossedswords
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 4 0 as3:[display] dasheglow2_108
+23:57:23.978 CENSUS script-after-full-gc t=30.0min 4 0 as3:[display] dashglow_102
+23:57:24.160 RETAIN script-after-full-gc t=30.0min Head_Iris_Nonecopy7_53: 12 live Head_Iris_Nonecopy7_53; 7 layers; shortest root path from the oldest:
+23:57:24.160 RETAIN script-after-full-gc t=30.0min Head_Iris_Nonecopy7_53: not reachable from the root (collectable?)
+23:58:23.777 MEM script t=31.0min fp=1567 gfx=379 unmappedGfx=240 malloc=922 {"gcObjects":331219,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7419,"halBufMB":0,"halEncoders":11,"halBindGroups":228,"halAllocs":0,"renders":7193}
+23:58:23.800 SAMPLE script t=31.0min rss=724 MB framesRun=55785 tickBusyMs=532496 maxTickMs=51 maxTickGapMs=183 peakCmdBufs=304 framesEst=56030 ticks=170215 calls=858652 events=11615 playing=True map=icestormunder kills=167 deaths=0 drops=0 relogins=1
+23:59:24.289 MEM script t=32.0min fp=1539 gfx=348 unmappedGfx=244 malloc=922 {"gcObjects":337281,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":224,"halTexMB":0,"halBuffers":7419,"halBufMB":0,"halEncoders":11,"halBindGroups":226,"halAllocs":0,"renders":7427}
+23:59:24.308 SAMPLE script t=32.0min rss=716 MB framesRun=57600 tickBusyMs=548008 maxTickMs=20 maxTickGapMs=27 peakCmdBufs=310 framesEst=57845 ticks=175630 calls=887709 events=11963 playing=True map=icestormunder kills=172 deaths=0 drops=0 relogins=1
+00:00:23.801 MEM script t=33.0min fp=1566 gfx=379 unmappedGfx=240 malloc=922 {"gcObjects":441120,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":225,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":227,"halAllocs":0,"renders":7658}
+00:00:23.823 SAMPLE script t=33.0min rss=687 MB framesRun=59386 tickBusyMs=559846 maxTickMs=22 maxTickGapMs=40 peakCmdBufs=342 framesEst=59631 ticks=181018 calls=916524 events=12346 playing=True map=icestormunder kills=177 deaths=0 drops=0 relogins=1
+00:01:24.319 MEM script t=34.0min fp=1510 gfx=323 unmappedGfx=240 malloc=922 {"gcObjects":372226,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7425,"halBufMB":0,"halEncoders":11,"halBindGroups":228,"halAllocs":0,"renders":7893}
+00:01:24.339 SAMPLE script t=34.0min rss=681 MB framesRun=61201 tickBusyMs=571498 maxTickMs=18 maxTickGapMs=25 peakCmdBufs=377 framesEst=61446 ticks=186499 calls=945908 events=12718 playing=True map=icestormunder kills=184 deaths=0 drops=0 relogins=1
+00:02:23.818 MEM script t=35.0min fp=1570 gfx=379 unmappedGfx=242 malloc=923 {"gcObjects":420894,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":229,"halAllocs":0,"renders":8124}
+00:02:23.837 SAMPLE script t=35.0min rss=678 MB framesRun=62986 tickBusyMs=583796 maxTickMs=17 maxTickGapMs=25 peakCmdBufs=310 framesEst=63231 ticks=191906 calls=974722 events=13118 playing=True map=icestormunder kills=190 deaths=0 drops=0 relogins=1
+00:03:24.380 MEM script t=36.0min fp=1567 gfx=379 unmappedGfx=240 malloc=923 {"gcObjects":440290,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":228,"halAllocs":0,"renders":8357}
+00:03:24.404 SAMPLE script t=36.0min rss=655 MB framesRun=64740 tickBusyMs=600308 maxTickMs=423 maxTickGapMs=436 peakCmdBufs=377 framesEst=65048 ticks=197558 calls=999870 events=13497 playing=True map=icestormunder kills=196 deaths=0 drops=0 relogins=1
+00:04:23.883 MEM script t=37.0min fp=1544 gfx=353 unmappedGfx=242 malloc=923 {"gcObjects":349510,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7419,"halBufMB":0,"halEncoders":11,"halBindGroups":228,"halAllocs":0,"renders":8589}
+00:04:23.908 SAMPLE script t=37.0min rss=513 MB framesRun=66525 tickBusyMs=612622 maxTickMs=27 maxTickGapMs=27 peakCmdBufs=310 framesEst=66833 ticks=203608 calls=1026870 events=13849 playing=True map=icestormunder kills=201 deaths=0 drops=0 relogins=1
+00:05:24.410 MEM script t=38.0min fp=1540 gfx=348 unmappedGfx=244 malloc=923 {"gcObjects":469753,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7419,"halBufMB":0,"halEncoders":11,"halBindGroups":228,"halAllocs":0,"renders":8825}
+00:05:24.436 SAMPLE script t=38.0min rss=645 MB framesRun=68341 tickBusyMs=625463 maxTickMs=23 maxTickGapMs=35 peakCmdBufs=406 framesEst=68649 ticks=209099 calls=1056312 events=14208 playing=True map=icestormunder kills=206 deaths=0 drops=0 relogins=1
+00:06:23.918 MEM script t=39.0min fp=1583 gfx=394 unmappedGfx=240 malloc=923 {"gcObjects":330713,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":2,"offPoolTex":2,"offPoolMB":0,"halTextures":230,"halTexMB":0,"halBuffers":7426,"halBufMB":0,"halEncoders":11,"halBindGroups":234,"halAllocs":0,"renders":9055}
+00:06:23.937 SAMPLE script t=39.0min rss=676 MB framesRun=70117 tickBusyMs=638320 maxTickMs=170 maxTickGapMs=214 peakCmdBufs=342 framesEst=70434 ticks=214463 calls=1085100 events=14590 playing=True map=icestormunder kills=212 deaths=0 drops=0 relogins=1
+00:07:24.401 MEM script t=40.0min fp=1536 gfx=348 unmappedGfx=240 malloc=923 {"gcObjects":482466,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":230,"halAllocs":0,"renders":9290}
+00:07:24.419 SAMPLE script t=40.0min rss=689 MB framesRun=71932 tickBusyMs=651229 maxTickMs=13 maxTickGapMs=24 peakCmdBufs=377 framesEst=72248 ticks=219913 calls=1114549 events=14948 playing=True map=icestormunder kills=216 deaths=0 drops=0 relogins=1
+00:08:23.841 MEM script t=41.0min fp=1562 gfx=371 unmappedGfx=244 malloc=923 {"gcObjects":358316,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7423,"halBufMB":0,"halEncoders":11,"halBindGroups":228,"halAllocs":0,"renders":9521}
+00:08:23.861 SAMPLE script t=41.0min rss=692 MB framesRun=73715 tickBusyMs=662945 maxTickMs=14 maxTickGapMs=25 peakCmdBufs=377 framesEst=74032 ticks=225345 calls=1143396 events=15296 playing=True map=icestormunder kills=221 deaths=0 drops=0 relogins=1
+00:09:24.303 MEM script t=42.0min fp=1567 gfx=379 unmappedGfx=240 malloc=923 {"gcObjects":444922,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":229,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":231,"halAllocs":0,"renders":9755}
+00:09:24.321 SAMPLE script t=42.0min rss=694 MB framesRun=75529 tickBusyMs=674995 maxTickMs=14 maxTickGapMs=25 peakCmdBufs=349 framesEst=75846 ticks=230873 calls=1172695 events=15676 playing=True map=icestormunder kills=227 deaths=0 drops=0 relogins=1
+00:10:23.774 MEM script t=43.0min fp=1570 gfx=379 unmappedGfx=243 malloc=923 {"gcObjects":403933,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":232,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":278,"halAllocs":0,"renders":9986}
+00:10:23.793 SAMPLE script t=43.0min rss=695 MB framesRun=77313 tickBusyMs=686872 maxTickMs=16 maxTickGapMs=25 peakCmdBufs=342 framesEst=77630 ticks=236245 calls=1201450 events=16042 playing=True map=icestormunder kills=233 deaths=0 drops=0 relogins=1
+00:11:24.262 MEM script t=44.0min fp=1552 gfx=361 unmappedGfx=242 malloc=923 {"gcObjects":407008,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":228,"halAllocs":0,"renders":10220}
+00:11:24.279 SAMPLE script t=44.0min rss=696 MB framesRun=79128 tickBusyMs=698157 maxTickMs=16 maxTickGapMs=24 peakCmdBufs=377 framesEst=79444 ticks=241758 calls=1230792 events=16441 playing=True map=icestormunder kills=238 deaths=0 drops=0 relogins=1
+00:12:23.737 MEM script t=45.0min fp=1545 gfx=354 unmappedGfx=242 malloc=923 {"gcObjects":452958,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":230,"halAllocs":0,"renders":10452}
+00:12:23.755 SAMPLE script t=45.0min rss=696 MB framesRun=80912 tickBusyMs=709090 maxTickMs=15 maxTickGapMs=27 peakCmdBufs=342 framesEst=81229 ticks=247191 calls=1259684 events=16806 playing=True map=icestormunder kills=244 deaths=0 drops=0 relogins=1
+00:13:24.227 MEM script t=46.0min fp=1520 gfx=332 unmappedGfx=240 malloc=923 {"gcObjects":363839,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7425,"halBufMB":0,"halEncoders":11,"halBindGroups":228,"halAllocs":0,"renders":10688}
+00:13:24.245 SAMPLE script t=46.0min rss=701 MB framesRun=82727 tickBusyMs=720547 maxTickMs=16 maxTickGapMs=26 peakCmdBufs=342 framesEst=83043 ticks=252786 calls=1289058 events=17162 playing=True map=icestormunder kills=248 deaths=0 drops=0 relogins=1
+00:14:23.682 MEM script t=47.0min fp=1511 gfx=322 unmappedGfx=240 malloc=923 {"gcObjects":496137,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":228,"halAllocs":0,"renders":10919}
+00:14:23.699 SAMPLE script t=47.0min rss=701 MB framesRun=84510 tickBusyMs=732393 maxTickMs=15 maxTickGapMs=25 peakCmdBufs=342 framesEst=84827 ticks=258219 calls=1317868 events=17528 playing=True map=icestormunder kills=254 deaths=0 drops=0 relogins=1
+00:15:24.135 MEM script t=48.0min fp=1544 gfx=354 unmappedGfx=242 malloc=923 {"gcObjects":351089,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":233,"halTexMB":0,"halBuffers":7423,"halBufMB":0,"halEncoders":11,"halBindGroups":290,"halAllocs":0,"renders":11154}
+00:15:24.153 SAMPLE script t=48.0min rss=701 MB framesRun=86324 tickBusyMs=746139 maxTickMs=22 maxTickGapMs=26 peakCmdBufs=342 framesEst=86641 ticks=263766 calls=1347079 events=17881 playing=True map=icestormunder kills=259 deaths=0 drops=0 relogins=1
+00:16:23.615 MEM script t=49.0min fp=1511 gfx=322 unmappedGfx=240 malloc=923 {"gcObjects":448436,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":2,"offPoolTex":2,"offPoolMB":0,"halTextures":230,"halTexMB":0,"halBuffers":7425,"halBufMB":0,"halEncoders":11,"halBindGroups":233,"halAllocs":0,"renders":11382}
+00:16:23.633 SAMPLE script t=49.0min rss=701 MB framesRun=88108 tickBusyMs=764616 maxTickMs=24 maxTickGapMs=30 peakCmdBufs=314 framesEst=88425 ticks=269078 calls=1375430 events=18269 playing=True map=icestormunder kills=265 deaths=0 drops=0 relogins=1
+00:17:24.070 MEM script t=50.0min fp=1571 gfx=379 unmappedGfx=242 malloc=923 {"gcObjects":405530,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":229,"halAllocs":0,"renders":11615}
+00:17:24.088 SAMPLE script t=50.0min rss=700 MB framesRun=89922 tickBusyMs=782917 maxTickMs=26 maxTickGapMs=27 peakCmdBufs=377 framesEst=90239 ticks=274470 calls=1404294 events=18620 playing=True map=icestormunder kills=270 deaths=0 drops=0 relogins=1
+00:18:23.525 MEM script t=51.0min fp=1541 gfx=348 unmappedGfx=244 malloc=923 {"gcObjects":399980,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":228,"halAllocs":0,"renders":11842}
+00:18:23.545 SAMPLE script t=51.0min rss=700 MB framesRun=91706 tickBusyMs=801164 maxTickMs=24 maxTickGapMs=26 peakCmdBufs=342 framesEst=92022 ticks=279761 calls=1432679 events=18980 playing=True map=icestormunder kills=275 deaths=0 drops=0 relogins=1
+00:19:24.003 MEM script t=52.0min fp=1540 gfx=348 unmappedGfx=243 malloc=923 {"gcObjects":454751,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":236,"halTexMB":0,"halBuffers":7427,"halBufMB":0,"halEncoders":11,"halBindGroups":296,"halAllocs":0,"renders":12075}
+00:19:24.022 SAMPLE script t=52.0min rss=700 MB framesRun=93520 tickBusyMs=819708 maxTickMs=27 maxTickGapMs=28 peakCmdBufs=377 framesEst=93837 ticks=285175 calls=1461475 events=19343 playing=True map=icestormunder kills=281 deaths=0 drops=0 relogins=1
+00:20:23.463 MEM script t=53.0min fp=1586 gfx=394 unmappedGfx=243 malloc=924 {"gcObjects":361909,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7425,"halBufMB":0,"halEncoders":11,"halBindGroups":230,"halAllocs":0,"renders":12303}
+00:20:23.482 SAMPLE script t=53.0min rss=701 MB framesRun=95304 tickBusyMs=837823 maxTickMs=25 maxTickGapMs=31 peakCmdBufs=356 framesEst=95620 ticks=290493 calls=1489888 events=19702 playing=True map=icestormunder kills=286 deaths=0 drops=0 relogins=1
+00:21:23.940 MEM script t=54.0min fp=1572 gfx=379 unmappedGfx=242 malloc=924 {"gcObjects":499867,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":228,"halAllocs":0,"renders":12536}
+00:21:23.960 SAMPLE script t=54.0min rss=702 MB framesRun=97118 tickBusyMs=856486 maxTickMs=25 maxTickGapMs=30 peakCmdBufs=377 framesEst=97435 ticks=295927 calls=1518736 events=20078 playing=True map=icestormunder kills=292 deaths=0 drops=0 relogins=1
+00:22:24.414 MEM script t=55.0min fp=1513 gfx=322 unmappedGfx=240 malloc=925 {"gcObjects":366531,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7419,"halBufMB":0,"halEncoders":11,"halBindGroups":230,"halAllocs":0,"renders":12768}
+00:22:24.432 SAMPLE script t=55.0min rss=703 MB framesRun=98932 tickBusyMs=875244 maxTickMs=26 maxTickGapMs=35 peakCmdBufs=377 framesEst=99249 ticks=301292 calls=1547573 events=20439 playing=True map=icestormunder kills=297 deaths=0 drops=0 relogins=1
+00:23:23.889 MEM script t=56.0min fp=1544 gfx=353 unmappedGfx=240 malloc=925 {"gcObjects":428423,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":230,"halAllocs":0,"renders":12996}
+00:23:23.908 SAMPLE script t=56.0min rss=703 MB framesRun=100716 tickBusyMs=893776 maxTickMs=25 maxTickGapMs=30 peakCmdBufs=320 framesEst=101033 ticks=306576 calls=1575934 events=20807 playing=True map=icestormunder kills=304 deaths=0 drops=0 relogins=1
+00:24:24.362 MEM script t=57.0min fp=1547 gfx=354 unmappedGfx=242 malloc=925 {"gcObjects":449398,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":230,"halAllocs":0,"renders":13228}
+00:24:24.380 SAMPLE script t=57.0min rss=703 MB framesRun=102531 tickBusyMs=912486 maxTickMs=22 maxTickGapMs=27 peakCmdBufs=342 framesEst=102847 ticks=312008 calls=1604788 events=21190 playing=True map=icestormunder kills=309 deaths=0 drops=0 relogins=1
+00:25:23.840 MEM script t=58.0min fp=1528 gfx=335 unmappedGfx=242 malloc=925 {"gcObjects":351158,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7425,"halBufMB":0,"halEncoders":11,"halBindGroups":230,"halAllocs":0,"renders":13459}
+00:25:23.860 SAMPLE script t=58.0min rss=703 MB framesRun=104315 tickBusyMs=924266 maxTickMs=20 maxTickGapMs=24 peakCmdBufs=342 framesEst=104632 ticks=317503 calls=1633578 events=21585 playing=True map=icestormunder kills=315 deaths=0 drops=0 relogins=1
+00:26:24.349 MEM script t=59.0min fp=1569 gfx=379 unmappedGfx=240 malloc=925 {"gcObjects":483230,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":229,"halAllocs":0,"renders":13695}
+00:26:24.369 SAMPLE script t=59.0min rss=702 MB framesRun=106130 tickBusyMs=936725 maxTickMs=20 maxTickGapMs=24 peakCmdBufs=377 framesEst=106447 ticks=323157 calls=1662787 events=21973 playing=True map=icestormunder kills=321 deaths=0 drops=0 relogins=1
+00:27:23.996 MEM script t=60.0min fp=1519 gfx=328 unmappedGfx=240 malloc=926 {"gcObjects":429071,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":229,"halAllocs":0,"renders":13925}
+00:27:24.016 SAMPLE script t=60.0min rss=585 MB framesRun=107859 tickBusyMs=952970 maxTickMs=234 maxTickGapMs=445 peakCmdBufs=342 framesEst=108236 ticks=329043 calls=1687067 events=22363 playing=True map=icestormunder kills=327 deaths=0 drops=0 relogins=1
+00:27:24.317 MEM script-after-full-gc t=60.0min fp=1555 gfx=361 unmappedGfx=242 malloc=926 {"gcObjects":166487,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":228,"halAllocs":0,"renders":13927}
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 36950 1182400 ruffle_common::avm_string::repr::AvmStringRepr<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 14299 2516624 ruffle_core::avm2::method::MethodData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 11410 2190720 ruffle_core::avm2::vtable::VTableData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 11119 533712 ruffle_core::avm2::multiname::Multiname<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 10993 4397200 ruffle_core::display_object::graphic::GraphicData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 10611 1443096 ruffle_core::avm2::object::script_object::ScriptObjectData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 10430 7175840 ruffle_core::display_object::movie_clip::MovieClipData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 8097 1813728 ruffle_core::display_object::graphic::GraphicShared
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 7591 1153832 ruffle_core::avm2::object::stage_object::StageObjectData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 6607 1955672 ruffle_core::display_object::movie_clip::MovieClipShared<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 5986 1388752 ruffle_core::avm2::class::ClassData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 5517 132408 alloc::vec::Vec<ruffle_core::avm2::namespace::Namespace<'_>>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 4340 798560 ruffle_core::avm2::object::array_object::ArrayObjectData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 4227 101448 alloc::vec::Vec<ruffle_core::avm2::scope::Scope<'_>>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 3719 59504 ruffle_core::avm2::namespace::NamespaceData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 2052 328320 gc_arena::lock::RefLock<ruffle_core::avm1::object::script_object::ObjectData<'_>>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 1944 482112 ruffle_core::avm2::object::class_object::ClassObjectData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 1878 45072 ruffle_core::avm1::function::FunctionObject<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 1876 375200 ruffle_core::avm2::object::function_object::FunctionObjectData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 1536 73728 ruffle_core::avm2::script::ScriptData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 819 26208 ruffle_core::font::font_set::FontSetData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 801 890712 ruffle_core::display_object::edit_text::EditTextData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 706 84720 ruffle_core::avm2::e4x::E4XNodeData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 453 184824 ruffle_core::display_object::text::TextData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 426 74976 ruffle_core::avm2::object::dispatch_object::DispatchObjectData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 424 13568 ruffle_core::display_object::edit_text::EditTextShared
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 360 28800 ruffle_core::display_object::text::TextShared
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 226 43392 ruffle_core::avm2::object::event_object::EventObjectData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 204 78336 ruffle_core::display_object::morph_shape::MorphShapeData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 189 49896 ruffle_core::display_object::morph_shape::MorphShapeShared
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 183 90768 ruffle_core::display_object::avm2_button::Avm2ButtonData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 115 31280 ruffle_core::display_object::avm2_button::ButtonShared
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 54 10800 ruffle_core::font::FontData
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 39 936 ruffle_core::avm2::op::LookupSwitch
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 32 5888 ruffle_core::avm2::object::vector_object::VectorObjectData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 28 4032 ruffle_core::avm2::object::dictionary_object::DictionaryObjectData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 20 3680 ruffle_core::avm2::object::bytearray_object::ByteArrayObjectData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 19 2736 gc_arena::lock::RefLock<ruffle_core::bitmap::bitmap_data::BitmapRawData<'_>>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 19 2736 ruffle_core::avm2::object::bitmapdata_object::BitmapDataObjectData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 19 8056 ruffle_core::display_object::bitmap::BitmapGraphicData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 18 2736 ruffle_core::avm2::object::date_object::DateObjectData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 17 2176 ruffle_core::avm2::script::TranslationUnitData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 16 3712 ruffle_core::avm2::object::loaderinfo_object::LoaderInfoObjectData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 16 1408 ruffle_core::character::BitmapCharacter<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 15 5160 ruffle_core::avm2::object::regexp_object::RegExpObjectData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 14 6496 ruffle_core::display_object::loader_display::LoaderDisplayData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 13 1248 ruffle_core::avm2::domain::DomainData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 10 1440 ruffle_core::avm2::object::domain_object::DomainObjectData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 9 1728 ruffle_core::avm2::object::sound_object::SoundObjectData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 6 960 ruffle_core::avm2::object::error_object::ErrorObjectData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 6 1104 ruffle_core::avm2::object::soundchannel_object::SoundChannelObjectData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 5 1720 ruffle_core::avm2::object::textformat_object::TextFormatObjectData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 4 704 ruffle_core::avm2::object::shared_object_object::SharedObjectObjectData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 4 704 ruffle_core::avm2::object::stage3d_object::Stage3DObjectData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 3 456 ruffle_core::avm2::object::namespace_object::NamespaceObjectData<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 2 48 ruffle_core::avm1::scope::Scope<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 1 24 alloc::vec::Vec<ruffle_core::avm1::value::Value<'_>>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 1 8 gc_arena::dynamic_roots::Inner<'_>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 1 32 gc_arena::lock::RefLock<ruffle_core::avm2::call_stack::CallStack<'_>>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 1 7064 gc_arena::lock::RefLock<ruffle_core::player::GcRootData<'_>>
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 8613 0 as3:Object
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 3150 0 as3:[display] MovieClip
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 2896 0 as3:[display] Shape
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 1536 0 as3:global
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 389 0 as3:[display] TextField
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 185 0 as3:[display] CannedOption
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 146 0 as3:[display] Sprite
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 93 0 as3:[display] StaticText
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 81 0 as3:
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 72 0 as3:Point
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 68 0 as3:[display] SimpleButton
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 67 0 as3:ColorTransform
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 46 0 as3:Timer
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 32 0 as3:GlowFilter
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 24 0 as3:[display] daarmfglow_50
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 21 0 as3:Rectangle
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 19 0 as3:[display] Bitmap
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 18 0 as3:Avatar
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 17 0 as3:[display] Graphics
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 16 0 as3:EventDispatcher
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 16 0 as3:ZSortItem
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 16 0 as3:UncaughtErrorEvents
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 15 0 as3:[display] MorphShape
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 15 0 as3:[display] Invisible
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 15 0 as3:[display] Plate_Monster_58
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 15 0 as3:[display] MonsterMC
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 14 0 as3:[display] Loader
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 13 0 as3:[display] ball
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 10 0 as3:URLLoader
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 10 0 as3:LoaderSlot
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 10 0 as3:[display] buttonComponent
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 9 0 as3:LoaderContext
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 8 0 as3:[display] uiTextLine
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 7 0 as3:User
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 6 0 as3:[display] daarmg_46
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 6 0 as3:[display] dathighg1_113
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 6 0 as3:[display] dagg2_18
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 6 0 as3:[display] icons_blank_layered_bg_499
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 6 0 as3:[display] dakneeeg2_92
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 6 0 as3:[display] dagg3_19
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 6 0 as3:[display] actBar_icon_bgcopy2_330
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 6 0 as3:[display] dagg4_20
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 6 0 as3:[display] ib2
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 6 0 as3:[display] ib1
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 6 0 as3:[display] dathighg2_114
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 6 0 as3:[display] dathighg_112
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 6 0 as3:Room
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 6 0 as3:[display] dashinglow_87
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 6 0 as3:[display] dakneeeg_91
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 6 0 as3:[display] Head_64
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 6 0 as3:[display] dathglow_53
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 6 0 as3:[display] daarmg2_47
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 5 0 as3:[display] ActMask
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 5 0 as3:[display] chkBox_32
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 4 0 as3:[display] dasheglow_107
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 4 0 as3:[display] Eyebrow_Skincopy8_56
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 4 0 as3:[display] Head_Iris_Lightcopy7_54
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 4 0 as3:[display] Head_Iris_Nonecopy7_53
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 4 0 as3:[display] dasheglow2_108
+00:27:24.331 CENSUS script-after-full-gc t=60.0min 4 0 as3:[display] daarmglow_43
+00:27:24.688 RETAIN script-after-full-gc t=60.0min Head_Iris_Nonecopy7_53: 4 live Head_Iris_Nonecopy7_53; 12 layers; shortest root path from the oldest:
+00:27:24.689 RETAIN script-after-full-gc t=60.0min Head_Iris_Nonecopy7_53: ROOT
+00:27:24.689 RETAIN script-after-full-gc t=60.0min Head_Iris_Nonecopy7_53:   -> RefLock (held by 0)
+00:27:24.689 RETAIN script-after-full-gc t=60.0min Head_Iris_Nonecopy7_53:   -> StageData (held by 4)
+00:27:24.689 RETAIN script-after-full-gc t=60.0min Head_Iris_Nonecopy7_53:   -> MovieClipData (held by 10)
+00:27:24.689 RETAIN script-after-full-gc t=60.0min Head_Iris_Nonecopy7_53:   -> MovieClipData (held by 29)
+00:27:24.689 RETAIN script-after-full-gc t=60.0min Head_Iris_Nonecopy7_53:   -> MovieClipData (held by 28)
+00:27:24.689 RETAIN script-after-full-gc t=60.0min Head_Iris_Nonecopy7_53:   -> MovieClipData (held by 5)
+00:27:24.689 RETAIN script-after-full-gc t=60.0min Head_Iris_Nonecopy7_53:   -> MovieClipData (held by 6)
+00:27:24.689 RETAIN script-after-full-gc t=60.0min Head_Iris_Nonecopy7_53:   -> MovieClipData (held by 3)
+00:27:24.689 RETAIN script-after-full-gc t=60.0min Head_Iris_Nonecopy7_53:   -> MovieClipData (held by 9)
+00:27:24.689 RETAIN script-after-full-gc t=60.0min Head_Iris_Nonecopy7_53:   -> MovieClipData (held by 7)
+00:27:24.689 RETAIN script-after-full-gc t=60.0min Head_Iris_Nonecopy7_53:   -> MovieClipData (held by 6)
+00:27:24.689 RETAIN script-after-full-gc t=60.0min Head_Iris_Nonecopy7_53:   -> MovieClipData (held by 4)
+00:27:24.689 RETAIN script-after-full-gc t=60.0min Head_Iris_Nonecopy7_53:   -> as3:[display] Head_Iris_Nonecopy7_53 (held by 2)
+00:28:24.141 MEM script t=61.0min fp=1539 gfx=348 unmappedGfx=240 malloc=926 {"gcObjects":349784,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":230,"halAllocs":0,"renders":14159}
+00:28:24.161 SAMPLE script t=61.0min rss=693 MB framesRun=109657 tickBusyMs=965417 maxTickMs=16 maxTickGapMs=357 peakCmdBufs=377 framesEst=110041 ticks=334401 calls=1716194 events=22736 playing=True map=icestormunder kills=333 deaths=0 drops=0 relogins=1
+00:29:23.628 MEM script t=62.0min fp=1573 gfx=379 unmappedGfx=243 malloc=926 {"gcObjects":420229,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":230,"halAllocs":0,"renders":14390}
+00:29:23.648 SAMPLE script t=62.0min rss=696 MB framesRun=111442 tickBusyMs=977624 maxTickMs=16 maxTickGapMs=25 peakCmdBufs=377 framesEst=111825 ticks=339733 calls=1745075 events=23133 playing=True map=icestormunder kills=338 deaths=0 drops=0 relogins=1
+00:30:24.133 MEM script t=63.0min fp=1521 gfx=328 unmappedGfx=242 malloc=926 {"gcObjects":416997,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":11,"halBindGroups":229,"halAllocs":0,"renders":14625}
+00:30:24.169 SAMPLE script t=63.0min rss=683 MB framesRun=113257 tickBusyMs=990908 maxTickMs=104 maxTickGapMs=158 peakCmdBufs=304 framesEst=113641 ticks=345534 calls=1773129 events=23511 playing=True map=icestormunder kills=344 deaths=0 drops=0 relogins=1
+00:31:23.822 MEM script t=64.0min fp=1519 gfx=328 unmappedGfx=240 malloc=926 {"gcObjects":356711,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":225,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":227,"halAllocs":0,"renders":14853}
+00:31:23.845 SAMPLE script t=64.0min rss=724 MB framesRun=114986 tickBusyMs=1006023 maxTickMs=569 maxTickGapMs=572 peakCmdBufs=342 framesEst=115431 ticks=350804 calls=1799317 events=23862 playing=True map=icestormunder kills=349 deaths=0 drops=0 relogins=1
+00:32:24.324 MEM script t=65.0min fp=1634 gfx=438 unmappedGfx=244 malloc=926 {"gcObjects":498598,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":225,"halTexMB":0,"halBuffers":7423,"halBufMB":0,"halEncoders":14,"halBindGroups":227,"halAllocs":0,"renders":15086}
+00:32:24.343 SAMPLE script t=65.0min rss=729 MB framesRun=116799 tickBusyMs=1024170 maxTickMs=105 maxTickGapMs=108 peakCmdBufs=377 framesEst=117246 ticks=356217 calls=1828106 events=24242 playing=True map=icestormunder kills=355 deaths=0 drops=0 relogins=1
+00:33:23.840 MEM script t=66.0min fp=1361 gfx=165 unmappedGfx=240 malloc=930 {"gcObjects":174014,"movies":83,"characters":19239,"swfBytes":18704669,"classRegistry":1590,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":222,"halTexMB":0,"halBuffers":7505,"halBufMB":0,"halEncoders":14,"halBindGroups":224,"halAllocs":0,"renders":15315}
+00:33:23.858 SAMPLE script t=66.0min rss=775 MB framesRun=118584 tickBusyMs=1041933 maxTickMs=60 maxTickGapMs=60 peakCmdBufs=377 framesEst=119032 ticks=361551 calls=1854532 events=24602 playing=True map=icestormunder kills=359 deaths=0 drops=0 relogins=1
+00:34:24.327 MEM script t=67.0min fp=1570 gfx=374 unmappedGfx=240 malloc=931 {"gcObjects":355269,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":228,"halAllocs":0,"renders":15548}
+00:34:24.345 SAMPLE script t=67.0min rss=778 MB framesRun=120399 tickBusyMs=1061201 maxTickMs=24 maxTickGapMs=29 peakCmdBufs=310 framesEst=120846 ticks=366900 calls=1882651 events=24970 playing=True map=icestormunder kills=364 deaths=0 drops=0 relogins=1
+00:35:23.772 MEM script t=68.0min fp=1544 gfx=348 unmappedGfx=240 malloc=931 {"gcObjects":413475,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":225,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":227,"halAllocs":0,"renders":15776}
+00:35:23.791 SAMPLE script t=68.0min rss=779 MB framesRun=122182 tickBusyMs=1080304 maxTickMs=22 maxTickGapMs=29 peakCmdBufs=377 framesEst=122630 ticks=372157 calls=1910965 events=25336 playing=True map=icestormunder kills=368 deaths=0 drops=0 relogins=1
+00:36:24.247 MEM script t=69.0min fp=1606 gfx=410 unmappedGfx=240 malloc=931 {"gcObjects":426490,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":2,"offPoolTex":2,"offPoolMB":0,"halTextures":230,"halTexMB":0,"halBuffers":7425,"halBufMB":0,"halEncoders":14,"halBindGroups":233,"halAllocs":0,"renders":16009}
+00:36:24.264 SAMPLE script t=69.0min rss=780 MB framesRun=123996 tickBusyMs=1099794 maxTickMs=23 maxTickGapMs=32 peakCmdBufs=310 framesEst=124444 ticks=377560 calls=1939783 events=25699 playing=True map=icestormunder kills=374 deaths=0 drops=0 relogins=1
+00:37:23.811 MEM script t=70.0min fp=1519 gfx=323 unmappedGfx=240 malloc=931 {"gcObjects":380482,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":2,"offPoolTex":2,"offPoolMB":0,"halTextures":230,"halTexMB":0,"halBuffers":7430,"halBufMB":0,"halEncoders":14,"halBindGroups":234,"halAllocs":0,"renders":16238}
+00:37:23.829 SAMPLE script t=70.0min rss=780 MB framesRun=125783 tickBusyMs=1119051 maxTickMs=25 maxTickGapMs=28 peakCmdBufs=304 framesEst=126231 ticks=382722 calls=1967735 events=26053 playing=True map=icestormunder kills=378 deaths=0 drops=0 relogins=1
+00:38:24.470 MEM script t=71.0min fp=1559 gfx=361 unmappedGfx=242 malloc=931 {"gcObjects":509737,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7419,"halBufMB":0,"halEncoders":14,"halBindGroups":228,"halAllocs":0,"renders":16470}
+00:38:24.489 SAMPLE script t=71.0min rss=780 MB framesRun=127603 tickBusyMs=1138241 maxTickMs=30 maxTickGapMs=38 peakCmdBufs=291 framesEst=128051 ticks=387899 calls=1995971 events=26420 playing=True map=icestormunder kills=383 deaths=0 drops=0 relogins=1
+00:39:24.005 MEM script t=72.0min fp=1528 gfx=332 unmappedGfx=240 malloc=931 {"gcObjects":389024,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":230,"halAllocs":0,"renders":16698}
+00:39:24.024 SAMPLE script t=72.0min rss=781 MB framesRun=129389 tickBusyMs=1157656 maxTickMs=26 maxTickGapMs=28 peakCmdBufs=377 framesEst=129837 ticks=393119 calls=2023968 events=26802 playing=True map=icestormunder kills=390 deaths=0 drops=0 relogins=1
+00:40:23.466 MEM script t=73.0min fp=1503 gfx=304 unmappedGfx=242 malloc=931 {"gcObjects":423946,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7417,"halBufMB":0,"halEncoders":14,"halBindGroups":228,"halAllocs":0,"renders":16926}
+00:40:23.483 SAMPLE script t=73.0min rss=781 MB framesRun=131173 tickBusyMs=1176649 maxTickMs=23 maxTickGapMs=30 peakCmdBufs=342 framesEst=131621 ticks=398381 calls=2052305 events=27171 playing=True map=icestormunder kills=395 deaths=0 drops=0 relogins=1
+00:41:23.931 MEM script t=74.0min fp=1574 gfx=379 unmappedGfx=240 malloc=931 {"gcObjects":486311,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":229,"halAllocs":0,"renders":17159}
+00:41:23.949 SAMPLE script t=74.0min rss=781 MB framesRun=132987 tickBusyMs=1196028 maxTickMs=23 maxTickGapMs=32 peakCmdBufs=342 framesEst=133435 ticks=403732 calls=2081081 events=27556 playing=True map=icestormunder kills=401 deaths=0 drops=0 relogins=1
+00:42:24.403 MEM script t=75.0min fp=1551 gfx=356 unmappedGfx=240 malloc=931 {"gcObjects":355496,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7419,"halBufMB":0,"halEncoders":14,"halBindGroups":230,"halAllocs":0,"renders":17391}
+00:42:24.422 SAMPLE script t=75.0min rss=781 MB framesRun=134801 tickBusyMs=1215384 maxTickMs=26 maxTickGapMs=27 peakCmdBufs=291 framesEst=135249 ticks=409069 calls=2109847 events=27923 playing=True map=icestormunder kills=406 deaths=0 drops=0 relogins=1
+00:43:23.883 MEM script t=76.0min fp=1575 gfx=379 unmappedGfx=240 malloc=931 {"gcObjects":476084,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7419,"halBufMB":0,"halEncoders":14,"halBindGroups":228,"halAllocs":0,"renders":17620}
+00:43:23.903 SAMPLE script t=76.0min rss=786 MB framesRun=136585 tickBusyMs=1234563 maxTickMs=26 maxTickGapMs=30 peakCmdBufs=377 framesEst=137033 ticks=414289 calls=2138133 events=28290 playing=True map=icestormunder kills=411 deaths=0 drops=0 relogins=1
+00:44:24.390 MEM script t=77.0min fp=1552 gfx=356 unmappedGfx=240 malloc=931 {"gcObjects":420488,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":229,"halAllocs":0,"renders":17851}
+00:44:24.408 SAMPLE script t=77.0min rss=786 MB framesRun=138401 tickBusyMs=1253874 maxTickMs=23 maxTickGapMs=27 peakCmdBufs=304 framesEst=138848 ticks=419590 calls=2166812 events=28665 playing=True map=icestormunder kills=416 deaths=0 drops=0 relogins=1
+00:45:23.990 MEM script t=78.0min fp=1593 gfx=394 unmappedGfx=242 malloc=931 {"gcObjects":392002,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":228,"halAllocs":0,"renders":18080}
+00:45:24.008 SAMPLE script t=78.0min rss=787 MB framesRun=140189 tickBusyMs=1273432 maxTickMs=27 maxTickGapMs=31 peakCmdBufs=377 framesEst=140636 ticks=424719 calls=2194418 events=29034 playing=True map=icestormunder kills=422 deaths=0 drops=0 relogins=1
+00:46:23.461 MEM script t=79.0min fp=1494 gfx=296 unmappedGfx=243 malloc=931 {"gcObjects":504197,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":225,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":227,"halAllocs":0,"renders":18308}
+00:46:23.479 SAMPLE script t=79.0min rss=772 MB framesRun=141973 tickBusyMs=1292637 maxTickMs=24 maxTickGapMs=28 peakCmdBufs=377 framesEst=142421 ticks=429977 calls=2222654 events=29426 playing=True map=icestormunder kills=427 deaths=0 drops=0 relogins=1
+00:47:23.944 MEM script t=80.0min fp=1550 gfx=353 unmappedGfx=240 malloc=931 {"gcObjects":398574,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":225,"halTexMB":0,"halBuffers":7417,"halBufMB":0,"halEncoders":14,"halBindGroups":227,"halAllocs":0,"renders":18540}
+00:47:23.962 SAMPLE script t=80.0min rss=772 MB framesRun=143787 tickBusyMs=1312056 maxTickMs=26 maxTickGapMs=32 peakCmdBufs=291 framesEst=144235 ticks=435322 calls=2251397 events=29798 playing=True map=icestormunder kills=432 deaths=0 drops=0 relogins=1
+00:48:24.410 MEM script t=81.0min fp=1575 gfx=379 unmappedGfx=240 malloc=931 {"gcObjects":419031,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7419,"halBufMB":0,"halEncoders":14,"halBindGroups":229,"halAllocs":0,"renders":18772}
+00:48:24.428 SAMPLE script t=81.0min rss=765 MB framesRun=145601 tickBusyMs=1331326 maxTickMs=44 maxTickGapMs=44 peakCmdBufs=304 framesEst=146049 ticks=440655 calls=2280118 events=30185 playing=True map=icestormunder kills=438 deaths=0 drops=0 relogins=1
+00:49:23.862 MEM script t=82.0min fp=1524 gfx=328 unmappedGfx=240 malloc=931 {"gcObjects":502601,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7425,"halBufMB":0,"halEncoders":14,"halBindGroups":228,"halAllocs":0,"renders":19000}
+00:49:23.884 SAMPLE script t=82.0min rss=765 MB framesRun=147385 tickBusyMs=1350450 maxTickMs=25 maxTickGapMs=30 peakCmdBufs=377 framesEst=147833 ticks=445907 calls=2308464 events=30568 playing=True map=icestormunder kills=444 deaths=0 drops=0 relogins=1
+00:50:24.335 MEM script t=83.0min fp=1547 gfx=348 unmappedGfx=242 malloc=932 {"gcObjects":362473,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":229,"halAllocs":0,"renders":19232}
+00:50:24.358 SAMPLE script t=83.0min rss=764 MB framesRun=149199 tickBusyMs=1370051 maxTickMs=25 maxTickGapMs=28 peakCmdBufs=342 framesEst=149647 ticks=451302 calls=2337314 events=30969 playing=True map=icestormunder kills=450 deaths=0 drops=0 relogins=1
+00:51:24.137 MEM script t=84.0min fp=1579 gfx=379 unmappedGfx=242 malloc=932 {"gcObjects":425922,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":228,"halAllocs":0,"renders":19463}
+00:51:24.163 SAMPLE script t=84.0min rss=568 MB framesRun=150962 tickBusyMs=1385548 maxTickMs=196 maxTickGapMs=204 peakCmdBufs=377 framesEst=151441 ticks=457324 calls=2362565 events=31309 playing=True map=icestormunder kills=454 deaths=0 drops=0 relogins=1
+00:52:23.624 MEM script t=85.0min fp=1579 gfx=379 unmappedGfx=242 malloc=932 {"gcObjects":494204,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":230,"halAllocs":0,"renders":19693}
+00:52:23.647 SAMPLE script t=85.0min rss=688 MB framesRun=152747 tickBusyMs=1397829 maxTickMs=43 maxTickGapMs=43 peakCmdBufs=377 framesEst=153225 ticks=462810 calls=2391044 events=31671 playing=True map=icestormunder kills=459 deaths=0 drops=0 relogins=1
+00:53:24.109 MEM script t=86.0min fp=1547 gfx=348 unmappedGfx=243 malloc=932 {"gcObjects":359893,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":228,"halAllocs":0,"renders":19929}
+00:53:24.130 SAMPLE script t=86.0min rss=692 MB framesRun=154562 tickBusyMs=1409383 maxTickMs=15 maxTickGapMs=27 peakCmdBufs=298 framesEst=155040 ticks=468343 calls=2420441 events=32066 playing=True map=icestormunder kills=464 deaths=0 drops=0 relogins=1
+00:54:23.600 MEM script t=87.0min fp=1559 gfx=361 unmappedGfx=240 malloc=932 {"gcObjects":467683,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7419,"halBufMB":0,"halEncoders":14,"halBindGroups":228,"halAllocs":0,"renders":20161}
+00:54:23.622 SAMPLE script t=87.0min rss=697 MB framesRun=156346 tickBusyMs=1420954 maxTickMs=13 maxTickGapMs=25 peakCmdBufs=377 framesEst=156825 ticks=473747 calls=2449421 events=32414 playing=True map=icestormunder kills=469 deaths=0 drops=0 relogins=1
+00:55:24.090 MEM script t=88.0min fp=1550 gfx=353 unmappedGfx=240 malloc=932 {"gcObjects":452983,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":229,"halAllocs":0,"renders":20396}
+00:55:24.111 SAMPLE script t=88.0min rss=699 MB framesRun=158161 tickBusyMs=1432646 maxTickMs=14 maxTickGapMs=25 peakCmdBufs=307 framesEst=158639 ticks=479273 calls=2478780 events=32802 playing=True map=icestormunder kills=475 deaths=0 drops=0 relogins=1
+00:56:23.561 MEM script t=89.0min fp=1550 gfx=353 unmappedGfx=240 malloc=932 {"gcObjects":360494,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":228,"halAllocs":0,"renders":20627}
+00:56:23.581 SAMPLE script t=89.0min rss=701 MB framesRun=159945 tickBusyMs=1444669 maxTickMs=19 maxTickGapMs=26 peakCmdBufs=306 framesEst=160424 ticks=484686 calls=2507602 events=33173 playing=True map=icestormunder kills=481 deaths=0 drops=0 relogins=1
+00:57:24.106 MEM script t=90.0min fp=1533 gfx=335 unmappedGfx=240 malloc=932 {"gcObjects":481621,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":229,"halAllocs":0,"renders":20862}
+00:57:24.180 SAMPLE script t=90.0min rss=694 MB framesRun=161756 tickBusyMs=1457623 maxTickMs=146 maxTickGapMs=146 peakCmdBufs=377 framesEst=162240 ticks=490278 calls=2536424 events=33560 playing=True map=icestormunder kills=487 deaths=0 drops=0 relogins=1
+00:57:24.629 MEM script-after-full-gc t=90.0min fp=1576 gfx=378 unmappedGfx=240 malloc=932 {"gcObjects":173366,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":229,"halAllocs":0,"renders":20865}
+00:57:24.659 CENSUS script-after-full-gc t=90.0min 39632 1268224 ruffle_common::avm_string::repr::AvmStringRepr<'_>
+00:57:24.659 CENSUS script-after-full-gc t=90.0min 14299 2516624 ruffle_core::avm2::method::MethodData<'_>
+00:57:24.659 CENSUS script-after-full-gc t=90.0min 12559 1708024 ruffle_core::avm2::object::script_object::ScriptObjectData<'_>
+00:57:24.659 CENSUS script-after-full-gc t=90.0min 11412 2191104 ruffle_core::avm2::vtable::VTableData<'_>
+00:57:24.659 CENSUS script-after-full-gc t=90.0min 11120 533760 ruffle_core::avm2::multiname::Multiname<'_>
+00:57:24.659 CENSUS script-after-full-gc t=90.0min 11004 4401600 ruffle_core::display_object::graphic::GraphicData<'_>
+00:57:24.659 CENSUS script-after-full-gc t=90.0min 10617 7304496 ruffle_core::display_object::movie_clip::MovieClipData<'_>
+00:57:24.659 CENSUS script-after-full-gc t=90.0min 8097 1813728 ruffle_core::display_object::graphic::GraphicShared
+00:57:24.659 CENSUS script-after-full-gc t=90.0min 7935 1206120 ruffle_core::avm2::object::stage_object::StageObjectData<'_>
+00:57:24.659 CENSUS script-after-full-gc t=90.0min 6607 1955672 ruffle_core::display_object::movie_clip::MovieClipShared<'_>
+00:57:24.659 CENSUS script-after-full-gc t=90.0min 6072 1117248 ruffle_core::avm2::object::array_object::ArrayObjectData<'_>
+00:57:24.659 CENSUS script-after-full-gc t=90.0min 5988 1389216 ruffle_core::avm2::class::ClassData<'_>
+00:57:24.659 CENSUS script-after-full-gc t=90.0min 5517 132408 alloc::vec::Vec<ruffle_core::avm2::namespace::Namespace<'_>>
+00:57:24.659 CENSUS script-after-full-gc t=90.0min 4230 101520 alloc::vec::Vec<ruffle_core::avm2::scope::Scope<'_>>
+00:57:24.659 CENSUS script-after-full-gc t=90.0min 3719 59504 ruffle_core::avm2::namespace::NamespaceData<'_>
+00:57:24.659 CENSUS script-after-full-gc t=90.0min 2052 328320 gc_arena::lock::RefLock<ruffle_core::avm1::object::script_object::ObjectData<'_>>
+00:57:24.659 CENSUS script-after-full-gc t=90.0min 1944 482112 ruffle_core::avm2::object::class_object::ClassObjectData<'_>
+00:57:24.659 CENSUS script-after-full-gc t=90.0min 1878 45072 ruffle_core::avm1::function::FunctionObject<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 1846 369200 ruffle_core::avm2::object::function_object::FunctionObjectData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 1536 73728 ruffle_core::avm2::script::ScriptData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 816 26112 ruffle_core::font::font_set::FontSetData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 795 884040 ruffle_core::display_object::edit_text::EditTextData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 706 84720 ruffle_core::avm2::e4x::E4XNodeData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 453 184824 ruffle_core::display_object::text::TextData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 426 74976 ruffle_core::avm2::object::dispatch_object::DispatchObjectData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 424 13568 ruffle_core::display_object::edit_text::EditTextShared
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 367 70464 ruffle_core::avm2::object::event_object::EventObjectData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 360 28800 ruffle_core::display_object::text::TextShared
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 216 82944 ruffle_core::display_object::morph_shape::MorphShapeData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 189 49896 ruffle_core::display_object::morph_shape::MorphShapeShared
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 183 90768 ruffle_core::display_object::avm2_button::Avm2ButtonData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 115 31280 ruffle_core::display_object::avm2_button::ButtonShared
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 54 10800 ruffle_core::font::FontData
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 40 960 ruffle_core::avm2::op::LookupSwitch
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 34 6256 ruffle_core::avm2::object::vector_object::VectorObjectData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 30 4320 ruffle_core::avm2::object::dictionary_object::DictionaryObjectData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 21 3024 gc_arena::lock::RefLock<ruffle_core::bitmap::bitmap_data::BitmapRawData<'_>>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 21 3024 ruffle_core::avm2::object::bitmapdata_object::BitmapDataObjectData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 21 8904 ruffle_core::display_object::bitmap::BitmapGraphicData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 17 2176 ruffle_core::avm2::script::TranslationUnitData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 16 3712 ruffle_core::avm2::object::loaderinfo_object::LoaderInfoObjectData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 16 1408 ruffle_core::character::BitmapCharacter<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 15 2760 ruffle_core::avm2::object::bytearray_object::ByteArrayObjectData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 14 6496 ruffle_core::display_object::loader_display::LoaderDisplayData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 13 1248 ruffle_core::avm2::domain::DomainData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 13 4472 ruffle_core::avm2::object::regexp_object::RegExpObjectData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 12 1824 ruffle_core::avm2::object::date_object::DateObjectData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 10 1440 ruffle_core::avm2::object::domain_object::DomainObjectData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 9 1728 ruffle_core::avm2::object::sound_object::SoundObjectData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 6 1104 ruffle_core::avm2::object::soundchannel_object::SoundChannelObjectData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 4 704 ruffle_core::avm2::object::shared_object_object::SharedObjectObjectData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 4 704 ruffle_core::avm2::object::stage3d_object::Stage3DObjectData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 4 1376 ruffle_core::avm2::object::textformat_object::TextFormatObjectData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 3 456 ruffle_core::avm2::object::namespace_object::NamespaceObjectData<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 2 48 ruffle_core::avm1::scope::Scope<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 1 24 alloc::vec::Vec<ruffle_core::avm1::value::Value<'_>>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 1 8 gc_arena::dynamic_roots::Inner<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 1 32 gc_arena::lock::RefLock<ruffle_core::avm2::call_stack::CallStack<'_>>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 1 7064 gc_arena::lock::RefLock<ruffle_core::player::GcRootData<'_>>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 1 584 ruffle_core::avm2::namespace::CommonNamespaces<'_>
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 10611 0 as3:Object
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 3155 0 as3:[display] MovieClip
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 2907 0 as3:[display] Shape
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 1536 0 as3:global
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 383 0 as3:[display] TextField
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 185 0 as3:[display] CannedOption
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 146 0 as3:[display] Sprite
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 93 0 as3:[display] StaticText
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 77 0 as3:
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 75 0 as3:ColorTransform
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 68 0 as3:[display] SimpleButton
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 46 0 as3:Timer
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 32 0 as3:GlowFilter
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 27 0 as3:[display] MorphShape
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 24 0 as3:[display] daarmfglow_50
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 21 0 as3:[display] Bitmap
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 21 0 as3:Rectangle
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 20 0 as3:Avatar
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 17 0 as3:[display] Graphics
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 16 0 as3:ZSortItem
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 16 0 as3:UncaughtErrorEvents
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 16 0 as3:EventDispatcher
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 15 0 as3:[display] MonsterMC
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 15 0 as3:[display] Plate_Monster_58
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 15 0 as3:[display] Invisible
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 14 0 as3:[display] Loader
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 13 0 as3:[display] ball
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 10 0 as3:User
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 10 0 as3:URLLoader
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 10 0 as3:[display] buttonComponent
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 10 0 as3:LoaderSlot
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 9 0 as3:LoaderContext
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 9 0 as3:Room
+00:57:24.660 CENSUS script-after-full-gc t=90.0min 8 0 as3:[display] uiTextLine
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 8 0 as3:Transform
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 7 0 as3:[display] ActMask
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 6 0 as3:[display] dathighg1_113
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 6 0 as3:[display] dagg2_18
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 6 0 as3:[display] dagg4_20
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 6 0 as3:[display] dathglow_53
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 6 0 as3:[display] dathighg_112
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 6 0 as3:[display] actBar_icon_bgcopy2_330
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 6 0 as3:[display] dathighg2_114
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 6 0 as3:[display] daarmg2_47
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 6 0 as3:[display] icons_blank_layered_bg_499
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 6 0 as3:[display] daarmg_46
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 6 0 as3:[display] Head_64
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 6 0 as3:[display] Head_Iris_Lightcopy7_54
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 6 0 as3:Point
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 6 0 as3:[display] Head_Iris_Nonecopy7_53
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 6 0 as3:[display] dakneeeg2_92
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 6 0 as3:[display] dakneeeg_91
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 6 0 as3:[display] dashinglow_87
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 6 0 as3:[display] ib1
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 6 0 as3:[display] ib2
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 6 0 as3:[display] dagg3_19
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 5 0 as3:[display] chkBox_32
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 4 0 as3:[display] daarmglow_43
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 4 0 as3:[display] crossedswords
+00:57:24.661 CENSUS script-after-full-gc t=90.0min 4 0 as3:[display] Eyebrow_Skincopy8_56
+00:57:24.900 RETAIN script-after-full-gc t=90.0min Head_Iris_Nonecopy7_53: 6 live Head_Iris_Nonecopy7_53; 7 layers; shortest root path from the oldest:
+00:57:24.900 RETAIN script-after-full-gc t=90.0min Head_Iris_Nonecopy7_53: not reachable from the root (collectable?)
+00:58:23.544 MEM script t=91.0min fp=1605 gfx=405 unmappedGfx=243 malloc=932 {"gcObjects":414687,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":228,"halAllocs":0,"renders":21088}
+00:58:23.570 SAMPLE script t=91.0min rss=692 MB framesRun=163426 tickBusyMs=1474317 maxTickMs=461 maxTickGapMs=605 peakCmdBufs=310 framesEst=164023 ticks=495921 calls=2559295 events=33944 playing=True map=icestormunder kills=493 deaths=0 drops=0 relogins=1
+00:59:24.075 MEM script t=92.0min fp=1577 gfx=379 unmappedGfx=240 malloc=932 {"gcObjects":329907,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":229,"halAllocs":0,"renders":21322}
+00:59:24.096 SAMPLE script t=92.0min rss=691 MB framesRun=165242 tickBusyMs=1491758 maxTickMs=52 maxTickGapMs=55 peakCmdBufs=377 framesEst=165839 ticks=501517 calls=2586996 events=34316 playing=True map=icestormunder kills=498 deaths=0 drops=0 relogins=1
+01:00:23.580 MEM script t=93.0min fp=1594 gfx=392 unmappedGfx=244 malloc=932 {"gcObjects":472398,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":225,"halTexMB":0,"halBuffers":7419,"halBufMB":0,"halEncoders":14,"halBindGroups":227,"halAllocs":0,"renders":21550}
+01:00:23.601 SAMPLE script t=93.0min rss=693 MB framesRun=167027 tickBusyMs=1511146 maxTickMs=23 maxTickGapMs=27 peakCmdBufs=333 framesEst=167624 ticks=506766 calls=2615401 events=34693 playing=True map=icestormunder kills=503 deaths=0 drops=0 relogins=1
+01:01:24.060 MEM script t=94.0min fp=1576 gfx=376 unmappedGfx=242 malloc=932 {"gcObjects":430792,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7425,"halBufMB":0,"halEncoders":14,"halBindGroups":230,"halAllocs":0,"renders":21782}
+01:01:24.079 SAMPLE script t=94.0min rss=685 MB framesRun=168840 tickBusyMs=1530976 maxTickMs=80 maxTickGapMs=80 peakCmdBufs=333 framesEst=169439 ticks=512074 calls=2644207 events=35051 playing=True map=icestormunder kills=508 deaths=0 drops=0 relogins=1
+01:02:23.534 MEM script t=95.0min fp=1579 gfx=379 unmappedGfx=242 malloc=932 {"gcObjects":383925,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":229,"halAllocs":0,"renders":22010}
+01:02:23.559 SAMPLE script t=95.0min rss=701 MB framesRun=170624 tickBusyMs=1550130 maxTickMs=24 maxTickGapMs=48 peakCmdBufs=385 framesEst=171223 ticks=517333 calls=2672519 events=35442 playing=True map=icestormunder kills=514 deaths=0 drops=0 relogins=1
+01:03:24.009 MEM script t=96.0min fp=1548 gfx=348 unmappedGfx=242 malloc=932 {"gcObjects":507972,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":228,"halAllocs":0,"renders":22243}
+01:03:24.030 SAMPLE script t=96.0min rss=704 MB framesRun=172438 tickBusyMs=1569680 maxTickMs=22 maxTickGapMs=27 peakCmdBufs=342 framesEst=173037 ticks=522691 calls=2701348 events=35803 playing=True map=icestormunder kills=519 deaths=0 drops=0 relogins=1
+01:04:23.471 MEM script t=97.0min fp=1502 gfx=304 unmappedGfx=240 malloc=932 {"gcObjects":424288,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":224,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":226,"halAllocs":0,"renders":22471}
+01:04:23.492 SAMPLE script t=97.0min rss=705 MB framesRun=174222 tickBusyMs=1588873 maxTickMs=25 maxTickGapMs=30 peakCmdBufs=310 framesEst=174821 ticks=527974 calls=2729734 events=36165 playing=True map=icestormunder kills=524 deaths=0 drops=0 relogins=1
+01:05:23.964 MEM script t=98.0min fp=1523 gfx=323 unmappedGfx=244 malloc=932 {"gcObjects":398760,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":225,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":227,"halAllocs":0,"renders":22704}
+01:05:23.987 SAMPLE script t=98.0min rss=705 MB framesRun=176037 tickBusyMs=1608805 maxTickMs=25 maxTickGapMs=36 peakCmdBufs=304 framesEst=176636 ticks=533389 calls=2758608 events=36549 playing=True map=icestormunder kills=530 deaths=0 drops=0 relogins=1
+01:06:24.462 MEM script t=99.0min fp=1562 gfx=361 unmappedGfx=244 malloc=932 {"gcObjects":519866,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":224,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":226,"halAllocs":0,"renders":22935}
+01:06:24.482 SAMPLE script t=99.0min rss=699 MB framesRun=177852 tickBusyMs=1628447 maxTickMs=26 maxTickGapMs=32 peakCmdBufs=307 framesEst=178451 ticks=538721 calls=2787433 events=36929 playing=True map=icestormunder kills=535 deaths=0 drops=0 relogins=1
+01:07:23.957 MEM script t=100.0min fp=1528 gfx=330 unmappedGfx=240 malloc=932 {"gcObjects":429944,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7419,"halBufMB":0,"halEncoders":14,"halBindGroups":228,"halAllocs":0,"renders":23165}
+01:07:23.975 SAMPLE script t=100.0min rss=690 MB framesRun=179637 tickBusyMs=1643975 maxTickMs=22 maxTickGapMs=26 peakCmdBufs=310 framesEst=180235 ticks=544079 calls=2816096 events=37307 playing=True map=icestormunder kills=541 deaths=0 drops=0 relogins=1
+01:08:24.461 MEM script t=101.0min fp=1670 gfx=469 unmappedGfx=242 malloc=932 {"gcObjects":399736,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":250,"halTexMB":0,"halBuffers":7433,"halBufMB":0,"halEncoders":14,"halBindGroups":303,"halAllocs":0,"renders":23398}
+01:08:24.482 SAMPLE script t=101.0min rss=696 MB framesRun=181452 tickBusyMs=1662755 maxTickMs=26 maxTickGapMs=31 peakCmdBufs=377 framesEst=182051 ticks=549469 calls=2844945 events=37680 playing=True map=icestormunder kills=547 deaths=0 drops=0 relogins=1
+01:09:23.941 MEM script t=102.0min fp=1554 gfx=354 unmappedGfx=242 malloc=932 {"gcObjects":514242,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7419,"halBufMB":0,"halEncoders":14,"halBindGroups":229,"halAllocs":0,"renders":23626}
+01:09:23.960 SAMPLE script t=102.0min rss=685 MB framesRun=183236 tickBusyMs=1681195 maxTickMs=26 maxTickGapMs=28 peakCmdBufs=307 framesEst=183835 ticks=554765 calls=2873401 events=38017 playing=True map=icestormunder kills=551 deaths=0 drops=0 relogins=1
+01:10:24.446 MEM script t=103.0min fp=1528 gfx=328 unmappedGfx=242 malloc=933 {"gcObjects":429814,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":225,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":227,"halAllocs":0,"renders":23858}
+01:10:24.466 SAMPLE script t=103.0min rss=689 MB framesRun=185051 tickBusyMs=1700492 maxTickMs=25 maxTickGapMs=30 peakCmdBufs=342 framesEst=185650 ticks=560127 calls=2902182 events=38393 playing=True map=icestormunder kills=556 deaths=0 drops=0 relogins=1
+01:11:23.904 MEM script t=104.0min fp=1561 gfx=361 unmappedGfx=242 malloc=933 {"gcObjects":400846,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":229,"halAllocs":0,"renders":24087}
+01:11:23.923 SAMPLE script t=104.0min rss=699 MB framesRun=186835 tickBusyMs=1719113 maxTickMs=26 maxTickGapMs=30 peakCmdBufs=377 framesEst=187434 ticks=565445 calls=2930568 events=38757 playing=True map=icestormunder kills=561 deaths=0 drops=0 relogins=1
+01:12:24.403 MEM script t=105.0min fp=1580 gfx=379 unmappedGfx=242 malloc=933 {"gcObjects":518166,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7419,"halBufMB":0,"halEncoders":14,"halBindGroups":229,"halAllocs":0,"renders":24320}
+01:12:24.422 SAMPLE script t=105.0min rss=701 MB framesRun=188650 tickBusyMs=1737722 maxTickMs=24 maxTickGapMs=29 peakCmdBufs=377 framesEst=189249 ticks=570849 calls=2959441 events=39154 playing=True map=icestormunder kills=568 deaths=0 drops=0 relogins=1
+01:13:23.869 MEM script t=106.0min fp=1579 gfx=379 unmappedGfx=242 malloc=933 {"gcObjects":442538,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":2,"offPoolTex":2,"offPoolMB":0,"halTextures":230,"halTexMB":0,"halBuffers":7429,"halBufMB":0,"halEncoders":14,"halBindGroups":233,"halAllocs":0,"renders":24550}
+01:13:23.889 SAMPLE script t=106.0min rss=707 MB framesRun=190434 tickBusyMs=1756195 maxTickMs=24 maxTickGapMs=31 peakCmdBufs=380 framesEst=191033 ticks=576132 calls=2987850 events=39508 playing=True map=icestormunder kills=573 deaths=0 drops=0 relogins=1
+01:14:24.333 MEM script t=107.0min fp=1551 gfx=348 unmappedGfx=244 malloc=933 {"gcObjects":388495,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":224,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":226,"halAllocs":0,"renders":24782}
+01:14:24.354 SAMPLE script t=107.0min rss=709 MB framesRun=192248 tickBusyMs=1775419 maxTickMs=26 maxTickGapMs=31 peakCmdBufs=310 framesEst=192847 ticks=581456 calls=3016608 events=39881 playing=True map=icestormunder kills=578 deaths=0 drops=0 relogins=1
+01:15:23.813 MEM script t=108.0min fp=1536 gfx=335 unmappedGfx=242 malloc=933 {"gcObjects":509143,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":229,"halAllocs":0,"renders":25009}
+01:15:23.835 SAMPLE script t=108.0min rss=708 MB framesRun=194032 tickBusyMs=1794214 maxTickMs=23 maxTickGapMs=27 peakCmdBufs=377 framesEst=194631 ticks=586726 calls=3044990 events=40248 playing=True map=icestormunder kills=584 deaths=0 drops=0 relogins=1
+01:16:24.300 MEM script t=109.0min fp=1544 gfx=343 unmappedGfx=243 malloc=933 {"gcObjects":452080,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":239,"halTexMB":0,"halBuffers":7423,"halBufMB":0,"halEncoders":14,"halBindGroups":290,"halAllocs":0,"renders":25244}
+01:16:24.321 SAMPLE script t=109.0min rss=650 MB framesRun=195847 tickBusyMs=1813344 maxTickMs=24 maxTickGapMs=28 peakCmdBufs=304 framesEst=196446 ticks=592245 calls=3073778 events=40646 playing=True map=icestormunder kills=590 deaths=0 drops=0 relogins=1
+01:17:23.772 MEM script t=110.0min fp=1577 gfx=379 unmappedGfx=240 malloc=933 {"gcObjects":368297,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":230,"halAllocs":0,"renders":25472}
+01:17:23.791 SAMPLE script t=110.0min rss=696 MB framesRun=197631 tickBusyMs=1832027 maxTickMs=20 maxTickGapMs=25 peakCmdBufs=377 framesEst=198230 ticks=597537 calls=3102254 events=40989 playing=True map=icestormunder kills=596 deaths=0 drops=0 relogins=1
+01:18:24.284 MEM script t=111.0min fp=1366 gfx=165 unmappedGfx=241 malloc=934 {"gcObjects":221801,"movies":87,"characters":19354,"swfBytes":18942575,"classRegistry":1602,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7923,"halBufMB":0,"halEncoders":14,"halBindGroups":228,"halAllocs":0,"renders":25707}
+01:18:24.308 SAMPLE script t=111.0min rss=733 MB framesRun=199447 tickBusyMs=1849639 maxTickMs=50 maxTickGapMs=50 peakCmdBufs=342 framesEst=200045 ticks=603066 calls=3129542 events=41333 playing=True map=icestormarena kills=601 deaths=0 drops=0 relogins=1
+01:19:23.789 MEM script t=112.0min fp=1582 gfx=379 unmappedGfx=242 malloc=934 {"gcObjects":433537,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":230,"halAllocs":0,"renders":25936}
+01:19:23.816 SAMPLE script t=112.0min rss=705 MB framesRun=201232 tickBusyMs=1867449 maxTickMs=54 maxTickGapMs=54 peakCmdBufs=333 framesEst=201830 ticks=608385 calls=3156668 events=41662 playing=True map=icestormunder kills=605 deaths=0 drops=0 relogins=1
+01:20:24.549 MEM script t=113.0min fp=1522 gfx=319 unmappedGfx=242 malloc=934 {"gcObjects":360246,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":230,"halAllocs":0,"renders":26170}
+01:20:24.582 SAMPLE script t=113.0min rss=678 MB framesRun=203049 tickBusyMs=1886469 maxTickMs=143 maxTickGapMs=152 peakCmdBufs=342 framesEst=203653 ticks=614046 calls=3184653 events=42040 playing=True map=icestormunder kills=610 deaths=0 drops=0 relogins=1
+01:21:24.372 MEM script t=114.0min fp=1582 gfx=379 unmappedGfx=242 malloc=934 {"gcObjects":465461,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":230,"halTexMB":0,"halBuffers":7426,"halBufMB":0,"halEncoders":14,"halBindGroups":232,"halAllocs":0,"renders":26397}
+01:21:24.391 SAMPLE script t=114.0min rss=698 MB framesRun=204772 tickBusyMs=1907297 maxTickMs=474 maxTickGapMs=514 peakCmdBufs=377 framesEst=205448 ticks=619264 calls=3209832 events=42448 playing=True map=icestormunder kills=617 deaths=0 drops=0 relogins=1
+01:22:23.862 MEM script t=115.0min fp=1597 gfx=394 unmappedGfx=242 malloc=934 {"gcObjects":478454,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":225,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":227,"halAllocs":0,"renders":26626}
+01:22:23.883 SAMPLE script t=115.0min rss=702 MB framesRun=206557 tickBusyMs=1925878 maxTickMs=28 maxTickGapMs=32 peakCmdBufs=310 framesEst=207233 ticks=624562 calls=3238259 events=42796 playing=True map=icestormunder kills=621 deaths=0 drops=0 relogins=1
+01:23:24.331 MEM script t=116.0min fp=1582 gfx=379 unmappedGfx=242 malloc=934 {"gcObjects":360984,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":229,"halAllocs":0,"renders":26858}
+01:23:24.350 SAMPLE script t=116.0min rss=704 MB framesRun=208371 tickBusyMs=1944799 maxTickMs=22 maxTickGapMs=27 peakCmdBufs=377 framesEst=209047 ticks=629964 calls=3267097 events=43194 playing=True map=icestormunder kills=628 deaths=0 drops=0 relogins=1
+01:24:23.801 MEM script t=117.0min fp=1559 gfx=361 unmappedGfx=240 malloc=934 {"gcObjects":469021,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":228,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":230,"halAllocs":0,"renders":27087}
+01:24:23.821 SAMPLE script t=117.0min rss=705 MB framesRun=210155 tickBusyMs=1963112 maxTickMs=24 maxTickGapMs=28 peakCmdBufs=342 framesEst=210831 ticks=635227 calls=3295453 events=43572 playing=True map=icestormunder kills=633 deaths=0 drops=0 relogins=1
+01:25:24.285 MEM script t=118.0min fp=1548 gfx=348 unmappedGfx=240 malloc=934 {"gcObjects":496428,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7423,"halBufMB":0,"halEncoders":14,"halBindGroups":229,"halAllocs":0,"renders":27319}
+01:25:24.306 SAMPLE script t=118.0min rss=706 MB framesRun=211970 tickBusyMs=1982040 maxTickMs=26 maxTickGapMs=30 peakCmdBufs=304 framesEst=212645 ticks=640605 calls=3324274 events=43974 playing=True map=icestormunder kills=638 deaths=0 drops=0 relogins=1
+01:26:23.758 MEM script t=119.0min fp=1579 gfx=379 unmappedGfx=240 malloc=934 {"gcObjects":398586,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":227,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":229,"halAllocs":0,"renders":27547}
+01:26:23.779 SAMPLE script t=119.0min rss=708 MB framesRun=213754 tickBusyMs=2000766 maxTickMs=25 maxTickGapMs=28 peakCmdBufs=377 framesEst=214430 ticks=645871 calls=3352601 events=44328 playing=True map=icestormunder kills=644 deaths=0 drops=0 relogins=1
+01:27:24.249 MEM script-end t=120.0min fp=1550 gfx=348 unmappedGfx=243 malloc=934 {"gcObjects":452481,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":226,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":228,"halAllocs":0,"renders":27780}
+01:27:24.268 SAMPLE script-end t=120.0min rss=709 MB framesRun=215569 tickBusyMs=2018892 maxTickMs=26 maxTickGapMs=30 peakCmdBufs=377 framesEst=216244 ticks=651224 calls=3381474 events=44687 playing=True map=icestormunder kills=649 deaths=0 drops=0 relogins=1
+01:27:24.515 MEM script-end-after-full-gc t=120.0min fp=1551 gfx=348 unmappedGfx=244 malloc=934 {"gcObjects":178616,"movies":48,"characters":15655,"swfBytes":16295100,"classRegistry":1396,"poolSizes":4,"poolTex":8,"poolMB":35,"offPoolSizes":0,"offPoolTex":0,"offPoolMB":0,"halTextures":225,"halTexMB":0,"halBuffers":7421,"halBufMB":0,"halEncoders":14,"halBindGroups":227,"halAllocs":0,"renders":27781}
+01:27:24.527 CENSUS script-end-after-full-gc t=120.0min 41544 1329408 ruffle_common::avm_string::repr::AvmStringRepr<'_>
+01:27:24.527 CENSUS script-end-after-full-gc t=120.0min 14299 2516624 ruffle_core::avm2::method::MethodData<'_>
+01:27:24.527 CENSUS script-end-after-full-gc t=120.0min 14263 1939768 ruffle_core::avm2::object::script_object::ScriptObjectData<'_>
+01:27:24.527 CENSUS script-end-after-full-gc t=120.0min 11412 2191104 ruffle_core::avm2::vtable::VTableData<'_>
+01:27:24.527 CENSUS script-end-after-full-gc t=120.0min 11120 533760 ruffle_core::avm2::multiname::Multiname<'_>
+01:27:24.527 CENSUS script-end-after-full-gc t=120.0min 10993 4397200 ruffle_core::display_object::graphic::GraphicData<'_>
+01:27:24.527 CENSUS script-end-after-full-gc t=120.0min 10578 7277664 ruffle_core::display_object::movie_clip::MovieClipData<'_>
+01:27:24.527 CENSUS script-end-after-full-gc t=120.0min 8097 1813728 ruffle_core::display_object::graphic::GraphicShared
+01:27:24.527 CENSUS script-end-after-full-gc t=120.0min 7922 1457648 ruffle_core::avm2::object::array_object::ArrayObjectData<'_>
+01:27:24.527 CENSUS script-end-after-full-gc t=120.0min 7830 1190160 ruffle_core::avm2::object::stage_object::StageObjectData<'_>
+01:27:24.527 CENSUS script-end-after-full-gc t=120.0min 6607 1955672 ruffle_core::display_object::movie_clip::MovieClipShared<'_>
+01:27:24.527 CENSUS script-end-after-full-gc t=120.0min 5988 1389216 ruffle_core::avm2::class::ClassData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 5517 132408 alloc::vec::Vec<ruffle_core::avm2::namespace::Namespace<'_>>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 4227 101448 alloc::vec::Vec<ruffle_core::avm2::scope::Scope<'_>>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 3719 59504 ruffle_core::avm2::namespace::NamespaceData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 2052 328320 gc_arena::lock::RefLock<ruffle_core::avm1::object::script_object::ObjectData<'_>>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 1944 482112 ruffle_core::avm2::object::class_object::ClassObjectData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 1878 45072 ruffle_core::avm1::function::FunctionObject<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 1855 371000 ruffle_core::avm2::object::function_object::FunctionObjectData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 1536 73728 ruffle_core::avm2::script::ScriptData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 801 25632 ruffle_core::font::font_set::FontSetData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 798 887376 ruffle_core::display_object::edit_text::EditTextData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 706 84720 ruffle_core::avm2::e4x::E4XNodeData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 453 184824 ruffle_core::display_object::text::TextData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 424 13568 ruffle_core::display_object::edit_text::EditTextShared
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 423 74448 ruffle_core::avm2::object::dispatch_object::DispatchObjectData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 360 28800 ruffle_core::display_object::text::TextShared
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 202 77568 ruffle_core::display_object::morph_shape::MorphShapeData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 196 37632 ruffle_core::avm2::object::event_object::EventObjectData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 189 49896 ruffle_core::display_object::morph_shape::MorphShapeShared
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 183 90768 ruffle_core::display_object::avm2_button::Avm2ButtonData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 115 31280 ruffle_core::display_object::avm2_button::ButtonShared
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 54 10800 ruffle_core::font::FontData
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 40 960 ruffle_core::avm2::op::LookupSwitch
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 32 4608 ruffle_core::avm2::object::dictionary_object::DictionaryObjectData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 32 5888 ruffle_core::avm2::object::vector_object::VectorObjectData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 19 2888 ruffle_core::avm2::object::date_object::DateObjectData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 18 2592 gc_arena::lock::RefLock<ruffle_core::bitmap::bitmap_data::BitmapRawData<'_>>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 18 2592 ruffle_core::avm2::object::bitmapdata_object::BitmapDataObjectData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 18 7632 ruffle_core::display_object::bitmap::BitmapGraphicData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 17 2176 ruffle_core::avm2::script::TranslationUnitData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 16 3712 ruffle_core::avm2::object::loaderinfo_object::LoaderInfoObjectData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 16 1408 ruffle_core::character::BitmapCharacter<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 14 2576 ruffle_core::avm2::object::bytearray_object::ByteArrayObjectData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 14 6496 ruffle_core::display_object::loader_display::LoaderDisplayData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 13 1248 ruffle_core::avm2::domain::DomainData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 13 4472 ruffle_core::avm2::object::regexp_object::RegExpObjectData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 10 1440 ruffle_core::avm2::object::domain_object::DomainObjectData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 9 1728 ruffle_core::avm2::object::sound_object::SoundObjectData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 4 704 ruffle_core::avm2::object::shared_object_object::SharedObjectObjectData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 4 704 ruffle_core::avm2::object::stage3d_object::Stage3DObjectData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 4 1376 ruffle_core::avm2::object::textformat_object::TextFormatObjectData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 3 456 ruffle_core::avm2::object::namespace_object::NamespaceObjectData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 3 552 ruffle_core::avm2::object::soundchannel_object::SoundChannelObjectData<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 2 48 ruffle_core::avm1::scope::Scope<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 1 24 alloc::vec::Vec<ruffle_core::avm1::value::Value<'_>>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 1 8 gc_arena::dynamic_roots::Inner<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 1 32 gc_arena::lock::RefLock<ruffle_core::avm2::call_stack::CallStack<'_>>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 1 7064 gc_arena::lock::RefLock<ruffle_core::player::GcRootData<'_>>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 1 584 ruffle_core::avm2::namespace::CommonNamespaces<'_>
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 12329 0 as3:Object
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 3144 0 as3:[display] MovieClip
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 2896 0 as3:[display] Shape
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 1536 0 as3:global
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 386 0 as3:[display] TextField
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 185 0 as3:[display] CannedOption
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 146 0 as3:[display] Sprite
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 93 0 as3:[display] StaticText
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 69 0 as3:
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 68 0 as3:[display] SimpleButton
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 67 0 as3:ColorTransform
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 46 0 as3:Timer
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 32 0 as3:GlowFilter
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 24 0 as3:[display] daarmfglow_50
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 22 0 as3:Avatar
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 21 0 as3:Rectangle
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 18 0 as3:[display] Bitmap
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 17 0 as3:[display] Graphics
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 16 0 as3:UncaughtErrorEvents
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 16 0 as3:EventDispatcher
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 16 0 as3:ZSortItem
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 15 0 as3:[display] Plate_Monster_58
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 15 0 as3:[display] Invisible
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 15 0 as3:[display] MonsterMC
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 14 0 as3:[display] Loader
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 13 0 as3:[display] MorphShape
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 13 0 as3:[display] ball
+01:27:24.528 CENSUS script-end-after-full-gc t=120.0min 13 0 as3:User
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 12 0 as3:Room
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 10 0 as3:[display] buttonComponent
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 10 0 as3:URLLoader
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 10 0 as3:LoaderSlot
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 9 0 as3:LoaderContext
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 8 0 as3:[display] uiTextLine
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 8 0 as3:Point
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 6 0 as3:[display] icons_blank_layered_bg_499
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 6 0 as3:[display] dathighg_112
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 6 0 as3:[display] dakneeeg2_92
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 6 0 as3:[display] dagg4_20
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 6 0 as3:[display] dashinglow_87
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 6 0 as3:[display] dathighg2_114
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 6 0 as3:[display] daarmg_46
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 6 0 as3:[display] daarmg2_47
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 6 0 as3:[display] ib1
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 6 0 as3:[display] actBar_icon_bgcopy2_330
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 6 0 as3:[display] dagg3_19
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 6 0 as3:[display] dathglow_53
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 6 0 as3:[display] ib2
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 6 0 as3:[display] Head_64
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 6 0 as3:[display] dagg2_18
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 6 0 as3:[display] dakneeeg_91
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 6 0 as3:[display] dathighg1_113
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 5 0 as3:[display] chkBox_32
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 4 0 as3:[display] crossedswords
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 4 0 as3:[display] dasheglow_107
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 4 0 as3:[display] Head_Iris_Nonecopy7_53
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 4 0 as3:[display] Head_Iris_Lightcopy7_54
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 4 0 as3:[display] ActMask
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 4 0 as3:[display] dashglow_102
+01:27:24.529 CENSUS script-end-after-full-gc t=120.0min 4 0 as3:[display] dasheglow2_108
+01:27:24.925 RETAIN script-end-after-full-gc t=120.0min Head_Iris_Nonecopy7_53: 4 live Head_Iris_Nonecopy7_53; 13 layers; shortest root path from the oldest:
+01:27:24.925 RETAIN script-end-after-full-gc t=120.0min Head_Iris_Nonecopy7_53: ROOT
+01:27:24.925 RETAIN script-end-after-full-gc t=120.0min Head_Iris_Nonecopy7_53:   -> RefLock (held by 0)
+01:27:24.925 RETAIN script-end-after-full-gc t=120.0min Head_Iris_Nonecopy7_53:   -> StageData (held by 4)
+01:27:24.925 RETAIN script-end-after-full-gc t=120.0min Head_Iris_Nonecopy7_53:   -> MovieClipData (held by 10)
+01:27:24.925 RETAIN script-end-after-full-gc t=120.0min Head_Iris_Nonecopy7_53:   -> MovieClipData (held by 7)
+01:27:24.926 RETAIN script-end-after-full-gc t=120.0min Head_Iris_Nonecopy7_53:   -> MovieClipData (held by 18)
+01:27:24.926 RETAIN script-end-after-full-gc t=120.0min Head_Iris_Nonecopy7_53:   -> MovieClipData (held by 11)
+01:27:24.926 RETAIN script-end-after-full-gc t=120.0min Head_Iris_Nonecopy7_53:   -> MovieClipData (held by 28)
+01:27:24.926 RETAIN script-end-after-full-gc t=120.0min Head_Iris_Nonecopy7_53:   -> MovieClipData (held by 6)
+01:27:24.926 RETAIN script-end-after-full-gc t=120.0min Head_Iris_Nonecopy7_53:   -> MovieClipData (held by 3)
+01:27:24.926 RETAIN script-end-after-full-gc t=120.0min Head_Iris_Nonecopy7_53:   -> MovieClipData (held by 9)
+01:27:24.926 RETAIN script-end-after-full-gc t=120.0min Head_Iris_Nonecopy7_53:   -> MovieClipData (held by 7)
+01:27:24.926 RETAIN script-end-after-full-gc t=120.0min Head_Iris_Nonecopy7_53:   -> MovieClipData (held by 6)
+01:27:24.926 RETAIN script-end-after-full-gc t=120.0min Head_Iris_Nonecopy7_53:   -> MovieClipData (held by 4)
+01:27:24.926 RETAIN script-end-after-full-gc t=120.0min Head_Iris_Nonecopy7_53:   -> as3:[display] Head_Iris_Nonecopy7_53 (held by 2)
+01:27:28.800 Script stopped
+01:27:28.800 done; closing Game Host
+
+# analyze.py
+samples: rss=120 mem=120 duration=119 min
+rss             start=    1155 min=     513 max=    1458 end=     708 last-hour slope=  -0.91/min (    -55/h)
+footprint       start=    3573 min=    1361 max=    3573 end=    1579 last-hour slope=   0.29/min (     17/h)
+ioaccel         start=    2046 min=     165 max=    2046 end=     379 last-hour slope=   0.14/min (      8/h)
+unmappedGfx     start=     867 min=     240 max=     867 end=     240 last-hour slope=   0.02/min (      1/h)
+malloc          start=     639 min=     639 max=     934 end=     934 last-hour slope=   0.11/min (      7/h)
+movies          start=      51 min=      48 max=      87 end=      48 last-hour slope=   0.00/min (      0/h)
+gcObjects/1000  start=     182 min=     174 max=     520 end=     399 last-hour slope=   0.42/min (     25/h)
+main thread busy: mean 28.0% max 34.7%; max tick gap 841 ms; calls 3352601 (470/s); kills 644 deaths 0; maps ['battleon', 'icestormarena', 'icestormunder']
+
+# census_diff t=10 -> t=90 (after full GCs)
+type/class                                                                 t10.0     t90.0    delta     dMB
+ruffle_common::avm_string::repr::AvmStringRepr<'_>                         32695     39632     6937    0.22
+as3:Object                                                                  5498     10611     5113    0.00
+ruffle_core::avm2::object::script_object::ScriptObjectData<'_>              7472     12559     5087    0.69
+ruffle_core::avm2::object::array_object::ArrayObjectData<'_>                1281      6072     4791    0.88
+ruffle_core::avm2::object::stage_object::StageObjectData<'_>                7525      7935      410    0.06
+ruffle_core::display_object::movie_clip::MovieClipData<'_>                 10389     10617      228    0.16
+ruffle_core::avm2::multiname::Multiname<'_>                                11003     11120      117    0.01
+alloc::vec::Vec<ruffle_core::avm2::namespace::Namespace<'_>>                5419      5517       98    0.00
+ruffle_core::avm2::object::event_object::EventObjectData<'_>                 337       367       30    0.01
+ruffle_core::font::font_set::FontSetData<'_>                                 798       816       18    0.00
+ruffle_core::avm2::vtable::VTableData<'_>                                  11402     11412       10    0.00
+as3:User                                                                       0        10       10    0.00
+ruffle_core::avm2::class::ClassData<'_>                                     5978      5988       10    0.00
+as3:Room                                                                       0         9        9    0.00
+as3:                                                                          70        77        7    0.00
