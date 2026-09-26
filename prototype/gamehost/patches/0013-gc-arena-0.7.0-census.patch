@@ -1,7 +1,7 @@
 diff --color -ru a/src/arena.rs b/src/arena.rs
 --- a/src/arena.rs	2006-07-24 09:21:28
-+++ b/src/arena.rs	2026-09-26 21:29:53
-@@ -238,6 +238,11 @@
++++ b/src/arena.rs	2026-09-26 21:33:05
+@@ -238,6 +238,19 @@
      }
  
      #[inline]
@@ -10,13 +10,21 @@ diff --color -ru a/src/arena.rs b/src/arena.rs
 +        self.context.skua_census()
 +    }
 +
++    /// skua #13 census: visit every live allocation (type name, pointer to the value).
++    ///
++    /// # Safety
++    /// The callback may only read the value as the type named, and must not mutate or retain it.
++    pub unsafe fn skua_visit(&self, f: &mut dyn FnMut(&'static str, *const ())) {
++        self.context.skua_visit(f)
++    }
++
      pub fn metrics(&self) -> &Metrics {
          self.context.metrics()
      }
 diff --color -ru a/src/context.rs b/src/context.rs
 --- a/src/context.rs	2006-07-24 09:21:28
-+++ b/src/context.rs	2026-09-26 21:29:53
-@@ -187,6 +187,23 @@
++++ b/src/context.rs	2026-09-26 21:33:05
+@@ -187,6 +187,35 @@
      gray_again: Queue<GcPtr>,
  }
  
@@ -34,6 +42,18 @@ diff --color -ru a/src/context.rs b/src/context.rs
 +            cur = h.next();
 +        }
 +        map.into_iter().map(|(k, (n, b))| (k, n, b)).collect()
++    }
++
++    /// skua #13 census: visit every allocation whose value is still live, with its type name.
++    pub(crate) fn skua_visit(&self, f: &mut dyn FnMut(&'static str, *const ())) {
++        let mut cur = self.all.get();
++        while let Some(p) = cur {
++            let h = p.header();
++            if h.is_live() {
++                f((h.vtable().type_name)(), p.as_ptr() as *const ());
++            }
++            cur = h.next();
++        }
 +    }
 +}
 +

@@ -1,0 +1,93 @@
+From 061f167307c37d95502f58b4669b58015ff720ed Mon Sep 17 00:00:00 2001
+From: Rohi <noelrohi59@gmail.com>
+Date: Sat, 26 Sep 2026 21:32:37 +0800
+Subject: [PATCH] skua #13: GC census by Rust type and AS3 class (needs patched
+ gc-arena)
+
+---
+ core/src/avm2/object.rs               |  2 ++
+ core/src/avm2/object/script_object.rs |  5 +++++
+ core/src/avm2/object/stage_object.rs  |  5 +++++
+ core/src/player.rs                    | 27 +++++++++++++++++++++++++++
+ 4 files changed, 39 insertions(+)
+
+diff --git a/core/src/avm2/object.rs b/core/src/avm2/object.rs
+index c35c655b1..9d91e4245 100644
+--- a/core/src/avm2/object.rs
++++ b/core/src/avm2/object.rs
+@@ -80,6 +80,8 @@ mod xml_list_object;
+ mod xml_object;
+ 
+ pub use crate::avm2::object::array_object::{ArrayObject, ArrayObjectWeak, array_allocator};
++pub use crate::avm2::object::script_object::{ScriptObjectData as SkuaScriptObjectData, skua_class_name};
++pub use crate::avm2::object::stage_object::{StageObjectData as SkuaStageObjectData, skua_stage_class_name};
+ pub use crate::avm2::object::bitmapdata_object::{
+     BitmapDataObject, BitmapDataObjectWeak, bitmap_data_allocator,
+ };
+diff --git a/core/src/avm2/object/script_object.rs b/core/src/avm2/object/script_object.rs
+index 7fbbf13f0..9855272a5 100644
+--- a/core/src/avm2/object/script_object.rs
++++ b/core/src/avm2/object/script_object.rs
+@@ -490,3 +490,8 @@ pub fn get_dynamic_property<'gc>(
+ 
+     Ok(None)
+ }
++
++/// skua #13 census: the AS3 class name of a raw `ScriptObjectData`.
++pub fn skua_class_name(data: &ScriptObjectData<'_>) -> String {
++    data.instance_class.name().local_name().to_string()
++}
+diff --git a/core/src/avm2/object/stage_object.rs b/core/src/avm2/object/stage_object.rs
+index b6d1936f6..94de97db5 100644
+--- a/core/src/avm2/object/stage_object.rs
++++ b/core/src/avm2/object/stage_object.rs
+@@ -108,3 +108,8 @@ impl Debug for StageObject<'_> {
+             .finish()
+     }
+ }
++
++/// skua #13 census: the AS3 class name of a raw `StageObjectData`.
++pub fn skua_stage_class_name(data: &StageObjectData<'_>) -> String {
++    super::script_object::skua_class_name(&data.base)
++}
+diff --git a/core/src/player.rs b/core/src/player.rs
+index 5b6b5f144..bbae988db 100644
+--- a/core/src/player.rs
++++ b/core/src/player.rs
+@@ -2587,6 +2587,33 @@ impl Player {
+         )
+     }
+ 
++    /// skua #13 census: live GC objects by Rust type (top `n` by count), as "count bytes type" lines.
++    /// Call right after `skua_full_gc` to see what is retained.
++    pub fn skua_census(&self, n: usize) -> String {
++        let mut rows = self.gc_arena.borrow().skua_census();
++        rows.sort_by(|a, b| b.1.cmp(&a.1));
++        let mut out: Vec<String> = rows.iter().take(n).map(|(t, c, b)| format!("{c} {b} {t}")).collect();
++        // AS3 classes of plain and display-object AVM2 objects.
++        let mut classes: std::collections::HashMap<String, usize> = Default::default();
++        let arena = self.gc_arena.borrow();
++        unsafe {
++            arena.skua_visit(&mut |ty, p| {
++                let name = if ty.starts_with("ruffle_core::avm2::object::script_object::ScriptObjectData<") {
++                    crate::avm2::object::skua_class_name(&*(p as *const crate::avm2::object::SkuaScriptObjectData<'_>))
++                } else if ty.starts_with("ruffle_core::avm2::object::stage_object::StageObjectData<") {
++                    format!("[display] {}", crate::avm2::object::skua_stage_class_name(&*(p as *const crate::avm2::object::SkuaStageObjectData<'_>)))
++                } else {
++                    return;
++                };
++                *classes.entry(name).or_default() += 1;
++            });
++        }
++        let mut classes: Vec<_> = classes.into_iter().collect();
++        classes.sort_by(|a, b| b.1.cmp(&a.1));
++        out.extend(classes.into_iter().take(n).map(|(c, k)| format!("{k} 0 as3:{c}")));
++        out.join("\n")
++    }
++
+     /// skua #13 instrumentation: a full collection, including the library finalization pass.
+     pub fn skua_full_gc(&mut self) {
+         self.collect_all_garbage();
+-- 
+2.47.1
+
