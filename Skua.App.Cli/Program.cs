@@ -98,6 +98,67 @@ logout.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options
     return await connection.LogoutAsync(ct);
 }, Output.Logout));
 
+Argument<string> joinMap = new("map") { Description = "A map name, optionally with a room number, e.g. battleon or battleon-1234." };
+Argument<string?> joinCell = new("cell") { Description = "The cell to move to; by default the one the game places the player in.", Arity = ArgumentArity.ZeroOrOne };
+Argument<string?> joinPad = new("pad") { Description = "The pad to stand on in the cell: Spawn by default.", Arity = ArgumentArity.ZeroOrOne };
+Option<int?> joinTimeout = new("--timeout") { Description = "Seconds to wait for the map and the cell: 60 by default." };
+Command join = new("join", "Move the player to a map, and to a cell and pad on it; print where the player ended up.") { joinMap, joinCell, joinPad, joinTimeout };
+join.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
+{
+    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
+    return await connection.JoinAsync(parse.GetValue(joinMap)!, parse.GetValue(joinCell), parse.GetValue(joinPad), parse.GetValue(joinTimeout), ct);
+}, Output.Location));
+
+Argument<string> jumpCell = new("cell") { Description = "A cell of the current map, as 'skua map' lists them." };
+Argument<string?> jumpPad = new("pad") { Description = "The pad to stand on in the cell: Spawn by default.", Arity = ArgumentArity.ZeroOrOne };
+Option<int?> jumpTimeout = new("--timeout") { Description = "Seconds to wait for the cell: 30 by default." };
+Command jump = new("jump", "Move the player to a cell on the current map; print where the player ended up.") { jumpCell, jumpPad, jumpTimeout };
+jump.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
+{
+    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
+    return await connection.JumpAsync(parse.GetValue(jumpCell)!, parse.GetValue(jumpPad), parse.GetValue(jumpTimeout), ct);
+}, Output.Location));
+
+Argument<InventoryKind> inventoryKind = new("kind")
+{
+    Description = "inventory, bank, temp or house: inventory by default.",
+    Arity = ArgumentArity.ZeroOrOne,
+    DefaultValueFactory = _ => InventoryKind.Inventory,
+};
+Command inventory = new("inventory", "List the items in one of the player's item stores, with its slots.") { inventoryKind };
+inventory.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
+{
+    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
+    return await connection.InventoryAsync(parse.GetValue(inventoryKind), ct);
+}, Output.Inventory));
+
+Argument<QuestFilter> questsFilter = new("filter")
+{
+    Description = "loaded (every quest the game has loaded) or active (only accepted ones): loaded by default.",
+    Arity = ArgumentArity.ZeroOrOne,
+    DefaultValueFactory = _ => QuestFilter.Loaded,
+};
+Command quests = new("quests", "List the loaded or active quests, with their requirements and rewards.") { questsFilter };
+quests.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
+{
+    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
+    return await connection.QuestsAsync(parse.GetValue(questsFilter), ct);
+}, Output.Quests));
+
+Command map = new("map", "Show the current map: its cells, players and monsters.");
+map.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
+{
+    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
+    return await connection.MapAsync(ct);
+}, Output.Map));
+
+Command drops = new("drops", "List the items dropped for the player since the login and not yet picked up.");
+drops.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
+{
+    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
+    return await connection.DropsAsync(ct);
+}, Output.Drops));
+
 Option<int?> screenshotMaxWidth = new("--max-width") { Description = "Scale a wider frame down to this width, keeping its aspect ratio." };
 Option<string?> screenshotOut = new("--out", "-o") { Description = "The PNG file to write; by default a new skua-screenshot-<time>.png in the current directory." };
 Command screenshot = new("screenshot", "Capture the game as a PNG file and print its path.") { screenshotMaxWidth, screenshotOut };
@@ -122,5 +183,8 @@ Command engine = new("engine", "Control the Engine's lifetime.") { engineStart, 
 Command mcp = new("mcp", "Serve the Control Surface as an MCP server over stdio.");
 mcp.SetAction((_, ct) => McpServer.RunAsync(ct));
 
-RootCommand root = new("Drive a Skua Engine.") { json, status, servers, login, logout, scripts, logs, screenshot, engine, mcp };
+RootCommand root = new("Drive a Skua Engine.")
+{
+    json, status, servers, login, logout, join, jump, inventory, quests, map, drops, scripts, logs, screenshot, engine, mcp,
+};
 return await root.Parse(args).InvokeAsync();

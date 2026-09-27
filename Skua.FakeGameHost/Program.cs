@@ -18,8 +18,10 @@
 //
 // With `game <username> <password>` it also simulates the AQW game behind skua.swf (see FakeGame.cs), which accepts that
 // account; `servers <json>`, `connect-delay <ms>` and `reject <server> <message>` configure it, and `lose-connection <message>`,
-// `kick`, `logout-button`, `die`, `afk`, `join <map>`, `cell <cell>`, `blip <ms>`, `connection-message <message>` and `broken-login` act in it.
-// The call log adds ` lag-killed` to a screenshot taken while the game's lag killer hides the world.
+// `kick`, `logout-button`, `die`, `combat`, `afk`, `join <map>`, `cell <cell>`, `blip <ms>`, `connection-message <message>`, `broken-login`,
+// `lock-map <map>` (transfers to it are ignored), `drop <id> <qty> <name>` and `pickup <id>` act in it.
+// The call log adds ` lag-killed` to a screenshot taken while the game's lag killer hides the world, and records what the game did:
+// `tfer <map> <cell> <pad>` for each map transfer, `jump <cell> <pad>` and `loadBank`.
 //
 // Like skua-gamehost, it answers C calls with R, P pings with P and Q stats with Q, and exits when its stdin closes.
 // It answers S screenshots with I: a solid PNG of the 958x550 stage, scaled down to max_width like the real one, and a frame
@@ -83,7 +85,11 @@ foreach (string line in scenario)
             controlFile = file;
             break;
         case ["game", string username, string password]:
-            game = new FakeGame(username, password, invoke => Send('E', Encoding.UTF8.GetBytes(invoke)));
+            game = new FakeGame(username, password, invoke => Send('E', Encoding.UTF8.GetBytes(invoke)), note =>
+            {
+                if (callLog is not null)
+                    File.AppendAllLines(callLog, [note]);
+            });
             break;
         case ["servers", ..]:
             game?.Servers(line["servers ".Length..]);

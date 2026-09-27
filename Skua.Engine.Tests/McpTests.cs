@@ -103,6 +103,39 @@ public class McpTests
         Assert.True(logout.StructuredContent!.Value.GetProperty("wasLoggedIn").GetBoolean());
     }
 
+    [Fact]
+    public async Task The_move_and_query_tools_take_the_same_arguments_and_return_the_same_DTOs()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeAqApi api = new(GameFixture.Servers);
+        FakeKeychain keychain = new(sandbox);
+        await using McpClient client = await ConnectAsync(sandbox, GameFixture.Environment(new FakeGameHost(sandbox).Game(keychain, GameFixture.Servers), api, keychain));
+        CancellationToken ct = TestContext.Current.CancellationToken;
+
+        IList<McpClientTool> tools = await client.ListToolsAsync(cancellationToken: ct);
+        await client.CallToolAsync("login", new Dictionary<string, object?> { ["server"] = "Galanoth" }, cancellationToken: ct);
+        CallToolResult join = await client.CallToolAsync("join", new Dictionary<string, object?> { ["map"] = "yulgar", ["cell"] = "Room", ["timeoutSec"] = 30 }, cancellationToken: ct);
+        CallToolResult jump = await client.CallToolAsync("jump", new Dictionary<string, object?> { ["cell"] = "Enter", ["pad"] = "Right" }, cancellationToken: ct);
+        CallToolResult inventory = await client.CallToolAsync("inventory", new Dictionary<string, object?> { ["kind"] = "temp" }, cancellationToken: ct);
+        CallToolResult quests = await client.CallToolAsync("quests", new Dictionary<string, object?> { ["filter"] = "active" }, cancellationToken: ct);
+        CallToolResult map = await client.CallToolAsync("map", cancellationToken: ct);
+        CallToolResult drops = await client.CallToolAsync("drops", cancellationToken: ct);
+        await client.CallToolAsync("logout", cancellationToken: ct);
+        CallToolResult loggedOut = await client.CallToolAsync("map", cancellationToken: ct);
+
+        Assert.Subset(tools.Select(t => t.Name).ToHashSet(), new HashSet<string> { "join", "jump", "inventory", "quests", "map", "drops" });
+        Assert.True(loggedOut.IsError);
+        Assert.StartsWith("NotLoggedIn: ", ((TextContentBlock)loggedOut.Content.Single()).Text);
+        Assert.Equal(new LocationResult("yulgar", "Room", "Spawn", false), JsonSerializer.Deserialize<LocationResult>(((TextContentBlock)join.Content.Single()).Text, ControlJson.Options));
+        Assert.Equal("Right", jump.StructuredContent!.Value.GetProperty("pad").GetString());
+        JsonElement temp = inventory.StructuredContent!.Value;
+        Assert.Equal(JsonValueKind.Null, temp.GetProperty("totalSlots").ValueKind);
+        Assert.Equal("Slime Sample", temp.GetProperty("items")[0].GetProperty("name").GetString());
+        Assert.Equal(2, quests.StructuredContent!.Value.GetProperty("quests").GetArrayLength());
+        Assert.Equal("yulgar", map.StructuredContent!.Value.GetProperty("name").GetString());
+        Assert.Equal(0, drops.StructuredContent!.Value.GetProperty("drops").GetArrayLength());
+    }
+
     /// <summary>Starts <c>skua mcp</c> with this sandbox's data folder and extra environment, and connects to it.</summary>
     internal static Task<McpClient> ConnectAsync(EngineSandbox sandbox, IDictionary<string, string>? environment = null)
     {

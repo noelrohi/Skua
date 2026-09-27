@@ -34,6 +34,8 @@ internal sealed class Engine : IEngineRpc
     private readonly ScreenshotOperations _screenshots;
 
     private readonly GameOperations _game;
+    private readonly MoveOperations _moves;
+    private readonly GameQueries _queries;
 
     private Engine(EngineEndpoint endpoint, GameHostSupervisor gameHost, EngineLogs logs, IServiceProvider services)
     {
@@ -42,9 +44,13 @@ internal sealed class Engine : IEngineRpc
         _logs = logs;
         _scriptSource = new ScriptSourceOperations(services.GetRequiredService<IGetScriptsService>(), _shutdown.Token);
         _screenshots = new ScreenshotOperations(services.GetRequiredService<BridgeFlashUtil>(), services.GetRequiredService<IScriptOption>());
+        GameActionSlot slot = new(gameHost.Tracker, services.GetRequiredService<IScriptManager>());
         _game = new GameOperations(
-            services.GetRequiredService<IScriptServers>(), services.GetRequiredService<IScriptManager>(), services.GetRequiredService<IFlashUtil>(),
-            services.GetRequiredService<ISettingsService>(), logs, gameHost.Tracker);
+            services.GetRequiredService<IScriptServers>(), services.GetRequiredService<IFlashUtil>(), services.GetRequiredService<ISettingsService>(), logs,
+            gameHost.Tracker, slot);
+        _moves = new MoveOperations(
+            services.GetRequiredService<IScriptMap>(), services.GetRequiredService<IScriptPlayer>(), services.GetRequiredService<IScriptWait>(), gameHost.Tracker, slot);
+        _queries = new GameQueries(services.GetRequiredService<IScriptInterface>(), services.GetRequiredService<IFlashUtil>(), gameHost.Tracker, slot);
     }
 
     public static string Build { get; } =
@@ -117,10 +123,11 @@ internal sealed class Engine : IEngineRpc
     public Task<HelloResult> HelloAsync(int protocol, CancellationToken cancellationToken) =>
         Task.FromResult(new HelloResult(ControlProtocol.Version, Build, _endpoint.Name, Environment.ProcessId));
 
-    public Task<StatusDto> StatusAsync(CancellationToken cancellationToken) =>
-        Task.FromResult(new StatusDto(
-            new EngineInfoDto(_endpoint.Name, Build, ControlProtocol.Version, Math.Round(_uptime.Elapsed.TotalSeconds, 1), Environment.ProcessId),
-            _gameHost.Status()));
+    public async Task<StatusDto> StatusAsync(CancellationToken cancellationToken)
+    {
+        EngineInfoDto engine = new(_endpoint.Name, Build, ControlProtocol.Version, Math.Round(_uptime.Elapsed.TotalSeconds, 1), Environment.ProcessId);
+        return new StatusDto(engine, _gameHost.Status() with { Player = await _queries.PlayerAsync() });
+    }
 
     public Task ShutdownAsync(CancellationToken cancellationToken)
     {
@@ -164,6 +171,22 @@ internal sealed class Engine : IEngineRpc
 
     public Task<LogoutResult> LogoutAsync(CancellationToken cancellationToken) =>
         _game.LogoutAsync(cancellationToken);
+
+    public Task<LocationResult> JoinAsync(string map, string? cell, string? pad, int? timeoutSec, CancellationToken cancellationToken) =>
+        _moves.JoinAsync(map, cell, pad, timeoutSec, cancellationToken);
+
+    public Task<LocationResult> JumpAsync(string cell, string? pad, int? timeoutSec, CancellationToken cancellationToken) =>
+        _moves.JumpAsync(cell, pad, timeoutSec, cancellationToken);
+
+    public Task<InventoryResult> InventoryAsync(InventoryKind kind, CancellationToken cancellationToken) =>
+        _queries.InventoryAsync(kind, cancellationToken);
+
+    public Task<QuestsResult> QuestsAsync(QuestFilter filter, CancellationToken cancellationToken) =>
+        _queries.QuestsAsync(filter, cancellationToken);
+
+    public Task<MapDto> MapAsync(CancellationToken cancellationToken) => _queries.MapAsync(cancellationToken);
+
+    public Task<DropsResult> DropsAsync(CancellationToken cancellationToken) => _queries.DropsAsync(cancellationToken);
 
     /// <summary>
     /// Takes the lock, or returns null when another Engine holds it. A client checking the lock holds it for an instant,

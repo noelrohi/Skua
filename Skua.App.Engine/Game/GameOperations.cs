@@ -25,22 +25,21 @@ internal sealed class GameOperations
     private static readonly string[] RefusalMessages = ["full", "try another", "failed", "invalid", "banned"];
 
     private readonly IScriptServers _servers;
-    private readonly IScriptManager _scripts;
     private readonly IFlashUtil _flash;
     private readonly ISettingsService _settings;
     private readonly EngineLogs _logs;
     private readonly GameStateTracker _tracker;
-    private readonly SemaphoreSlim _busy = new(1, 1);
+    private readonly GameActionSlot _slot;
     private TestAccount? _account;
 
-    public GameOperations(IScriptServers servers, IScriptManager scripts, IFlashUtil flash, ISettingsService settings, EngineLogs logs, GameStateTracker tracker)
+    public GameOperations(IScriptServers servers, IFlashUtil flash, ISettingsService settings, EngineLogs logs, GameStateTracker tracker, GameActionSlot slot)
     {
         _servers = servers;
-        _scripts = scripts;
         _flash = flash;
         _settings = settings;
         _logs = logs;
         _tracker = tracker;
+        _slot = slot;
     }
 
     public async Task<ServersResult> ServersAsync()
@@ -57,7 +56,7 @@ internal sealed class GameOperations
 
         // Straight after an Engine start, the Game Client may still be loading.
         await _tracker.WaitReadyAsync(LoadWait, cancellationToken);
-        using Lease lease = await BeginAsync("log in");
+        using IDisposable lease = await _slot.BeginAsync("log in");
         if (serverName is null && _tracker is { State: GameState.Playing, Server: { } current })
             return new LoginResult(current, AlreadyLoggedIn: true);
 
@@ -79,7 +78,7 @@ internal sealed class GameOperations
 
     public async Task<LogoutResult> LogoutAsync(CancellationToken cancellationToken)
     {
-        using Lease lease = await BeginAsync("log out");
+        using IDisposable lease = await _slot.BeginAsync("log out");
         GameState state = _tracker.State;
         if (state == GameState.LoginScreen)
             return new LogoutResult(WasLoggedIn: false);
@@ -97,18 +96,6 @@ internal sealed class GameOperations
             _tracker.LogoutFinished();
         }
         return new LogoutResult(WasLoggedIn: state is GameState.Playing or GameState.LoggingIn);
-    }
-
-    /// <summary>Checks that the game can be driven now, and takes the one slot for a login or logout.</summary>
-    private async Task<Lease> BeginAsync(string action)
-    {
-        if (!_tracker.Ready)
-            throw RpcErrors.Of(ErrorCode.GameHostDown, $"Can't {action}: the Game Client hasn't loaded in a running Game Host; see 'skua status'.");
-        if (_scripts.ScriptRunning)
-            throw RpcErrors.Of(ErrorCode.ScriptRunning, $"Can't {action} while a Script runs; stop it first.");
-        if (!await _busy.WaitAsync(0))
-            throw RpcErrors.Of(ErrorCode.Busy, $"Can't {action}: another login or logout is running.");
-        return new Lease(_busy);
     }
 
     /// <summary>
@@ -228,9 +215,4 @@ internal sealed class GameOperations
 
     private static ServerDto ToDto(Server server) =>
         new(server.Name, server.Online, server.PlayerCount, server.MaxPlayers, server.Upgrade, server.Lang);
-
-    private sealed class Lease(SemaphoreSlim busy) : IDisposable
-    {
-        public void Dispose() => busy.Release();
-    }
 }

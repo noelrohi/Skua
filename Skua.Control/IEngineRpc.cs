@@ -77,7 +77,7 @@ public partial interface IEngineRpc
     /// <remarks>
     /// Fails with <see cref="ErrorCode.LoginFailed"/> and the game's reason (a full or offline server, a rejected account),
     /// <see cref="ErrorCode.Timeout"/>, <see cref="ErrorCode.InvalidArgument"/> for an unknown server, <see cref="ErrorCode.GameHostDown"/>
-    /// before the Game Client has loaded, and <see cref="ErrorCode.Busy"/> while another login or logout runs.
+    /// before the Game Client has loaded, and <see cref="ErrorCode.Busy"/> while another login, logout, join or jump runs.
     /// </remarks>
     [JsonRpcMethod("login")]
     Task<LoginResult> LoginAsync(string? server = null, int? timeoutSec = null, CancellationToken cancellationToken = default);
@@ -85,4 +85,49 @@ public partial interface IEngineRpc
     /// <summary>Logs out to the login screen; a deliberate logout, so the game isn't reported disconnected. Does nothing when not logged in.</summary>
     [JsonRpcMethod("logout")]
     Task<LogoutResult> LogoutAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Moves the player to a map, then to the cell and pad when they are given, and returns where the player ended up.
+    /// Already there, it does nothing; already on the map, it only jumps.
+    /// </summary>
+    /// <param name="map">A map name, optionally with a room number, e.g. <c>battleon</c> or <c>battleon-1234</c>.</param>
+    /// <param name="cell">The cell to move to on the map; by default the one the game places the player in.</param>
+    /// <param name="pad">The pad to stand on in the cell: <c>Spawn</c> by default.</param>
+    /// <param name="timeoutSec">How long to wait for the map and the cell: 60 s by default.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    /// <remarks>
+    /// Fails with <see cref="ErrorCode.NotLoggedIn"/> unless playing, <see cref="ErrorCode.Timeout"/> when the map never loads (the game refuses
+    /// maps the player may not enter), <see cref="ErrorCode.InvalidArgument"/> for a malformed map or a cell the map lacks,
+    /// <see cref="ErrorCode.ScriptRunning"/>, and <see cref="ErrorCode.Busy"/> while another login, logout, join or jump runs.
+    /// </remarks>
+    [JsonRpcMethod("join")]
+    Task<LocationResult> JoinAsync(string map, string? cell = null, string? pad = null, int? timeoutSec = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Moves the player to a cell on the current map and returns where the player ended up; already there, it does nothing.</summary>
+    /// <param name="cell">A cell of the current map, as <c>map</c> lists them.</param>
+    /// <param name="pad">The pad to stand on in the cell: <c>Spawn</c> by default.</param>
+    /// <param name="timeoutSec">How long to wait for the cell: 30 s by default.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    /// <remarks>Fails as <c>join</c> does.</remarks>
+    [JsonRpcMethod("jump")]
+    Task<LocationResult> JumpAsync(string cell, string? pad = null, int? timeoutSec = null, CancellationToken cancellationToken = default);
+
+    /// <summary>The items in one of the player's item stores, with its used and total slots. Fails with <see cref="ErrorCode.NotLoggedIn"/> unless playing.</summary>
+    [JsonRpcMethod("inventory")]
+    Task<InventoryResult> InventoryAsync(InventoryKind kind = InventoryKind.Inventory, CancellationToken cancellationToken = default);
+
+    /// <summary>The loaded or active quests, with their requirements and rewards. Fails with <see cref="ErrorCode.NotLoggedIn"/> unless playing.</summary>
+    [JsonRpcMethod("quests")]
+    Task<QuestsResult> QuestsAsync(QuestFilter filter = QuestFilter.Loaded, CancellationToken cancellationToken = default);
+
+    /// <summary>The current map: its cells, players and monsters. Fails with <see cref="ErrorCode.NotLoggedIn"/> unless playing.</summary>
+    [JsonRpcMethod("map")]
+    Task<MapDto> MapAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The items dropped for the player since the login and not yet picked up; a rejected drop stays listed, since rejecting happens only in
+    /// the Game Client. Fails with <see cref="ErrorCode.NotLoggedIn"/> unless playing.
+    /// </summary>
+    [JsonRpcMethod("drops")]
+    Task<DropsResult> DropsAsync(CancellationToken cancellationToken = default);
 }

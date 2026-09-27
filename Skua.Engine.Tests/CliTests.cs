@@ -85,6 +85,41 @@ public class CliTests
     }
 
     [Fact]
+    public async Task Skua_join_jump_and_the_queries_print_the_location_and_state()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeAqApi api = new(GameFixture.Servers);
+        FakeKeychain keychain = new(sandbox);
+        Dictionary<string, string> environment = GameFixture.Environment(new FakeGameHost(sandbox).Game(keychain, GameFixture.Servers), api, keychain);
+
+        await sandbox.RunCliAsync(environment, "login", "Galanoth");
+        ProcessResult join = await sandbox.RunCliAsync(environment, "join", "yulgar", "Upstairs", "Left");
+        ProcessResult jump = await sandbox.RunCliAsync(environment, "jump", "upstairs", "--json");
+        ProcessResult status = await sandbox.RunCliAsync(environment, "status");
+        ProcessResult bank = await sandbox.RunCliAsync(environment, "inventory", "bank");
+        ProcessResult quests = await sandbox.RunCliAsync(environment, "quests", "active");
+        ProcessResult map = await sandbox.RunCliAsync(environment, "map");
+        ProcessResult drops = await sandbox.RunCliAsync(environment, "drops", "--json");
+        await sandbox.RunCliAsync(environment, "logout");
+        ProcessResult notLoggedIn = await sandbox.RunCliAsync(environment, "join", "yulgar");
+
+        Assert.Equal(ExitCodes.For(ErrorCode.NotLoggedIn), notLoggedIn.ExitCode);
+        Assert.Contains("isn't playing", notLoggedIn.Stderr);
+        Assert.Equal((0, "Now on yulgar in Upstairs (Left)."), (join.ExitCode, join.Stdout.Trim()));
+        using (JsonDocument location = JsonDocument.Parse(jump.Stdout))
+            Assert.True(location.RootElement.GetProperty("alreadyThere").GetBoolean());
+        Assert.Contains("Player  SkuaTester, level 10 Healer, HP 1000/1000, MP 80/100, 5000 gold, on yulgar in Upstairs (Left)", status.Stdout);
+        Assert.Equal(0, bank.ExitCode);
+        Assert.StartsWith("bank: 1/10 slots used", bank.Stdout);
+        Assert.Contains("Bank Relic  2/10  Item", bank.Stdout);
+        Assert.Contains("1001 Slime Time: inProgress", quests.Stdout);
+        Assert.Contains("needs Slime Sample 3/5 (temp)", quests.Stdout);
+        Assert.Contains("Cells     Enter, Upstairs, Room", map.Stdout);
+        using (JsonDocument none = JsonDocument.Parse(drops.Stdout))
+            Assert.Equal(0, none.RootElement.GetProperty("drops").GetArrayLength());
+    }
+
+    [Fact]
     public async Task A_protocol_mismatch_exits_with_its_code_and_a_stop_hint()
     {
         await using EngineSandbox sandbox = new();
