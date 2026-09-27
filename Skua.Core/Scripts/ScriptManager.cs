@@ -209,13 +209,15 @@ public partial class ScriptManager : ObservableObject, IScriptManager, IDisposab
                 IsBackground = true
             };
 
+            // Before the thread starts, so its error and stopped messages always follow this one; sent after, a short Script's stop
+            // could come first and leave ScriptEvent's game events registered, which the next start then fails to register again.
+            StrongReferenceMessenger.Default.Send<ScriptStartedMessage, int>((int)MessageChannels.ScriptStatus);
+
             lock (_threadLock)
             {
                 _currentScriptThread = scriptThread;
                 scriptThread.Start();
             }
-
-            StrongReferenceMessenger.Default.Send<ScriptStartedMessage, int>((int)MessageChannels.ScriptStatus);
 
             if (needsConfig)
             {

@@ -134,6 +134,25 @@ public class ScriptRunTests
     }
 
     [Fact]
+    public async Task A_Script_started_again_and_again_reports_each_run_in_order_however_short_it_is()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture game = await GameFixture.StartAsync(sandbox);
+        TestScripts.Write(sandbox, "Tests/Throws.cs", TestScripts.Main("""throw new System.InvalidOperationException("boom");"""));
+
+        for (int i = 0; i < 25; i++)
+        {
+            await game.Connection.ScriptStartAsync("Tests/Throws.cs", cancellationToken: Ct);
+            await game.Connection.ScriptWaitAsync(60, Ct);
+        }
+
+        List<LogEntryDto> events = await ScriptEvents.AllAsync(game.Connection);
+        Assert.All(events.GroupBy(e => e.Run), run =>
+            Assert.Equal([EventTypes.ScriptStarted, EventTypes.ScriptError, EventTypes.ScriptStopped], run.Select(e => e.Type)));
+        Assert.Equal(25, events.Select(e => e.Run).Distinct().Count());
+    }
+
+    [Fact]
     public async Task A_Script_that_ignores_its_stop_ends_its_run_as_stopTimedOut_and_the_Engine_stays_stopping_until_its_thread_ends()
     {
         await using EngineSandbox sandbox = new();
