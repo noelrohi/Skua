@@ -18,8 +18,8 @@ public class CliTests
         JsonElement engine = json.RootElement.GetProperty("engine");
         Assert.Equal("default", engine.GetProperty("name").GetString());
         Assert.Equal(ControlProtocol.Version, engine.GetProperty("protocol").GetInt32());
-        Assert.False(json.RootElement.GetProperty("game").GetProperty("gameHostUp").GetBoolean());
-        Assert.Equal("notStarted", json.RootElement.GetProperty("game").GetProperty("state").GetString());
+        Assert.True(json.RootElement.GetProperty("game").GetProperty("gameHostUp").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty("game").GetProperty("state").ValueKind);
     }
 
     [Fact]
@@ -31,7 +31,7 @@ public class CliTests
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("Engine  default", result.Stdout);
-        Assert.Contains("Game Host down", result.Stdout);
+        Assert.Contains("Game Host up", result.Stdout);
     }
 
     [Fact]

@@ -17,8 +17,7 @@ public class EngineLifecycleTests
         Assert.Equal(ControlProtocol.Version, status.Engine.Protocol);
         Assert.False(string.IsNullOrEmpty(status.Engine.Build));
         Assert.True(status.Engine.Pid > 0);
-        Assert.False(status.Game.GameHostUp);
-        Assert.Equal(GameState.NotStarted, status.Game.State);
+        Assert.True(status.Game.GameHostUp);
         Assert.True(File.Exists(sandbox.Endpoint.SocketPath));
         Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(sandbox.Endpoint.SocketPath));
     }

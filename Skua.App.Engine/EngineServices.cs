@@ -3,13 +3,14 @@ using Microsoft.Extensions.DependencyInjection;
 using Skua.Core.AppStartup;
 using Skua.Core.Interfaces;
 using Skua.MacOS;
+using Skua.MacOS.GameHost;
 
 namespace Skua.App.Engine;
 
 /// <summary>The Engine's composition root: Core's services with the macOS platform services.</summary>
 internal static class EngineServices
 {
-    public static ServiceProvider Build()
+    public static ServiceProvider Build(GameHostLaunch gameHost)
     {
         IServiceCollection services = new ServiceCollection();
 
@@ -21,7 +22,7 @@ internal static class EngineServices
 
         services.AddCompiler();
 
-        services.AddMacServices();
+        services.AddMacServices(gameHost);
 
         ServiceProvider provider = services.BuildServiceProvider();
         Ioc.Default.ConfigureServices(provider);

@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
 using Skua.Control;
 using Skua.Core.Interfaces;
+using Skua.MacOS.GameHost;
 using StreamJsonRpc;
 
 namespace Skua.App.Engine;
@@ -55,10 +56,10 @@ internal sealed class Engine : IEngineRpc
             Detach.RedirectStdio(endpoint.LogPath);
         Trace.Listeners.Add(new ConsoleTraceListener(useErrorStream: true));
 
-        GameHostSupervisor gameHost;
+        GameHostLaunch launch;
         try
         {
-            gameHost = GameHostSupervisor.FromEnvironment();
+            launch = GameHostLaunch.Resolve(AppContext.BaseDirectory);
         }
         catch (FileNotFoundException e)
         {
@@ -66,9 +67,10 @@ internal sealed class Engine : IEngineRpc
             return EngineExitCodes.GameHostMissing;
         }
 
-        using (gameHost)
+        // Like the Windows app, the Engine never disposes Core's singletons: they stop with the process, and their Dispose paths throw.
+        ServiceProvider services = EngineServices.Build(launch);
+        using (GameHostSupervisor gameHost = GameHostSupervisor.Start(services))
         {
-            using ServiceProvider services = EngineServices.Build();
             Engine engine = new(endpoint, gameHost, services.GetRequiredService<IGetScriptsService>());
             await engine.ServeAsync();
         }

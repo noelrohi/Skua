@@ -14,6 +14,10 @@
     <ProjectReference Include="..\Skua.Control\Skua.Control.csproj" />
     <ProjectReference Include="..\Skua.Core\Skua.Core.csproj" />
     <ProjectReference Include="..\Skua.MacOS\Skua.MacOS.csproj" />
+    <!-- Only for the flat output layout: skua lands next to skua-engine. -->
+    <ProjectReference Include="..\Skua.App.Cli\Skua.App.Cli.csproj" />
   </ItemGroup>
+
+  <Import Project="MacBuild.targets" />
 
 </Project>

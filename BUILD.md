@@ -173,7 +173,15 @@ dotnet build Skua.MacOS.slnf
 dotnet test Skua.MacOS.slnf
 ```
 
-`skua` auto-starts the `skua-engine` next to it; the test output folder `Skua.Engine.Tests/bin/<Configuration>/net10.0/` has both. For MCP clients, the config is `{"command": "skua", "args": ["mcp"]}`. With a Homebrew .NET, set `DOTNET_ROOT` so the executables find the runtime.
+On macOS, building `Skua.App.Engine` also builds the Game Host and `skua.swf`, so it needs [Rust](https://rustup.rs) and Java (17 works); a missing `cargo` or `java` fails the build with an install hint.
+
+- **`skua-gamehost`:** `cargo build --release --locked` in `Skua.GameHost/`. The first build takes about 5 minutes; after that it's a no-op of about a second.
+- **`skua.swf`:** `Skua.AS3/compile-as3.sh`, rerun only when an AS3 source changes.
+- **Escape hatches:** `-p:SkuaGameHostPath=<file>` uses a prebuilt `skua-gamehost` instead of running cargo, and `-p:SkuaSwfPath=<file>` a prebuilt `skua.swf` instead of running mxmlc.
+
+The output is flat: `skua`, `skua-engine`, `skua-gamehost` and `skua.swf` sit side by side in `Skua.App.Engine/bin/<Configuration>/net10.0/` (and in `dotnet publish` output). `skua` auto-starts the `skua-engine` next to it, and the Engine starts the Game Host and SWF next to itself. For MCP clients, the config is `{"command": "skua", "args": ["mcp"]}`. With a Homebrew .NET, set `DOTNET_ROOT` so the executables find the runtime.
+
+The tests never run the real Game Host: they point `SKUA_GAMEHOST` at a fake that speaks the Bridge frames.
 
 Environment overrides:
 
@@ -182,7 +190,7 @@ Environment overrides:
 | `SKUA_DIR` | The Skua data folder (default `~/Library/Application Support/Skua`) |
 | `SKUA_ENGINE` | The `skua-engine` that auto-start launches |
 | `SKUA_ENGINE_SOCKET` | The Engine's socket (default `<SkuaDIR>/engines/default.sock`); the path must fit in 103 bytes |
-| `SKUA_GAMEHOST`, `SKUA_SWF` | The Game Host the Engine runs, and the SWF it loads (default `skua.swf` next to the Engine) |
+| `SKUA_GAMEHOST`, `SKUA_SWF` | The Game Host the Engine runs, and the SWF it loads (default `skua-gamehost` and `skua.swf` next to the Engine); a missing file fails the start with an error naming its path |
 | `SKUA_GITHUB_RAW_URL`, `SKUA_GITHUB_API_URL` | `https://raw.githubusercontent.com/` and `https://api.github.com/`, for tests |
 
 #### Script Source
@@ -221,7 +229,7 @@ msbuild Skua.Installer\Skua.Installer.wixproj /p:Configuration=Release /p:Platfo
 
 ## CI/CD
 
-The `macOS` workflow builds `Skua.MacOS.slnf` and runs its tests on every push to `master` and on every pull request.
+The `macOS` workflow builds `Skua.MacOS.slnf` (including `skua-gamehost` and `skua.swf`), runs the Game Host's `cargo test` and then the .NET tests, on every push to `master` and on every pull request. It caches cargo (rust-cache, saved only on `master`) and the Flex SDK downloads (`~/Library/Caches/skua-as3`, keyed on `compile-as3.sh`).
 
 ### Local CI Testing
 

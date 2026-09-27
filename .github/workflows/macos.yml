@@ -15,8 +15,36 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      # compile-as3.sh runs mxmlc, which is known to work on Java 17.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 17
+
+      # rustup reads Skua.GameHost/rust-toolchain.toml. The toolchain goes in before rust-cache, whose key includes the rustc version.
+      - name: Install the Rust toolchain
+        working-directory: Skua.GameHost
+        run: rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: Skua.GameHost
+          save-if: ${{ github.ref == 'refs/heads/master' }}
+
+      # The Flex SDK and playerglobal downloads; their SHA-256 pins live in the script, so a pin change is a new key.
+      - uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/skua-as3
+          key: skua-as3-${{ hashFiles('Skua.AS3/compile-as3.sh') }}
+
+      # Builds skua-gamehost and skua.swf too, through Skua.App.Engine's macOS targets.
       - name: Build
         run: dotnet build Skua.MacOS.slnf --configuration Release
+
+      # --release reuses the dependencies the build just compiled, instead of building Ruffle again in the debug profile.
+      - name: Test the Game Host
+        working-directory: Skua.GameHost
+        run: cargo test --release --locked
 
       - name: Test
         run: dotnet test Skua.MacOS.slnf --configuration Release --no-build --blame-hang-timeout 5m

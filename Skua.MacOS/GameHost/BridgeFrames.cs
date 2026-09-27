@@ -35,4 +35,15 @@ public static class BridgeFrames
 
         return new BridgeFrame((char)body[0], body[1..]);
     }
+
+    /// <summary>Encodes a request frame: the type, then the <c>u32</c> request id, then the payload.</summary>
+    public static byte[] EncodeRequest(char type, uint id, ReadOnlySpan<byte> payload)
+    {
+        byte[] frame = new byte[4 + 1 + 4 + payload.Length];
+        BinaryPrimitives.WriteUInt32LittleEndian(frame, (uint)(1 + 4 + payload.Length));
+        frame[4] = (byte)type;
+        BinaryPrimitives.WriteUInt32LittleEndian(frame.AsSpan(5), id);
+        payload.CopyTo(frame.AsSpan(9));
+        return frame;
+    }
 }
