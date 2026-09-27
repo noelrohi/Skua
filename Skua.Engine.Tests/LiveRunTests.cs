@@ -103,8 +103,8 @@ public class LiveRunTests
             await run.PhaseAsync(new LivePhase("hidden", LiveRun.ProgressWindow + 1, Script: true, Hidden: true));
         });
 
-        // The screen isn't locked and the fake player's gold never changes; the fake Game Host ticks 1000/s with 35 ms gaps.
-        Assert.Equal(LiveRun.ProgressWindow + 1, result.Failures.Count(f => f.EndsWith("the screen wasn't locked.", StringComparison.Ordinal)));
+        // The screen isn't locked nor the display asleep, and the fake player's gold never changes; the fake Game Host ticks 1000/s with 35 ms gaps.
+        Assert.Equal(LiveRun.ProgressWindow + 1, result.Failures.Count(f => f.EndsWith("the screen wasn't locked and the display was awake.", StringComparison.Ordinal)));
         Assert.Single(result.Failures, f => f.Contains("5000 → 5000 gold", StringComparison.Ordinal));
         Assert.Equal(LiveRun.ProgressWindow + 2, result.Failures.Count);
         Assert.True(result.Stats.Count >= 2);
@@ -177,8 +177,10 @@ public class LiveRunTests
     }
 
     [Fact]
-    public void The_screen_counts_as_locked_only_when_ioreg_says_so()
+    public void The_screen_counts_as_locked_only_when_ioreg_says_so_and_the_awake_display_reads_as_awake()
     {
+        // These tests run with the display on.
+        Assert.False(LiveMetrics.DisplayAsleep());
         Assert.True(LiveMetrics.ParseScreenLocked("<dict><key>CGSSessionScreenIsLocked</key>\n\t\t\t<true/><key>kCGSSessionOnConsoleKey</key><true/></dict>"));
         Assert.False(LiveMetrics.ParseScreenLocked("<dict><key>kCGSSessionOnConsoleKey</key><true/></dict>"));
         Assert.False(LiveMetrics.ParseScreenLocked("<dict><key>CGSSessionScreenIsLocked</key><false/></dict>"));

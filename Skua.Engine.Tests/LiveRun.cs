@@ -36,16 +36,21 @@ public sealed record LiveRunResult(string OutDir, IReadOnlyList<string> Failures
 /// <param name="Minute">The sample's number in its phase, from 0.</param>
 /// <param name="GetterMs">Round trips of <c>Bot.Player.Cell</c>, measured in the Engine by <c>eval</c> as a Script's waits make them.</param>
 /// <param name="Locked">Whether the screen was locked when the sample ended.</param>
+/// <param name="DisplayAsleep">Whether the main display was asleep when the sample ended.</param>
 /// <param name="Player">The player as <c>status</c> summarised it when the sample ended, or null when it didn't.</param>
 public sealed record MinuteSample(
     string Phase, int Minute, DateTimeOffset At, double? GameHostFootprintMb, double? GameHostRssMb, double? EngineFootprintMb, double? EngineRssMb,
-    IReadOnlyList<double> GetterMs, double Load, bool Locked, int ScriptLines, PlayerDto? Player);
+    IReadOnlyList<double> GetterMs, double Load, bool Locked, bool DisplayAsleep, int ScriptLines, PlayerDto? Player)
+{
+    /// <summary>Whether nobody could see the game: the screen was locked or the display asleep.</summary>
+    public bool Hidden => Locked || DisplayAsleep;
+}
 
 /// <summary>A span of a live run with the same gates, e.g. 5 minutes idle in battleon.</summary>
 /// <param name="Minutes">How many samples it lasts.</param>
 /// <param name="Script">Whether a Script must keep running through it.</param>
 /// <param name="Hidden">
-/// Whether the screen must stay locked, with the Game Host ticking at its frame rate and no throttled tick gaps, and the Script progressing:
+/// Whether the screen must stay locked or the display asleep, with the Game Host ticking at its frame rate and no throttled tick gaps, and the Script progressing:
 /// the player's gold or level rises in every <see cref="LiveRun.ProgressWindow"/> samples.
 /// </param>
 /// <param name="ScreenshotEvery">Checks a screenshot every this many samples, and at the end.</param>
@@ -256,18 +261,18 @@ public sealed class LiveRun
             Note($"screenshot {label}: {shot.Width}x{shot.Height}, frame {shot.Frame}, {file}");
     }
 
-    /// <summary>Waits until the screen is locked, for the hidden-running check.</summary>
-    public async Task WaitForScreenLockAsync(TimeSpan timeout)
+    /// <summary>Waits until the screen is locked or the display asleep (<c>pmset displaysleepnow</c>), for the hidden-running check.</summary>
+    public async Task WaitForHiddenAsync(TimeSpan timeout)
     {
-        Note($"waiting up to {timeout.TotalMinutes:0} min for the screen to be locked");
+        Note($"waiting up to {timeout.TotalMinutes:0} min for the screen to be locked or the display to sleep");
         Stopwatch waited = Stopwatch.StartNew();
-        while (!await LiveMetrics.ScreenLockedAsync())
+        while (!LiveMetrics.DisplayAsleep() && !await LiveMetrics.ScreenLockedAsync())
         {
             if (waited.Elapsed > timeout)
-                throw End($"The screen wasn't locked within {timeout.TotalMinutes:0} min.");
+                throw End($"The screen wasn't locked, nor the display asleep, within {timeout.TotalMinutes:0} min.");
             await Task.Delay(TimeSpan.FromSeconds(5), Ct);
         }
-        Note($"the screen is locked after {waited.Elapsed.TotalSeconds:0} s");
+        Note($"hidden after {waited.Elapsed.TotalSeconds:0} s: locked={await LiveMetrics.ScreenLockedAsync()}, display asleep={LiveMetrics.DisplayAsleep()}");
     }
 
     /// <summary>Runs one phase: a sample every minute, then its gates.</summary>
@@ -283,8 +288,8 @@ public sealed class LiveRun
             samples.Add(sample);
             _samples.Add(sample);
             Note(Describe(sample));
-            if (phase.Hidden && !sample.Locked)
-                Fail($"{phase.Name} minute {minute}: the screen wasn't locked.");
+            if (phase.Hidden && !sample.Hidden)
+                Fail($"{phase.Name} minute {minute}: the screen wasn't locked and the display was awake.");
             if (phase.ScreenshotEvery is { } every && minute > 0 && minute % every == 0)
                 await CheckScreenshotAsync($"{phase.Name}-{minute}");
             if (_options.Minute - took.Elapsed is { Ticks: > 0 } rest)
@@ -367,7 +372,7 @@ public sealed class LiveRun
             phase, minute, DateTimeOffset.Now,
             await LiveMetrics.FootprintMbAsync(_gameHostPid), await LiveMetrics.RssMbAsync(_gameHostPid),
             await LiveMetrics.FootprintMbAsync(enginePid), await LiveMetrics.RssMbAsync(enginePid),
-            getter, await LiveMetrics.LoadAverageAsync(), await LiveMetrics.ScreenLockedAsync(), scriptLines,
+            getter, await LiveMetrics.LoadAverageAsync(), await LiveMetrics.ScreenLockedAsync(), LiveMetrics.DisplayAsleep(), scriptLines,
             (await _connection.StatusAsync(Ct)).Game.Player);
     }
 
@@ -575,7 +580,7 @@ public sealed class LiveRun
         $"{s.Phase} m{s.Minute}: gamehost fp={s.GameHostFootprintMb:0} rss={s.GameHostRssMb:0} MB; engine fp={s.EngineFootprintMb:0} rss={s.EngineRssMb:0} MB; " +
         $"getter n={s.GetterMs.Count} p50={LiveMetrics.Percentile(s.GetterMs, 0.5):0.000} p99={LiveMetrics.Percentile(s.GetterMs, 0.99):0.000} " +
         $"max={s.GetterMs.DefaultIfEmpty(double.NaN).Max():0.0} ms; script lines={s.ScriptLines}; " +
-        $"player level={s.Player?.Level} gold={s.Player?.Gold} map={s.Player?.Map} combat={s.Player?.InCombat}; load={s.Load:0.00}; locked={s.Locked}");
+        $"player level={s.Player?.Level} gold={s.Player?.Gold} map={s.Player?.Map} combat={s.Player?.InCombat}; load={s.Load:0.00}; locked={s.Locked}; display asleep={s.DisplayAsleep}");
 
     /// <summary>Waits for an event from the run's start that matches.</summary>
     public async Task<LogEntryDto> WaitForEventAsync(string type, TimeSpan timeout, Func<LogEntryDto, bool>? match = null)

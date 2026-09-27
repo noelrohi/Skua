@@ -70,6 +70,17 @@ public static partial class LiveMetrics
     /// <summary>Whether the console session's screen is locked.</summary>
     public static async Task<bool> ScreenLockedAsync() => ParseScreenLocked(await RunAsync("/usr/sbin/ioreg", "-n", "Root", "-d1", "-a"));
 
+    /// <summary>Whether the main display is asleep, e.g. after <c>pmset displaysleepnow</c>.</summary>
+    public static bool DisplayAsleep() => CGDisplayIsAsleep(CGMainDisplayID()) != 0;
+
+    private const string CoreGraphics = "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics";
+
+    [System.Runtime.InteropServices.DllImport(CoreGraphics)]
+    private static extern uint CGMainDisplayID();
+
+    [System.Runtime.InteropServices.DllImport(CoreGraphics)]
+    private static extern int CGDisplayIsAsleep(uint display);
+
     /// <summary>Whether <c>ioreg -n Root -d1 -a</c> reports a console user whose screen is locked.</summary>
     public static bool ParseScreenLocked(string ioregPlist) => ScreenLocked().IsMatch(ioregPlist);
 

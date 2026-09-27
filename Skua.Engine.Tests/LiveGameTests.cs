@@ -38,15 +38,16 @@ public class LiveGameTests
     }
 
     /// <summary>
-    /// Hidden running: <c>Farm/Leveling.cs</c> for 30 minutes with the screen locked. It waits for the developer to lock the screen after
-    /// the Script starts; the Script must progress, the Game Host tick at its frame rate without throttled gaps, and screenshots be correct.
+    /// Hidden running: <c>Farm/Leveling.cs</c> for 30 minutes with the screen locked or the display asleep. After the Script starts it waits
+    /// for the developer to lock the screen or run <c>pmset displaysleepnow</c>; the Script must progress, the Game Host tick at its frame rate
+    /// without throttled gaps, and screenshots be correct.
     /// </summary>
     [Fact]
     public async Task Hidden_running()
     {
         LiveSettings.SkipUnlessSelected("hidden");
         LiveRunResult result = await LiveRun.RunAsync("hidden", LiveSettings.RealGame(), LiveSettings.Options("hidden"),
-            run => LiveScenarios.HiddenAsync(run, LiveSettings.Server, LiveScenarios.Leveling, lockWait: LiveSettings.LockWait));
+            run => LiveScenarios.HiddenAsync(run, LiveSettings.Server, LiveScenarios.Leveling, hideWait: LiveSettings.HideWait));
         result.AssertPassed();
     }
 }
@@ -81,11 +82,11 @@ public static class LiveScenarios
         await run.PhaseAsync(new LivePhase("battleon", minutes, ScreenshotEvery: 30, FlatForMinutes: 60));
     }
 
-    public static async Task HiddenAsync(LiveRun run, string server, string script, TimeSpan lockWait, int minutes = 30)
+    public static async Task HiddenAsync(LiveRun run, string server, string script, TimeSpan hideWait, int minutes = 30)
     {
         await run.LoginAsync(server);
         await run.StartScriptAsync(script);
-        await run.WaitForScreenLockAsync(lockWait);
+        await run.WaitForHiddenAsync(hideWait);
         await run.PhaseAsync(new LivePhase("hidden", minutes, Script: true, Hidden: true, ScreenshotEvery: 10));
     }
 
@@ -111,16 +112,16 @@ public static class LiveSettings
     /// <summary>Where each run's folder goes; <c>live-results</c> next to the tests unless set.</summary>
     public const string OutVariable = "SKUA_LIVE_OUT";
 
-    /// <summary>How many minutes the hidden-running check waits for the screen to be locked; 10 unless set.</summary>
-    public const string LockWaitVariable = "SKUA_LIVE_LOCK_WAIT_MIN";
+    /// <summary>How many minutes the hidden-running check waits for the screen to be locked or the display to sleep; 10 unless set.</summary>
+    public const string HideWaitVariable = "SKUA_LIVE_HIDE_WAIT_MIN";
 
     /// <summary>The Scripts checkout the runs copy into their data folder (shared with the compile check).</summary>
     public const string ScriptsCheckoutVariable = "SKUA_SCRIPTS_CHECKOUT";
 
     public static string Server => Environment.GetEnvironmentVariable(ServerVariable) is { Length: > 0 } server ? server : "Galanoth";
 
-    public static TimeSpan LockWait =>
-        TimeSpan.FromMinutes(int.TryParse(Environment.GetEnvironmentVariable(LockWaitVariable), out int minutes) ? minutes : 10);
+    public static TimeSpan HideWait =>
+        TimeSpan.FromMinutes(int.TryParse(Environment.GetEnvironmentVariable(HideWaitVariable), out int minutes) ? minutes : 10);
 
     /// <summary>Skips the test unless <c>SKUA_LIVE</c> names it, and always in CI.</summary>
     public static void SkipUnlessSelected(string name)
