@@ -185,18 +185,29 @@ Option<string[]> startOptions = new("--option")
 };
 Option<DialogMode?> startDialogs = new("--dialogs") { Description = "ask (the default): Questions wait for an answer; cancel: they get the fallback at once." };
 Option<int?> startDialogTimeout = new("--dialog-timeout") { Description = "Seconds a Question waits in ask mode: 120 by default." };
-Command scriptStart = new("start", "Store the given options, compile the Script and start it.") { scriptPath, startOptions, startDialogs, startDialogTimeout };
+Option<bool> startFollow = new("--follow", "-f")
+{
+    Description = "Print the run's log lines and events until it ends, and ask its Questions in the terminal when stdin is one.",
+};
+Command scriptStart = new("start", "Store the given options, compile the Script and start it.") { scriptPath, startOptions, startDialogs, startDialogTimeout, startFollow };
 scriptStart.Validators.Add(result =>
 {
     if (result.GetValue(startOptions)!.FirstOrDefault(o => o.IndexOf('=') < 1) is { } bad)
         result.AddError($"--option takes key=value, not '{bad}'.");
 });
-scriptStart.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
+scriptStart.SetAction((parse, ct) =>
 {
     Dictionary<string, string> values = parse.GetValue(startOptions)!.Select(o => o.Split('=', 2)).ToDictionary(p => p[0], p => p[1]);
-    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
-    return await connection.ScriptStartAsync(parse.GetValue(scriptPath)!, values, parse.GetValue(startDialogs), parse.GetValue(startDialogTimeout), ct);
-}, Output.ScriptStart));
+    Task<ScriptStartResult> Start(EngineConnection connection) =>
+        connection.ScriptStartAsync(parse.GetValue(scriptPath)!, values, parse.GetValue(startDialogs), parse.GetValue(startDialogTimeout), ct);
+    return parse.GetValue(startFollow)
+        ? ScriptFollow.RunAsync(parse.GetValue(json), Start, ct)
+        : Cli.RunAsync(parse.GetValue(json), async options =>
+        {
+            using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
+            return await Start(connection);
+        }, Output.ScriptStart);
+});
 
 Command scriptStop = new("stop", "Stop the running Script and wait for its thread to end (about 10 s at most).");
 scriptStop.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
@@ -221,6 +232,23 @@ scriptWait.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async opt
 }, Output.ScriptWait));
 
 Command script = new("script", "Run Scripts: options, start, stop, status and wait.") { scriptOptions, scriptStart, scriptStop, scriptStatus, scriptWait };
+
+Command dialogs = new("dialogs", "List the pending Questions of Scripts, or answer one.");
+dialogs.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
+{
+    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
+    return await connection.DialogsAsync(ct);
+}, Output.Dialogs));
+
+Argument<int> answerId = new("id") { Description = "The Question's id, as 'skua dialogs' lists it." };
+Argument<string> answerChoice = new("choice") { Description = "One of the Question's choices, ignoring case, e.g. Yes." };
+Command dialogAnswer = new("answer", "Answer a pending Question; the first answer wins.") { answerId, answerChoice };
+dialogAnswer.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
+{
+    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
+    return await connection.DialogAnswerAsync(parse.GetValue(answerId), parse.GetValue(answerChoice)!, ct);
+}, Output.DialogAnswer));
+dialogs.Subcommands.Add(dialogAnswer);
 
 Argument<string> evalCode = new("code") { Description = "A C# expression or statements against IScriptInterface Bot, e.g. Bot.Player.Level; - reads it from stdin." };
 Option<int?> evalTimeout = new("--timeout") { Description = "Seconds the snippet may run once compiled: 30 by default." };
@@ -250,6 +278,6 @@ mcp.SetAction((_, ct) => McpServer.RunAsync(ct));
 
 RootCommand root = new("Drive a Skua Engine.")
 {
-    json, status, servers, login, logout, join, jump, inventory, quests, map, drops, scripts, script, eval, logs, screenshot, engine, mcp,
+    json, status, servers, login, logout, join, jump, inventory, quests, map, drops, scripts, script, dialogs, eval, logs, screenshot, engine, mcp,
 };
 return await root.Parse(args).InvokeAsync();

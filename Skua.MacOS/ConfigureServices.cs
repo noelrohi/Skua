@@ -19,6 +19,7 @@ public static class ConfigureServices
         services.AddSingleton<BridgeFlashUtil>();
         services.AddSingleton<IFlashUtil>(s => s.GetRequiredService<BridgeFlashUtil>());
 
+        services.AddSingleton<ScriptDialogBroker>();
         services.AddSingleton<IDialogService, HeadlessDialogService>();
         services.AddSingleton<IFileDialogService, HeadlessFileDialogService>();
         services.AddSingleton<IProcessService, HeadlessProcessService>();

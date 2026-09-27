@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using Skua.App.Cli;
 using Skua.Control;
@@ -276,6 +277,68 @@ public class CliTests
     }
 
     [Fact]
+    public async Task Script_start_follow_asks_a_Question_in_the_terminal_and_answers_with_the_developers_choice()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeAqApi api = new(GameFixture.Servers);
+        FakeKeychain keychain = new(sandbox);
+        Dictionary<string, string> environment = GameFixture.Environment(new FakeGameHost(sandbox).Game(keychain, GameFixture.Servers), api, keychain);
+        TestScripts.Write(sandbox, "Tests/Ask.cs", AskScript);
+
+        Process follow = sandbox.StartCliInTerminal(environment, "script", "start", "Tests/Ask.cs", "--follow");
+        OutputReader output = new(follow.StandardOutput);
+        await output.WaitForAsync("Answer Question 1, 1) Yes, 2) No: ");
+        await follow.StandardInput.WriteAsync("maybe\n");
+        await output.WaitForAsync("'maybe' isn't a choice of Question 1.");
+        await follow.StandardInput.WriteAsync("2\n");
+        await follow.WaitForExitAsync(Timeout());
+        string text = await output.EndAsync();
+
+        Assert.Equal(0, follow.ExitCode);
+        Assert.Contains("Started run 1 (Tests/Ask.cs).", text);
+        Assert.Contains("before the Question", text);
+        Assert.Contains("Question 1 'Confirm': Buy it? (Yes / No)", text);
+        Assert.Contains("Question 1 answered by agent: No", text);
+        Assert.Contains("answer False", text);
+        Assert.Contains("Run 1 completed after", text);
+    }
+
+    [Fact]
+    public async Task Script_start_follow_without_a_terminal_tells_how_to_answer_and_skua_dialogs_answers()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeAqApi api = new(GameFixture.Servers);
+        FakeKeychain keychain = new(sandbox);
+        Dictionary<string, string> environment = GameFixture.Environment(new FakeGameHost(sandbox).Game(keychain, GameFixture.Servers), api, keychain);
+        TestScripts.Write(sandbox, "Tests/Ask.cs", AskScript);
+
+        Process follow = sandbox.StartCli(environment, "script", "start", "Tests/Ask.cs", "--follow");
+        OutputReader output = new(follow.StandardOutput);
+        await output.WaitForAsync("answer it with 'skua dialogs answer 1 <choice>'");
+        ProcessResult status = await sandbox.RunCliAsync(environment, "status");
+        ProcessResult dialogs = await sandbox.RunCliAsync(environment, "dialogs");
+        ProcessResult unknown = await sandbox.RunCliAsync(environment, "dialogs", "answer", "1", "Maybe");
+        ProcessResult answer = await sandbox.RunCliAsync(environment, "dialogs", "answer", "1", "yes");
+        ProcessResult again = await sandbox.RunCliAsync(environment, "dialogs", "answer", "1", "no", "--json");
+        await follow.WaitForExitAsync(Timeout());
+        string text = await output.EndAsync();
+        ProcessResult none = await sandbox.RunCliAsync(environment, "dialogs");
+
+        Assert.Contains("Dialogs 1 Question pending; see 'skua dialogs'", status.Stdout);
+        Assert.Equal(0, dialogs.ExitCode);
+        Assert.Contains("Question 1 'Confirm' (Yes / No), from Tests/Ask.cs on Script Thread,", dialogs.Stdout);
+        Assert.Contains("  Buy it?", dialogs.Stdout);
+        Assert.Equal(ExitCodes.For(ErrorCode.InvalidArgument), unknown.ExitCode);
+        Assert.Equal((0, "Answered Question 1: Yes."), (answer.ExitCode, answer.Stdout.Trim()));
+        Assert.Equal(ExitCodes.For(ErrorCode.DialogNotPending), again.ExitCode);
+        Assert.Equal("dialogNotPending", JsonDocument.Parse(again.Stdout).RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal(0, follow.ExitCode);
+        Assert.Contains("Question 1 answered by agent: Yes", text);
+        Assert.Contains("answer True", text);
+        Assert.Equal("No Questions are pending.", none.Stdout.Trim());
+    }
+
+    [Fact]
     public void Every_error_code_has_its_own_nonzero_exit_code()
     {
         int[] codes = Enum.GetValues<ErrorCode>().Select(ExitCodes.For).ToArray();
@@ -286,4 +349,66 @@ public class CliTests
 
     private static string? State(ProcessResult result) =>
         JsonDocument.Parse(result.Stdout).RootElement.GetProperty("state").GetString();
+
+    private static string AskScript { get; } = TestScripts.Main("""
+        bot.Log("before the Question");
+        bool? answer = bot.ShowMessageBox("Buy it?", "Confirm", true);
+        bot.Log($"answer {(answer is null ? "null" : answer.ToString())}");
+        """);
+
+    private static CancellationToken Timeout()
+    {
+        CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(60));
+        return timeout.Token;
+    }
+}
+
+/// <summary>Collects a process's output as it arrives, so a test can wait for some of it.</summary>
+public sealed class OutputReader
+{
+    private readonly StringBuilder _text = new();
+    private readonly Task _pump;
+
+    public OutputReader(StreamReader reader)
+    {
+        _pump = Task.Run(async () =>
+        {
+            char[] buffer = new char[4096];
+            int read;
+            while ((read = await reader.ReadAsync(buffer)) > 0)
+            {
+                lock (_text)
+                    _text.Append(buffer, 0, read);
+            }
+        });
+    }
+
+    public string Text
+    {
+        get
+        {
+            lock (_text)
+                return _text.ToString();
+        }
+    }
+
+    /// <summary>Waits until the output contains <paramref name="expected"/>.</summary>
+    public async Task WaitForAsync(string expected)
+    {
+        Stopwatch waited = Stopwatch.StartNew();
+        while (!Text.Contains(expected, StringComparison.Ordinal))
+        {
+            if (waited.Elapsed > TimeSpan.FromSeconds(30))
+                throw new TimeoutException($"The output never contained \"{expected}\"; it was:\n{Text}");
+            await Task.Delay(25, TestContext.Current.CancellationToken);
+        }
+    }
+
+    /// <summary>Waits for the output to end, and returns all of it.</summary>
+    public async Task<string> EndAsync()
+    {
+        await _pump.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+        return Text;
+    }
 }

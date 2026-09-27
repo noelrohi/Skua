@@ -101,6 +101,12 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
     public Task<ScriptWaitResult> ScriptWaitAsync(int? timeoutSec, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("A client called script_wait after a protocol mismatch.");
 
+    public Task<DialogsResult> DialogsAsync(CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called dialogs after a protocol mismatch.");
+
+    public Task<DialogAnswerResult> DialogAnswerAsync(int id, string choice, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called dialog_answer after a protocol mismatch.");
+
     public Task<EvalResult> EvalAsync(string code, int? timeoutSec, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("A client called eval after a protocol mismatch.");
 

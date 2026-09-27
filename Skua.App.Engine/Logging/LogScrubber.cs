@@ -19,6 +19,9 @@ internal sealed partial class LogScrubber
     /// <summary>The cap on a <c>stack</c> field in event data, in UTF-8 bytes.</summary>
     public const int MaxStackBytes = 4 * 1024;
 
+    /// <summary>The cap on a Script Dialog's message, a <c>text</c> field in event data, in UTF-8 bytes.</summary>
+    public const int MaxDialogTextBytes = 64 * 1024;
+
     /// <summary>Longest first, so a secret that contains another is redacted whole.</summary>
     private ImmutableArray<string> _secrets = [];
 
@@ -33,13 +36,16 @@ internal sealed partial class LogScrubber
 
     public string Text(string text, ref bool truncated) => Scrub(text, MaxFieldBytes, ref truncated);
 
-    /// <summary>Scrubs every string in <paramref name="data"/> in place; a string under a <c>stack</c> key gets the stack cap.</summary>
+    /// <summary>
+    /// Scrubs every string in <paramref name="data"/> in place; a string under a <c>stack</c> key gets the stack cap, and one under a <c>text</c>
+    /// key the Script Dialog cap.
+    /// </summary>
     public void Data(JsonNode? data, ref bool truncated, string? key = null)
     {
         switch (data)
         {
             case JsonValue leaf when leaf.TryGetValue(out string? text):
-                leaf.ReplaceWith(Scrub(text, key == "stack" ? MaxStackBytes : MaxFieldBytes, ref truncated));
+                leaf.ReplaceWith(Scrub(text, key switch { "stack" => MaxStackBytes, "text" => MaxDialogTextBytes, _ => MaxFieldBytes }, ref truncated));
                 break;
             case JsonObject obj:
                 foreach ((string name, JsonNode? value) in obj.ToList())
@@ -62,6 +68,13 @@ internal sealed partial class LogScrubber
         return text;
     }
 
+    /// <summary>A Script Dialog's message as <c>dialogs</c> returns it: redacted, then cut to its cap.</summary>
+    public string DialogText(string text)
+    {
+        bool truncated = false;
+        return Scrub(text, MaxDialogTextBytes, ref truncated);
+    }
+
     private string Scrub(string text, int maxBytes, ref bool truncated) => Cut(Redact(text), maxBytes, ref truncated);
 
     /// <summary>
@@ -77,7 +90,7 @@ internal sealed partial class LogScrubber
         if (text.Length * 3 <= maxBytes)
             return text;
 
-        Span<byte> buffer = stackalloc byte[maxBytes];
+        Span<byte> buffer = maxBytes <= MaxFieldBytes ? stackalloc byte[maxBytes] : new byte[maxBytes];
         // FromUtf16 never splits a surrogate pair: it stops before a character that doesn't fit whole.
         Utf8.FromUtf16(text, buffer, out int charsRead, out _, replaceInvalidSequences: true, isFinalBlock: true);
         if (charsRead == text.Length)

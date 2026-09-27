@@ -21,8 +21,30 @@ internal static class Output
             Game    {gameLine}
             Script  {ScriptLine(status.Script)}
             """;
-        return game.Player is { } player ? $"{text}\nPlayer  {Player(player)}" : text;
+        if (game.Player is { } player)
+            text += $"\nPlayer  {Player(player)}";
+        return status.PendingDialogs.Count > 0
+            ? $"{text}\nDialogs {status.PendingDialogs.Count} Question{(status.PendingDialogs.Count == 1 ? "" : "s")} pending; see 'skua dialogs'"
+            : text;
     }
+
+    public static string Dialogs(DialogsResult result)
+    {
+        if (result.Questions.Count == 0)
+            return "No Questions are pending.";
+        StringBuilder text = new();
+        foreach (QuestionDto question in result.Questions)
+        {
+            double left = Math.Max(0, (question.ExpiresAt - DateTimeOffset.UtcNow).TotalSeconds);
+            if (text.Length > 0)
+                text.AppendLine();
+            text.AppendLine($"Question {question.Id} '{question.Caption}' ({string.Join(" / ", question.Choices)}), from {question.Script ?? "outside a run"} on {question.Thread}, {left:0} s left")
+                .Append($"  {question.Text}");
+        }
+        return text.ToString();
+    }
+
+    public static string DialogAnswer(DialogAnswerResult result) => $"Answered Question {result.Id}: {result.Choice}.";
 
     private static string Player(PlayerDto player)
     {

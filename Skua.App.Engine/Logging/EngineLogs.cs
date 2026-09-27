@@ -61,6 +61,9 @@ internal sealed class EngineLogs : IDisposable
     /// <summary>Redacts every secret and the login token in <paramref name="text"/>, for text the Engine returns rather than records.</summary>
     public string Scrub(string text) => _scrubber.Redact(text);
 
+    /// <summary>A Script Dialog's message as the Engine returns it: redacted and cut to 64 KB, as its events record it.</summary>
+    public string ScrubDialogText(string text) => _scrubber.DialogText(text);
+
     /// <summary>Records a text entry and returns its text as stored.</summary>
     public string Write(LogKind kind, string text)
     {

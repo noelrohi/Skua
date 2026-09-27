@@ -89,6 +89,12 @@ public sealed class EngineConnection : IDisposable
     public Task<ScriptWaitResult> ScriptWaitAsync(int? timeoutSec = null, CancellationToken cancellationToken = default) =>
         CallAsync(rpc => rpc.ScriptWaitAsync(timeoutSec, cancellationToken));
 
+    public Task<DialogsResult> DialogsAsync(CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.DialogsAsync(cancellationToken));
+
+    public Task<DialogAnswerResult> DialogAnswerAsync(int id, string choice, CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.DialogAnswerAsync(id, choice, cancellationToken));
+
     public Task<EvalResult> EvalAsync(string code, int? timeoutSec = null, CancellationToken cancellationToken = default) =>
         CallAsync(rpc => rpc.EvalAsync(code, timeoutSec, cancellationToken));
 

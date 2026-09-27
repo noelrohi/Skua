@@ -74,7 +74,7 @@ public enum ScriptWaitReason
     /// <summary>No run is in progress: it ended, or none was running.</summary>
     Ended,
 
-    /// <summary>A Question became pending.</summary>
+    /// <summary>A Question is pending; <c>dialogs</c> lists it.</summary>
     Question,
 
     /// <summary>The run is still in progress.</summary>

@@ -168,11 +168,29 @@ public partial interface IEngineRpc
     [JsonRpcMethod("script_status")]
     Task<ScriptStatusDto> ScriptStatusAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Waits until no run is in progress, a Question becomes pending, or the timeout passes. Returns at once when idle.</summary>
+    /// <summary>
+    /// Waits until a Question is pending, no run is in progress, or the timeout passes. Returns at once when a Question is already pending
+    /// or when idle.
+    /// </summary>
     /// <param name="timeoutSec">How long to wait: 300 s by default; 0 only looks.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
     [JsonRpcMethod("script_wait")]
     Task<ScriptWaitResult> ScriptWaitAsync(int? timeoutSec = null, CancellationToken cancellationToken = default);
+
+    /// <summary>The pending Questions, oldest first; <c>status</c> lists them too.</summary>
+    [JsonRpcMethod("dialogs")]
+    Task<DialogsResult> DialogsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Answers a pending Question; the first answer wins.</summary>
+    /// <param name="id">The Question's id, as <c>dialogs</c> lists it.</param>
+    /// <param name="choice">One of its choices, ignoring case.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    /// <remarks>
+    /// Fails with <see cref="ErrorCode.DialogNotPending"/> when no Question with that id is pending (already answered, timed out or unknown),
+    /// and with <see cref="ErrorCode.InvalidArgument"/> for a choice it doesn't offer, which leaves it pending.
+    /// </remarks>
+    [JsonRpcMethod("dialog_answer")]
+    Task<DialogAnswerResult> DialogAnswerAsync(int id, string choice, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Compiles a C# snippet against <c>IScriptInterface Bot</c>, as a Script would, and runs it on a thread of its own, also while a Script runs.

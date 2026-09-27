@@ -3,6 +3,7 @@ using System.Globalization;
 using Skua.Control;
 using Skua.Core.Interfaces;
 using Skua.Core.Models;
+using Skua.MacOS.Services;
 using StreamJsonRpc;
 
 namespace Skua.App.Engine.Scripts;
@@ -21,14 +22,16 @@ internal sealed class ScriptOperations
 
     private readonly IScriptManager _manager;
     private readonly ScriptRuns _runs;
+    private readonly ScriptDialogBroker _dialogs;
     private readonly ActionSlot _slot;
     private readonly SemaphoreSlim _compiling;
 
     /// <param name="compiling">Held around every compile, since Core's Script manager compiles one thing at a time.</param>
-    public ScriptOperations(IScriptManager manager, ScriptRuns runs, ActionSlot slot, SemaphoreSlim compiling)
+    public ScriptOperations(IScriptManager manager, ScriptRuns runs, ScriptDialogBroker dialogs, ActionSlot slot, SemaphoreSlim compiling)
     {
         _manager = manager;
         _runs = runs;
+        _dialogs = dialogs;
         _slot = slot;
         _compiling = compiling;
     }
@@ -111,8 +114,26 @@ internal sealed class ScriptOperations
         if (timeoutSec < 0)
             throw RpcErrors.Of(ErrorCode.InvalidArgument, $"timeoutSec must be at least 0, not {timeoutSec}.");
         TimeSpan timeout = timeoutSec is { } seconds ? TimeSpan.FromSeconds(seconds) : DefaultWait;
-        bool ended = await _runs.WaitEndAsync(timeout, cancellationToken);
-        return new ScriptWaitResult(ended ? ScriptWaitReason.Ended : ScriptWaitReason.Timeout, _runs.Status());
+        Stopwatch waited = Stopwatch.StartNew();
+        while (true)
+        {
+            Task raised = _dialogs.NextRaised;
+            if (_dialogs.Pending().Count > 0)
+                return new ScriptWaitResult(ScriptWaitReason.Question, _runs.Status());
+            (bool inProgress, Task changed) = _runs.Watch();
+            if (!inProgress)
+                return new ScriptWaitResult(ScriptWaitReason.Ended, _runs.Status());
+            TimeSpan left = timeout - waited.Elapsed;
+            if (left <= TimeSpan.Zero)
+                return new ScriptWaitResult(ScriptWaitReason.Timeout, _runs.Status());
+            try
+            {
+                await Task.WhenAny(raised, changed).WaitAsync(left, cancellationToken);
+            }
+            catch (TimeoutException)
+            {
+            }
+        }
     }
 
     /// <summary>Compiles the Script and loads its options with their stored values, as Core does before a start.</summary>
