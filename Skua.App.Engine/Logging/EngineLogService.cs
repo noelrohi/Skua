@@ -53,6 +53,9 @@ internal sealed class EngineLogService : ILogService
     private void OnFlashError(FlashErrorMessage message)
     {
         string[] args = message.Args.Select(arg => arg?.ToString() ?? "null").ToArray();
+        // The login game function carries credentials, maybe not the Test Account's (from eval), so none of them is logged.
+        if (message.Function is "callGameFunction" && args is ["login", ..])
+            args = ["login", .. args.Skip(1).Select(_ => LogScrubber.Redacted)];
         // The same line as Core's LogService writes.
         FlashLog($"{message.Function} Args[{args.Length}] {(args.Length > 0 ? $"= {{{string.Join(",", args)}}} " : "")}threw {message.Exception.GetType().Name}: {message.Exception.Message}");
         _logs.Event(EventTypes.BridgeError, new { function = message.Function, args, error = $"{message.Exception.GetType().Name}: {message.Exception.Message}" });

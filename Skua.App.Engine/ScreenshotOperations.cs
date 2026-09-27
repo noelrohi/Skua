@@ -1,22 +1,28 @@
 using System.Diagnostics;
 using Skua.Control;
+using Skua.Core.Interfaces;
 using Skua.MacOS.GameHost;
 
 namespace Skua.App.Engine;
 
-/// <summary><c>screenshot</c>: one capture in the Game Host at a time, shared by the callers that want it at the same size.</summary>
+/// <summary>
+/// <c>screenshot</c>: one capture in the Game Host at a time, shared by the callers that want it at the same size.
+/// The lag killer, which hides the world, is lifted for the capture.
+/// </summary>
 internal sealed class ScreenshotOperations
 {
     public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
     private readonly BridgeFlashUtil _flash;
+    private readonly IScriptOption _options;
     private readonly object _lock = new();
     private Task<ScreenshotResult>? _capture;
     private uint _captureWidth;
 
-    public ScreenshotOperations(BridgeFlashUtil flash)
+    public ScreenshotOperations(BridgeFlashUtil flash, IScriptOption options)
     {
         _flash = flash;
+        _options = options;
     }
 
     /// <remarks>
@@ -67,8 +73,12 @@ internal sealed class ScreenshotOperations
             throw GameHostDown();
 
         GameHostScreenshot? shot;
+        // Turning the option off also stops Core's timer from hiding the world again during the capture.
+        bool lagKiller = _options.LagKiller;
         try
         {
+            if (lagKiller)
+                _options.LagKiller = false;
             shot = _flash.Screenshot(maxWidth, timeout);
         }
         catch (IOException)
@@ -78,6 +88,11 @@ internal sealed class ScreenshotOperations
         catch (TimeoutException)
         {
             throw TimedOut();
+        }
+        finally
+        {
+            if (lagKiller)
+                _options.LagKiller = true;
         }
 
         if (shot is null)

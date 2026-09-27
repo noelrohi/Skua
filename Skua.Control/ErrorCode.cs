@@ -24,6 +24,9 @@ public enum ErrorCode
 
     /// <summary>The Script Source couldn't be reached or returned something unusable.</summary>
     ScriptSourceUnavailable = 13,
+
+    /// <summary>The game's servers API couldn't be reached or returned no servers.</summary>
+    ServersUnavailable = 14,
 }
 
 /// <summary>

@@ -243,12 +243,18 @@ public class ClientSettings
     [JsonPropertyName("UpgradeRequired")]
     public bool UpgradeRequired { get; set; } = true;
 
+    /// <summary>The Keychain service of the generic password that holds the macOS Engine's Test Account.</summary>
+    [JsonPropertyName("TestAccountService")]
+    public string TestAccountService { get; set; } = "skua-test-account";
+
     [JsonExtensionData]
     public Dictionary<string, object>? ExtensionData { get; set; }
 
     public void InitializeDefaults()
     {
         UserOptions ??= new();
+        if (string.IsNullOrWhiteSpace(TestAccountService))
+            TestAccountService = "skua-test-account";
 
         if (FastTravels == null || FastTravels.Count == 0)
         {

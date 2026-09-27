@@ -71,6 +71,33 @@ logs.SetAction((parse, ct) =>
         }, Output.Logs);
 });
 
+Command servers = new("servers", "List the game servers: players, member-only and language. Works before login.");
+servers.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
+{
+    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
+    return await connection.ServersAsync(ct);
+}, Output.Servers));
+
+Argument<string?> loginServer = new("server")
+{
+    Description = "A server from 'skua servers'; without one, the Engine picks an online, non-member server with room.",
+    Arity = ArgumentArity.ZeroOrOne,
+};
+Option<int?> loginTimeout = new("--timeout") { Description = "Seconds to wait for the world: 120 by default." };
+Command login = new("login", "Log the Test Account in with its credentials from Keychain, and wait until it is playing.") { loginServer, loginTimeout };
+login.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
+{
+    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
+    return await connection.LoginAsync(parse.GetValue(loginServer), parse.GetValue(loginTimeout), ct);
+}, Output.Login));
+
+Command logout = new("logout", "Log out to the login screen.");
+logout.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
+{
+    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
+    return await connection.LogoutAsync(ct);
+}, Output.Logout));
+
 Option<int?> screenshotMaxWidth = new("--max-width") { Description = "Scale a wider frame down to this width, keeping its aspect ratio." };
 Option<string?> screenshotOut = new("--out", "-o") { Description = "The PNG file to write; by default a new skua-screenshot-<time>.png in the current directory." };
 Command screenshot = new("screenshot", "Capture the game as a PNG file and print its path.") { screenshotMaxWidth, screenshotOut };
@@ -95,5 +122,5 @@ Command engine = new("engine", "Control the Engine's lifetime.") { engineStart, 
 Command mcp = new("mcp", "Serve the Control Surface as an MCP server over stdio.");
 mcp.SetAction((_, ct) => McpServer.RunAsync(ct));
 
-RootCommand root = new("Drive a Skua Engine.") { json, status, scripts, logs, screenshot, engine, mcp };
+RootCommand root = new("Drive a Skua Engine.") { json, status, servers, login, logout, scripts, logs, screenshot, engine, mcp };
 return await root.Parse(args).InvokeAsync();

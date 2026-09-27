@@ -62,4 +62,26 @@ public partial interface IEngineRpc
     /// <param name="cancellationToken">Cancels the call.</param>
     [JsonRpcMethod("screenshot")]
     Task<ScreenshotResult> ScreenshotAsync(int? maxWidth = null, CancellationToken cancellationToken = default);
+    /// <summary>The game servers, fresh from the game's servers API. Works before login.</summary>
+    [JsonRpcMethod("servers")]
+    Task<ServersResult> ServersAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Logs the Test Account in, reading its credentials from Keychain, and returns once it is playing with the world loaded.
+    /// Already playing on the requested server (or on any, when none is named), it does nothing; playing elsewhere, it relogs.
+    /// </summary>
+    /// <param name="server">A server name from <c>servers</c>; without one, the Engine picks an online, non-member server with room.</param>
+    /// <param name="timeoutSec">How long to wait for the world: 120 s by default.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    /// <remarks>
+    /// Fails with <see cref="ErrorCode.LoginFailed"/> and the game's reason (a full or offline server, a rejected account),
+    /// <see cref="ErrorCode.Timeout"/>, <see cref="ErrorCode.InvalidArgument"/> for an unknown server, <see cref="ErrorCode.GameHostDown"/>
+    /// before the Game Client has loaded, and <see cref="ErrorCode.Busy"/> while another login or logout runs.
+    /// </remarks>
+    [JsonRpcMethod("login")]
+    Task<LoginResult> LoginAsync(string? server = null, int? timeoutSec = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Logs out to the login screen; a deliberate logout, so the game isn't reported disconnected. Does nothing when not logged in.</summary>
+    [JsonRpcMethod("logout")]
+    Task<LogoutResult> LogoutAsync(CancellationToken cancellationToken = default);
 }

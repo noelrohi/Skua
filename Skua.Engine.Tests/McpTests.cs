@@ -83,6 +83,26 @@ public class McpTests
         Assert.StartsWith("InvalidArgument: ", ((TextContentBlock)result.Content.Single()).Text);
     }
 
+    [Fact]
+    public async Task The_login_tools_log_in_and_out_with_the_same_arguments_and_DTOs()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeAqApi api = new(LoginTests.Servers);
+        FakeKeychain keychain = new(sandbox);
+        await using McpClient client = await ConnectAsync(sandbox, LoginTests.Environment(new FakeGameHost(sandbox).Game(keychain, LoginTests.Servers), api, keychain));
+
+        IList<McpClientTool> tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        CallToolResult servers = await client.CallToolAsync("servers", cancellationToken: TestContext.Current.CancellationToken);
+        CallToolResult login = await client.CallToolAsync("login", new Dictionary<string, object?> { ["server"] = "Galanoth", ["timeoutSec"] = 60 },
+            cancellationToken: TestContext.Current.CancellationToken);
+        CallToolResult logout = await client.CallToolAsync("logout", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Subset(tools.Select(t => t.Name).ToHashSet(), new HashSet<string> { "servers", "login", "logout" });
+        Assert.Equal(LoginTests.Servers.Length, servers.StructuredContent!.Value.GetProperty("servers").GetArrayLength());
+        Assert.Equal(new LoginResult("Galanoth", false), JsonSerializer.Deserialize<LoginResult>(((TextContentBlock)login.Content.Single()).Text, ControlJson.Options));
+        Assert.True(logout.StructuredContent!.Value.GetProperty("wasLoggedIn").GetBoolean());
+    }
+
     /// <summary>Starts <c>skua mcp</c> with this sandbox's data folder and extra environment, and connects to it.</summary>
     internal static Task<McpClient> ConnectAsync(EngineSandbox sandbox, IDictionary<string, string>? environment = null)
     {

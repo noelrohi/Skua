@@ -8,18 +8,45 @@ public sealed record StatusDto(EngineInfoDto Engine, GameStatusDto Game);
 public sealed record EngineInfoDto(string Name, string Build, int Protocol, double UptimeSec, int Pid);
 
 /// <param name="GameHostUp">Whether the Game Host process is running.</param>
-/// <param name="State">The game state; <see cref="GameState.NotStarted"/> while the Game Host is down, and null while it isn't tracked yet.</param>
-/// <param name="Server">The server the player is on, or null when not logged in.</param>
-public sealed record GameStatusDto(bool GameHostUp, GameState? State, string? Server);
+/// <param name="State">The game state, as the <c>game.state</c> events report it.</param>
+/// <param name="Server">The server the player is on, or null when not playing.</param>
+public sealed record GameStatusDto(bool GameHostUp, GameState State, string? Server);
 
 public enum GameState
 {
+    /// <summary>There is no Game Host, or the Game Client hasn't loaded yet.</summary>
     NotStarted,
+
+    /// <summary>The Game Client has loaded and nobody is logged in; either there was no session yet, or it ended deliberately.</summary>
     LoginScreen,
+
+    /// <summary>A login or relogin is in flight, or the player is logged in but the world hasn't loaded yet.</summary>
     LoggingIn,
+
+    /// <summary>Logged in with the world loaded, alive or dead.</summary>
     Playing,
+
+    /// <summary>The session was lost without a deliberate logout; it stays so until a login, a relogin or a logout.</summary>
     Disconnected,
 }
+
+/// <summary>A game server.</summary>
+/// <param name="PlayerCount">How many players are on it now.</param>
+/// <param name="MemberOnly">Whether only members may play on it.</param>
+/// <param name="Language">Its language code, e.g. <c>en</c> or <c>pt</c>.</param>
+public sealed record ServerDto(string Name, bool Online, int PlayerCount, int MaxPlayers, bool MemberOnly, string Language);
+
+/// <summary>The reply to <c>servers</c>.</summary>
+public sealed record ServersResult(IReadOnlyList<ServerDto> Servers);
+
+/// <summary>The reply to <c>login</c>.</summary>
+/// <param name="Server">The server the Test Account is playing on.</param>
+/// <param name="AlreadyLoggedIn">Whether it was already playing there, so nothing was done.</param>
+public sealed record LoginResult(string Server, bool AlreadyLoggedIn);
+
+/// <summary>The reply to <c>logout</c>.</summary>
+/// <param name="WasLoggedIn">Whether there was a session to end; a logout at the login screen does nothing.</param>
+public sealed record LogoutResult(bool WasLoggedIn);
 
 /// <summary>The data of a JSON-RPC error raised by the Engine.</summary>
 public sealed record ErrorDataDto(ErrorCode Code);

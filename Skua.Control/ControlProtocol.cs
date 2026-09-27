@@ -8,5 +8,5 @@ namespace Skua.Control;
 /// </remarks>
 public static class ControlProtocol
 {
-    public const int Version = 4;
+    public const int Version = 5;
 }

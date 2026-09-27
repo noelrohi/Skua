@@ -24,4 +24,8 @@ public static class LogWaits
         }
         throw new TimeoutException($"Only {entries.Count} of {count} {kind} entries arrived.");
     }
+
+    /// <summary>Waits for the first event of <paramref name="type"/> that matches, and returns it.</summary>
+    public static async Task<LogEntryDto> WaitForEventAsync(this EngineConnection connection, string type, Func<LogEntryDto, bool>? match = null) =>
+        (await connection.WaitForLogsAsync(LogKind.Events, 1, e => e.Type == type && (match?.Invoke(e) ?? true)))[0];
 }

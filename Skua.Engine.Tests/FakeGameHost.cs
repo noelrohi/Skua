@@ -24,7 +24,8 @@ public sealed class FakeGameHost
     public string CallLog { get; private set; } = "";
 
     /// <summary>
-    /// Makes every Engine these tests start run an idle fake Game Host unless a test says otherwise, so none ever runs the real one.
+    /// Makes every Engine these tests start run an idle fake Game Host, find no Test Account and no servers API unless a test says
+    /// otherwise, so none ever runs the real Game Host, reads the real Keychain or reaches content.aq.com.
     /// Child processes inherit it, including Engines auto-started by the CLI.
     /// </summary>
     [ModuleInitializer]
@@ -35,6 +36,9 @@ public sealed class FakeGameHost
             File.WriteAllBytes(swf, []);
         System.Environment.SetEnvironmentVariable(GameHostLaunch.ExecutableVariable, EngineSandbox.FakeGameHostExecutable);
         System.Environment.SetEnvironmentVariable(GameHostLaunch.SwfVariable, swf);
+        System.Environment.SetEnvironmentVariable("SKUA_SECURITY_TOOL", FakeKeychain.Empty(EngineSandbox.BinDir));
+        // The discard port: nothing listens, so the request fails at once.
+        System.Environment.SetEnvironmentVariable(Skua.Core.Scripts.ScriptServers.ServersUrlEnvironmentVariable, "http://127.0.0.1:9/game/api/data/servers");
     }
 
     /// <summary>
@@ -47,6 +51,51 @@ public sealed class FakeGameHost
         _lines.Add($"calllog {CallLog}");
         return this;
     }
+
+    /// <summary>
+    /// Simulates the AQW game behind skua.swf, which accepts the account of <paramref name="keychain"/> and lists
+    /// <paramref name="servers"/> after the account logs in; the Game Client reports <c>loaded</c> at once.
+    /// </summary>
+    public FakeGameHost Game(FakeKeychain keychain, params FakeServer[] servers)
+    {
+        ControlFile = Path.Combine(Path.GetDirectoryName(ScenarioPath)!, "fake-gamehost.control");
+        _lines.Add($"control {ControlFile}");
+        _lines.Add($"game {keychain.Username} {keychain.Password}");
+        _lines.Add($"servers {FakeServer.ListJson(servers)}");
+        _lines.Add("""send E <invoke name="loaded" returntype="xml"><arguments></arguments></invoke>""");
+        return this;
+    }
+
+    /// <summary>How long connecting to a server takes in the simulated game; 300 ms unless set.</summary>
+    public FakeGameHost ConnectDelay(int milliseconds)
+    {
+        _lines.Insert(_lines.FindIndex(l => l.StartsWith("game ", StringComparison.Ordinal)) + 1, $"connect-delay {milliseconds}");
+        return this;
+    }
+
+    /// <summary>Connecting to <paramref name="server"/> fails with this connection message in the simulated game.</summary>
+    public FakeGameHost Reject(string server, string message)
+    {
+        _lines.Insert(_lines.FindIndex(l => l.StartsWith("game ", StringComparison.Ordinal)) + 1, $"reject {server} {message}");
+        return this;
+    }
+
+    public string ControlFile { get; private set; } = "";
+
+    /// <summary>
+    /// Makes the running simulated game act, e.g. <c>kick</c> or <c>lose-connection &lt;message&gt;</c>, and returns once it has;
+    /// see Skua.FakeGameHost/Program.cs.
+    /// </summary>
+    public async Task DoAsync(string directive)
+    {
+        int count = ++_directives;
+        await File.AppendAllTextAsync(ControlFile, directive + "\n", TestContext.Current.CancellationToken);
+        string done = ControlFile + ".done";
+        for (int i = 0; i < 400 && (!File.Exists(done) || (await File.ReadAllTextAsync(done, TestContext.Current.CancellationToken)).Length < count); i++)
+            await Task.Delay(25, TestContext.Current.CancellationToken);
+    }
+
+    private int _directives;
 
     public FakeGameHost Reply(string function, string xml)
     {

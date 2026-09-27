@@ -60,4 +60,29 @@ public static class EventTypes
 
     /// <summary>A Bridge call failed (<c>{function, args, error}</c>) or the Bridge stream broke (<c>{error}</c>).</summary>
     public const string BridgeError = "bridge.error";
+
+    /// <summary>The Game Client has loaded and shows the login screen: <c>{}</c>.</summary>
+    public const string GameLoaded = "game.loaded";
+
+    /// <summary>The game state changed: <c>{from, to}</c>, each a <see cref="GameState"/>; <c>status</c> reports the same state.</summary>
+    public const string GameState = "game.state";
+
+    /// <summary>
+    /// The session ended: <c>{reason, detail?}</c>. The reason is the first that applies of <c>gameHostExited</c>, <c>connectionLost</c>
+    /// (with the game's connection message as detail), <c>kicked</c> and <c>logout</c> (deliberate: the <c>logout</c> op, a Script or the
+    /// in-game button). A failed login and a relogin's own logout aren't disconnects.
+    /// </summary>
+    public const string GameDisconnected = "game.disconnected";
+
+    /// <summary>Core's auto-relogin: <c>{phase: "triggered", wasKicked, delayMs}</c>, then <c>{phase: "finished", ok}</c>.</summary>
+    public const string GameRelogin = "game.relogin";
+
+    /// <summary>The player joined a map: <c>{map, roomId, cell}</c>; cell is null when the game didn't say.</summary>
+    public const string MapJoined = "map.joined";
+
+    /// <summary>The player died: <c>{map, cell}</c>.</summary>
+    public const string PlayerDeath = "player.death";
+
+    /// <summary>The game marked the player AFK: <c>{}</c>.</summary>
+    public const string PlayerAfk = "player.afk";
 }

@@ -14,13 +14,31 @@ internal static class Output
         EngineInfoDto engine = status.Engine;
         GameStatusDto game = status.Game;
         string gameLine = game.GameHostUp
-            ? $"Game Host up{(game.State is { } state ? $", {Name(state)}" : "")}{(game.Server is { } server ? $" on {server}" : "")}"
+            ? $"Game Host up, {Name(game.State)}{(game.Server is { } server ? $" on {server}" : "")}"
             : "Game Host down";
         return $"""
             Engine  {engine.Name} (pid {engine.Pid}, up {engine.UptimeSec:0} s, build {engine.Build}, protocol {engine.Protocol})
             Game    {gameLine}
             """;
     }
+
+    public static string Servers(ServersResult result)
+    {
+        int width = result.Servers.Max(s => s.Name.Length);
+        StringBuilder text = new();
+        foreach (ServerDto server in result.Servers)
+        {
+            string state = !server.Online ? "offline" : server.MaxPlayers > 0 && server.PlayerCount >= server.MaxPlayers ? "full" : "";
+            string players = $"{server.PlayerCount}/{server.MaxPlayers}";
+            text.AppendLine($"{server.Name.PadRight(width)}  {players,9}  {state,-7}  {(server.MemberOnly ? "member" : ""),-6}  {server.Language}".TrimEnd());
+        }
+        return text.ToString().TrimEnd();
+    }
+
+    public static string Login(LoginResult result) =>
+        result.AlreadyLoggedIn ? $"Already playing on {result.Server}." : $"Logged in on {result.Server}.";
+
+    public static string Logout(LogoutResult result) => result.WasLoggedIn ? "Logged out." : "Not logged in.";
 
     public static string ScriptsSearch(ScriptsSearchResult result)
     {

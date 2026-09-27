@@ -18,7 +18,8 @@ public class GameHostTests
             StatusDto status = await connection.StatusAsync(TestContext.Current.CancellationToken);
 
             Assert.True(status.Game.GameHostUp);
-            Assert.Null(status.Game.State);
+            // The Game Client hasn't reported loaded.
+            Assert.Equal(GameState.NotStarted, status.Game.State);
         }
     }
 
