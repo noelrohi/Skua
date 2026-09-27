@@ -23,6 +23,7 @@ internal sealed class GameHostSupervisor : IDisposable
         IClientFilesService clientFiles = services.GetRequiredService<IClientFilesService>();
         clientFiles.CreateDirectories();
         clientFiles.CreateFiles();
+        // Builds Core's Script API before the Game Client loads, so its handlers see every call from the start, as in the Windows app.
         _ = services.GetRequiredService<IScriptInterface>();
 
         BridgeFlashUtil flash = services.GetRequiredService<BridgeFlashUtil>();

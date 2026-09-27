@@ -179,7 +179,7 @@ On macOS, building `Skua.App.Engine` also builds the Game Host and `skua.swf`, s
 - **`skua.swf`:** `Skua.AS3/compile-as3.sh`, rerun only when an AS3 source changes.
 - **Escape hatches:** `-p:SkuaGameHostPath=<file>` uses a prebuilt `skua-gamehost` instead of running cargo, and `-p:SkuaSwfPath=<file>` a prebuilt `skua.swf` instead of running mxmlc.
 
-The output is flat: `skua`, `skua-engine`, `skua-gamehost` and `skua.swf` sit side by side in `Skua.App.Engine/bin/<Configuration>/net10.0/` (and in `dotnet publish` output). `skua` auto-starts the `skua-engine` next to it, and the Engine starts the Game Host and SWF next to itself. For MCP clients, the config is `{"command": "skua", "args": ["mcp"]}`. With a Homebrew .NET, set `DOTNET_ROOT` so the executables find the runtime.
+The output is flat: `skua`, `skua-engine`, `skua-gamehost` and `skua.swf` sit side by side in `Skua.App.Engine/bin/<Configuration>/net10.0/` (and in `dotnet publish` output). `skua` auto-starts the `skua-engine` next to it, and the Engine starts the `skua-gamehost` and `skua.swf` next to itself. For MCP clients, the config is `{"command": "skua", "args": ["mcp"]}`. With a Homebrew .NET, set `DOTNET_ROOT` so the executables find the runtime.
 
 The tests never run the real Game Host: they point `SKUA_GAMEHOST` at a fake that speaks the Bridge frames.
 

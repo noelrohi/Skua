@@ -4,7 +4,7 @@ using Skua.Core.Services;
 
 namespace Skua.MacOS.Services;
 
-/// <summary>Core's settings file in the Skua data folder, with the client role; the same as the Windows app's.</summary>
+/// <summary>Core's settings file in the Skua data folder, as <see cref="AppRole.Client"/>; the same as the Windows app's.</summary>
 public sealed class SettingsService : ISettingsService
 {
     private readonly UnifiedSettingsService _unifiedService = new();

@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using Skua.MacOS.GameHost;
 
 namespace Skua.Engine.Tests;
 
@@ -32,8 +33,8 @@ public sealed class FakeGameHost
         string swf = Path.Combine(EngineSandbox.BinDir, "fake-skua.swf");
         if (!File.Exists(swf))
             File.WriteAllBytes(swf, []);
-        System.Environment.SetEnvironmentVariable("SKUA_GAMEHOST", EngineSandbox.FakeGameHostExecutable);
-        System.Environment.SetEnvironmentVariable("SKUA_SWF", swf);
+        System.Environment.SetEnvironmentVariable(GameHostLaunch.ExecutableVariable, EngineSandbox.FakeGameHostExecutable);
+        System.Environment.SetEnvironmentVariable(GameHostLaunch.SwfVariable, swf);
     }
 
     /// <summary>Records the name of every call the Engine makes into the Game Client; read them with <see cref="CallsAsync"/>.</summary>
