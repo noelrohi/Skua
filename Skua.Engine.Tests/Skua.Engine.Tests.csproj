@@ -22,6 +22,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="compile-check-known-failures.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Skua.Control\Skua.Control.csproj" />
     <!-- The executables under test land next to the tests: skua-engine, skua and fake-gamehost. -->
     <ProjectReference Include="..\Skua.App.Cli\Skua.App.Cli.csproj" />
