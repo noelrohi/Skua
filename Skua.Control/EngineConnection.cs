@@ -54,6 +54,9 @@ public sealed class EngineConnection : IDisposable
             yield return pages.Current;
     }
 
+    public Task<ScreenshotResult> ScreenshotAsync(int? maxWidth = null, CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.ScreenshotAsync(maxWidth, cancellationToken));
+
     /// <summary>Calls the Engine and turns its errors into <see cref="ControlException"/>.</summary>
     public async Task<T> CallAsync<T>(Func<IEngineRpc, Task<T>> call)
     {

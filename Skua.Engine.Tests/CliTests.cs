@@ -160,6 +160,59 @@ public class CliTests
     }
 
     [Fact]
+    public async Task Screenshot_writes_the_PNG_to_out_and_prints_its_path()
+    {
+        await using EngineSandbox sandbox = new();
+        string path = Path.Combine(sandbox.SkuaDir, "shots", "login.png");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+
+        ProcessResult result = await sandbox.RunCliAsync("screenshot", "--out", path);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(path, result.Stdout.Trim());
+        Assert.Equal((958, 550), ScreenshotTests.PngSize(await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken)));
+    }
+
+    [Fact]
+    public async Task Screenshot_without_out_writes_a_new_file_in_the_working_directory()
+    {
+        await using EngineSandbox sandbox = new();
+
+        ProcessResult result = await sandbox.RunCliAsync("screenshot", "--max-width", "200", "--json");
+
+        Assert.Equal(0, result.ExitCode);
+        using JsonDocument json = JsonDocument.Parse(result.Stdout);
+        string path = json.RootElement.GetProperty("path").GetString()!;
+        Assert.EndsWith(".png", path);
+        Assert.True(File.Exists(Path.Combine(sandbox.SkuaDir, Path.GetFileName(path))), path);
+        Assert.Equal(200, json.RootElement.GetProperty("width").GetInt32());
+        Assert.Equal((200, 115), ScreenshotTests.PngSize(await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken)));
+    }
+
+    [Fact]
+    public async Task Screenshots_without_out_each_write_their_own_file()
+    {
+        await using EngineSandbox sandbox = new();
+
+        ProcessResult[] results = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => sandbox.RunCliAsync("screenshot")));
+
+        Assert.All(results, r => Assert.Equal(0, r.ExitCode));
+        Assert.Equal(4, results.Select(r => r.Stdout.Trim()).Distinct().Count());
+        Assert.Equal(4, Directory.GetFiles(sandbox.SkuaDir, "skua-screenshot-*.png").Length);
+    }
+
+    [Fact]
+    public async Task Screenshot_to_an_unwritable_path_exits_with_the_invalid_argument_code()
+    {
+        await using EngineSandbox sandbox = new();
+
+        ProcessResult result = await sandbox.RunCliAsync("screenshot", "--out", Path.Combine(sandbox.SkuaDir, "missing", "x.png"));
+
+        Assert.Equal(ExitCodes.For(ErrorCode.InvalidArgument), result.ExitCode);
+        Assert.Contains("missing", result.Stderr);
+    }
+
+    [Fact]
     public void Every_error_code_has_its_own_nonzero_exit_code()
     {
         int[] codes = Enum.GetValues<ErrorCode>().Select(ExitCodes.For).ToArray();

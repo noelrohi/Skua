@@ -30,13 +30,15 @@ internal sealed class Engine : IEngineRpc
     private readonly CancellationTokenSource _shutdown = new();
     private readonly ConcurrentDictionary<JsonRpc, byte> _connections = new();
     private readonly ScriptSourceOperations _scriptSource;
+    private readonly ScreenshotOperations _screenshots;
 
-    private Engine(EngineEndpoint endpoint, GameHostSupervisor gameHost, EngineLogs logs, IGetScriptsService scriptsService)
+    private Engine(EngineEndpoint endpoint, GameHostSupervisor gameHost, EngineLogs logs, IGetScriptsService scriptsService, BridgeFlashUtil flash)
     {
         _endpoint = endpoint;
         _gameHost = gameHost;
         _logs = logs;
         _scriptSource = new ScriptSourceOperations(scriptsService, _shutdown.Token);
+        _screenshots = new ScreenshotOperations(flash);
     }
 
     public static string Build { get; } =
@@ -86,7 +88,7 @@ internal sealed class Engine : IEngineRpc
         ServiceProvider services = EngineServices.Build(launch, logs);
         using (GameHostSupervisor gameHost = GameHostSupervisor.Start(services, logs))
         {
-            Engine engine = new(endpoint, gameHost, logs, services.GetRequiredService<IGetScriptsService>());
+            Engine engine = new(endpoint, gameHost, logs, services.GetRequiredService<IGetScriptsService>(), services.GetRequiredService<BridgeFlashUtil>());
             await engine.ServeAsync();
         }
 
@@ -145,6 +147,9 @@ internal sealed class Engine : IEngineRpc
                 await appended.WaitAsync(cancellationToken);
         }
     }
+
+    public Task<ScreenshotResult> ScreenshotAsync(int? maxWidth, CancellationToken cancellationToken) =>
+        _screenshots.TakeAsync(maxWidth, cancellationToken);
 
     /// <summary>
     /// Takes the lock, or returns null when another Engine holds it. A client checking the lock holds it for an instant,

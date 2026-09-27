@@ -52,4 +52,14 @@ public partial interface IEngineRpc
     /// <summary>Replays the entries of the given kinds after the cursor, then follows new ones until cancelled. CLI-only.</summary>
     [JsonRpcMethod("subscribe")]
     IAsyncEnumerable<LogPage> SubscribeAsync(LogKind[] kinds, string? after = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Renders a frame of the Game Client and captures it as a PNG, at the stage's native size or scaled down to <paramref name="maxWidth"/>.
+    /// Callers while a capture of the same size is in flight share it. Fails with <see cref="ErrorCode.GameHostDown"/> when there is no Game Host,
+    /// and with <see cref="ErrorCode.Timeout"/> after 10 s.
+    /// </summary>
+    /// <param name="maxWidth">When set, a wider frame is scaled down to this width, keeping its aspect ratio; at least 1.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    [JsonRpcMethod("screenshot")]
+    Task<ScreenshotResult> ScreenshotAsync(int? maxWidth = null, CancellationToken cancellationToken = default);
 }

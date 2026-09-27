@@ -37,7 +37,10 @@ public sealed class FakeGameHost
         System.Environment.SetEnvironmentVariable(GameHostLaunch.SwfVariable, swf);
     }
 
-    /// <summary>Records the name of every call the Engine makes into the Game Client; read them with <see cref="CallsAsync"/>.</summary>
+    /// <summary>
+    /// Records the name of every call the Engine makes into the Game Client, and <c>screenshot &lt;maxWidth&gt;</c> for every screenshot request;
+    /// read them with <see cref="CallsAsync"/>.
+    /// </summary>
     public FakeGameHost LogCalls()
     {
         CallLog = Path.Combine(Path.GetDirectoryName(ScenarioPath)!, "fake-gamehost.calls");
@@ -54,6 +57,13 @@ public sealed class FakeGameHost
     public FakeGameHost Delay(string function, int milliseconds)
     {
         _lines.Add($"delay {function} {milliseconds}");
+        return this;
+    }
+
+    /// <summary>Answers screenshot requests with no image, as the Game Host does when it can't capture a frame.</summary>
+    public FakeGameHost NoImage()
+    {
+        _lines.Add("noimage");
         return this;
     }
 

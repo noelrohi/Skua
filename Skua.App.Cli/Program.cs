@@ -71,6 +71,16 @@ logs.SetAction((parse, ct) =>
         }, Output.Logs);
 });
 
+Option<int?> screenshotMaxWidth = new("--max-width") { Description = "Scale a wider frame down to this width, keeping its aspect ratio." };
+Option<string?> screenshotOut = new("--out", "-o") { Description = "The PNG file to write; by default a new skua-screenshot-<time>.png in the current directory." };
+Command screenshot = new("screenshot", "Capture the game as a PNG file and print its path.") { screenshotMaxWidth, screenshotOut };
+screenshot.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
+{
+    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
+    ScreenshotResult shot = await connection.ScreenshotAsync(parse.GetValue(screenshotMaxWidth), ct);
+    return await ScreenshotFile.WriteAsync(shot, parse.GetValue(screenshotOut), ct);
+}, Output.Screenshot));
+
 Command engineStart = new("start", "Start the Engine if it isn't running.");
 engineStart.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), options => EngineCommands.StartAsync(options, ct), Output.Engine));
 
@@ -85,5 +95,5 @@ Command engine = new("engine", "Control the Engine's lifetime.") { engineStart, 
 Command mcp = new("mcp", "Serve the Control Surface as an MCP server over stdio.");
 mcp.SetAction((_, ct) => McpServer.RunAsync(ct));
 
-RootCommand root = new("Drive a Skua Engine.") { json, status, scripts, logs, engine, mcp };
+RootCommand root = new("Drive a Skua Engine.") { json, status, scripts, logs, screenshot, engine, mcp };
 return await root.Parse(args).InvokeAsync();

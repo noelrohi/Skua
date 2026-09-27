@@ -5,6 +5,9 @@ using System.Text;
 
 namespace Skua.MacOS.GameHost;
 
+/// <summary>A frame the Game Host captured: its size, an estimate of the Game Client's frame number, and the PNG.</summary>
+public sealed record GameHostScreenshot(int Width, int Height, long Frame, byte[] Png);
+
 /// <summary>
 /// The Game Host child process and the Engine's end of the Bridge over its pipes. The Game Host exits on its own when its stdin closes,
 /// so it never outlives the Engine.
@@ -103,6 +106,26 @@ public sealed class GameHostProcess : IDisposable
     /// <exception cref="IOException">The Game Host is gone.</exception>
     /// <exception cref="TimeoutException">No reply came within <see cref="RequestTimeout"/>.</exception>
     public string Call(string invokeXml) => Encoding.UTF8.GetString(Request('C', Encoding.UTF8.GetBytes(invokeXml), RequestTimeout));
+
+    /// <summary>
+    /// Has the Game Host render a frame and capture it, scaled down to <paramref name="maxWidth"/> if wider (0 keeps the native size).
+    /// Returns null when the Game Host couldn't capture one.
+    /// </summary>
+    /// <exception cref="IOException">The Game Host is gone.</exception>
+    /// <exception cref="TimeoutException">No reply came within <paramref name="timeout"/>.</exception>
+    public GameHostScreenshot? Screenshot(uint maxWidth, TimeSpan timeout)
+    {
+        byte[] request = new byte[4];
+        BinaryPrimitives.WriteUInt32LittleEndian(request, maxWidth);
+        byte[] reply = Request('S', request, timeout);
+        if (reply.Length < 16)
+            throw new IOException($"The Game Host sent a screenshot reply of {reply.Length} bytes.");
+
+        uint width = BinaryPrimitives.ReadUInt32LittleEndian(reply);
+        uint height = BinaryPrimitives.ReadUInt32LittleEndian(reply.AsSpan(4));
+        ulong frame = BinaryPrimitives.ReadUInt64LittleEndian(reply.AsSpan(8));
+        return width == 0 || height == 0 ? null : new GameHostScreenshot((int)width, (int)height, (long)frame, reply[16..]);
+    }
 
     /// <summary>Sends a request frame and waits for the reply with the same id; returns the reply's payload after the id.</summary>
     /// <exception cref="IOException">The Game Host is gone.</exception>

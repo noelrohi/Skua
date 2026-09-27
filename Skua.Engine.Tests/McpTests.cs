@@ -55,6 +55,34 @@ public class McpTests
         Assert.StartsWith("ProtocolMismatch: ", ((TextContentBlock)result.Content.Single()).Text);
     }
 
+    [Fact]
+    public async Task The_screenshot_tool_returns_an_image_block_of_the_PNG()
+    {
+        await using EngineSandbox sandbox = new();
+        await using McpClient client = await ConnectAsync(sandbox);
+
+        CallToolResult result = await client.CallToolAsync("screenshot", new Dictionary<string, object?> { ["maxWidth"] = 479 },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotEqual(true, result.IsError);
+        ImageContentBlock image = Assert.Single(result.Content.OfType<ImageContentBlock>());
+        Assert.Equal("image/png", image.MimeType);
+        Assert.Equal((479, 275), ScreenshotTests.PngSize(image.DecodedData.ToArray()));
+    }
+
+    [Fact]
+    public async Task A_failed_screenshot_returns_isError_with_its_code()
+    {
+        await using EngineSandbox sandbox = new();
+        await using McpClient client = await ConnectAsync(sandbox);
+
+        CallToolResult result = await client.CallToolAsync("screenshot", new Dictionary<string, object?> { ["maxWidth"] = 0 },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsError);
+        Assert.StartsWith("InvalidArgument: ", ((TextContentBlock)result.Content.Single()).Text);
+    }
+
     /// <summary>Starts <c>skua mcp</c> with this sandbox's data folder and extra environment, and connects to it.</summary>
     internal static Task<McpClient> ConnectAsync(EngineSandbox sandbox, IDictionary<string, string>? environment = null)
     {
