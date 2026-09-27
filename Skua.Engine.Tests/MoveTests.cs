@@ -66,10 +66,12 @@ public class MoveTests
 
         LocationResult r2 = await session.Connection.JumpAsync("R2", "Right", cancellationToken: Ct);
         LocationResult again = await session.Connection.JumpAsync("r2", cancellationToken: Ct);
+        LocationResult pad = await session.Connection.JumpAsync("r2", "Left", cancellationToken: Ct);
         ControlException missing = await Assert.ThrowsAsync<ControlException>(() => session.Connection.JumpAsync("Nowhere", cancellationToken: Ct));
 
         Assert.Equal(new LocationResult("battleon", "r2", "Right", AlreadyThere: false), r2);
         Assert.Equal(new LocationResult("battleon", "r2", "Right", AlreadyThere: true), again);
+        Assert.Equal(new LocationResult("battleon", "r2", "Left", AlreadyThere: false), pad);
         Assert.Equal(ErrorCode.InvalidArgument, missing.Code);
         Assert.Contains("Enter, r2, r3", missing.Message);
     }

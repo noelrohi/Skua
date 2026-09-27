@@ -40,7 +40,7 @@ internal sealed partial class MoveOperations
 
     public async Task<LocationResult> JoinAsync(string map, string? cell, string? pad, int? timeoutSec, CancellationToken cancellationToken)
     {
-        if (!MapName().IsMatch(map))
+        if (map is null || !MapName().IsMatch(map))
             throw RpcErrors.Of(ErrorCode.InvalidArgument,
                 $"'{map}' isn't a map name: letters, digits and underscores, optionally with a room number, e.g. battleon or battleon-1234.");
         CheckPlace("cell", cell);
@@ -48,7 +48,7 @@ internal sealed partial class MoveOperations
         TimeSpan timeout = Timeout(timeoutSec, DefaultJoinTimeout);
 
         using IDisposable lease = await _slot.BeginAsync("join a map");
-        EnsurePlaying("join a map");
+        _slot.EnsurePlaying("join a map");
         return await Task.Run(() => Join(map.ToLowerInvariant(), cell, pad, timeout, cancellationToken), cancellationToken);
     }
 
@@ -61,7 +61,7 @@ internal sealed partial class MoveOperations
         TimeSpan timeout = Timeout(timeoutSec, DefaultJumpTimeout);
 
         using IDisposable lease = await _slot.BeginAsync("jump");
-        EnsurePlaying("jump");
+        _slot.EnsurePlaying("jump");
         return await Task.Run(() => Jump(cell, pad, Stopwatch.StartNew(), timeout, moved: false, cancellationToken), cancellationToken);
     }
 
@@ -84,7 +84,7 @@ internal sealed partial class MoveOperations
         {
             // The game ignores a transfer sent during its cooldown.
             while (!_wait.IsActionAvailable(GameActions.Transfer))
-                Step("join", name, waited, timeout, cancellationToken);
+                Step(Late, waited, timeout, cancellationToken);
             _map.JoinPacket(map, cell, pad);
 
             Stopwatch sent = Stopwatch.StartNew();
@@ -92,9 +92,12 @@ internal sealed partial class MoveOperations
             {
                 if (_map.RoomID != room && string.Equals(_map.Name, name, StringComparison.OrdinalIgnoreCase) && _map.Loaded)
                     return;
-                Step("join", name, waited, timeout, cancellationToken);
+                Step(Late, waited, timeout, cancellationToken);
             }
         }
+
+        string Late() =>
+            $"The player wasn't on {name} after {timeout.TotalSeconds:0} s; still on {_map.Name}. The game ignores a transfer to a map the player may not enter, e.g. a member-only or locked map.";
     }
 
     /// <summary>Jumps to the cell on the current map unless the player is there; <paramref name="moved"/> says whether a transfer came first.</summary>
@@ -104,37 +107,32 @@ internal sealed partial class MoveOperations
         // An empty list means the game didn't answer, so the game gets to judge the cell.
         string target = cells.Find(c => string.Equals(c, cell, StringComparison.OrdinalIgnoreCase))
             ?? (cells.Count == 0 ? cell : throw RpcErrors.Of(ErrorCode.InvalidArgument, $"{_map.Name} has no cell '{cell}'; its cells are {string.Join(", ", cells)}."));
-        if (InCell(target) && (pad is null || string.Equals(_player.Pad, pad, StringComparison.OrdinalIgnoreCase)))
+        if (There(target, pad))
             return Location(alreadyThere: !moved);
 
         _map.Jump(target, pad ?? DefaultPad);
-        while (!InCell(target))
-            Step("jump to", target, waited, timeout, cancellationToken);
+        while (!There(target, pad ?? DefaultPad))
+            Step(() => $"The player wasn't in {target} ({pad ?? DefaultPad}) after {timeout.TotalSeconds:0} s; still in {_player.Cell} ({_player.Pad}).",
+                waited, timeout, cancellationToken);
         return Location(alreadyThere: false);
     }
 
-    private bool InCell(string cell) => string.Equals(_player.Cell, cell, StringComparison.OrdinalIgnoreCase);
+    /// <summary>Whether the player is in the cell, and on the pad when one is given.</summary>
+    private bool There(string cell, string? pad) =>
+        string.Equals(_player.Cell, cell, StringComparison.OrdinalIgnoreCase) && (pad is null || string.Equals(_player.Pad, pad, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>Waits a moment, failing once the player is no longer playing, the time is up, or the call is cancelled.</summary>
-    private void Step(string action, string place, Stopwatch waited, TimeSpan timeout, CancellationToken cancellationToken)
+    /// <summary>Waits a moment, failing once the player is no longer playing, the time is up (with <paramref name="late"/>'s message), or the call is cancelled.</summary>
+    private void Step(Func<string> late, Stopwatch waited, TimeSpan timeout, CancellationToken cancellationToken)
     {
         if (_tracker.State != GameState.Playing)
-            throw RpcErrors.Of(ErrorCode.NotLoggedIn, $"The Test Account stopped playing before it could {action} {place}; see 'skua status'.");
+            throw RpcErrors.Of(ErrorCode.NotLoggedIn, "The Test Account stopped playing before the player got there; see 'skua status'.");
         if (waited.Elapsed > timeout)
-            throw RpcErrors.Of(ErrorCode.Timeout, action == "join"
-                ? $"The player wasn't on {place} after {timeout.TotalSeconds:0} s; still on {_map.Name}. The game ignores a transfer to a map the player may not enter, e.g. a member-only or locked map."
-                : $"The player wasn't in {place} after {timeout.TotalSeconds:0} s; still in {_player.Cell}.");
+            throw RpcErrors.Of(ErrorCode.Timeout, late());
         cancellationToken.WaitHandle.WaitOne(WaitStep);
         cancellationToken.ThrowIfCancellationRequested();
     }
 
     private LocationResult Location(bool alreadyThere) => new(_map.Name, _player.Cell, _player.Pad, alreadyThere);
-
-    private void EnsurePlaying(string action)
-    {
-        if (_tracker.State != GameState.Playing)
-            throw RpcErrors.Of(ErrorCode.NotLoggedIn, $"Can't {action}: the Test Account isn't playing; run 'skua login' first.");
-    }
 
     private static TimeSpan Timeout(int? timeoutSec, TimeSpan byDefault)
     {

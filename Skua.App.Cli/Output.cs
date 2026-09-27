@@ -71,7 +71,7 @@ internal static class Output
         return $"""
             Map       {map.Name} (room {map.RoomId})
             Cells     {string.Join(", ", map.Cells)}
-            Players   {string.Join(", ", players)}
+            Players   {(map.Players.Count > 0 ? string.Join(", ", players) : "none")}
             Monsters  {(map.Monsters.Count > 0 ? string.Join(", ", monsters) : "none")}
             """;
     }

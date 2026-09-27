@@ -113,7 +113,6 @@ public class McpTests
         CancellationToken ct = TestContext.Current.CancellationToken;
 
         IList<McpClientTool> tools = await client.ListToolsAsync(cancellationToken: ct);
-        CallToolResult early = await client.CallToolAsync("map", cancellationToken: ct);
         await client.CallToolAsync("login", new Dictionary<string, object?> { ["server"] = "Galanoth" }, cancellationToken: ct);
         CallToolResult join = await client.CallToolAsync("join", new Dictionary<string, object?> { ["map"] = "yulgar", ["cell"] = "Room", ["timeoutSec"] = 30 }, cancellationToken: ct);
         CallToolResult jump = await client.CallToolAsync("jump", new Dictionary<string, object?> { ["cell"] = "Enter", ["pad"] = "Right" }, cancellationToken: ct);
@@ -121,10 +120,12 @@ public class McpTests
         CallToolResult quests = await client.CallToolAsync("quests", new Dictionary<string, object?> { ["filter"] = "active" }, cancellationToken: ct);
         CallToolResult map = await client.CallToolAsync("map", cancellationToken: ct);
         CallToolResult drops = await client.CallToolAsync("drops", cancellationToken: ct);
+        await client.CallToolAsync("logout", cancellationToken: ct);
+        CallToolResult loggedOut = await client.CallToolAsync("map", cancellationToken: ct);
 
         Assert.Subset(tools.Select(t => t.Name).ToHashSet(), new HashSet<string> { "join", "jump", "inventory", "quests", "map", "drops" });
-        Assert.True(early.IsError);
-        Assert.StartsWith("NotLoggedIn: ", ((TextContentBlock)early.Content.Single()).Text);
+        Assert.True(loggedOut.IsError);
+        Assert.StartsWith("NotLoggedIn: ", ((TextContentBlock)loggedOut.Content.Single()).Text);
         Assert.Equal(new LocationResult("yulgar", "Room", "Spawn", false), JsonSerializer.Deserialize<LocationResult>(((TextContentBlock)join.Content.Single()).Text, ControlJson.Options));
         Assert.Equal("Right", jump.StructuredContent!.Value.GetProperty("pad").GetString());
         JsonElement temp = inventory.StructuredContent!.Value;

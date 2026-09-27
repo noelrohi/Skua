@@ -152,7 +152,7 @@ map.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
     return await connection.MapAsync(ct);
 }, Output.Map));
 
-Command drops = new("drops", "List the items dropped for the player and not yet picked up or rejected.");
+Command drops = new("drops", "List the items dropped for the player since the login and not yet picked up.");
 drops.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
 {
     using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);

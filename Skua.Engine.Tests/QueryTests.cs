@@ -84,7 +84,7 @@ public class QueryTests
     }
 
     [Fact]
-    public async Task Drops_lists_the_items_dropped_and_not_yet_picked_up()
+    public async Task Drops_lists_the_items_dropped_since_the_login_and_not_yet_picked_up()
     {
         await using EngineSandbox sandbox = new();
         await using GameFixture session = await GameFixture.StartAsync(sandbox);
@@ -95,9 +95,15 @@ public class QueryTests
         await session.GameHost.DoAsync("drop 40 1 Frogzard Scale");
         await session.GameHost.DoAsync("drop 41 1 Dragon Egg");
         DropsResult drops = await WaitForAsync(() => session.Connection.DropsAsync(Ct), d => d.Drops.Count == 2 && d.Drops[0].Qty == 3);
+        await session.GameHost.DoAsync("pickup 40");
+        DropsResult picked = await WaitForAsync(() => session.Connection.DropsAsync(Ct), d => d.Drops.Count == 1);
+        await session.Connection.LoginAsync("Sir Ver", cancellationToken: Ct);
+        DropsResult relogged = await session.Connection.DropsAsync(Ct);
 
         Assert.Empty(none.Drops);
         Assert.Equal([new DropDto(40, "Frogzard Scale", 3), new DropDto(41, "Dragon Egg", 1)], drops.Drops);
+        Assert.Equal([new DropDto(41, "Dragon Egg", 1)], picked.Drops);
+        Assert.Empty(relogged.Drops);
     }
 
     [Fact]

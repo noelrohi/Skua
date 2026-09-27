@@ -148,6 +148,9 @@ internal sealed class FakeGame
                     JsonObject item = Item(int.Parse(id), name, int.Parse(qty), 10, "Item");
                     Pext(new JsonObject { ["cmd"] = "dropItem", ["items"] = new JsonObject { [id] = item } });
                     return true;
+                case ["pickup", string id]:
+                    Pext(new JsonObject { ["cmd"] = "getDrop", ["ItemID"] = int.Parse(id), ["bSuccess"] = 1, ["iQty"] = 1, ["iQtyNow"] = 1, ["bBank"] = false });
+                    return true;
                 case ["cell", string cell]:
                     _cell = cell;
                     Packet($"%xt%zm%moveToCell%{_roomId}%{cell}%Spawn%");
@@ -188,6 +191,7 @@ internal sealed class FakeGame
         "world.myAvatar.objData.intMP" => _world ? 80 : null,
         "world.myAvatar.objData.intGold" => _world ? 5000 : null,
         "world.myAvatar.objData.iUpgDays" => _world ? -1 : null,
+        "world.myAvatar.objData.strUsername" => _world ? _username : null,
         "world.myAvatar.items" => _world ? Inventory() : null,
         "world.myAvatar.items.length" => _world ? Inventory().Count : null,
         "world.myAvatar.objData.iBagSlots" => _world ? 40 : null,

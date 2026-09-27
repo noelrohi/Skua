@@ -124,7 +124,10 @@ public partial interface IEngineRpc
     [JsonRpcMethod("map")]
     Task<MapDto> MapAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>The items dropped for the player and not yet picked up or rejected. Fails with <see cref="ErrorCode.NotLoggedIn"/> unless playing.</summary>
+    /// <summary>
+    /// The items dropped for the player since the login and not yet picked up; a rejected drop stays listed, since rejecting happens only in
+    /// the Game Client. Fails with <see cref="ErrorCode.NotLoggedIn"/> unless playing.
+    /// </summary>
     [JsonRpcMethod("drops")]
     Task<DropsResult> DropsAsync(CancellationToken cancellationToken = default);
 }

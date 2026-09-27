@@ -75,7 +75,7 @@ internal sealed class EngineTools(Func<EngineClientOptions> options)
         CallAsync(connection => connection.MapAsync(cancellationToken), cancellationToken);
 
     [McpServerTool(Name = "drops", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(DropsResult))]
-    [Description("The items dropped for the player and not yet picked up or rejected: id, name and qty. Fails with NotLoggedIn unless playing.")]
+    [Description("The items dropped for the player since the login and not yet picked up: id, name and qty (summed over repeat drops). A rejected drop stays listed, since rejecting happens only in the Game Client. Fails with NotLoggedIn unless playing.")]
     public Task<CallToolResult> Drops(CancellationToken cancellationToken) =>
         CallAsync(connection => connection.DropsAsync(cancellationToken), cancellationToken);
 

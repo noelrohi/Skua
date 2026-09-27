@@ -50,7 +50,7 @@ internal sealed class Engine : IEngineRpc
             gameHost.Tracker, slot);
         _moves = new MoveOperations(
             services.GetRequiredService<IScriptMap>(), services.GetRequiredService<IScriptPlayer>(), services.GetRequiredService<IScriptWait>(), gameHost.Tracker, slot);
-        _queries = new GameQueries(services.GetRequiredService<IScriptInterface>(), services.GetRequiredService<IFlashUtil>(), gameHost.Tracker);
+        _queries = new GameQueries(services.GetRequiredService<IScriptInterface>(), services.GetRequiredService<IFlashUtil>(), gameHost.Tracker, slot);
     }
 
     public static string Build { get; } =

@@ -174,7 +174,8 @@ public sealed record MonsterDto(int Id, int MapId, string Name, string Cell, int
 /// <param name="Cells">The map's cells, which <c>jump</c> takes.</param>
 public sealed record MapDto(string Name, int RoomId, IReadOnlyList<string> Cells, IReadOnlyList<MapPlayerDto> Players, IReadOnlyList<MonsterDto> Monsters);
 
-/// <summary>An item dropped for the player and not yet picked up or rejected.</summary>
+/// <summary>An item dropped for the player since the login and not yet picked up.</summary>
+/// <param name="Qty">How many dropped, over all the drops of the item.</param>
 public sealed record DropDto(int Id, string Name, int Qty);
 
 /// <summary>The reply to <c>drops</c>.</summary>

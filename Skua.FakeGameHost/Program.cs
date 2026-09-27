@@ -19,7 +19,7 @@
 // With `game <username> <password>` it also simulates the AQW game behind skua.swf (see FakeGame.cs), which accepts that
 // account; `servers <json>`, `connect-delay <ms>` and `reject <server> <message>` configure it, and `lose-connection <message>`,
 // `kick`, `logout-button`, `die`, `combat`, `afk`, `join <map>`, `cell <cell>`, `blip <ms>`, `connection-message <message>`, `broken-login`,
-// `lock-map <map>` (transfers to it are ignored) and `drop <id> <qty> <name>` act in it.
+// `lock-map <map>` (transfers to it are ignored), `drop <id> <qty> <name>` and `pickup <id>` act in it.
 // The call log adds ` lag-killed` to a screenshot taken while the game's lag killer hides the world, and records what the game did:
 // `tfer <map> <cell> <pad>` for each map transfer, `jump <cell> <pad>` and `loadBank`.
 //

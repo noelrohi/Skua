@@ -92,7 +92,6 @@ public class CliTests
         FakeKeychain keychain = new(sandbox);
         Dictionary<string, string> environment = GameFixture.Environment(new FakeGameHost(sandbox).Game(keychain, GameFixture.Servers), api, keychain);
 
-        ProcessResult notLoggedIn = await sandbox.RunCliAsync(environment, "join", "yulgar");
         await sandbox.RunCliAsync(environment, "login", "Galanoth");
         ProcessResult join = await sandbox.RunCliAsync(environment, "join", "yulgar", "Upstairs", "Left");
         ProcessResult jump = await sandbox.RunCliAsync(environment, "jump", "upstairs", "--json");
@@ -101,6 +100,8 @@ public class CliTests
         ProcessResult quests = await sandbox.RunCliAsync(environment, "quests", "active");
         ProcessResult map = await sandbox.RunCliAsync(environment, "map");
         ProcessResult drops = await sandbox.RunCliAsync(environment, "drops", "--json");
+        await sandbox.RunCliAsync(environment, "logout");
+        ProcessResult notLoggedIn = await sandbox.RunCliAsync(environment, "join", "yulgar");
 
         Assert.Equal(ExitCodes.For(ErrorCode.NotLoggedIn), notLoggedIn.ExitCode);
         Assert.Contains("isn't playing", notLoggedIn.Stderr);
