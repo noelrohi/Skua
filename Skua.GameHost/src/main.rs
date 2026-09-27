@@ -425,10 +425,21 @@ impl Host {
 
 /// Sends the 'I' reply: the frame, scaled down to `max_width` if wider, as PNG (w = h = 0 if none).
 fn screenshot_reply(id: u32, frames: u64, max_width: u32, image: Option<image::RgbaImage>) {
-    let Some(mut img) = image else {
-        bridge::send(frame::encode_image(id, 0, 0, frames, &[]));
-        return;
-    };
+    match image.map(|img| encode_screenshot(img, max_width)) {
+        Some(Ok((width, height, png))) => bridge::send(frame::encode_image(id, width, height, frames, &png)),
+        Some(Err(e)) => {
+            tracing::error!("screenshot PNG: {e}");
+            bridge::send(frame::encode_image(id, 0, 0, frames, &[]));
+        }
+        None => {
+            tracing::error!("screenshot: the renderer captured no frame");
+            bridge::send(frame::encode_image(id, 0, 0, frames, &[]));
+        }
+    }
+}
+
+/// The frame as PNG, scaled down to `max_width` (0 = native) if wider, keeping its aspect ratio; with its final size.
+fn encode_screenshot(mut img: image::RgbaImage, max_width: u32) -> image::ImageResult<(u32, u32, Vec<u8>)> {
     if max_width > 0 && img.width() > max_width {
         let height = (img.height() as f64 * max_width as f64 / img.width() as f64)
             .round()
@@ -436,11 +447,47 @@ fn screenshot_reply(id: u32, frames: u64, max_width: u32, image: Option<image::R
         img = image::imageops::resize(&img, max_width, height, image::imageops::FilterType::Triangle);
     }
     let mut png = Vec::new();
-    match img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png) {
-        Ok(()) => bridge::send(frame::encode_image(id, img.width(), img.height(), frames, &png)),
-        Err(e) => {
-            tracing::error!("screenshot PNG: {e}");
-            bridge::send(frame::encode_image(id, 0, 0, frames, &[]));
-        }
+    img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)?;
+    Ok((img.width(), img.height(), png))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::encode_screenshot;
+
+    fn stage() -> image::RgbaImage {
+        image::RgbaImage::from_pixel(958, 550, image::Rgba([32, 64, 128, 255]))
+    }
+
+    fn decoded_size(png: &[u8]) -> (u32, u32) {
+        let img = image::load_from_memory_with_format(png, image::ImageFormat::Png).expect("a PNG");
+        (img.width(), img.height())
+    }
+
+    #[test]
+    fn a_screenshot_keeps_the_native_size_without_max_width() {
+        let (w, h, png) = encode_screenshot(stage(), 0).unwrap();
+        assert_eq!((w, h), (958, 550));
+        assert_eq!(decoded_size(&png), (958, 550));
+    }
+
+    #[test]
+    fn max_width_scales_a_wider_frame_down_keeping_its_aspect_ratio() {
+        let (w, h, png) = encode_screenshot(stage(), 479).unwrap();
+        assert_eq!((w, h), (479, 275));
+        assert_eq!(decoded_size(&png), (479, 275));
+    }
+
+    #[test]
+    fn max_width_never_scales_up() {
+        let (w, h, _) = encode_screenshot(stage(), 2000).unwrap();
+        assert_eq!((w, h), (958, 550));
+    }
+
+    #[test]
+    fn a_tiny_max_width_keeps_at_least_one_row() {
+        let (w, h, png) = encode_screenshot(stage(), 1).unwrap();
+        assert_eq!((w, h), (1, 1));
+        assert_eq!(decoded_size(&png), (1, 1));
     }
 }

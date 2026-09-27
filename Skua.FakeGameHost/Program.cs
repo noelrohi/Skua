@@ -8,12 +8,17 @@
 //   repeat <n> <directive>  run <directive> n times, with {i} in it replaced by 0 to n-1
 //   corrupt               send a frame header declaring a length of 0
 //   reply <name> <xml>    answer every C call to <name> with <xml> (unscripted calls get <undefined/>)
-//   delay <name> <ms>     answer C calls to <name> after <ms>, so later calls are answered first
+//   delay <name> <ms>     answer C calls to <name> after <ms>, so later calls are answered first;
+//                         the name `screenshot` delays S requests the same way
+//   noimage               answer S requests with no image (w = h = 0), as when the Game Host can't capture
 //   sleep <ms>            pause
 //   exit <code>           exit at once
 //
 // Like skua-gamehost, it answers C calls with R, P pings with P and Q stats with Q, and exits when its stdin closes.
+// It answers S screenshots with I: a solid PNG of the 958x550 stage, scaled down to max_width like the real one, and a frame
+// number that rises with each capture. The call log records each S as `screenshot <max_width>`.
 using System.Buffers.Binary;
+using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -23,6 +28,8 @@ object writeLock = new();
 Dictionary<string, string> replies = new();
 Dictionary<string, int> delays = new();
 string? callLog = null;
+bool noImage = false;
+long frames = 0;
 
 void Send(char type, ReadOnlySpan<byte> payload)
 {
@@ -60,6 +67,9 @@ foreach (string line in scenario)
         case ["calllog", string file]:
             callLog = file;
             break;
+        case ["noimage"]:
+            noImage = true;
+            break;
     }
 }
 
@@ -89,6 +99,16 @@ Thread reader = new(() =>
                 break;
             case 'Q':
                 SendReply('Q', id, "{}");
+                break;
+            case 'S':
+                uint maxWidth = BinaryPrimitives.ReadUInt32LittleEndian(body.AsSpan(5));
+                if (callLog is not null)
+                    File.AppendAllLines(callLog, [$"screenshot {maxWidth}"]);
+                byte[] image = Screenshot(id, maxWidth);
+                if (delays.TryGetValue("screenshot", out int screenshotDelay))
+                    Task.Delay(screenshotDelay).ContinueWith(_ => Send('I', image));
+                else
+                    Send('I', image);
                 break;
         }
     }
@@ -133,4 +153,71 @@ void Run(string line)
             Environment.Exit(int.Parse(code));
             break;
     }
+}
+
+// The 'I' payload: id, w, h, frame, then the PNG.
+byte[] Screenshot(uint id, uint maxWidth)
+{
+    const int stageWidth = 958, stageHeight = 550;
+    long frame = Interlocked.Increment(ref frames);
+    (uint w, uint h) = noImage ? (0u, 0u)
+        : maxWidth > 0 && maxWidth < stageWidth ? (maxWidth, (uint)Math.Max(1, Math.Round(stageHeight * (double)maxWidth / stageWidth)))
+        : (stageWidth, stageHeight);
+    byte[] png = noImage ? [] : Png((int)w, (int)h);
+    byte[] payload = new byte[20 + png.Length];
+    BinaryPrimitives.WriteUInt32LittleEndian(payload, id);
+    BinaryPrimitives.WriteUInt32LittleEndian(payload.AsSpan(4), w);
+    BinaryPrimitives.WriteUInt32LittleEndian(payload.AsSpan(8), h);
+    BinaryPrimitives.WriteUInt64LittleEndian(payload.AsSpan(12), (ulong)frame);
+    png.CopyTo(payload, 20);
+    return payload;
+}
+
+// A solid-colour 8-bit RGB PNG.
+static byte[] Png(int width, int height)
+{
+    MemoryStream pixels = new();
+    using (ZLibStream zlib = new(pixels, CompressionLevel.Fastest, leaveOpen: true))
+    {
+        byte[] row = new byte[1 + width * 3];
+        for (int x = 0; x < width; x++)
+            (row[1 + x * 3], row[2 + x * 3], row[3 + x * 3]) = ((byte)0x20, (byte)0x40, (byte)0x80);
+        for (int y = 0; y < height; y++)
+            zlib.Write(row);
+    }
+
+    byte[] header = new byte[13];
+    BinaryPrimitives.WriteInt32BigEndian(header, width);
+    BinaryPrimitives.WriteInt32BigEndian(header.AsSpan(4), height);
+    header[8] = 8; // bit depth
+    header[9] = 2; // RGB
+    MemoryStream png = new();
+    png.Write([0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A]);
+    Chunk(png, "IHDR", header);
+    Chunk(png, "IDAT", pixels.ToArray());
+    Chunk(png, "IEND", []);
+    return png.ToArray();
+}
+
+static void Chunk(Stream png, string type, byte[] data)
+{
+    byte[] typed = [.. Encoding.ASCII.GetBytes(type), .. data];
+    Span<byte> number = stackalloc byte[4];
+    BinaryPrimitives.WriteInt32BigEndian(number, data.Length);
+    png.Write(number);
+    png.Write(typed);
+    BinaryPrimitives.WriteUInt32BigEndian(number, Crc32(typed));
+    png.Write(number);
+}
+
+static uint Crc32(byte[] bytes)
+{
+    uint crc = 0xFFFFFFFF;
+    foreach (byte b in bytes)
+    {
+        crc ^= b;
+        for (int k = 0; k < 8; k++)
+            crc = (crc & 1) != 0 ? 0xEDB88320 ^ (crc >> 1) : crc >> 1;
+    }
+    return ~crc;
 }

@@ -89,7 +89,11 @@ public sealed class EngineSandbox : IAsyncDisposable
 
     private Process LaunchCli(IDictionary<string, string> environment, string[] arguments)
     {
-        ProcessStartInfo startInfo = new(CliExecutable) { RedirectStandardError = true, RedirectStandardOutput = true, RedirectStandardInput = true };
+        // In the data folder, so files the CLI writes by default stay in the sandbox.
+        ProcessStartInfo startInfo = new(CliExecutable)
+        {
+            RedirectStandardError = true, RedirectStandardOutput = true, RedirectStandardInput = true, WorkingDirectory = SkuaDir,
+        };
         foreach (string argument in arguments)
             startInfo.ArgumentList.Add(argument);
         startInfo.Environment[EngineEndpoint.SkuaDirVariable] = SkuaDir;

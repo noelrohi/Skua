@@ -44,6 +44,9 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
     public Task<ScriptsUpdateResult> ScriptsUpdateAsync(CancellationToken cancellationToken) =>
         throw new InvalidOperationException("A client called scripts_update after a protocol mismatch.");
 
+    public Task<ScreenshotResult> ScreenshotAsync(int? maxWidth, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called screenshot after a protocol mismatch.");
+
     public Task ShutdownAsync(CancellationToken cancellationToken)
     {
         _stop.Cancel();

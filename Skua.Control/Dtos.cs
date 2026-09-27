@@ -53,6 +53,11 @@ public enum ScriptsUpdateMode
     UpToDate,
 }
 
+/// <summary>The reply to <c>screenshot</c>.</summary>
+/// <param name="Png">The PNG image; base64 on the wire.</param>
+/// <param name="Frame">An estimate of the Game Client's frame number when it was captured.</param>
+public sealed record ScreenshotResult(byte[] Png, int Width, int Height, long Frame);
+
 /// <summary>The reply to <c>scripts_update</c>.</summary>
 /// <param name="Commit">The Script Source commit the Scripts are now synced to.</param>
 /// <param name="Downloaded">How many Script files were downloaded.</param>

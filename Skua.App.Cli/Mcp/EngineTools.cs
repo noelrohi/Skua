@@ -37,19 +37,39 @@ internal sealed class EngineTools(Func<EngineClientOptions> options)
         CancellationToken cancellationToken = default) =>
         CallAsync(connection => connection.LogsAsync(kind, after, max, cancellationToken), cancellationToken);
 
-    /// <summary>Calls the Engine and returns the DTO as JSON text plus structured content, or the error code and message with isError.</summary>
-    private async Task<CallToolResult> CallAsync<T>(Func<EngineConnection, Task<T>> call, CancellationToken cancellationToken)
-    {
-        try
+    [McpServerTool(Name = "screenshot", ReadOnly = true)]
+    [Description("See the game: render a frame of the Game Client and return it as a PNG image, at the stage's native size (958x550) unless maxWidth scales it down. Calls made while a capture of the same size is in flight share it. Fails with GameHostDown when there is no Game Host, and with Timeout after 10 s.")]
+    public Task<CallToolResult> Screenshot(
+        [Description("Scale a wider frame down to this width, keeping its aspect ratio; omit it for the native size.")] int? maxWidth = null,
+        CancellationToken cancellationToken = default) =>
+        CallAsync(connection => connection.ScreenshotAsync(maxWidth, cancellationToken), shot => new CallToolResult
         {
-            using EngineConnection connection = await EngineClient.ConnectAsync(options(), cancellationToken);
-            T result = await call(connection);
+            Content =
+            [
+                ImageContentBlock.FromBytes(shot.Png, "image/png"),
+                new TextContentBlock { Text = $"{shot.Width}x{shot.Height} PNG of frame {shot.Frame}." },
+            ],
+        }, cancellationToken);
+
+    /// <summary>Calls the Engine and returns the DTO as JSON text plus structured content, or the error code and message with isError.</summary>
+    private Task<CallToolResult> CallAsync<T>(Func<EngineConnection, Task<T>> call, CancellationToken cancellationToken) =>
+        CallAsync(call, result =>
+        {
             JsonElement structured = JsonSerializer.SerializeToElement(result, ControlJson.Options);
             return new CallToolResult
             {
                 Content = [new TextContentBlock { Text = structured.GetRawText() }],
                 StructuredContent = structured,
             };
+        }, cancellationToken);
+
+    /// <summary>Calls the Engine and turns its reply into a result, or returns the error code and message with isError.</summary>
+    private async Task<CallToolResult> CallAsync<T>(Func<EngineConnection, Task<T>> call, Func<T, CallToolResult> toResult, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using EngineConnection connection = await EngineClient.ConnectAsync(options(), cancellationToken);
+            return toResult(await call(connection));
         }
         catch (ControlException e)
         {

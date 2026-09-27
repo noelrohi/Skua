@@ -96,6 +96,10 @@ public sealed class BridgeFlashUtil : IFlashUtil
         }
     }
 
+    /// <inheritdoc cref="GameHostProcess.Screenshot"/>
+    public GameHostScreenshot? Screenshot(uint maxWidth, TimeSpan timeout) =>
+        (_gameHost ?? throw new IOException("The Game Host hasn't started.")).Screenshot(maxWidth, timeout);
+
     public object FromFlashXml(XElement el) => FlashXml.FromFlashXml(el);
 
     public IFlashObject<T> CreateFlashObject<T>(string path) => new FlashObject<T>(Call<int>("lnkCreate", path), this);
