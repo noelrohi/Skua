@@ -87,10 +87,21 @@ public sealed class EngineSandbox : IAsyncDisposable
         return process;
     }
 
-    private Process LaunchCli(IDictionary<string, string> environment, string[] arguments)
+    /// <summary>
+    /// Starts <c>skua</c> on a pseudo-terminal, through macOS's <c>script</c>, as a developer runs it in a terminal: what is written to its
+    /// standard input is typed, and its output has the terminal's CRLF line ends and echo. Disposing the sandbox kills it.
+    /// </summary>
+    public Process StartCliInTerminal(IDictionary<string, string> environment, params string[] arguments)
+    {
+        Process process = LaunchCli(environment, ["-q", "/dev/null", CliExecutable, .. arguments], terminal: true);
+        _processes.Add(process);
+        return process;
+    }
+
+    private Process LaunchCli(IDictionary<string, string> environment, string[] arguments, bool terminal = false)
     {
         // In the data folder, so files the CLI writes by default stay in the sandbox.
-        ProcessStartInfo startInfo = new(CliExecutable)
+        ProcessStartInfo startInfo = new(terminal ? "/usr/bin/script" : CliExecutable)
         {
             RedirectStandardError = true,
             RedirectStandardOutput = true,
@@ -106,7 +117,8 @@ public sealed class EngineSandbox : IAsyncDisposable
             startInfo.Environment[key] = value;
 
         Process process = Process.Start(startInfo)!;
-        process.StandardInput.Close();
+        if (!terminal)
+            process.StandardInput.Close();
         return process;
     }
 

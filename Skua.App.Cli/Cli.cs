@@ -50,7 +50,7 @@ internal static class Cli
         }
     }
 
-    private static int Fail(bool json, ControlException e)
+    public static int Fail(bool json, ControlException e)
     {
         if (json)
             Console.WriteLine(JsonSerializer.Serialize(new ErrorOutput(new ErrorBody(e.Code, e.Message, e.Diagnostics)), Output.JsonOptions));

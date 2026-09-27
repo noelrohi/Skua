@@ -11,6 +11,7 @@ using Skua.App.Engine.Scripts;
 using Skua.Control;
 using Skua.Core.Interfaces;
 using Skua.MacOS.GameHost;
+using Skua.MacOS.Services;
 using StreamJsonRpc;
 
 namespace Skua.App.Engine;
@@ -39,6 +40,7 @@ internal sealed class Engine : IEngineRpc
     private readonly GameQueries _queries;
     private readonly ScriptOperations _scripts;
     private readonly EvalOperations _eval;
+    private readonly DialogOperations _dialogs;
 
     private Engine(EngineEndpoint endpoint, GameHostSupervisor gameHost, EngineLogs logs, IServiceProvider services)
     {
@@ -46,7 +48,9 @@ internal sealed class Engine : IEngineRpc
         _gameHost = gameHost;
         _logs = logs;
         IScriptManager manager = services.GetRequiredService<IScriptManager>();
-        ScriptRuns runs = new(logs, manager, services.GetRequiredService<IScriptOption>());
+        ScriptDialogBroker broker = services.GetRequiredService<ScriptDialogBroker>();
+        _dialogs = new DialogOperations(broker, logs);
+        ScriptRuns runs = new(logs, manager, services.GetRequiredService<IScriptOption>(), broker);
         ActionSlot slot = new();
         SemaphoreSlim compiling = new(1, 1);
         _scriptSource = new ScriptSourceOperations(services.GetRequiredService<IGetScriptsService>(), runs, slot, _shutdown.Token);
@@ -58,7 +62,7 @@ internal sealed class Engine : IEngineRpc
         _moves = new MoveOperations(
             services.GetRequiredService<IScriptMap>(), services.GetRequiredService<IScriptPlayer>(), services.GetRequiredService<IScriptWait>(), gameHost.Tracker, gameSlot);
         _queries = new GameQueries(services.GetRequiredService<IScriptInterface>(), services.GetRequiredService<IFlashUtil>(), gameHost.Tracker, gameSlot);
-        _scripts = new ScriptOperations(manager, runs, slot, compiling);
+        _scripts = new ScriptOperations(manager, runs, broker, slot, compiling);
         _eval = new EvalOperations(manager, services.GetRequiredService<IScriptInterface>(), logs, compiling);
     }
 
@@ -135,7 +139,7 @@ internal sealed class Engine : IEngineRpc
     public async Task<StatusDto> StatusAsync(CancellationToken cancellationToken)
     {
         EngineInfoDto engine = new(_endpoint.Name, Build, ControlProtocol.Version, Math.Round(_uptime.Elapsed.TotalSeconds, 1), Environment.ProcessId);
-        return new StatusDto(engine, _gameHost.Status() with { Player = await _queries.PlayerAsync() }, _scripts.Status());
+        return new StatusDto(engine, _gameHost.Status() with { Player = await _queries.PlayerAsync() }, _scripts.Status(), _dialogs.Pending());
     }
 
     public Task ShutdownAsync(CancellationToken cancellationToken)
@@ -212,6 +216,12 @@ internal sealed class Engine : IEngineRpc
 
     public Task<ScriptWaitResult> ScriptWaitAsync(int? timeoutSec, CancellationToken cancellationToken) =>
         _scripts.WaitAsync(timeoutSec, cancellationToken);
+
+    public Task<DialogsResult> DialogsAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new DialogsResult(_dialogs.Pending()));
+
+    public Task<DialogAnswerResult> DialogAnswerAsync(int id, string choice, CancellationToken cancellationToken) =>
+        Task.FromResult(_dialogs.Answer(id, choice));
 
     public Task<EvalResult> EvalAsync(string code, int? timeoutSec, CancellationToken cancellationToken) =>
         _eval.EvalAsync(code, timeoutSec, cancellationToken);

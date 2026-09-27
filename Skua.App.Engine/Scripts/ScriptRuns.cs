@@ -6,6 +6,7 @@ using Skua.App.Engine.Logging;
 using Skua.Control;
 using Skua.Core.Interfaces;
 using Skua.Core.Messaging;
+using Skua.MacOS.Services;
 
 namespace Skua.App.Engine.Scripts;
 
@@ -17,6 +18,8 @@ namespace Skua.App.Engine.Scripts;
 /// Core runs the Script; this follows it through Core's messages, so a start by anyone (the Engine, Core's auto-relogin, an <c>eval</c>)
 /// is seen. A run ends once Core has finished with its thread. When Core's auto-relogin stops a Script to restart it after logging
 /// back in, the run goes on, and the restart counts as a relogin of the same run.
+/// It also decides how Questions are answered: by the dialog mode and timeout of the run in progress, and with the fallback once the run
+/// is stopping or has ended, so no thread of it stays blocked on one.
 /// </remarks>
 internal sealed class ScriptRuns
 {
@@ -24,6 +27,7 @@ internal sealed class ScriptRuns
     private readonly EngineLogs _logs;
     private readonly IScriptManager _manager;
     private readonly IScriptOption _options;
+    private readonly ScriptDialogBroker _dialogs;
 
     private ScriptState _state = ScriptState.Idle;
     private Run? _run;
@@ -38,11 +42,13 @@ internal sealed class ScriptRuns
 
     private TaskCompletionSource _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public ScriptRuns(EngineLogs logs, IScriptManager manager, IScriptOption options)
+    public ScriptRuns(EngineLogs logs, IScriptManager manager, IScriptOption options, ScriptDialogBroker dialogs)
     {
         _logs = logs;
         _manager = manager;
         _options = options;
+        _dialogs = dialogs;
+        dialogs.Policy = DialogPolicy;
 
         IMessenger messenger = StrongReferenceMessenger.Default;
         int status = (int)MessageChannels.ScriptStatus;
@@ -121,6 +127,7 @@ internal sealed class ScriptRuns
             if (!_run.Started)
                 return (true, false);
             _run.StopRequested = true;
+            _dialogs.ResolveRun(_run.Number);
             if (!(_run.ReloginPending && _run.ThreadEnded))
             {
                 SetState(ScriptState.Stopping);
@@ -145,31 +152,11 @@ internal sealed class ScriptRuns
         }
     }
 
-    /// <summary>Waits until no run is in progress, or the timeout passes; returns whether none is.</summary>
-    public async Task<bool> WaitEndAsync(TimeSpan timeout, CancellationToken cancellationToken)
+    /// <summary>Whether a run is in progress, and a task that completes on the next change of the state or the run.</summary>
+    public (bool InProgress, Task Changed) Watch()
     {
-        Stopwatch waited = Stopwatch.StartNew();
-        while (true)
-        {
-            Task changed;
-            lock (_lock)
-            {
-                if (_run is null)
-                    return true;
-                changed = _changed.Task;
-            }
-            TimeSpan left = timeout - waited.Elapsed;
-            if (left <= TimeSpan.Zero)
-                return false;
-            try
-            {
-                await changed.WaitAsync(left, cancellationToken);
-            }
-            catch (TimeoutException)
-            {
-                return false;
-            }
-        }
+        lock (_lock)
+            return (_run is not null, _changed.Task);
     }
 
     private void OnStarted()
@@ -271,6 +258,7 @@ internal sealed class ScriptRuns
             if (_run is { Started: true, StopRequested: false })
             {
                 _run.ReloginPending = true;
+                _dialogs.ResolveRun(_run.Number);
                 Notify();
             }
         }
@@ -322,9 +310,25 @@ internal sealed class ScriptRuns
         _logs.Event(EventTypes.ScriptStopped, run.Error is null
             ? new { run = run.Number, script = run.Script, outcome, durationSec = duration, relogins = run.Relogins }
             : (object)new { run = run.Number, script = run.Script, outcome, durationSec = duration, relogins = run.Relogins, error = run.Error });
+        _dialogs.ResolveRun(run.Number);
         _run = null;
         _logs.Run = null;
         SetState(_stuck ? ScriptState.Stopping : ScriptState.Idle);
+    }
+
+    /// <summary>
+    /// The run in progress decides how a Question is answered, and a run that is stopping never waits for one; outside a run a Question waits
+    /// the default timeout.
+    /// </summary>
+    private QuestionPolicy DialogPolicy()
+    {
+        lock (_lock)
+        {
+            return _run is { } run
+                ? new QuestionPolicy(
+                    run.Dialogs == DialogMode.Ask && !run.StopRequested && !run.ReloginPending, TimeSpan.FromSeconds(run.DialogTimeoutSec), run.Script, run.Number)
+                : new QuestionPolicy(true, TimeSpan.FromSeconds(ScriptOperations.DefaultDialogTimeoutSec), null, null);
+        }
     }
 
     /// <summary>

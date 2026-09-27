@@ -136,6 +136,36 @@ public class McpTests
         Assert.Equal(0, drops.StructuredContent!.Value.GetProperty("drops").GetArrayLength());
     }
 
+    [Fact]
+    public async Task The_dialog_tools_list_and_answer_a_Question_with_the_same_arguments_and_DTOs()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeAqApi api = new(GameFixture.Servers);
+        FakeKeychain keychain = new(sandbox);
+        await using McpClient client = await ConnectAsync(sandbox, GameFixture.Environment(new FakeGameHost(sandbox).Game(keychain, GameFixture.Servers), api, keychain));
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        TestScripts.Write(sandbox, "Tests/Buttons.cs", TestScripts.Main("""
+            var picked = bot.ShowMessageBox("Which class?", "Class", "Warrior", "Mage");
+            bot.Log($"picked {picked.Text}");
+            """));
+
+        IList<McpClientTool> tools = await client.ListToolsAsync(cancellationToken: ct);
+        await client.CallToolAsync("script_start", new Dictionary<string, object?> { ["script"] = "Tests/Buttons.cs" }, cancellationToken: ct);
+        CallToolResult wait = await client.CallToolAsync("script_wait", new Dictionary<string, object?> { ["timeoutSec"] = 60 }, cancellationToken: ct);
+        CallToolResult dialogs = await client.CallToolAsync("dialogs", cancellationToken: ct);
+        QuestionDto question = JsonSerializer.Deserialize<DialogsResult>(((TextContentBlock)dialogs.Content.Single()).Text, ControlJson.Options)!.Questions.Single();
+        CallToolResult answer = await client.CallToolAsync("dialog_answer", new Dictionary<string, object?> { ["id"] = question.Id, ["choice"] = "mage" }, cancellationToken: ct);
+        CallToolResult again = await client.CallToolAsync("dialog_answer", new Dictionary<string, object?> { ["id"] = question.Id, ["choice"] = "Mage" }, cancellationToken: ct);
+
+        Assert.Subset(tools.Select(t => t.Name).ToHashSet(), new HashSet<string> { "dialogs", "dialog_answer" });
+        Assert.Equal("question", wait.StructuredContent!.Value.GetProperty("reason").GetString());
+        Assert.Equal(["Warrior", "Mage"], question.Choices);
+        Assert.Equal("Tests/Buttons.cs", question.Script);
+        Assert.Equal(new DialogAnswerResult(question.Id, "Mage"), JsonSerializer.Deserialize<DialogAnswerResult>(((TextContentBlock)answer.Content.Single()).Text, ControlJson.Options));
+        Assert.True(again.IsError);
+        Assert.StartsWith("DialogNotPending: ", ((TextContentBlock)again.Content.Single()).Text);
+    }
+
     /// <summary>Starts <c>skua mcp</c> with this sandbox's data folder and extra environment, and connects to it.</summary>
     internal static Task<McpClient> ConnectAsync(EngineSandbox sandbox, IDictionary<string, string>? environment = null)
     {

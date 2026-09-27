@@ -14,7 +14,7 @@ namespace Skua.App.Cli.Mcp;
 internal sealed class EngineTools(Func<EngineClientOptions> options)
 {
     [McpServerTool(Name = "status", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(StatusDto))]
-    [Description("Liveness and a summary of the Skua Engine and its game, with the player (name, level, class, hp/mp, gold, map/cell/pad, alive, inCombat) while playing. Never fails; fields that don't apply are null. Starts the Engine if it isn't running, but never logs in.")]
+    [Description("Liveness and a summary of the Skua Engine and its game, with the player (name, level, class, hp/mp, gold, map/cell/pad, alive, inCombat) while playing, and the pending Questions (pendingDialogs). Never fails; fields that don't apply are null. Starts the Engine if it isn't running, but never logs in.")]
     public Task<CallToolResult> Status(CancellationToken cancellationToken) =>
         CallAsync(connection => connection.StatusAsync(cancellationToken), cancellationToken);
 
@@ -104,7 +104,7 @@ internal sealed class EngineTools(Func<EngineClientOptions> options)
     public Task<CallToolResult> ScriptStart(
         [Description("A path in the Script Source, e.g. Farm/Leveling.cs (see scripts_search), or an absolute path to a Script file.")] string script,
         [Description("Option values by key, as script_options lists them, e.g. {\"count\": \"7\"}; the other options keep their stored values, which later runs also use.")] Dictionary<string, string>? options = null,
-        [Description("ask (the default): the run's Questions wait for an answer until dialogTimeoutSec; cancel: they get the fallback at once.")] DialogMode? dialogs = null,
+        [Description("ask (the default): the run's Questions wait for dialog_answer until dialogTimeoutSec, then get the fallback; cancel: they get the fallback at once. The fallback is null / DialogResult.Cancelled, never the first button.")] DialogMode? dialogs = null,
         [Description("Seconds a Question waits in ask mode: 120 by default.")] int? dialogTimeoutSec = null,
         CancellationToken cancellationToken = default) =>
         CallAsync(connection => connection.ScriptStartAsync(script, options, dialogs, dialogTimeoutSec, cancellationToken), cancellationToken);
@@ -120,11 +120,24 @@ internal sealed class EngineTools(Func<EngineClientOptions> options)
         CallAsync(connection => connection.ScriptStatusAsync(cancellationToken), cancellationToken);
 
     [McpServerTool(Name = "script_wait", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(ScriptWaitResult))]
-    [Description("Wait until the run ends (reason ended; also at once when none runs), a Question becomes pending (reason question), or the timeout passes (reason timeout), and return the Script status. Loop on it to supervise a long run.")]
+    [Description("Wait until a Question is pending (reason question; also at once when one already is: answer it with dialog_answer, or it gets the fallback at its expiresAt), the run ends (reason ended; also at once when none runs), or the timeout passes (reason timeout), and return the Script status. Loop on it to supervise a long run.")]
     public Task<CallToolResult> ScriptWait(
         [Description("Seconds to wait: 300 by default; 0 only looks.")] int? timeoutSec = null,
         CancellationToken cancellationToken = default) =>
         CallAsync(connection => connection.ScriptWaitAsync(timeoutSec, cancellationToken), cancellationToken);
+
+    [McpServerTool(Name = "dialogs", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(DialogsResult))]
+    [Description("The pending Questions: Script Dialogs that wait for an answer, such as a Script confirming an AC purchase. Each has id, caption, text, choices, raisedAt, expiresAt (when it gets the fallback: null / DialogResult.Cancelled, never the first button), the thread waiting on it and the Script. Answer with dialog_answer. Notices never wait; they arrive as notice.shown events in logs.")]
+    public Task<CallToolResult> Dialogs(CancellationToken cancellationToken) =>
+        CallAsync(connection => connection.DialogsAsync(cancellationToken), cancellationToken);
+
+    [McpServerTool(Name = "dialog_answer", UseStructuredContent = true, OutputSchemaType = typeof(DialogAnswerResult))]
+    [Description("Answer a pending Question with one of its choices; the first answer wins and the Script goes on with it. Fails with DialogNotPending when it was already answered, timed out or never existed, and with InvalidArgument for a choice it doesn't offer, which leaves it pending.")]
+    public Task<CallToolResult> DialogAnswer(
+        [Description("The Question's id, from dialogs, status or the question.raised event.")] int id,
+        [Description("One of the Question's choices, ignoring case, e.g. \"Yes\".")] string choice,
+        CancellationToken cancellationToken = default) =>
+        CallAsync(connection => connection.DialogAnswerAsync(id, choice, cancellationToken), cancellationToken);
 
     [McpServerTool(Name = "eval", UseStructuredContent = true, OutputSchemaType = typeof(EvalResult))]
     [Description("Compile a C# snippet against IScriptInterface Bot, as a Script body, and run it on its own thread, also while a Script runs. An expression (Bot.Player.Level) returns its value; statements return what they return. Returns the value as JSON (best effort), the Script log lines it wrote, and what it threw as error. Fails with CompileFailed and diagnostics, or Timeout after timeoutSec (the snippet keeps running). Reach anything the typed tools don't cover this way.")]

@@ -3,7 +3,8 @@ namespace Skua.Control;
 public sealed record HelloResult(int Protocol, string Build, string EngineName, int Pid);
 
 /// <summary>The reply to <c>status</c>. Fields that don't apply yet are null.</summary>
-public sealed record StatusDto(EngineInfoDto Engine, GameStatusDto Game, ScriptStatusDto Script);
+/// <param name="PendingDialogs">The pending Questions, oldest first, as <c>dialogs</c> lists them.</param>
+public sealed record StatusDto(EngineInfoDto Engine, GameStatusDto Game, ScriptStatusDto Script, IReadOnlyList<QuestionDto> PendingDialogs);
 
 public sealed record EngineInfoDto(string Name, string Build, int Protocol, double UptimeSec, int Pid);
 

@@ -98,4 +98,21 @@ public static class EventTypes
 
     /// <summary>A Script threw: <c>{run, script, error, stack}</c>, the stack cut to 4 KB. <c>script.stopped</c> follows.</summary>
     public const string ScriptError = "script.error";
+
+    /// <summary>
+    /// A Script showed a Notice, which never waits: <c>{caption, text, thread, script}</c>, the text cut to 64 KB and the script null outside a run.
+    /// </summary>
+    public const string NoticeShown = "notice.shown";
+
+    /// <summary>
+    /// A Script raised a Question: <c>{id, caption, text, choices, raisedAt, expiresAt, thread, script}</c>, as <c>dialogs</c> lists it.
+    /// In <see cref="DialogMode.Cancel"/> mode it expires as it is raised, and <c>question.answered</c> follows at once.
+    /// </summary>
+    public const string QuestionRaised = "question.raised";
+
+    /// <summary>
+    /// A Question was answered: <c>{id, choice, answeredBy}</c>, answeredBy one of <see cref="AnsweredBy"/>. The choice is null for the fallback,
+    /// which the Script sees as null or <c>DialogResult.Cancelled</c>.
+    /// </summary>
+    public const string QuestionAnswered = "question.answered";
 }

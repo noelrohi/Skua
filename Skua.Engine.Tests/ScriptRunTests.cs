@@ -325,14 +325,18 @@ public static class TestScripts
 /// <summary>Reads the <c>script.*</c> events.</summary>
 public static class ScriptEvents
 {
-    public static async Task<List<LogEntryDto>> AllAsync(EngineConnection connection)
+    public static async Task<List<LogEntryDto>> AllAsync(EngineConnection connection) =>
+        (await AllOfAsync(connection)).Where(e => e.Type!.StartsWith("script.", StringComparison.Ordinal)).ToList();
+
+    /// <summary>Every event held, of any type.</summary>
+    public static async Task<List<LogEntryDto>> AllOfAsync(EngineConnection connection)
     {
         List<LogEntryDto> events = [];
         string? cursor = null;
         while (true)
         {
             LogPage page = await connection.LogsAsync(LogKind.Events, cursor, 1000, TestContext.Current.CancellationToken);
-            events.AddRange(page.Entries.Where(e => e.Type!.StartsWith("script.", StringComparison.Ordinal)));
+            events.AddRange(page.Entries);
             cursor = page.Next;
             if (page.Entries.Count == 0)
                 return events;
