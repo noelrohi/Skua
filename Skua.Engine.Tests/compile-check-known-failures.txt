@@ -1,4 +1,4 @@
-# Scripts in noelrohi/Scripts@Skua that don't compile on any platform, so the compile check doesn't fail on them.
+# Scripts in noelrohi/Scripts@Skua that are broken upstream, not by macOS, so the compile check doesn't fail on them.
 # The check fails on a failure not listed here, and on a listed Script that no longer fails: take it off then.
 # One Script per line, as scripts.json names it; # starts a comment.
 

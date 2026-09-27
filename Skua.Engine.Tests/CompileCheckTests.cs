@@ -13,7 +13,8 @@ public class CompileCheckTests
     [Fact]
     public async Task The_check_compiles_every_Script_in_the_checkout_and_lists_each_failure_with_its_file_and_diagnostics()
     {
-        string checkout = FakeCheckout(new()
+        await using EngineSandbox sandbox = new();
+        string checkout = FakeCheckout(sandbox, new()
         {
             ["Lib.cs"] = """
                 public class Lib
@@ -51,21 +52,42 @@ public class CompileCheckTests
                 """,
             ["Story/Classless.cs"] = "// Nothing here.",
         });
-        await using EngineSandbox sandbox = new();
         await using GameFixture game = await CompileCheck.StartAsync(sandbox, checkout);
-        IReadOnlyList<string> scripts = CompileCheck.Scripts(checkout);
-        Directory.Delete(checkout, recursive: true);
 
-        CompileCheckResult result = await CompileCheck.RunAsync(game.Connection, scripts, Ct);
+        CompileCheckResult result = await CompileCheck.RunAsync(game.Connection, CompileCheck.Scripts(checkout), CompileCheck.ScriptTimeout, Ct);
 
         Assert.Equal(["Lib.cs", "Farm/Good.cs", "Farm/Broken.cs", "Other/WindowsOnly.cs", "Story/Classless.cs"], result.Checked);
         Assert.Equal(["Farm/Broken.cs", "Story/Classless.cs"], result.Failures.Select(f => f.Script));
         Assert.Contains(result.Failures[0].Diagnostics, d => d.Contains("CS1002", StringComparison.Ordinal));
         Assert.Contains(result.Failures[1].Diagnostics, d => d.Contains("no class definitions", StringComparison.Ordinal));
-        string report = result.Report();
+        Assert.Null(result.TimedOut);
+        string report = result.Report(new HashSet<string>());
         Assert.Contains("2 of 5 Scripts don't compile", report);
         Assert.Contains("Farm/Broken.cs", report);
         Assert.Contains("CS1002", report);
+    }
+
+    [Fact]
+    public async Task A_Script_that_takes_too_long_to_compile_stops_the_check_there_and_fails_it()
+    {
+        await using EngineSandbox sandbox = new();
+        string checkout = FakeCheckout(sandbox, new()
+        {
+            ["Farm/Broken.cs"] = TestScripts.Main("bot.Log(1)"),
+            ["Farm/Stuck.cs"] = TestScripts.Main("", "public TestScript() => System.Threading.Thread.Sleep(10_000);"),
+            ["Farm/After.cs"] = TestScripts.Main(""),
+        });
+        await using GameFixture game = await CompileCheck.StartAsync(sandbox, checkout);
+
+        CompileCheckResult result = await CompileCheck.RunAsync(game.Connection, CompileCheck.Scripts(checkout), TimeSpan.FromSeconds(3), Ct);
+
+        Assert.Equal("Farm/Stuck.cs", result.TimedOut);
+        Assert.Equal(["Farm/Broken.cs", "Farm/Stuck.cs"], result.Checked);
+        Assert.Equal(["Farm/Broken.cs"], result.Failures.Select(f => f.Script));
+        HashSet<string> known = ["Farm/Broken.cs", "Farm/After.cs"];
+        Assert.False(result.Passes(known));
+        Assert.Empty(result.NoLongerFailing(known));
+        Assert.Contains("stopped at Farm/Stuck.cs", result.Report(known));
     }
 
     [Fact]
@@ -75,6 +97,8 @@ public class CompileCheckTests
             [new("A.cs", ErrorCode.CompileFailed, ["(1,1): error CS1002: ; expected"]), new("B.cs", ErrorCode.CompileFailed, ["(2,2): error CS0246: CoreFarms"])]);
         HashSet<string> known = ["A.cs", "C.cs", "Gone.cs"];
 
+        Assert.False(result.Passes(known));
+        Assert.True(new CompileCheckResult(["A.cs", "C.cs"], [result.Failures[0], result.Failures[0] with { Script = "C.cs" }]).Passes(new HashSet<string> { "A.cs", "C.cs" }));
         Assert.Equal(["B.cs"], result.NewFailures(known).Select(f => f.Script));
         Assert.Equal(["C.cs", "Gone.cs"], result.NoLongerFailing(known));
         string report = result.Report(known);
@@ -85,20 +109,21 @@ public class CompileCheckTests
     }
 
     [Fact]
-    public void The_known_failures_file_lists_one_Script_per_line_with_comments_and_blank_lines_ignored()
+    public async Task The_known_failures_file_lists_one_Script_per_line_with_comments_and_blank_lines_ignored()
     {
-        string file = Path.GetTempFileName();
+        await using EngineSandbox sandbox = new();
+        string file = Path.Combine(sandbox.SkuaDir, CompileCheck.KnownFailuresFile);
         File.WriteAllText(file, """
-            # Broken upstream on every platform.
+            # Broken upstream, not by macOS.
 
             Templates/MergeTemplate.cs   # placeholders
+            Other/Issue#12.cs
             Core/TaskExtensions.cs
             """);
 
         IReadOnlySet<string> known = CompileCheck.KnownFailures(file);
-        File.Delete(file);
 
-        Assert.Equivalent(new[] { "Templates/MergeTemplate.cs", "Core/TaskExtensions.cs" }, known, strict: true);
+        Assert.Equivalent(new[] { "Templates/MergeTemplate.cs", "Other/Issue#12.cs", "Core/TaskExtensions.cs" }, known, strict: true);
     }
 
     /// <summary>
@@ -114,18 +139,18 @@ public class CompileCheckTests
         await using EngineSandbox sandbox = new();
         await using GameFixture game = await CompileCheck.StartAsync(sandbox, checkout!);
 
-        CompileCheckResult result = await CompileCheck.RunAsync(game.Connection, CompileCheck.Scripts(checkout!), Ct);
+        CompileCheckResult result = await CompileCheck.RunAsync(game.Connection, CompileCheck.Scripts(checkout!), CompileCheck.ScriptTimeout, Ct);
 
         IReadOnlySet<string> known = CompileCheck.KnownFailures(Path.Combine(AppContext.BaseDirectory, CompileCheck.KnownFailuresFile));
         string report = result.Report(known);
         TestContext.Current.TestOutputHelper?.WriteLine(report);
-        Assert.True(result.NewFailures(known).Count == 0 && result.NoLongerFailing(known).Count == 0, report);
+        Assert.True(result.Passes(known), report);
     }
 
-    /// <summary>A Scripts checkout with these files and a <c>scripts.json</c> listing them, in order, as the Scripts repository's generator writes it.</summary>
-    private static string FakeCheckout(Dictionary<string, string> files)
+    /// <summary>A Scripts checkout in the sandbox with these files and a <c>scripts.json</c> listing them, in order, as the Script Source's generator writes it.</summary>
+    private static string FakeCheckout(EngineSandbox sandbox, Dictionary<string, string> files)
     {
-        string checkout = Directory.CreateTempSubdirectory("skua-scripts-").FullName;
+        string checkout = Path.Combine(sandbox.SkuaDir, "checkout");
         foreach ((string path, string source) in files)
         {
             string file = Path.Combine(checkout, path);
