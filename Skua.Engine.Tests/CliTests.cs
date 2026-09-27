@@ -20,7 +20,7 @@ public class CliTests
         Assert.Equal("default", engine.GetProperty("name").GetString());
         Assert.Equal(ControlProtocol.Version, engine.GetProperty("protocol").GetInt32());
         Assert.True(json.RootElement.GetProperty("game").GetProperty("gameHostUp").GetBoolean());
-        Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty("game").GetProperty("state").ValueKind);
+        Assert.Equal("notStarted", json.RootElement.GetProperty("game").GetProperty("state").GetString());
     }
 
     [Fact]
@@ -54,6 +54,34 @@ public class CliTests
         Assert.False(File.Exists(sandbox.Endpoint.SocketPath));
         Assert.False(EngineLock.IsHeld(sandbox.Endpoint.LockPath));
         Assert.Contains("is stopped", after.Stdout);
+    }
+
+    [Fact]
+    public async Task Skua_login_logs_the_Test_Account_in_on_a_server_it_picks_with_no_credentials_passed()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeAqApi api = new(GameFixture.Servers);
+        FakeKeychain keychain = new(sandbox);
+        Dictionary<string, string> environment = GameFixture.Environment(new FakeGameHost(sandbox).Game(keychain, GameFixture.Servers), api, keychain);
+
+        ProcessResult servers = await sandbox.RunCliAsync(environment, "servers");
+        ProcessResult login = await sandbox.RunCliAsync(environment, "login");
+        ProcessResult status = await sandbox.RunCliAsync(environment, "status");
+        ProcessResult again = await sandbox.RunCliAsync(environment, "login", "Sir Ver", "--json");
+        ProcessResult logout = await sandbox.RunCliAsync(environment, "logout");
+        ProcessResult unknown = await sandbox.RunCliAsync(environment, "login", "Nowhere", "--timeout", "5");
+
+        Assert.Equal(0, servers.ExitCode);
+        Assert.Contains("Galanoth", servers.Stdout);
+        Assert.Matches(@"Artix\s+1500/1500\s+full", servers.Stdout);
+        Assert.Equal((0, "Logged in on Sir Ver."), (login.ExitCode, login.Stdout.Trim()));
+        Assert.Contains("playing on Sir Ver", status.Stdout);
+        Assert.Equal(0, again.ExitCode);
+        using (JsonDocument json = JsonDocument.Parse(again.Stdout))
+            Assert.True(json.RootElement.GetProperty("alreadyLoggedIn").GetBoolean());
+        Assert.Equal((0, "Logged out."), (logout.ExitCode, logout.Stdout.Trim()));
+        Assert.Equal(ExitCodes.For(ErrorCode.InvalidArgument), unknown.ExitCode);
+        Assert.Contains("No server is named 'Nowhere'", unknown.Stderr);
     }
 
     [Fact]

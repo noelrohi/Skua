@@ -1,14 +1,15 @@
 using System.Collections.Immutable;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using System.Text.Unicode;
 
 namespace Skua.App.Engine.Logging;
 
 /// <summary>
-/// Makes every string of an entry safe to store: it redacts each registered secret, then cuts the string to its size cap
-/// on a character boundary, so a cut never leaves part of a secret behind.
+/// Makes every string of an entry safe to store: it redacts each registered secret and the game's login token, then cuts the string
+/// to its size cap on a character boundary, so a cut never leaves part of a secret behind.
 /// </summary>
-internal sealed class LogScrubber
+internal sealed partial class LogScrubber
 {
     public const string Redacted = "[redacted]";
 
@@ -55,8 +56,17 @@ internal sealed class LogScrubber
     {
         foreach (string secret in _secrets)
             text = text.Replace(secret, Redacted, StringComparison.Ordinal);
+        if (text.Contains("<pword>", StringComparison.Ordinal))
+            text = LoginToken().Replace(text, "${open}" + Redacted + "${close}");
         return Cut(text, maxBytes, ref truncated);
     }
+
+    /// <summary>
+    /// The login token in the game's own trace of its login: <c>&lt;pword&gt;&lt;![CDATA[…]]&gt;&lt;/pword&gt;</c>, or without CDATA,
+    /// or to the end of the text when a cut or split line lost the closing tag.
+    /// </summary>
+    [GeneratedRegex(@"(?<open><pword>(?:<!\[CDATA\[)?).*?(?:(?<close>(?:\]\]>)?</pword>)|\z)", RegexOptions.Singleline)]
+    private static partial Regex LoginToken();
 
     private static string Cut(string text, int maxBytes, ref bool truncated)
     {

@@ -667,6 +667,7 @@ public class ScriptInterface : IScriptInterface, IScriptInterfaceManager, IDispo
             else if (startScript && !relogged)
                 Log("Skipping script restart because re-login did not succeed.");
             Log($"Re-login was {(relogged ? "successful" : "cancelled or unsuccessful")}.");
+            Messenger.Send<ReloginFinishedMessage, int>(new(relogged), (int)MessageChannels.GameEvents);
             _reloginCTS.Dispose();
             _reloginCTS = null;
             _reloginTask = null;

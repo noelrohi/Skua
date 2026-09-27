@@ -45,6 +45,15 @@ public sealed class EngineConnection : IDisposable
     public Task<LogPage> LogsAsync(LogKind kind = LogKind.All, string? after = null, int? max = null, CancellationToken cancellationToken = default) =>
         CallAsync(rpc => rpc.LogsAsync(kind, after, max, cancellationToken));
 
+    public Task<ServersResult> ServersAsync(CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.ServersAsync(cancellationToken));
+
+    public Task<LoginResult> LoginAsync(string? server = null, int? timeoutSec = null, CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.LoginAsync(server, timeoutSec, cancellationToken));
+
+    public Task<LogoutResult> LogoutAsync(CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.LogoutAsync(cancellationToken));
+
     /// <summary>Replays the entries after the cursor, then follows new ones until cancelled.</summary>
     public async IAsyncEnumerable<LogPage> SubscribeAsync(
         LogKind[] kinds, string? after = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)

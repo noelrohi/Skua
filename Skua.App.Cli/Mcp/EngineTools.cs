@@ -18,6 +18,24 @@ internal sealed class EngineTools(Func<EngineClientOptions> options)
     public Task<CallToolResult> Status(CancellationToken cancellationToken) =>
         CallAsync(connection => connection.StatusAsync(cancellationToken), cancellationToken);
 
+    [McpServerTool(Name = "servers", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(ServersResult))]
+    [Description("The game servers, fresh from the game's servers API: name, online, player count and max, member-only, language. Works before login.")]
+    public Task<CallToolResult> Servers(CancellationToken cancellationToken) =>
+        CallAsync(connection => connection.ServersAsync(cancellationToken), cancellationToken);
+
+    [McpServerTool(Name = "login", Idempotent = true, UseStructuredContent = true, OutputSchemaType = typeof(LoginResult))]
+    [Description("Log the Test Account in; the Engine reads its credentials from Keychain, so none are passed. Returns once it is playing with the world loaded, with the server it plays on. Already playing on the server (or on any, when none is named) it does nothing; playing elsewhere, it relogs. Fails with LoginFailed and the game's reason (e.g. a full server), Timeout, InvalidArgument for an unknown server, Busy during another login or logout, or ScriptRunning.")]
+    public Task<CallToolResult> Login(
+        [Description("A server name from the servers tool; omit it to let the Engine pick an online, non-member server with room.")] string? server = null,
+        [Description("Seconds to wait for the world: 120 by default.")] int? timeoutSec = null,
+        CancellationToken cancellationToken = default) =>
+        CallAsync(connection => connection.LoginAsync(server, timeoutSec, cancellationToken), cancellationToken);
+
+    [McpServerTool(Name = "logout", Idempotent = true, UseStructuredContent = true, OutputSchemaType = typeof(LogoutResult))]
+    [Description("Log out to the login screen. A deliberate logout: game.disconnected reports reason logout and the state becomes loginScreen. Does nothing when not logged in.")]
+    public Task<CallToolResult> Logout(CancellationToken cancellationToken) =>
+        CallAsync(connection => connection.LogoutAsync(cancellationToken), cancellationToken);
+
     [McpServerTool(Name = "scripts_search", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(ScriptsSearchResult))]
     [Description("Search the Script Source's scripts.json for Scripts. Every word of the query must appear in a Script's name, description, tags or path, ignoring case; an empty query matches every Script. Returns at most 100 Scripts, plus how many matched, each with whether it is downloaded and whether the Script Source has a newer version (outdated). Identify a Script by its path.")]
     public Task<CallToolResult> ScriptsSearch(

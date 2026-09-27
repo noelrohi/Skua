@@ -13,6 +13,7 @@ public sealed record QuestTurninMessage(int QuestID);
 public sealed record MapChangedMessage(string Map);
 public sealed record CellChangedMessage(string Map, string Cell, string Pad);
 public sealed record ReloginTriggeredMessage(bool WasKicked);
+public sealed record ReloginFinishedMessage(bool Success);
 public sealed record ExtensionPacketMessage(dynamic Packet);
 public sealed record PacketMessage(string Packet);
 public sealed record PlayerAFKMessage();

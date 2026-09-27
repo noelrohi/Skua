@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
+using Skua.App.Engine.Game;
 using Skua.App.Engine.Logging;
 using Skua.Control;
 using Skua.Core.Interfaces;
@@ -32,13 +33,18 @@ internal sealed class Engine : IEngineRpc
     private readonly ScriptSourceOperations _scriptSource;
     private readonly ScreenshotOperations _screenshots;
 
-    private Engine(EngineEndpoint endpoint, GameHostSupervisor gameHost, EngineLogs logs, IGetScriptsService scriptsService, BridgeFlashUtil flash)
+    private readonly GameOperations _game;
+
+    private Engine(EngineEndpoint endpoint, GameHostSupervisor gameHost, EngineLogs logs, IServiceProvider services)
     {
         _endpoint = endpoint;
         _gameHost = gameHost;
         _logs = logs;
-        _scriptSource = new ScriptSourceOperations(scriptsService, _shutdown.Token);
-        _screenshots = new ScreenshotOperations(flash);
+        _scriptSource = new ScriptSourceOperations(services.GetRequiredService<IGetScriptsService>(), _shutdown.Token);
+        _screenshots = new ScreenshotOperations(services.GetRequiredService<BridgeFlashUtil>(), services.GetRequiredService<IScriptOption>());
+        _game = new GameOperations(
+            services.GetRequiredService<IScriptServers>(), services.GetRequiredService<IScriptManager>(), services.GetRequiredService<IFlashUtil>(),
+            services.GetRequiredService<ISettingsService>(), logs, gameHost.Tracker);
     }
 
     public static string Build { get; } =
@@ -86,9 +92,9 @@ internal sealed class Engine : IEngineRpc
 
         // Like the Windows app, the Engine never disposes Core's singletons: they stop with the process, and their Dispose paths throw.
         ServiceProvider services = EngineServices.Build(launch, logs);
-        using (GameHostSupervisor gameHost = GameHostSupervisor.Start(services, logs))
+        using (GameHostSupervisor gameHost = GameHostSupervisor.Start(services, logs, endpoint.Name))
         {
-            Engine engine = new(endpoint, gameHost, logs, services.GetRequiredService<IGetScriptsService>(), services.GetRequiredService<BridgeFlashUtil>());
+            Engine engine = new(endpoint, gameHost, logs, services);
             await engine.ServeAsync();
         }
 
@@ -150,6 +156,14 @@ internal sealed class Engine : IEngineRpc
 
     public Task<ScreenshotResult> ScreenshotAsync(int? maxWidth, CancellationToken cancellationToken) =>
         _screenshots.TakeAsync(maxWidth, cancellationToken);
+
+    public Task<ServersResult> ServersAsync(CancellationToken cancellationToken) => _game.ServersAsync();
+
+    public Task<LoginResult> LoginAsync(string? server, int? timeoutSec, CancellationToken cancellationToken) =>
+        _game.LoginAsync(server, timeoutSec, cancellationToken);
+
+    public Task<LogoutResult> LogoutAsync(CancellationToken cancellationToken) =>
+        _game.LogoutAsync(cancellationToken);
 
     /// <summary>
     /// Takes the lock, or returns null when another Engine holds it. A client checking the lock holds it for an instant,

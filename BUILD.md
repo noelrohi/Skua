@@ -181,7 +181,7 @@ On macOS, building `Skua.App.Engine` also builds the Game Host and `skua.swf`, s
 
 The output is flat: `skua`, `skua-engine`, `skua-gamehost` and `skua.swf` sit side by side in `Skua.App.Engine/bin/<Configuration>/net10.0/` (and in `dotnet publish` output). `skua` auto-starts the `skua-engine` next to it, and the Engine starts the `skua-gamehost` and `skua.swf` next to itself. For MCP clients, the config is `{"command": "skua", "args": ["mcp"]}`. With a Homebrew .NET, set `DOTNET_ROOT` so the executables find the runtime.
 
-The tests never run the real Game Host: they point `SKUA_GAMEHOST` at a fake that speaks the Bridge frames.
+The tests never run the real Game Host, read the real Keychain or reach AQW: they point `SKUA_GAMEHOST` at a fake that speaks the Bridge frames and simulates the game, `SKUA_SECURITY_TOOL` at a fake `security`, and `SKUA_AQ_SERVERS_URL` at a fake servers API.
 
 Environment overrides:
 
@@ -192,6 +192,18 @@ Environment overrides:
 | `SKUA_ENGINE_SOCKET` | The Engine's socket (default `<SkuaDIR>/engines/default.sock`); the path must fit in 103 bytes |
 | `SKUA_GAMEHOST`, `SKUA_SWF` | The Game Host the Engine runs, and the SWF it loads (default `skua-gamehost` and `skua.swf` next to the Engine); a missing file fails the start with an error naming its path |
 | `SKUA_GITHUB_RAW_URL`, `SKUA_GITHUB_API_URL` | `https://raw.githubusercontent.com/` and `https://api.github.com/`, for tests |
+| `SKUA_AQ_SERVERS_URL` | The game's servers API, `http://content.aq.com/game/api/data/servers`, for tests |
+| `SKUA_SECURITY_TOOL` | The `security` tool that reads the Test Account from Keychain (default `/usr/bin/security`), for tests |
+
+#### Test Account
+
+`skua login [server]` (MCP `login`) logs the Test Account in and returns once it is playing; without a server it picks an online, non-member server with room, and `skua servers` lists them. It takes no credentials: the Engine reads the Test Account from Keychain, as the generic password under the service `skua-test-account`, whose account is the username. Add it once, and choose "Always Allow" when macOS asks whether `security` may read it (an unsigned rebuild may ask again):
+
+```sh
+security add-generic-password -s skua-test-account -a <username> -w   # asks for the password
+```
+
+To use another service, set `TestAccountService` under `client` in `<SkuaDIR>/Skua.settings.json`. The password and the game's `<pword>` login token are redacted from every log, event and log file. While logged in, the Engine holds off idle sleep (`pmset -g assertions` lists it) and keeps the lag killer on, lifting it for screenshots.
 
 #### Script Source
 

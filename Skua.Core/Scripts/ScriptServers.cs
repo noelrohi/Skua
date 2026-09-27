@@ -9,6 +9,12 @@ namespace Skua.Core.Scripts;
 
 public partial class ScriptServers : ObservableRecipient, IScriptServers
 {
+    /// <summary>Overrides the servers API's URL, for tests.</summary>
+    public const string ServersUrlEnvironmentVariable = "SKUA_AQ_SERVERS_URL";
+
+    private static readonly string ServersUrl =
+        Environment.GetEnvironmentVariable(ServersUrlEnvironmentVariable) is { Length: > 0 } url ? url : "http://content.aq.com/game/api/data/servers";
+
     public ScriptServers(
         Lazy<IFlashUtil> flash,
         Lazy<IScriptPlayer> player,
@@ -109,8 +115,7 @@ public partial class ScriptServers : ObservableRecipient, IScriptServers
 
         try
         {
-            string response = await ValidatedHttpExtensions.GetStringAsync(HttpClients.GetGHClient()
-, $"http://content.aq.com/game/api/data/servers")
+            string response = await ValidatedHttpExtensions.GetStringAsync(HttpClients.GetGHClient(), ServersUrl)
                 .ConfigureAwait(false);
 
             List<Server>? servers = JsonConvert.DeserializeObject<List<Server>>(response);
