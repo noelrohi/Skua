@@ -62,6 +62,7 @@ public partial interface IEngineRpc
     /// <param name="cancellationToken">Cancels the call.</param>
     [JsonRpcMethod("screenshot")]
     Task<ScreenshotResult> ScreenshotAsync(int? maxWidth = null, CancellationToken cancellationToken = default);
+
     /// <summary>The game servers, fresh from the game's servers API. Works before login.</summary>
     [JsonRpcMethod("servers")]
     Task<ServersResult> ServersAsync(CancellationToken cancellationToken = default);

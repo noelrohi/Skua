@@ -86,6 +86,10 @@ internal sealed class FakeGame
                     _connected = false;
                     _connDetail = message;
                     return true;
+                case ["connection-message", string message]:
+                    // Only the message: the connection flag may lag behind it.
+                    _connDetail = message;
+                    return true;
                 case ["blip", string ms]:
                     // The connection flag drops for a moment, as a slow poll can read it.
                     _connected = false;

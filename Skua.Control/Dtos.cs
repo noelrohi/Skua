@@ -17,7 +17,7 @@ public enum GameState
     /// <summary>There is no Game Host, or the Game Client hasn't loaded yet.</summary>
     NotStarted,
 
-    /// <summary>The Game Client has loaded and nobody is logged in; either there was no session yet, or it ended deliberately.</summary>
+    /// <summary>The Game Client has loaded and nobody is logged in; either nobody was yet, or the last login ended deliberately.</summary>
     LoginScreen,
 
     /// <summary>A login or relogin is in flight, or the player is logged in but the world hasn't loaded yet.</summary>
@@ -26,7 +26,7 @@ public enum GameState
     /// <summary>Logged in with the world loaded, alive or dead.</summary>
     Playing,
 
-    /// <summary>The session was lost without a deliberate logout; it stays so until a login, a relogin or a logout.</summary>
+    /// <summary>The Test Account was disconnected without a deliberate logout; it stays so until a login, a relogin or a logout.</summary>
     Disconnected,
 }
 
@@ -45,7 +45,7 @@ public sealed record ServersResult(IReadOnlyList<ServerDto> Servers);
 public sealed record LoginResult(string Server, bool AlreadyLoggedIn);
 
 /// <summary>The reply to <c>logout</c>.</summary>
-/// <param name="WasLoggedIn">Whether there was a session to end; a logout at the login screen does nothing.</param>
+/// <param name="WasLoggedIn">Whether the Test Account was logged in; a logout at the login screen does nothing.</param>
 public sealed record LogoutResult(bool WasLoggedIn);
 
 /// <summary>The data of a JSON-RPC error raised by the Engine.</summary>

@@ -125,7 +125,7 @@ public sealed class FakeKeychain
 
     public string Tool { get; }
 
-    /// <summary>One line per run of the tool, with its arguments.</summary>
+    /// <summary>One line per run of the tool, with its arguments; a read of the Test Account runs it once.</summary>
     public string Log { get; }
 
     public int Reads => File.Exists(Log) ? File.ReadAllLines(Log).Length : 0;
@@ -145,18 +145,15 @@ public sealed class FakeKeychain
         return tool;
     }
 
-    // The same output as `security find-generic-password -s <service> [-w]`, and its exit code 44 for a missing item.
+    // The same output as `security find-generic-password -s <service> -g`: the attributes on stdout and the password on stderr,
+    // or exit code 44 for a missing item.
     private static string Script(string service, string username, string password, string log) => $$"""
         #!/bin/sh
         echo "$*" >> '{{log}}'
-        [ "$1" = find-generic-password ] && [ "$2" = -s ] && [ "$3" = '{{service}}' ] || {
+        [ "$1" = find-generic-password ] && [ "$2" = -s ] && [ "$3" = '{{service}}' ] && [ "$4" = -g ] || {
             echo "security: SecKeychainSearchCopyNext: The specified item could not be found in the keychain." >&2
             exit 44
         }
-        if [ "$4" = -w ]; then
-            printf '%s\n' '{{password}}'
-            exit 0
-        fi
         cat <<'EOF'
         keychain: "/Users/tester/Library/Keychains/login.keychain-db"
         version: 512
@@ -168,5 +165,11 @@ public sealed class FakeKeychain
             "cdat"<timedate>=0x32303236303932363030303030305A00  "20260926000000Z\000"
             "svce"<blob>="{{service}}"
         EOF
+        printf '%s\n' '{{PasswordLine(password)}}' >&2
         """;
+
+    // security quotes a printable password, and shows any other as hex, then its escaped text.
+    private static string PasswordLine(string password) => password.All(char.IsAscii)
+        ? $"password: \"{password}\""
+        : $"password: 0x{Convert.ToHexString(Encoding.UTF8.GetBytes(password))}  \"{string.Concat(Encoding.UTF8.GetBytes(password).Select(b => b < 128 ? ((char)b).ToString() : $"\\{Convert.ToString(b, 8)}"))}\"";
 }

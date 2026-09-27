@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Security;
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using Microsoft.Extensions.DependencyInjection;
 using Skua.App.Engine.Logging;
 using Skua.Control;
 using Skua.Core.Interfaces;
@@ -10,7 +9,7 @@ using Skua.Core.Models.Servers;
 
 namespace Skua.App.Engine.Game;
 
-/// <summary><c>servers</c>, <c>login</c> and <c>logout</c>: the Test Account's session, through Core's own login cycle.</summary>
+/// <summary><c>servers</c>, <c>login</c> and <c>logout</c>: the Test Account's login, through Core's own login cycle.</summary>
 internal sealed class GameOperations
 {
     public static readonly TimeSpan DefaultLoginTimeout = TimeSpan.FromSeconds(120);
@@ -19,30 +18,29 @@ internal sealed class GameOperations
     private static readonly TimeSpan LogoutTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan WaitStep = TimeSpan.FromMilliseconds(250);
 
-    /// <summary>Connection messages that mean the game refused the login or dropped it, as opposed to its progress messages.</summary>
-    private static readonly string[] RefusalMessages = ["full", "try another", "has been lost", "restart", "maintenance", "failed", "invalid", "banned"];
+    /// <summary>
+    /// Connection messages, besides a lost connection, that mean the game refused the login, as opposed to its progress messages
+    /// ("Connecting to game server…", "Loading Map… 15%").
+    /// </summary>
+    private static readonly string[] RefusalMessages = ["full", "try another", "failed", "invalid", "banned"];
 
     private readonly IScriptServers _servers;
     private readonly IScriptManager _scripts;
-    private readonly IScriptOption _options;
     private readonly IFlashUtil _flash;
     private readonly ISettingsService _settings;
     private readonly EngineLogs _logs;
     private readonly GameStateTracker _tracker;
-    private readonly GameEventRecorder _recorder;
     private readonly SemaphoreSlim _busy = new(1, 1);
     private TestAccount? _account;
 
-    public GameOperations(IServiceProvider services, EngineLogs logs, GameStateTracker tracker, GameEventRecorder recorder)
+    public GameOperations(IScriptServers servers, IScriptManager scripts, IFlashUtil flash, ISettingsService settings, EngineLogs logs, GameStateTracker tracker)
     {
-        _servers = services.GetRequiredService<IScriptServers>();
-        _scripts = services.GetRequiredService<IScriptManager>();
-        _options = services.GetRequiredService<IScriptOption>();
-        _flash = services.GetRequiredService<IFlashUtil>();
-        _settings = services.GetRequiredService<ISettingsService>();
+        _servers = servers;
+        _scripts = scripts;
+        _flash = flash;
+        _settings = settings;
         _logs = logs;
         _tracker = tracker;
-        _recorder = recorder;
     }
 
     public async Task<ServersResult> ServersAsync()
@@ -119,12 +117,30 @@ internal sealed class GameOperations
     /// </summary>
     private async Task<LoginResult> LogInAsync(TestAccount account, Server server, TimeSpan timeout, CancellationToken cancellationToken)
     {
-        Stopwatch waited = Stopwatch.StartNew();
         string? before = _tracker.ConnectionMessage();
-        _recorder.SetUsername(account.Username);
         _servers.SetLoginInfo(account.Username, account.Password);
         Task relogin = Task.Factory.StartNew(() => _servers.Relogin(server.Name), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        try
+        {
+            return await WaitForWorldAsync(server, relogin, before, timeout, cancellationToken);
+        }
+        finally
+        {
+            // Core's relogin ends within seconds of connecting; the next login or logout mustn't overlap it.
+            try
+            {
+                await relogin;
+            }
+            catch (Exception e)
+            {
+                EngineLog.Write($"Core's relogin failed: {e}");
+            }
+        }
+    }
 
+    private async Task<LoginResult> WaitForWorldAsync(Server server, Task relogin, string? before, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        Stopwatch waited = Stopwatch.StartNew();
         // A relogin from another server is playing until Core has logged out.
         bool left = false;
         while (true)
@@ -136,13 +152,10 @@ internal sealed class GameOperations
             if (!_tracker.Ready)
                 throw RpcErrors.Of(ErrorCode.GameHostDown, "The Game Host went down during the login.");
             if (relogin.IsFaulted)
-            {
-                EngineLog.Write($"Core's relogin failed: {relogin.Exception!.InnerException}");
                 throw RpcErrors.Of(ErrorCode.LoginFailed, $"The login on {server.Name} failed: {relogin.Exception!.InnerException!.Message}");
-            }
             if (_tracker.TakeRefusal() is { } refusal)
                 throw RpcErrors.Of(ErrorCode.LoginFailed, $"The game refused the login on {server.Name}: {refusal}");
-            // Until Core's relogin has logged out and connected, the message may be the last session's.
+            // Until Core's relogin has logged out and connected, the message may be the previous login's.
             string? message = _tracker.ConnectionMessage();
             if (relogin.IsCompleted && message is not null && message != before && IsRefusal(message))
                 throw RpcErrors.Of(ErrorCode.LoginFailed, $"The login on {server.Name} failed: {message}");
@@ -151,10 +164,6 @@ internal sealed class GameOperations
                     $"The Test Account wasn't playing on {server.Name} after {timeout.TotalSeconds:0} s; the game shows {(message is null ? "no connection message" : $"'{message}'")}.");
             await Task.Delay(WaitStep, cancellationToken);
         }
-        await relogin;
-
-        // The Engine never shows the game, so nothing is lost by not drawing the world.
-        _options.LagKiller = true;
         string actual = !_flash.IsNull("objServerInfo") && _flash.GetGameObject<string>("objServerInfo.sName") is { Length: > 0 } name ? name : server.Name;
         return new LoginResult(actual, AlreadyLoggedIn: false);
     }
@@ -187,7 +196,8 @@ internal sealed class GameOperations
     // Core's relogin skips these, and would swap in another server.
     private static bool IsTest(Server server) => server.Name.Contains("Test", StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsRefusal(string message) => RefusalMessages.Any(m => message.Contains(m, StringComparison.OrdinalIgnoreCase));
+    private static bool IsRefusal(string message) =>
+        GameStateTracker.IsConnectionLost(message) || RefusalMessages.Any(m => message.Contains(m, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Reads the Test Account from Keychain once per Engine, and registers its password as a secret before anything can log it,

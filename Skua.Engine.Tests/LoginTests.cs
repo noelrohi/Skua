@@ -15,7 +15,7 @@ public class LoginTests
         await using EngineSandbox sandbox = new();
         await using FakeAqApi api = new(new FakeServer("Galanoth", Count: 120, Max: 1000), new FakeServer("Yorumi", Online: false, Member: true, Lang: "pt"));
         FakeKeychain keychain = new(sandbox);
-        (_, EngineConnection connection) = await sandbox.StartEngineAsync(Environment(new FakeGameHost(sandbox).Game(keychain), api, keychain));
+        (_, EngineConnection connection) = await sandbox.StartEngineAsync(GameFixture.Environment(new FakeGameHost(sandbox).Game(keychain), api, keychain));
         using (connection)
         {
             ServersResult result = await connection.ServersAsync(Ct);
@@ -33,7 +33,7 @@ public class LoginTests
         await using EngineSandbox sandbox = new();
         await using FakeAqApi api = new(new FakeServer("Galanoth")) { Down = true };
         FakeKeychain keychain = new(sandbox);
-        (_, EngineConnection connection) = await sandbox.StartEngineAsync(Environment(new FakeGameHost(sandbox).Game(keychain), api, keychain));
+        (_, EngineConnection connection) = await sandbox.StartEngineAsync(GameFixture.Environment(new FakeGameHost(sandbox).Game(keychain), api, keychain));
         using (connection)
         {
             ControlException e = await Assert.ThrowsAsync<ControlException>(() => connection.ServersAsync(Ct));
@@ -46,9 +46,9 @@ public class LoginTests
     public async Task Login_on_a_named_server_returns_once_playing_there()
     {
         await using EngineSandbox sandbox = new();
-        await using FakeAqApi api = new(Servers);
+        await using FakeAqApi api = new(GameFixture.Servers);
         FakeKeychain keychain = new(sandbox);
-        (_, EngineConnection connection) = await sandbox.StartEngineAsync(Environment(new FakeGameHost(sandbox).Game(keychain, Servers), api, keychain));
+        (_, EngineConnection connection) = await sandbox.StartEngineAsync(GameFixture.Environment(new FakeGameHost(sandbox).Game(keychain, GameFixture.Servers), api, keychain));
         using (connection)
         {
             await connection.WaitForEventAsync(EventTypes.GameLoaded);
@@ -61,7 +61,7 @@ public class LoginTests
             Assert.Equal("Galanoth", status.Game.Server);
             Assert.Equal(
                 [EventTypes.GameLoaded, "notStarted→loginScreen", "loginScreen→loggingIn", "loggingIn→playing"],
-                (await GameStateTests.GameEventsAsync(connection)).Select(GameStateTests.Describe));
+                (await GameEvents.AllAsync(connection)).Select(GameEvents.Describe));
         }
     }
 
@@ -69,7 +69,7 @@ public class LoginTests
     public async Task Login_without_a_server_picks_the_emptiest_online_non_member_server_with_room()
     {
         await using EngineSandbox sandbox = new();
-        await using Session session = await Session.StartAsync(sandbox);
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
 
         LoginResult result = await session.Connection.LoginAsync(cancellationToken: Ct);
 
@@ -80,7 +80,7 @@ public class LoginTests
     public async Task Login_on_the_current_server_does_nothing_and_on_another_relogs_without_a_disconnect()
     {
         await using EngineSandbox sandbox = new();
-        await using Session session = await Session.StartAsync(sandbox);
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
 
         LoginResult same = await session.Connection.LoginAsync("GALANOTH", cancellationToken: Ct);
@@ -94,15 +94,15 @@ public class LoginTests
         Assert.Equal(("Sir Ver", GameState.Playing), (status.Game.Server, status.Game.State));
         Assert.Equal(
             [EventTypes.GameLoaded, "notStarted→loginScreen", "loginScreen→loggingIn", "loggingIn→playing", "playing→loggingIn", "loggingIn→playing"],
-            (await GameStateTests.GameEventsAsync(session.Connection)).Select(GameStateTests.Describe));
-        Assert.Equal(2, session.Keychain.Reads);
+            (await GameEvents.AllAsync(session.Connection)).Select(GameEvents.Describe));
+        Assert.Equal(1, session.Keychain.Reads);
     }
 
     [Fact]
     public async Task A_server_the_game_refuses_fails_the_login_with_its_reason_and_is_no_disconnect()
     {
         await using EngineSandbox sandbox = new();
-        await using Session session = await Session.StartAsync(sandbox, fake => fake.Reject("Galanoth", "Server is Full. Try another server."));
+        await using GameFixture session = await GameFixture.StartAsync(sandbox, fake => fake.Reject("Galanoth", "Server is Full. Try another server."));
 
         ControlException e = await Assert.ThrowsAsync<ControlException>(() => session.Connection.LoginAsync("Galanoth", cancellationToken: Ct));
         StatusDto status = await session.Connection.StatusAsync(Ct);
@@ -110,7 +110,7 @@ public class LoginTests
         Assert.Equal(ErrorCode.LoginFailed, e.Code);
         Assert.Contains("Server is Full. Try another server.", e.Message);
         Assert.Equal(GameState.LoginScreen, status.Game.State);
-        Assert.DoesNotContain(await GameStateTests.GameEventsAsync(session.Connection), entry => entry.Type == EventTypes.GameDisconnected);
+        Assert.DoesNotContain(await GameEvents.AllAsync(session.Connection), entry => entry.Type == EventTypes.GameDisconnected);
     }
 
     [Theory]
@@ -121,7 +121,7 @@ public class LoginTests
     public async Task A_server_that_cant_be_used_fails_the_login_before_the_Keychain_is_read(string server, ErrorCode code, string message)
     {
         await using EngineSandbox sandbox = new();
-        await using Session session = await Session.StartAsync(sandbox);
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
 
         ControlException e = await Assert.ThrowsAsync<ControlException>(() => session.Connection.LoginAsync(server, cancellationToken: Ct));
 
@@ -134,12 +134,12 @@ public class LoginTests
     public async Task Without_a_Test_Account_in_Keychain_the_login_fails_naming_the_service()
     {
         await using EngineSandbox sandbox = new();
-        await using FakeAqApi api = new(Servers);
+        await using FakeAqApi api = new(GameFixture.Servers);
         FakeKeychain keychain = new(sandbox, service: "someone-else");
-        (_, EngineConnection connection) = await sandbox.StartEngineAsync(Environment(new FakeGameHost(sandbox).Game(keychain, Servers), api, keychain));
+        (_, EngineConnection connection) = await sandbox.StartEngineAsync(GameFixture.Environment(new FakeGameHost(sandbox).Game(keychain, GameFixture.Servers), api, keychain));
         using (connection)
         {
-            await connection.WaitForEventAsync(EventTypes.GameState, e => GameStateTests.To(e) == "loginScreen");
+            await connection.WaitForEventAsync(EventTypes.GameState, e => GameEvents.To(e) == "loginScreen");
 
             ControlException e = await Assert.ThrowsAsync<ControlException>(() => connection.LoginAsync("Galanoth", cancellationToken: Ct));
 
@@ -150,16 +150,31 @@ public class LoginTests
     }
 
     [Fact]
+    public async Task A_password_security_shows_as_hex_is_read_as_text()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeAqApi api = new(GameFixture.Servers);
+        FakeKeychain keychain = new(sandbox, password: "pässwörd-€");
+        (_, EngineConnection connection) = await sandbox.StartEngineAsync(GameFixture.Environment(new FakeGameHost(sandbox).Game(keychain, GameFixture.Servers), api, keychain));
+        using (connection)
+        {
+            LoginResult result = await connection.LoginAsync("Galanoth", cancellationToken: Ct);
+
+            Assert.Equal("Galanoth", result.Server);
+        }
+    }
+
+    [Fact]
     public async Task The_Keychain_service_is_an_Engine_setting()
     {
         await using EngineSandbox sandbox = new();
         File.WriteAllText(Path.Combine(sandbox.SkuaDir, "Skua.settings.json"), """{"client":{"TestAccountService":"my-test-account"}}""");
-        await using FakeAqApi api = new(Servers);
+        await using FakeAqApi api = new(GameFixture.Servers);
         FakeKeychain keychain = new(sandbox, service: "my-test-account");
-        (_, EngineConnection connection) = await sandbox.StartEngineAsync(Environment(new FakeGameHost(sandbox).Game(keychain, Servers), api, keychain));
+        (_, EngineConnection connection) = await sandbox.StartEngineAsync(GameFixture.Environment(new FakeGameHost(sandbox).Game(keychain, GameFixture.Servers), api, keychain));
         using (connection)
         {
-            await connection.WaitForEventAsync(EventTypes.GameState, e => GameStateTests.To(e) == "loginScreen");
+            await connection.WaitForEventAsync(EventTypes.GameState, e => GameEvents.To(e) == "loginScreen");
 
             LoginResult result = await connection.LoginAsync("Galanoth", cancellationToken: Ct);
 
@@ -171,7 +186,7 @@ public class LoginTests
     public async Task A_login_that_doesnt_reach_the_world_in_time_fails_with_Timeout()
     {
         await using EngineSandbox sandbox = new();
-        await using Session session = await Session.StartAsync(sandbox, fake => fake.ConnectDelay(30_000));
+        await using GameFixture session = await GameFixture.StartAsync(sandbox, fake => fake.ConnectDelay(30_000));
 
         ControlException e = await Assert.ThrowsAsync<ControlException>(() => session.Connection.LoginAsync("Galanoth", 2, Ct));
 
@@ -183,9 +198,9 @@ public class LoginTests
     public async Task Login_before_the_Game_Client_has_loaded_fails_with_GameHostDown()
     {
         await using EngineSandbox sandbox = new();
-        await using FakeAqApi api = new(Servers);
+        await using FakeAqApi api = new(GameFixture.Servers);
         FakeKeychain keychain = new(sandbox);
-        (_, EngineConnection connection) = await sandbox.StartEngineAsync(Environment(new FakeGameHost(sandbox), api, keychain));
+        (_, EngineConnection connection) = await sandbox.StartEngineAsync(GameFixture.Environment(new FakeGameHost(sandbox), api, keychain));
         using (connection)
         {
             ControlException e = await Assert.ThrowsAsync<ControlException>(() => connection.LoginAsync("Galanoth", cancellationToken: Ct));
@@ -198,10 +213,10 @@ public class LoginTests
     public async Task A_second_login_while_one_runs_fails_with_Busy()
     {
         await using EngineSandbox sandbox = new();
-        await using Session session = await Session.StartAsync(sandbox, fake => fake.ConnectDelay(2000));
+        await using GameFixture session = await GameFixture.StartAsync(sandbox, fake => fake.ConnectDelay(2000));
 
         Task<LoginResult> first = session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
-        await session.Connection.WaitForEventAsync(EventTypes.GameState, e => GameStateTests.To(e) == "loggingIn");
+        await session.Connection.WaitForEventAsync(EventTypes.GameState, e => GameEvents.To(e) == "loggingIn");
         ControlException e = await Assert.ThrowsAsync<ControlException>(() => session.Connection.LogoutAsync(Ct));
 
         Assert.Equal(ErrorCode.Busy, e.Code);
@@ -212,7 +227,7 @@ public class LoginTests
     public async Task Logout_returns_to_the_login_screen_as_a_deliberate_disconnect()
     {
         await using EngineSandbox sandbox = new();
-        await using Session session = await Session.StartAsync(sandbox);
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
 
         LogoutResult result = await session.Connection.LogoutAsync(Ct);
@@ -224,7 +239,7 @@ public class LoginTests
         Assert.Equal((GameState.LoginScreen, null), (status.Game.State, status.Game.Server));
         Assert.Equal(
             [EventTypes.GameLoaded, "notStarted→loginScreen", "loginScreen→loggingIn", "loggingIn→playing", "game.disconnected logout", "playing→loginScreen"],
-            (await GameStateTests.GameEventsAsync(session.Connection)).Select(GameStateTests.Describe));
+            (await GameEvents.AllAsync(session.Connection)).Select(GameEvents.Describe));
     }
 
     [Fact]
@@ -232,7 +247,7 @@ public class LoginTests
     {
         const string Token = "Tok3n-abc123";
         await using EngineSandbox sandbox = new();
-        LoginTests.Session session = await Session.StartAsync(sandbox);
+        GameFixture session = await GameFixture.StartAsync(sandbox);
         await using (session)
         {
             string password = session.Keychain.Password;
@@ -240,6 +255,7 @@ public class LoginTests
             LoginResult login = await connection.LoginAsync("Galanoth", cancellationToken: Ct);
             // The game's own trace of its login, and a careless one of the password.
             await session.GameHost.DoAsync($"send F [Net] [Sending] <msg t='sys'><body action='login' r='0'><login z='zone_master'><nick><![CDATA[SPIDER#0001~{session.Keychain.Username}~4.372]]></nick><pword><![CDATA[{Token}]]></pword></login></body></msg>");
+            await session.GameHost.DoAsync($"send F [Net] [Sending] <msg><login><pword><![CDATA[{Token}");
             await session.GameHost.DoAsync($"send F debug: password is {password}");
             await connection.WaitForLogsAsync(LogKind.Flash, 1, e => e.Text!.StartsWith("debug: password is", StringComparison.Ordinal));
             await connection.LogoutAsync(Ct);
@@ -272,7 +288,7 @@ public class LoginTests
     public async Task The_Engine_holds_off_idle_sleep_while_logged_in()
     {
         await using EngineSandbox sandbox = new();
-        await using Session session = await Session.StartAsync(sandbox);
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
         string assertion = $"pid {session.Engine.Id}(skua-engine)";
 
         bool before = (await AssertionsAsync()).Contains(assertion);
@@ -291,7 +307,7 @@ public class LoginTests
     public async Task The_lag_killer_is_on_after_login_and_lifted_for_a_screenshot()
     {
         await using EngineSandbox sandbox = new();
-        await using Session session = await Session.StartAsync(sandbox);
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
         await WaitForCallAsync(session.GameHost, "killLag true");
 
@@ -325,58 +341,5 @@ public class LoginTests
         string output = await pmset.StandardOutput.ReadToEndAsync(Ct);
         await pmset.WaitForExitAsync(Ct);
         return output;
-    }
-
-    internal static readonly FakeServer[] Servers =
-    [
-        new("Artix", Count: 1500, Max: 1500),
-        new("Galanoth", Count: 300),
-        new("Yorumi", Count: 10, Member: true),
-        new("Twig", Count: 50, Online: false),
-        new("TestServer", Count: 0),
-        new("Sir Ver", Count: 200),
-    ];
-
-    internal static Dictionary<string, string> Environment(FakeGameHost gameHost, FakeAqApi api, FakeKeychain keychain) =>
-        new[] { gameHost.Environment(), api.Environment(), keychain.Environment() }.SelectMany(e => e).ToDictionary();
-
-    /// <summary>An Engine whose simulated game has loaded, with the servers API and a Test Account in the fake Keychain.</summary>
-    internal sealed class Session : IAsyncDisposable
-    {
-        private readonly FakeAqApi _api;
-
-        private Session(FakeAqApi api, FakeKeychain keychain, FakeGameHost gameHost, Process engine, EngineConnection connection)
-        {
-            _api = api;
-            Keychain = keychain;
-            GameHost = gameHost;
-            Engine = engine;
-            Connection = connection;
-        }
-
-        public FakeKeychain Keychain { get; }
-
-        public FakeGameHost GameHost { get; }
-
-        public Process Engine { get; }
-
-        public EngineConnection Connection { get; }
-
-        public static async Task<Session> StartAsync(EngineSandbox sandbox, Func<FakeGameHost, FakeGameHost>? configure = null)
-        {
-            FakeAqApi api = new(Servers);
-            FakeKeychain keychain = new(sandbox);
-            FakeGameHost gameHost = new FakeGameHost(sandbox).Game(keychain, Servers).LogCalls();
-            gameHost = configure?.Invoke(gameHost) ?? gameHost;
-            (Process engine, EngineConnection connection) = await sandbox.StartEngineAsync(Environment(gameHost, api, keychain));
-            await connection.WaitForEventAsync(EventTypes.GameState, e => GameStateTests.To(e) == "loginScreen");
-            return new Session(api, keychain, gameHost, engine, connection);
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            Connection.Dispose();
-            await _api.DisposeAsync();
-        }
     }
 }

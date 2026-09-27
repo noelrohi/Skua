@@ -35,14 +35,16 @@ internal sealed class Engine : IEngineRpc
 
     private readonly GameOperations _game;
 
-    private Engine(EngineEndpoint endpoint, GameHostSupervisor gameHost, EngineLogs logs, IServiceProvider services, GameStateTracker tracker)
+    private Engine(EngineEndpoint endpoint, GameHostSupervisor gameHost, EngineLogs logs, IServiceProvider services)
     {
         _endpoint = endpoint;
         _gameHost = gameHost;
         _logs = logs;
         _scriptSource = new ScriptSourceOperations(services.GetRequiredService<IGetScriptsService>(), _shutdown.Token);
         _screenshots = new ScreenshotOperations(services.GetRequiredService<BridgeFlashUtil>(), services.GetRequiredService<IScriptOption>());
-        _game = new GameOperations(services, logs, tracker, gameHost.Recorder);
+        _game = new GameOperations(
+            services.GetRequiredService<IScriptServers>(), services.GetRequiredService<IScriptManager>(), services.GetRequiredService<IFlashUtil>(),
+            services.GetRequiredService<ISettingsService>(), logs, gameHost.Tracker);
     }
 
     public static string Build { get; } =
@@ -90,10 +92,9 @@ internal sealed class Engine : IEngineRpc
 
         // Like the Windows app, the Engine never disposes Core's singletons: they stop with the process, and their Dispose paths throw.
         ServiceProvider services = EngineServices.Build(launch, logs);
-        GameStateTracker tracker = new(services.GetRequiredService<IFlashUtil>(), logs, new PowerAssertion($"Skua Engine '{endpoint.Name}' is logged in"));
-        using (GameHostSupervisor gameHost = GameHostSupervisor.Start(services, logs, tracker))
+        using (GameHostSupervisor gameHost = GameHostSupervisor.Start(services, logs, endpoint.Name))
         {
-            Engine engine = new(endpoint, gameHost, logs, services, tracker);
+            Engine engine = new(endpoint, gameHost, logs, services);
             await engine.ServeAsync();
         }
 
@@ -155,6 +156,7 @@ internal sealed class Engine : IEngineRpc
 
     public Task<ScreenshotResult> ScreenshotAsync(int? maxWidth, CancellationToken cancellationToken) =>
         _screenshots.TakeAsync(maxWidth, cancellationToken);
+
     public Task<ServersResult> ServersAsync(CancellationToken cancellationToken) => _game.ServersAsync();
 
     public Task<LoginResult> LoginAsync(string? server, int? timeoutSec, CancellationToken cancellationToken) =>

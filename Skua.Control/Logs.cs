@@ -68,7 +68,7 @@ public static class EventTypes
     public const string GameState = "game.state";
 
     /// <summary>
-    /// The session ended: <c>{reason, detail?}</c>. The reason is the first that applies of <c>gameHostExited</c>, <c>connectionLost</c>
+    /// The Test Account was disconnected: <c>{reason, detail?}</c>. The reason is the first that applies of <c>gameHostExited</c>, <c>connectionLost</c>
     /// (with the game's connection message as detail), <c>kicked</c> and <c>logout</c> (deliberate: the <c>logout</c> op, a Script or the
     /// in-game button). A failed login and a relogin's own logout aren't disconnects.
     /// </summary>

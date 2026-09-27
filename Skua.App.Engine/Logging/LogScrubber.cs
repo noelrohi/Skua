@@ -61,8 +61,11 @@ internal sealed partial class LogScrubber
         return Cut(text, maxBytes, ref truncated);
     }
 
-    /// <summary>The login token in the game's own trace of its login: <c>&lt;pword&gt;&lt;![CDATA[…]]&gt;&lt;/pword&gt;</c>, or without CDATA.</summary>
-    [GeneratedRegex(@"(?<open><pword>(?:<!\[CDATA\[)?).*?(?<close>(?:\]\]>)?</pword>)", RegexOptions.Singleline)]
+    /// <summary>
+    /// The login token in the game's own trace of its login: <c>&lt;pword&gt;&lt;![CDATA[…]]&gt;&lt;/pword&gt;</c>, or without CDATA,
+    /// or to the end of the text when a cut or split line lost the closing tag.
+    /// </summary>
+    [GeneratedRegex(@"(?<open><pword>(?:<!\[CDATA\[)?).*?(?:(?<close>(?:\]\]>)?</pword>)|\z)", RegexOptions.Singleline)]
     private static partial Regex LoginToken();
 
     private static string Cut(string text, int maxBytes, ref bool truncated)

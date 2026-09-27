@@ -60,9 +60,9 @@ public class CliTests
     public async Task Skua_login_logs_the_Test_Account_in_on_a_server_it_picks_with_no_credentials_passed()
     {
         await using EngineSandbox sandbox = new();
-        await using FakeAqApi api = new(LoginTests.Servers);
+        await using FakeAqApi api = new(GameFixture.Servers);
         FakeKeychain keychain = new(sandbox);
-        Dictionary<string, string> environment = LoginTests.Environment(new FakeGameHost(sandbox).Game(keychain, LoginTests.Servers), api, keychain);
+        Dictionary<string, string> environment = GameFixture.Environment(new FakeGameHost(sandbox).Game(keychain, GameFixture.Servers), api, keychain);
 
         ProcessResult servers = await sandbox.RunCliAsync(environment, "servers");
         ProcessResult login = await sandbox.RunCliAsync(environment, "login");

@@ -87,9 +87,9 @@ public class McpTests
     public async Task The_login_tools_log_in_and_out_with_the_same_arguments_and_DTOs()
     {
         await using EngineSandbox sandbox = new();
-        await using FakeAqApi api = new(LoginTests.Servers);
+        await using FakeAqApi api = new(GameFixture.Servers);
         FakeKeychain keychain = new(sandbox);
-        await using McpClient client = await ConnectAsync(sandbox, LoginTests.Environment(new FakeGameHost(sandbox).Game(keychain, LoginTests.Servers), api, keychain));
+        await using McpClient client = await ConnectAsync(sandbox, GameFixture.Environment(new FakeGameHost(sandbox).Game(keychain, GameFixture.Servers), api, keychain));
 
         IList<McpClientTool> tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
         CallToolResult servers = await client.CallToolAsync("servers", cancellationToken: TestContext.Current.CancellationToken);
@@ -98,7 +98,7 @@ public class McpTests
         CallToolResult logout = await client.CallToolAsync("logout", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Subset(tools.Select(t => t.Name).ToHashSet(), new HashSet<string> { "servers", "login", "logout" });
-        Assert.Equal(LoginTests.Servers.Length, servers.StructuredContent!.Value.GetProperty("servers").GetArrayLength());
+        Assert.Equal(GameFixture.Servers.Length, servers.StructuredContent!.Value.GetProperty("servers").GetArrayLength());
         Assert.Equal(new LoginResult("Galanoth", false), JsonSerializer.Deserialize<LoginResult>(((TextContentBlock)login.Content.Single()).Text, ControlJson.Options));
         Assert.True(logout.StructuredContent!.Value.GetProperty("wasLoggedIn").GetBoolean());
     }

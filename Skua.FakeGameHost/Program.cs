@@ -18,7 +18,7 @@
 //
 // With `game <username> <password>` it also simulates the AQW game behind skua.swf (see FakeGame.cs), which accepts that
 // account; `servers <json>`, `connect-delay <ms>` and `reject <server> <message>` configure it, and `lose-connection <message>`,
-// `kick`, `logout-button`, `die`, `afk`, `join <map>`, `cell <cell>`, `blip <ms>` and `broken-login` act in it.
+// `kick`, `logout-button`, `die`, `afk`, `join <map>`, `cell <cell>`, `blip <ms>`, `connection-message <message>` and `broken-login` act in it.
 // The call log adds ` lag-killed` to a screenshot taken while the game's lag killer hides the world.
 //
 // Like skua-gamehost, it answers C calls with R, P pings with P and Q stats with Q, and exits when its stdin closes.
@@ -109,10 +109,11 @@ Thread reader = new(() =>
         switch ((char)body[0])
         {
             case 'C':
-                string name = Regex.Match(Encoding.UTF8.GetString(body, 5, body.Length - 5), "name=\"([^\"]*)\"").Groups[1].Value;
+                string invoke = Encoding.UTF8.GetString(body, 5, body.Length - 5);
+                string name = Regex.Match(invoke, "name=\"([^\"]*)\"").Groups[1].Value;
                 if (callLog is not null)
-                    File.AppendAllLines(callLog, [name == "killLag" ? $"killLag {Regex.Match(Encoding.UTF8.GetString(body, 5, body.Length - 5), "<(true|false)/>").Groups[1].Value}" : name]);
-                string reply = game?.Answer(Encoding.UTF8.GetString(body, 5, body.Length - 5)) ?? replies.GetValueOrDefault(name, "<undefined/>");
+                    File.AppendAllLines(callLog, [name == "killLag" ? $"killLag {Regex.Match(invoke, "<(true|false)/>").Groups[1].Value}" : name]);
+                string reply = game?.Answer(invoke) ?? replies.GetValueOrDefault(name, "<undefined/>");
                 if (delays.TryGetValue(name, out int delay))
                     Task.Delay(delay).ContinueWith(_ => SendReply('R', id, reply));
                 else

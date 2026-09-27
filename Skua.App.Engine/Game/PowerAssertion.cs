@@ -15,18 +15,19 @@ internal sealed partial class PowerAssertion : IDisposable
     private readonly object _lock = new();
     private readonly string _name;
     private uint? _id;
+    private bool _disposed;
 
     public PowerAssertion(string name)
     {
         _name = name;
     }
 
-    /// <summary>Takes or releases the assertion; taking it again while held does nothing.</summary>
+    /// <summary>Takes or releases the assertion; taking it again while held, or at all once disposed, does nothing.</summary>
     public void Hold(bool hold)
     {
         lock (_lock)
         {
-            if (hold && _id is null)
+            if (hold && _id is null && !_disposed)
                 _id = Create(_name);
             else if (!hold && _id is { } id)
             {
@@ -36,7 +37,14 @@ internal sealed partial class PowerAssertion : IDisposable
         }
     }
 
-    public void Dispose() => Hold(false);
+    public void Dispose()
+    {
+        lock (_lock)
+        {
+            Hold(false);
+            _disposed = true;
+        }
+    }
 
     private static uint? Create(string name)
     {

@@ -16,22 +16,23 @@ internal sealed class GameEventRecorder
     private readonly EngineLogs _logs;
     private readonly GameStateTracker _tracker;
     private readonly IScriptOption _options;
+    private readonly IScriptPlayer _player;
     private readonly object _lock = new();
-    private string? _username;
     private string? _map;
     private string? _cell;
 
-    private GameEventRecorder(EngineLogs logs, GameStateTracker tracker, IScriptOption options)
+    private GameEventRecorder(EngineLogs logs, GameStateTracker tracker, IScriptOption options, IScriptPlayer player)
     {
         _logs = logs;
         _tracker = tracker;
         _options = options;
+        _player = player;
     }
 
     /// <summary>Starts recording. Call it after Core's Script API is built, so Core has handled each game call first.</summary>
-    public static GameEventRecorder Start(IFlashUtil flash, IScriptOption options, EngineLogs logs, GameStateTracker tracker)
+    public static GameEventRecorder Start(IFlashUtil flash, IScriptOption options, IScriptPlayer player, EngineLogs logs, GameStateTracker tracker)
     {
-        GameEventRecorder recorder = new(logs, tracker, options);
+        GameEventRecorder recorder = new(logs, tracker, options, player);
         flash.FlashCall += recorder.OnFlashCall;
 
         IMessenger messenger = StrongReferenceMessenger.Default;
@@ -44,13 +45,6 @@ internal sealed class GameEventRecorder
         return recorder;
     }
 
-    /// <summary>The Test Account's name, which finds the player among the users of a joined map.</summary>
-    public void SetUsername(string username)
-    {
-        lock (_lock)
-            _username = username;
-    }
-
     private void OnFlashCall(string function, object[] args)
     {
         try
@@ -60,7 +54,7 @@ internal sealed class GameEventRecorder
                 case "pext" when args is [string packet]:
                     OnExtensionPacket(JObject.Parse(packet));
                     break;
-                // The client's own packets: this one is the in-game logout.
+                // The Game Client's own packets: this one is the in-game logout.
                 case "packet" when args is [string packet] && packet.Split('%', StringSplitOptions.RemoveEmptyEntries) is [_, _, "cmd", _, "logout", ..]:
                     _tracker.LoggedOutInGame();
                     break;
@@ -91,15 +85,13 @@ internal sealed class GameEventRecorder
     private void OnMapJoined(JObject data)
     {
         string? map = (string?)data["strMapName"];
-        string? cell;
+        // The player's cell is on their entry among the map's users.
+        string? me = _player.Username?.ToLowerInvariant();
+        string? cell = data["uoBranch"] is JArray users
+            ? (string?)users.OfType<JObject>().FirstOrDefault(u => me is not null && (string?)u["uoName"] == me)?["strFrame"]
+            : null;
         lock (_lock)
-        {
-            string? me = _username?.ToLowerInvariant();
-            cell = data["uoBranch"] is JArray users
-                ? (string?)users.OfType<JObject>().FirstOrDefault(u => me is not null && (string?)u["uoName"] == me)?["strFrame"]
-                : null;
             (_map, _cell) = (map, cell);
-        }
         _logs.Event(EventTypes.MapJoined, new { map, roomId = (int?)data["areaId"], cell });
     }
 
@@ -111,8 +103,10 @@ internal sealed class GameEventRecorder
 
     private void OnDeath()
     {
+        string? map, cell;
         lock (_lock)
-            _logs.Event(EventTypes.PlayerDeath, new { map = _map, cell = _cell });
+            (map, cell) = (_map, _cell);
+        _logs.Event(EventTypes.PlayerDeath, new { map, cell });
     }
 
     private void OnReloginTriggered(bool wasKicked)

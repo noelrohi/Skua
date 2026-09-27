@@ -17,14 +17,14 @@ public class GameStateTests
         (_, EngineConnection connection) = await sandbox.StartEngineAsync(new FakeGameHost(sandbox).Game(keychain).Environment());
         using (connection)
         {
-            await connection.WaitForEventAsync(EventTypes.GameState, e => To(e) == "loginScreen");
+            await connection.WaitForEventAsync(EventTypes.GameState, e => GameEvents.To(e) == "loginScreen");
 
             StatusDto status = await connection.StatusAsync(Ct);
-            List<LogEntryDto> events = await GameEventsAsync(connection);
+            List<LogEntryDto> events = await GameEvents.AllAsync(connection);
 
             Assert.Equal(GameState.LoginScreen, status.Game.State);
             Assert.Null(status.Game.Server);
-            Assert.Equal([EventTypes.GameLoaded, "notStarted→loginScreen"], events.Select(Describe));
+            Assert.Equal([EventTypes.GameLoaded, "notStarted→loginScreen"], events.Select(GameEvents.Describe));
         }
     }
 
@@ -35,12 +35,12 @@ public class GameStateTests
     public async Task Losing_the_session_is_one_disconnect_with_its_reason(string directive, string reason, GameState state)
     {
         await using EngineSandbox sandbox = new();
-        await using LoginTests.Session session = await LoginTests.Session.StartAsync(sandbox);
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
 
         await session.GameHost.DoAsync(directive);
         LogEntryDto disconnected = await session.Connection.WaitForEventAsync(EventTypes.GameDisconnected);
-        await session.Connection.WaitForEventAsync(EventTypes.GameState, e => To(e) != "playing" && To(e) != "loggingIn");
+        await session.Connection.WaitForEventAsync(EventTypes.GameState, e => GameEvents.To(e) != "playing" && GameEvents.To(e) != "loggingIn");
         await Task.Delay(1500, Ct);
 
         Assert.Equal(reason, disconnected.Data!.Value.GetProperty("reason").GetString());
@@ -49,16 +49,32 @@ public class GameStateTests
         else
             Assert.False(disconnected.Data!.Value.TryGetProperty("detail", out _));
         Assert.Equal(state, (await session.Connection.StatusAsync(Ct)).Game.State);
-        List<LogEntryDto> events = await GameEventsAsync(session.Connection);
+        List<LogEntryDto> events = await GameEvents.AllAsync(session.Connection);
         Assert.Single(events, e => e.Type == EventTypes.GameDisconnected);
-        Assert.Equal($"playing→{JsonNamingPolicy.CamelCase.ConvertName(state.ToString())}", Describe(events[^1]));
+        Assert.Equal($"playing→{JsonNamingPolicy.CamelCase.ConvertName(state.ToString())}", GameEvents.Describe(events[^1]));
+    }
+
+    [Fact]
+    public async Task A_lost_connection_message_is_a_disconnect_even_while_the_game_still_says_it_is_connected()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+
+        await session.GameHost.DoAsync("connection-message Your connection to the server has been lost.");
+        LogEntryDto disconnected = await session.Connection.WaitForEventAsync(EventTypes.GameDisconnected);
+        await Task.Delay(1500, Ct);
+
+        Assert.Equal("connectionLost", disconnected.Data!.Value.GetProperty("reason").GetString());
+        Assert.Equal(GameState.Disconnected, (await session.Connection.StatusAsync(Ct)).Game.State);
+        Assert.Equal(["game.disconnected connectionLost", "playing→disconnected"], (await GameEvents.AllAsync(session.Connection)).Select(GameEvents.Describe).TakeLast(2));
     }
 
     [Fact]
     public async Task A_disconnected_game_stays_disconnected_until_a_login()
     {
         await using EngineSandbox sandbox = new();
-        await using LoginTests.Session session = await LoginTests.Session.StartAsync(sandbox);
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
         await session.GameHost.DoAsync("kick");
         await session.Connection.WaitForEventAsync(EventTypes.GameDisconnected);
@@ -71,32 +87,32 @@ public class GameStateTests
         Assert.Equal(
             [EventTypes.GameLoaded, "notStarted→loginScreen", "loginScreen→loggingIn", "loggingIn→playing", "game.disconnected kicked", "playing→disconnected",
              "disconnected→loggingIn", "loggingIn→playing"],
-            (await GameEventsAsync(session.Connection)).Select(Describe));
+            (await GameEvents.AllAsync(session.Connection)).Select(GameEvents.Describe));
     }
 
     [Fact]
     public async Task A_Game_Host_exit_forces_notStarted_and_is_a_gameHostExited_disconnect()
     {
         await using EngineSandbox sandbox = new();
-        await using LoginTests.Session session = await LoginTests.Session.StartAsync(sandbox);
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
 
         using (Process gameHost = Process.GetProcessById(await session.GameHost.PidAsync()))
             gameHost.Kill();
-        await session.Connection.WaitForEventAsync(EventTypes.GameState, e => To(e) == "notStarted");
+        await session.Connection.WaitForEventAsync(EventTypes.GameState, e => GameEvents.To(e) == "notStarted");
         StatusDto status = await session.Connection.StatusAsync(Ct);
 
         Assert.Equal((false, GameState.NotStarted, null), (status.Game.GameHostUp, status.Game.State, status.Game.Server));
-        Assert.Equal(["game.disconnected gameHostExited", "playing→notStarted"], (await GameEventsAsync(session.Connection)).Select(Describe).TakeLast(2));
+        Assert.Equal(["game.disconnected gameHostExited", "playing→notStarted"], (await GameEvents.AllAsync(session.Connection)).Select(GameEvents.Describe).TakeLast(2));
     }
 
     [Fact]
     public async Task A_momentary_reading_doesnt_change_the_state()
     {
         await using EngineSandbox sandbox = new();
-        await using LoginTests.Session session = await LoginTests.Session.StartAsync(sandbox);
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
-        int before = (await GameEventsAsync(session.Connection)).Count;
+        int before = (await GameEvents.AllAsync(session.Connection)).Count;
 
         // Each blip lasts less than a poll interval, and they're far enough apart that no two polls in a row see one.
         for (int i = 0; i < 4; i++)
@@ -105,7 +121,7 @@ public class GameStateTests
             await Task.Delay(1500, Ct);
         }
 
-        Assert.Equal(before, (await GameEventsAsync(session.Connection)).Count);
+        Assert.Equal(before, (await GameEvents.AllAsync(session.Connection)).Count);
         Assert.Equal(GameState.Playing, (await session.Connection.StatusAsync(Ct)).Game.State);
     }
 
@@ -113,7 +129,7 @@ public class GameStateTests
     public async Task Status_and_the_game_state_events_agree_through_login_logout_relogin_and_a_Game_Host_kill()
     {
         await using EngineSandbox sandbox = new();
-        await using LoginTests.Session session = await LoginTests.Session.StartAsync(sandbox);
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
         EngineConnection connection = session.Connection;
 
         await AgreeAsync(connection);
@@ -126,7 +142,7 @@ public class GameStateTests
         await connection.LoginAsync(cancellationToken: Ct);
         using (Process gameHost = Process.GetProcessById(await session.GameHost.PidAsync()))
             gameHost.Kill();
-        await connection.WaitForEventAsync(EventTypes.GameState, e => To(e) == "notStarted");
+        await connection.WaitForEventAsync(EventTypes.GameState, e => GameEvents.To(e) == "notStarted");
         await AgreeAsync(connection);
     }
 
@@ -134,7 +150,7 @@ public class GameStateTests
     public async Task Joining_a_map_dying_and_going_AFK_are_events()
     {
         await using EngineSandbox sandbox = new();
-        await using LoginTests.Session session = await LoginTests.Session.StartAsync(sandbox);
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
 
         await session.GameHost.DoAsync("join yulgar");
@@ -156,14 +172,14 @@ public class GameStateTests
         await using EngineSandbox sandbox = new();
         File.WriteAllText(Path.Combine(sandbox.SkuaDir, "Skua.settings.json"),
             """{"client":{"UserOptions":["AutoRelogin=True","SafeRelogin=False","ReloginTryDelay=200"]}}""");
-        await using LoginTests.Session session = await LoginTests.Session.StartAsync(sandbox);
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
 
         await session.GameHost.DoAsync("lose-connection Your connection to the server has been lost.");
         LogEntryDto finished = await session.Connection.WaitForEventAsync(EventTypes.GameRelogin, e => e.Data!.Value.GetProperty("phase").GetString() == "finished");
-        await session.Connection.WaitForEventAsync(EventTypes.GameState, e => e.Data!.Value.GetProperty("from").GetString() == "loggingIn" && To(e) == "playing"
+        await session.Connection.WaitForEventAsync(EventTypes.GameState, e => e.Data!.Value.GetProperty("from").GetString() == "loggingIn" && GameEvents.To(e) == "playing"
             && e.Seq > finished.Seq);
-        List<LogEntryDto> events = await GameEventsAsync(session.Connection);
+        List<LogEntryDto> events = await GameEvents.AllAsync(session.Connection);
 
         Assert.Single(events, e => e.Type == EventTypes.GameDisconnected);
         LogEntryDto triggered = events.Single(e => e.Type == EventTypes.GameRelogin && e.Data!.Value.GetProperty("phase").GetString() == "triggered");
@@ -172,8 +188,11 @@ public class GameStateTests
         Assert.True(events.Single(e => e.Type == EventTypes.GameRelogin && e.Data!.Value.GetProperty("phase").GetString() == "finished").Data!.Value.GetProperty("ok").GetBoolean());
         Assert.Equal(
             ["game.disconnected connectionLost", "playing→disconnected", EventTypes.GameRelogin, "disconnected→loggingIn", EventTypes.GameRelogin, "loggingIn→playing"],
-            events.Select(Describe).SkipWhile(d => !d.StartsWith("game.disconnected", StringComparison.Ordinal)));
+            events.Select(GameEvents.Describe).SkipWhile(d => !d.StartsWith("game.disconnected", StringComparison.Ordinal)));
         Assert.Equal(GameState.Playing, (await session.Connection.StatusAsync(Ct)).Game.State);
+        // Back to playing after a relogin, the lag killer is on again, though Core turned it off while stopping for the relogin.
+        string[] calls = await session.GameHost.CallsAsync();
+        Assert.Contains("killLag true", calls[(Array.LastIndexOf(calls, "clickServer") + 1)..]);
     }
 
     /// <summary>Waits a moment for the poll, then checks that status reports the state the last <c>game.state</c> event moved to.</summary>
@@ -181,31 +200,7 @@ public class GameStateTests
     {
         await Task.Delay(1200, Ct);
         StatusDto status = await connection.StatusAsync(Ct);
-        LogEntryDto last = (await GameEventsAsync(connection)).Last(e => e.Type == EventTypes.GameState);
-        Assert.Equal(JsonNamingPolicy.CamelCase.ConvertName(status.Game.State.ToString()), To(last));
+        LogEntryDto last = (await GameEvents.AllAsync(connection)).Last(e => e.Type == EventTypes.GameState);
+        Assert.Equal(JsonNamingPolicy.CamelCase.ConvertName(status.Game.State.ToString()), GameEvents.To(last));
     }
-
-    internal static string? To(LogEntryDto entry) => entry.Data!.Value.GetProperty("to").GetString();
-
-    /// <summary>The <c>game.*</c> events so far, as their type or, for <c>game.state</c>, <c>from→to</c>.</summary>
-    internal static async Task<List<LogEntryDto>> GameEventsAsync(EngineConnection connection)
-    {
-        List<LogEntryDto> events = [];
-        string? cursor = null;
-        while (true)
-        {
-            LogPage page = await connection.LogsAsync(LogKind.Events, cursor, 1000, Ct);
-            events.AddRange(page.Entries.Where(e => e.Type!.StartsWith("game.", StringComparison.Ordinal)));
-            cursor = page.Next;
-            if (page.Entries.Count == 0)
-                return events;
-        }
-    }
-
-    internal static string Describe(LogEntryDto entry) => entry.Type switch
-    {
-        EventTypes.GameState => $"{entry.Data!.Value.GetProperty("from").GetString()}→{To(entry)}",
-        EventTypes.GameDisconnected => $"{entry.Type} {entry.Data!.Value.GetProperty("reason").GetString()}",
-        _ => entry.Type!,
-    };
 }

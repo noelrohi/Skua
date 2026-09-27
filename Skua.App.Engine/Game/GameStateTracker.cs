@@ -11,7 +11,8 @@ namespace Skua.App.Engine.Game;
 /// <remarks>
 /// Edges (the Game Host starting and exiting, the Game Client loading, login responses, logouts and the start and end of logins,
 /// logouts and relogins) apply at once; a 500 ms poll of the game fills in the rest, and a state it finds must hold for two polls,
-/// so a momentary reading never flickers the state. The Bridge is only called outside the lock.
+/// so a momentary reading never flickers the state. The Bridge is only called outside the lock, and a reading taken before a
+/// state change is read again.
 /// </remarks>
 internal sealed class GameStateTracker : IDisposable
 {
@@ -19,6 +20,8 @@ internal sealed class GameStateTracker : IDisposable
 
     /// <summary>The game's connection messages once the connection has gone, as Core's timer recognises them.</summary>
     private static readonly string[] LostMessages = ["has been lost", "restart", "maintenance"];
+
+    private const int MaxRereads = 3;
 
     private readonly object _lock = new();
     private readonly IFlashUtil _flash;
@@ -35,10 +38,10 @@ internal sealed class GameStateTracker : IDisposable
     private bool _reloginInFlight;
     private bool _logoutInFlight;
 
-    /// <summary>Whether a session is live, so losing it is a disconnect.</summary>
-    private bool _session;
+    /// <summary>Whether the Test Account is logged in, so losing that is a disconnect.</summary>
+    private bool _loggedIn;
 
-    /// <summary>Whether the last session ended deliberately (or there was none yet), which makes a logged-out game the login screen.</summary>
+    /// <summary>Whether the last login ended deliberately (or there was none yet), which makes a logged-out game the login screen.</summary>
     private bool _lastExitDeliberate = true;
 
     private string? _refusal;
@@ -53,6 +56,9 @@ internal sealed class GameStateTracker : IDisposable
         _power = power;
         new Thread(Poll) { IsBackground = true, Name = "Game state poll" }.Start();
     }
+
+    /// <summary>Raised outside the lock each time the state becomes <see cref="GameState.Playing"/>.</summary>
+    public event Action? Playing;
 
     public GameState State
     {
@@ -109,15 +115,15 @@ internal sealed class GameStateTracker : IDisposable
         }
     }
 
-    /// <summary>Forces <see cref="GameState.NotStarted"/>, and ends any session with <c>gameHostExited</c>.</summary>
+    /// <summary>Forces <see cref="GameState.NotStarted"/>, and a logged-in Test Account is disconnected with <c>gameHostExited</c>.</summary>
     public void GameHostExited()
     {
         lock (_lock)
         {
             _hostUp = false;
             _loaded = false;
-            if (_session)
-                EndSession(Disconnect.GameHostExited, null);
+            if (_loggedIn)
+                Disconnect(DisconnectReason.GameHostExited, null);
             Commit(GameState.NotStarted);
         }
     }
@@ -141,7 +147,7 @@ internal sealed class GameStateTracker : IDisposable
                 return;
             }
             if (_hostUp)
-                _session = true;
+                _loggedIn = true;
         }
         Evaluate(edge: true);
     }
@@ -162,8 +168,8 @@ internal sealed class GameStateTracker : IDisposable
     {
         lock (_lock)
         {
-            if (_session && !_loginInFlight && !_reloginInFlight)
-                EndSession(Disconnect.Logout, null);
+            if (_loggedIn && !_loginInFlight && !_reloginInFlight)
+                Disconnect(DisconnectReason.Logout, null);
         }
         Evaluate(edge: true);
     }
@@ -172,9 +178,10 @@ internal sealed class GameStateTracker : IDisposable
     {
         lock (_lock)
         {
-            // A login replaces any session, so its own logout isn't a disconnect.
-            _session = false;
+            // A login replaces the one before, so its own logout isn't a disconnect; it also supersedes an auto-relogin that never finished.
+            _loggedIn = false;
             _loginInFlight = true;
+            _reloginInFlight = false;
             _refusal = null;
         }
         Evaluate(edge: true);
@@ -190,17 +197,20 @@ internal sealed class GameStateTracker : IDisposable
     public void LogoutStarted()
     {
         lock (_lock)
+        {
             _logoutInFlight = true;
+            _reloginInFlight = false;
+        }
     }
 
-    /// <summary>Ends the session deliberately and returns to the login screen.</summary>
+    /// <summary>Ends the login deliberately and returns to the login screen.</summary>
     public void LogoutFinished()
     {
         lock (_lock)
         {
             _logoutInFlight = false;
-            if (_session)
-                EndSession(Disconnect.Logout, null);
+            if (_loggedIn)
+                Disconnect(DisconnectReason.Logout, null);
             _lastExitDeliberate = true;
             if (_hostUp && _loaded)
                 Commit(GameState.LoginScreen);
@@ -209,18 +219,18 @@ internal sealed class GameStateTracker : IDisposable
 
     /// <summary>
     /// Core's auto-relogin is about to start: it runs after Core saw the connection go and before its own logout, so the game still
-    /// shows why. Ends the session, if the poll hasn't yet.
+    /// shows why. Disconnects the Test Account, if the poll hasn't yet.
     /// </summary>
     public void ReloginTriggered()
     {
-        Sample sample = Read(playing: false);
+        Sample sample = Read(needServer: false);
         lock (_lock)
         {
-            if (!_session)
+            if (!_loggedIn)
                 return;
-            (Disconnect reason, string? detail) = Why(sample);
-            EndSession(reason, detail);
-            Commit(reason == Disconnect.Logout ? GameState.LoginScreen : GameState.Disconnected);
+            (DisconnectReason reason, string? detail) = Why(sample);
+            Disconnect(reason, detail);
+            Commit(After(reason));
         }
     }
 
@@ -239,10 +249,14 @@ internal sealed class GameStateTracker : IDisposable
     }
 
     /// <summary>Whether the game is playing now: logged in with the world loaded. Reads the game, so it is current.</summary>
-    public bool IsPlaying() => Read(playing: false) is { LoggedIn: true, World: true };
+    public bool IsPlaying() => Read(needServer: false) is { LoggedIn: true, World: true };
 
     /// <summary>The game's connection message, or null when it shows none.</summary>
-    public string? ConnectionMessage() => Read(playing: false).Message;
+    public string? ConnectionMessage() => Read(needServer: false).Message;
+
+    /// <summary>Whether a connection message says the connection has gone.</summary>
+    public static bool IsConnectionLost(string? message) =>
+        message is not null && LostMessages.Any(m => message.Contains(m, StringComparison.OrdinalIgnoreCase));
 
     public void Dispose()
     {
@@ -265,85 +279,114 @@ internal sealed class GameStateTracker : IDisposable
         }
     }
 
-    /// <summary>Reads the game, then applies what it found; a poll's finding must hold twice, an edge's applies at once.</summary>
+    /// <summary>
+    /// Reads the game, then applies what it found; a poll's finding must hold twice, an edge's applies at once. A poll whose reading
+    /// an edge overtook is dropped, and an edge reads again.
+    /// </summary>
     private void Evaluate(bool edge)
     {
-        long generation;
-        bool ready;
-        lock (_lock)
+        bool playing = false;
+        for (int attempt = 0; attempt < MaxRereads; attempt++)
         {
-            generation = _generation;
-            ready = _hostUp && _loaded;
-        }
-        Sample? sample = ready ? Read(playing: State == GameState.Playing) : null;
+            long generation;
+            bool ready;
+            bool needServer;
+            lock (_lock)
+            {
+                generation = _generation;
+                ready = _hostUp && _loaded;
+                needServer = _state != GameState.Playing;
+            }
+            Sample? sample = ready ? Read(needServer) : null;
 
-        lock (_lock)
-        {
-            if (!edge && generation != _generation)
-                return;
-            if (!_hostUp || !_loaded)
+            lock (_lock)
             {
-                Commit(GameState.NotStarted);
-                return;
+                if (generation != _generation)
+                {
+                    if (edge)
+                        continue;
+                    return;
+                }
+                playing = Apply(sample, edge);
             }
-            if (sample is null)
-                return;
-
-            (GameState next, Disconnect? loss, string? detail) = Derive(sample);
-            if (next == _state)
-            {
-                _pending = null;
-                return;
-            }
-            // The connection message is the game saying it lost the connection, which is as good as an edge.
-            if (!edge && loss != Disconnect.ConnectionLost && _pending != next)
-            {
-                _pending = next;
-                return;
-            }
-            if (loss is { } reason)
-                EndSession(reason, detail);
-            if (next == GameState.Playing)
-            {
-                _session = true;
-                _server = sample.Server;
-            }
-            Commit(next);
+            break;
         }
+        if (playing)
+            Playing?.Invoke();
     }
 
-    /// <summary>The state the sample shows, and whether it means the session was lost and why.</summary>
-    private (GameState State, Disconnect? Loss, string? Detail) Derive(Sample sample)
+    /// <summary>Applies a reading under the lock; returns whether the state became <see cref="GameState.Playing"/>.</summary>
+    private bool Apply(Sample? sample, bool edge)
+    {
+        if (!_hostUp || !_loaded)
+        {
+            Commit(GameState.NotStarted);
+            return false;
+        }
+        if (sample is null)
+            return false;
+
+        (GameState next, DisconnectReason? loss, string? detail) = Derive(sample);
+        if (next == _state)
+        {
+            _pending = null;
+            return false;
+        }
+        // The connection message is the game saying it lost the connection, which is as good as an edge.
+        if (!edge && loss != DisconnectReason.ConnectionLost && _pending != next)
+        {
+            _pending = next;
+            return false;
+        }
+        if (loss is { } reason)
+            Disconnect(reason, detail);
+        if (next == GameState.Playing)
+        {
+            _loggedIn = true;
+            _server = sample.Server;
+        }
+        Commit(next);
+        return next == GameState.Playing;
+    }
+
+    /// <summary>The state the sample shows, and whether it means the Test Account was disconnected and why.</summary>
+    private (GameState State, DisconnectReason? Loss, string? Detail) Derive(Sample sample)
     {
         if (_loginInFlight || _reloginInFlight)
             return (GameState.LoggingIn, null, null);
-        bool lost = sample.Message is { } message && LostMessages.Any(m => message.Contains(m, StringComparison.OrdinalIgnoreCase));
+        bool lost = IsConnectionLost(sample.Message);
         if (sample is { LoggedIn: true, World: true } && !lost)
             return (GameState.Playing, null, null);
         if (_logoutInFlight)
             return (_state, null, null);
-        if (_session && (lost || !sample.LoggedIn))
+        if (_loggedIn && (lost || !sample.LoggedIn))
         {
-            (Disconnect reason, string? detail) = Why(sample);
-            return (reason == Disconnect.Logout ? GameState.LoginScreen : GameState.Disconnected, reason, detail);
+            (DisconnectReason reason, string? detail) = Why(sample);
+            return (After(reason), reason, detail);
         }
+        // The game may still say it is connected while it shows why it isn't.
+        if (lost)
+            return (GameState.Disconnected, null, null);
         if (sample.LoggedIn)
             return (GameState.LoggingIn, null, null);
         return (_lastExitDeliberate ? GameState.LoginScreen : GameState.Disconnected, null, null);
     }
 
-    /// <summary>Why a session ended, when the Game Host is still up: the connection message, else a kick, else a logout.</summary>
-    private static (Disconnect Reason, string? Detail) Why(Sample sample)
+    /// <summary>Why the Test Account was disconnected while the Game Host is up: the connection message, else a kick, else a logout.</summary>
+    private static (DisconnectReason Reason, string? Detail) Why(Sample sample)
     {
-        if (sample.Message is { } message && LostMessages.Any(m => message.Contains(m, StringComparison.OrdinalIgnoreCase)))
-            return (Disconnect.ConnectionLost, message);
-        return sample.Kicked ? (Disconnect.Kicked, null) : (Disconnect.Logout, null);
+        if (IsConnectionLost(sample.Message))
+            return (DisconnectReason.ConnectionLost, sample.Message);
+        return sample.Kicked ? (DisconnectReason.Kicked, null) : (DisconnectReason.Logout, null);
     }
 
-    private void EndSession(Disconnect reason, string? detail)
+    /// <summary>A deliberate logout returns to the login screen; any other loss leaves the game disconnected.</summary>
+    private static GameState After(DisconnectReason reason) => reason == DisconnectReason.Logout ? GameState.LoginScreen : GameState.Disconnected;
+
+    private void Disconnect(DisconnectReason reason, string? detail)
     {
-        _session = false;
-        _lastExitDeliberate = reason == Disconnect.Logout;
+        _loggedIn = false;
+        _lastExitDeliberate = reason == DisconnectReason.Logout;
         _logs.Event(EventTypes.GameDisconnected, detail is null ? new { reason } : new { reason, detail });
     }
 
@@ -360,22 +403,22 @@ internal sealed class GameStateTracker : IDisposable
         _power.Hold(next is GameState.LoggingIn or GameState.Playing);
     }
 
-    /// <summary>Reads the game over the Bridge; the server only when it may be needed, since it isn't set before a login.</summary>
-    private Sample Read(bool playing)
+    /// <summary>Reads the game over the Bridge; the server only when it is needed, since it isn't set before a login.</summary>
+    private Sample Read(bool needServer)
     {
         bool loggedIn = _flash.Call<bool>("isLoggedIn");
         bool world = !_flash.IsNull("world");
         string? message = _flash.IsNull("mcConnDetail.stage") ? null : _flash.GetGameObject<string>("mcConnDetail.txtDetail.text");
         bool kicked = !loggedIn && _flash.Call<bool>("isKicked");
-        string? server = loggedIn && world && !playing && !_flash.IsNull("objServerInfo") ? _flash.GetGameObject<string>("objServerInfo.sName") : null;
+        string? server = loggedIn && world && needServer && !_flash.IsNull("objServerInfo") ? _flash.GetGameObject<string>("objServerInfo.sName") : null;
         return new Sample(loggedIn, world, message, kicked, server);
     }
 
     private sealed record Sample(bool LoggedIn, bool World, string? Message, bool Kicked, string? Server);
 }
 
-/// <summary>Why a session ended, as <c>game.disconnected</c> reports it.</summary>
-internal enum Disconnect
+/// <summary>Why the Test Account was disconnected, as <c>game.disconnected</c> reports it.</summary>
+internal enum DisconnectReason
 {
     GameHostExited,
     ConnectionLost,
