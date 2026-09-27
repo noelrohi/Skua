@@ -9,7 +9,8 @@
 //!   'Q' u32 id                                stats (JSON)
 //! Game Host -> Engine
 //!   'R' u32 id | utf8 return XML              reply to 'C'
-//!   'I' u32 id | u32 w | u32 h | u64 frames | PNG bytes   reply to 'S' (w = h = 0, no PNG: no image)
+//!   'I' u32 id | u32 w | u32 h | u64 frames | PNG bytes   reply to 'S' (w = h = 0, no PNG: no image);
+//!                                             frames is an estimate: time run x frame rate
 //!   'P' u32 id                                reply to 'P'
 //!   'Q' u32 id | utf8 JSON                    reply to 'Q'
 //!   'E' utf8 <invoke> XML                     ExternalInterface.call from AS3 (event)
@@ -21,6 +22,10 @@
 //! 'Z' <class> (retainer path), 'B' u32 n (render bench) and 'V' "key=value" (render knobs); see `diag.rs`.
 
 use std::io::{self, Read};
+
+/// 'L' log levels.
+pub const LOG_ERROR: u8 = 1;
+pub const LOG_WARN: u8 = 2;
 
 /// Larger frames mean the stream is corrupt; nothing the Engine sends comes close.
 pub const MAX_FRAME_LEN: usize = 64 << 20;

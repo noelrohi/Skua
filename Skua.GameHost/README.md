@@ -60,7 +60,7 @@ every generated getter stay unchanged. The authoritative list is `src/frame.rs`.
 | Engine → Game Host | `P` | `u32 id`: ping |
 | Engine → Game Host | `Q` | `u32 id`: stats |
 | Game Host → Engine | `R` | `u32 id` + return XML |
-| Game Host → Engine | `I` | `u32 id`, `u32 w`, `u32 h`, `u64 frame` + PNG bytes (w = h = 0 and no PNG if there's no image) |
+| Game Host → Engine | `I` | `u32 id`, `u32 w`, `u32 h`, `u64 frame` + PNG bytes (w = h = 0 and no PNG if there's no image; `frame` is an estimate, time run × frame rate) |
 | Game Host → Engine | `P` | `u32 id`: pong |
 | Game Host → Engine | `Q` | `u32 id` + stats JSON (render and tick timings; the sums and maxima reset on each read) |
 | Game Host → Engine | `E` | `<invoke>` XML: AS3 called `ExternalInterface.call`; the host returns `undefined` to AS3 at once |
@@ -75,7 +75,7 @@ with status 2.
 
 - **stdin EOF ends the host at once** (status 0). The Engine closing the pipe or dying closes stdin; the stress
   suite measures about 5 ms.
-- **Any panic aborts the process** (SIGABRT). A panic inside Ruffle leaves the player mid-update and its mutex
+- **Any panic aborts the process** (SIGABRT). A panic inside Ruffle leaves its `Player` mid-update and its mutex
   poisoned, so there is no sound state to go on from. The panic message and backtrace reach the Engine as an `L`
   frame and stderr first.
 
@@ -142,7 +142,7 @@ Not candidates:
   fix for movie-library lifetimes.
 - the in-flight bound, a host concern that would need an upstream API discussion.
 
-Known limit: the pass counter and the in-flight queue are process-global. That is fine with one player per Game
+Known limit: the pass counter and the in-flight queue are process-global. That is fine with one Ruffle `Player` per Game
 Host. The upstreaming shape moves both onto `Descriptors`.
 
 ## Changing Ruffle
@@ -198,9 +198,9 @@ stress/check.sh --only smoke,events
 stress/check.sh --record            # print the measured values in baseline.txt's format
 ```
 
-It builds the release host, the stress SWFs and `skua.swf` (Flex SDK 4.16.1 with playerglobal 32.0, from
-`SKUA_FLEX_HOME` or the cache that `Skua.AS3/compile-as3.sh` fills). Then it runs each case over the Bridge
-frames. Run it on a Mac with a real GPU, not in CI: a paravirtual GPU makes the footprint and render times
+It builds `skua.swf` with `Skua.AS3/compile-as3.sh`, which caches Flex SDK 4.16.1 and playerglobal 32.0. It
+builds the stress SWFs with that same SDK, and then the release host. Then it runs each case over the Bridge
+frames. `SKUA_SWF`, `SKUA_FLEX_HOME` and `SKUA_GAMEHOST` skip those builds. Run it on a Mac with a real GPU, not in CI: a paravirtual GPU makes the footprint and render times
 meaningless. The smoke case loads the live game's login screen, so it needs the network (no login). Output,
 stderr and the smoke screenshot go to `stress/out/`.
 
@@ -209,7 +209,7 @@ stderr and the smoke screenshot go to `stress/out/`.
 | `stress2` | `Stress2.as`: an offscreen `BitmapData.draw` of a filtered, masked, blended avatar, 60 times a frame | the footprint is flat and its peak is under baseline + 20% |
 | `stress3` | `Stress3.as`: 1,500 masked, filtered, layered children on one stage | the same |
 | `stress4` | `Stress4.as`: 6,000 of them | the average `submit_frame` time on the render thread is under baseline + 20% |
-| `sounds` | `Sounds.as`: AQW's `SoundFX`, which keeps each channel until `SOUND_COMPLETE` | the live channel count doesn't grow |
+| `sounds` | `Sounds.as`: AQW's `SoundFX`, which keeps each channel until `SOUND_COMPLETE` | the live channel count doesn't grow (the second half never exceeds the first) and stays under baseline + 20% |
 | `weakdict` | `WeakDict.as`: AQW's `Game._colorCache`, a weak-key `Dictionary` | dead keys are collected: the count falls back to a fresh cycle's and stays under baseline + 20% |
 | `events` | `Events.as`: 30,000 numbered `ExternalInterface.call`s in three interleaved streams | every event arrives, in order |
 | `smoke` | `skua.swf` | the game loads, all 73 callbacks register, and the screenshot is a 958×550 login screen |

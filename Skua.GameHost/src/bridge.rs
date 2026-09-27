@@ -85,7 +85,7 @@ pub fn start_reader(deliver: impl Fn(Request) -> Result<(), ()> + Send + 'static
         .expect("reader thread");
 }
 
-/// Any panic aborts the process: a panic inside Ruffle leaves the player mid-update (and its mutex
+/// Any panic aborts the process: a panic inside Ruffle leaves the `Player` mid-update (and its mutex
 /// poisoned), so there is no sound state to continue from. The panic and its backtrace go to stderr
 /// and, as an 'L' frame, to the Engine first.
 pub fn abort_on_panic() {
@@ -93,7 +93,7 @@ pub fn abort_on_panic() {
         let bt = std::backtrace::Backtrace::force_capture();
         let text = format!("[panic] {info}\n{bt}");
         eprintln!("{text}");
-        log(1, &text);
+        log(frame::LOG_ERROR, &text);
         if let Some(tx) = OUT.get() {
             let (ack_tx, ack_rx) = mpsc::sync_channel(1);
             if tx.send(Out::Flush(ack_tx)).is_ok() {

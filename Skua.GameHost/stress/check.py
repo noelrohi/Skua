@@ -167,7 +167,8 @@ class Suite:
                    f"render avg {avg:.0f} ms over {n} frames (limit {limit:.0f}), threaded={q.get('threaded')}"
                    f"{'; ' + str(bad) if bad else ''}")
 
-    # Sounds: AQW's SoundFX keeps every channel until SOUND_COMPLETE; the count must not grow.
+    # Sounds: AQW's SoundFX keeps every channel until SOUND_COMPLETE; the count must not grow (the last half
+    # never exceeds the first) and stays under baseline + tolerance.
     def sounds(self):
         h = self.host(self.swf("Sounds"), "sounds")
         time.sleep(self.base["short_secs"])
@@ -176,9 +177,12 @@ class Suite:
         steady = counts[len(counts) // 4:]
         if len(steady) < 3:
             return self.check("sounds", False, f"only {len(counts)} 'active' traces")
+        half = len(steady) // 2
+        grows = max(steady[half:]) > max(steady[:half])
         self.record("sounds.max_active", max(steady))
         limit = math.ceil(self.limit("sounds.max_active"))
-        self.check("sounds", max(steady) <= limit, f"active channels {steady} (limit {limit})")
+        self.check("sounds", not grows and max(steady) <= limit,
+                   f"active channels {steady} (limit {limit}){'; growing' if grows else ''}")
 
     # WeakDict: AQW's Game._colorCache. Ruffle's System.gc() doesn't force a collection, so dead keys go at the
     # end of a GC cycle: the count must fall back to a fresh cycle's size (<= 62: one trace of keys plus the
@@ -233,7 +237,8 @@ class Suite:
         loaded = threading.Event()
 
         def on_event(xml):
-            name = re.match(r'<invoke name="([^"]+)"', xml).group(1)
+            m = re.match(r'<invoke name="([^"]+)"', xml)
+            name = m.group(1) if m else None
             if name == "requestLoadGame":  # SkuaStartupHandler.LoadGame
                 h.send(b"C", b'<invoke name="loadClient" returntype="xml"></invoke>')
             elif name == "loaded":

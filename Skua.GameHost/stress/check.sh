@@ -8,9 +8,9 @@
 #   Cases: stress2 stress3 stress4 sounds weakdict events smoke lifecycle
 #   --record prints the measured values in baseline.txt's format instead of judging them.
 # Env:
-#   SKUA_FLEX_HOME   Apache Flex SDK 4.16.1 with playerglobal 32.0 (default: the SDK that
-#                    Skua.AS3/compile-as3.sh caches in ~/Library/Caches/skua-as3)
-#   SKUA_SWF         a prebuilt skua.swf (default: built from Skua.AS3 with the same SDK)
+#   SKUA_SWF         a prebuilt skua.swf (default: built by Skua.AS3/compile-as3.sh, which also caches the
+#                    Flex SDK this script uses for the stress SWFs)
+#   SKUA_FLEX_HOME   Apache Flex SDK 4.16.1 with playerglobal 32.0 (default: compile-as3.sh's cached SDK)
 #   SKUA_GAMEHOST    a prebuilt host binary (default: cargo build --release --locked)
 
 set -euo pipefail
@@ -20,6 +20,12 @@ crate_dir="$(dirname "$stress_dir")"
 repo_dir="$(dirname "$crate_dir")"
 out_dir="$stress_dir/out"
 mkdir -p "$out_dir"
+
+skua_swf="${SKUA_SWF:-}"
+if [ -z "$skua_swf" ]; then
+    skua_swf="$out_dir/skua.swf"
+    "$repo_dir/Skua.AS3/compile-as3.sh" -o "$skua_swf"
+fi
 
 flex_home="${SKUA_FLEX_HOME:-}"
 if [ -z "$flex_home" ]; then
@@ -48,14 +54,6 @@ for case in Stress2 Stress3 Stress4 Sounds WeakDict Events; do
         mxmlc -source-path "$stress_dir" -omit-trace-statements=false -output "$out_dir/$case.swf" "$stress_dir/$case.as"
     fi
 done
-
-skua_swf="${SKUA_SWF:-}"
-if [ -z "$skua_swf" ]; then
-    # The same flags as Skua.AS3/compile-as3.sh.
-    echo "Building skua.swf"
-    skua_swf="$out_dir/skua.swf"
-    (cd "$repo_dir/Skua.AS3" && mxmlc -source-path skua/src -output "$skua_swf" skua/src/skua/Main.as -optimize)
-fi
 
 host="${SKUA_GAMEHOST:-}"
 if [ -z "$host" ]; then

@@ -38,13 +38,14 @@ mkdir -p "$crate_dir/.cargo"
 } >"$config"
 
 if [ "${2:-}" = "--diag" ]; then
-    registry="$(ls -d "${CARGO_HOME:-$HOME/.cargo}"/registry/src/*/ | head -1)"
     build="$crate_dir/target/diag-crates"
     mkdir -p "$build"
     for spec in gc-arena-0.7.0:gc-arena-0.7.0-census.patch wgpu-hal-30.0.1:wgpu-hal-30.0.1-peak-counter.patch; do
         src="${spec%%:*}" patch_file="$crate_dir/diag/${spec#*:}"
+        # The index directory holding this crate (there can be several).
+        stock="$(ls -d "${CARGO_HOME:-$HOME/.cargo}"/registry/src/*/"$src" | head -1)"
         rm -rf "$build/$src"
-        cp -R "$registry/$src" "$build/$src"
+        cp -R "$stock" "$build/$src"
         chmod -R u+w "$build/$src"
         patch -s -p1 -d "$build/$src" <"$patch_file"
     done

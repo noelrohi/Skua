@@ -95,6 +95,11 @@ impl<E: std::error::Error + 'static> FutureSpawner<E> for MainThreadSpawner {
     }
 }
 
+/// Identical log lines within this window are collapsed into one.
+const REPEAT_WINDOW: Duration = Duration::from_secs(10);
+/// Past this many remembered lines, forget those whose window has passed.
+const MAX_SEEN: usize = 256;
+
 /// Forwards tracing events at WARN and above as 'L' frames, collapsing identical lines within 10 s.
 /// Uncaught AS3 errors arrive here as ERROR from `ruffle_core::avm2` and are also sent as 'F'.
 #[derive(Default)]
@@ -119,11 +124,15 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for FrameLayer {
         let mut msg = Message(String::new());
         event.record(&mut msg);
         let mut text = format!("[{}] {}", event.metadata().target(), msg.0);
+        // Every uncaught AS3 error reaches the flash log; only the 'L' copy is collapsed.
+        if event.metadata().target() == "ruffle_core::avm2" && level == tracing::Level::ERROR {
+            bridge::send(frame::encode(b'F', format!("[uncaught] {text}").as_bytes()));
+        }
         {
             let mut seen = self.seen.lock().unwrap();
             let now = Instant::now();
             match seen.get_mut(&text) {
-                Some((first, n)) if now.duration_since(*first) < Duration::from_secs(10) => {
+                Some((first, n)) if now.duration_since(*first) < REPEAT_WINDOW => {
                     *n += 1;
                     return;
                 }
@@ -135,13 +144,21 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for FrameLayer {
                     *n = 0;
                 }
                 None => {
+                    // Lines that vary (URLs, ids) would otherwise pile up for the life of the host.
+                    if seen.len() >= MAX_SEEN {
+                        seen.retain(|_, (first, _)| now.duration_since(*first) < REPEAT_WINDOW);
+                    }
                     seen.insert(text.clone(), (now, 0));
                 }
             }
         }
-        if event.metadata().target() == "ruffle_core::avm2" && level == tracing::Level::ERROR {
-            bridge::send(frame::encode(b'F', format!("[uncaught] {text}").as_bytes()));
-        }
-        bridge::log(if level == tracing::Level::ERROR { 1 } else { 2 }, &text);
+        bridge::log(
+            if level == tracing::Level::ERROR {
+                frame::LOG_ERROR
+            } else {
+                frame::LOG_WARN
+            },
+            &text,
+        );
     }
 }

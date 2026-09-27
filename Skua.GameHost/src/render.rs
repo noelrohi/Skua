@@ -1,6 +1,6 @@
 //! A `RenderBackend` that owns the real wgpu backend behind a mutex, so the GPU half of a frame
 //! (`submit_frame`: encode passes, submit, wait for in-flight work) can run on a render thread while the
-//! main thread keeps ticking the player and servicing Bridge calls (#17).
+//! main thread keeps ticking the Ruffle `Player` and servicing Bridge calls (#17).
 //!
 //! Ruffle's `Player::render` has two halves:
 //!   (a) walk the display tree and build a `CommandList` (needs `&mut Player`, stays on the main thread);
@@ -126,7 +126,9 @@ impl ThreadedBackend {
                             Job::After(f) => f(&mut g.0),
                         }
                         drop(g);
-                        if *sh.queued.lock().unwrap() == 0 {
+                        // Under the queue lock, so a job enqueued meanwhile can't have its `busy` overwritten.
+                        let q = sh.queued.lock().unwrap();
+                        if *q == 0 {
                             sh.busy.store(false, Ordering::Release);
                         }
                     });
@@ -146,8 +148,10 @@ impl ThreadedBackend {
     }
 
     fn enqueue(&self, job: Job) {
-        *self.shared.queued.lock().unwrap() += 1;
+        let mut q = self.shared.queued.lock().unwrap();
+        *q += 1;
         self.shared.busy.store(true, Ordering::Release);
+        drop(q);
         self.tx.send(job).expect("render thread gone");
     }
 
