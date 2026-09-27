@@ -11,13 +11,14 @@
 //   delay <name> <ms>     answer C calls to <name> after <ms>, so later calls are answered first;
 //                         the name `screenshot` delays S requests the same way
 //   noimage               answer S requests with no image (w = h = 0), as when the Game Host can't capture
+//   stats <json>          answer Q requests with <json> ({} unless set); {n} in it is replaced by the number of Q requests so far
 //   sleep <ms>            pause
 //   exit <code>           exit at once
 //   control <path>        also run each line appended to <path> while the fake runs, so a test can act mid-run; each one run
 //                         appends a line to <path>.done
 //
 // With `game <username> <password>` it also simulates the AQW game behind skua.swf (see FakeGame.cs), which accepts that
-// account; `servers <json>`, `connect-delay <ms>`, `reject <server> <message>` and `account <username> <password>` (another account it accepts) configure it, and `lose-connection <message>`,
+// account; `servers <json>`, `connect-delay <ms>`, `inventory-delay <ms>` (500 unless set; transfers are refused until then), `reject <server> <message>` and `account <username> <password>` (another account it accepts) configure it, and `lose-connection <message>`,
 // `kick`, `logout-button`, `die`, `combat`, `afk`, `join <map>`, `cell <cell>`, `gain <xp> <gold>`, `blip <ms>`, `connection-message <message>`, `broken-login`,
 // `login-response` (the last login's response again), `lock-map <map>` (transfers to it are ignored), `drop <id> <qty> <name>` and
 // `pickup <id>` act in it.
@@ -39,6 +40,8 @@ Dictionary<string, string> replies = new();
 Dictionary<string, int> delays = new();
 string? callLog = null;
 bool noImage = false;
+string stats = "{}";
+int statsRequests = 0;
 long frames = 0;
 string? controlFile = null;
 FakeGame? game = null;
@@ -82,6 +85,9 @@ foreach (string line in scenario)
         case ["noimage"]:
             noImage = true;
             break;
+        case ["stats", ..]:
+            stats = line["stats ".Length..];
+            break;
         case ["control", string file]:
             controlFile = file;
             break;
@@ -97,6 +103,9 @@ foreach (string line in scenario)
             break;
         case ["connect-delay", string ms]:
             game?.ConnectDelay(int.Parse(ms));
+            break;
+        case ["inventory-delay", string ms]:
+            game?.InventoryDelay(int.Parse(ms));
             break;
         case ["reject", string server, string message]:
             game?.Reject(server, message);
@@ -133,7 +142,7 @@ Thread reader = new(() =>
                 SendReply('P', id, "");
                 break;
             case 'Q':
-                SendReply('Q', id, "{}");
+                SendReply('Q', id, stats.Replace("{n}", (++statsRequests).ToString()));
                 break;
             case 'S':
                 uint maxWidth = BinaryPrimitives.ReadUInt32LittleEndian(body.AsSpan(5));

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Skua.Control;
 
 namespace Skua.Engine.Tests;
@@ -26,6 +27,21 @@ public class MoveTests
         List<LogEntryDto> joined = await session.Connection.WaitForLogsAsync(LogKind.Events, 3, e => e.Type == EventTypes.MapJoined);
         Assert.Equal(["battleon", "yulgar", "battleon"], joined.Select(e => e.Data!.Value.GetProperty("map").GetString()));
         Assert.Equal(["tfer yulgar Enter Spawn", "tfer battleon-1234 r2 Spawn"], (await session.GameHost.CallsAsync()).Where(c => c.StartsWith("tfer ", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task A_join_right_after_login_is_not_refused_while_the_inventory_loads()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox, g => g.InventoryDelay(2000));
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        Stopwatch took = Stopwatch.StartNew();
+
+        LocationResult yulgar = await session.Connection.JoinAsync("yulgar", cancellationToken: Ct);
+
+        Assert.Equal(new LocationResult("yulgar", "Enter", "Spawn", AlreadyThere: false), yulgar);
+        Assert.True(took.Elapsed < TimeSpan.FromSeconds(10), $"The join took {took.Elapsed.TotalSeconds:0.0} s.");
+        Assert.Equal(["tfer yulgar Enter Spawn"], (await session.GameHost.CallsAsync()).Where(c => c.StartsWith("tfer ", StringComparison.Ordinal)));
     }
 
     [Fact]

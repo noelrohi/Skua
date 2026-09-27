@@ -82,6 +82,13 @@ public sealed class FakeGameHost
         return this;
     }
 
+    /// <summary>How long after the world the inventory arrives in the simulated game, which refuses map transfers until then; 500 ms unless set.</summary>
+    public FakeGameHost InventoryDelay(int milliseconds)
+    {
+        _lines.Insert(_lines.FindIndex(l => l.StartsWith("game ", StringComparison.Ordinal)) + 1, $"inventory-delay {milliseconds}");
+        return this;
+    }
+
     /// <summary>Connecting to <paramref name="server"/> fails with this connection message in the simulated game.</summary>
     public FakeGameHost Reject(string server, string message)
     {
@@ -132,6 +139,13 @@ public sealed class FakeGameHost
     public FakeGameHost NoImage()
     {
         _lines.Add("noimage");
+        return this;
+    }
+
+    /// <summary>Answers stats requests with <paramref name="json"/>, in which <c>{n}</c> counts the requests.</summary>
+    public FakeGameHost Stats(string json)
+    {
+        _lines.Add($"stats {json}");
         return this;
     }
 

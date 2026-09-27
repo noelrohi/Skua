@@ -100,6 +100,15 @@ public sealed class BridgeFlashUtil : IFlashUtil
     public GameHostScreenshot? Screenshot(uint maxWidth, TimeSpan timeout) =>
         (_gameHost ?? throw new IOException("The Game Host hasn't started.")).Screenshot(maxWidth, timeout);
 
+    /// <summary>
+    /// The Game Host's loop and render counters as JSON (ticks, frame rate, the largest tick gap and more); the maxima reset when read.
+    /// Returns null when no Game Host runs.
+    /// </summary>
+    /// <exception cref="IOException">The Game Host is gone.</exception>
+    /// <exception cref="TimeoutException">No reply came within <paramref name="timeout"/>.</exception>
+    public string? Stats(TimeSpan timeout) =>
+        _gameHost is { IsRunning: true } gameHost ? gameHost.Stats(timeout) : null;
+
     public object FromFlashXml(XElement el) => FlashXml.FromFlashXml(el);
 
     public IFlashObject<T> CreateFlashObject<T>(string path) => new FlashObject<T>(Call<int>("lnkCreate", path), this);
