@@ -1,0 +1,22 @@
+name: macOS
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build
+        run: dotnet build Skua.MacOS.slnf --configuration Release
+
+      - name: Test
+        run: dotnet test Skua.MacOS.slnf --configuration Release --no-build --blame-hang-timeout 5m
