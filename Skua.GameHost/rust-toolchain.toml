@@ -1,0 +1,4 @@
+# Bumped only together with the Ruffle pin (README.md, "Changing Ruffle").
+[toolchain]
+channel = "1.98.1"
+targets = ["aarch64-apple-darwin"]

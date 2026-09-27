@@ -1,0 +1,4 @@
+target/
+# Local [patch] overrides for Ruffle work (README.md)
+.cargo/config.toml
+stress/out/

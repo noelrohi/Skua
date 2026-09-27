@@ -1,0 +1,37 @@
+# Thresholds for stress/check.sh. Update with each Ruffle series (README.md, "Changing Ruffle"):
+# run `stress/check.sh --record` a few times and take the worst value.
+#
+# Series: noelrohi/ruffle skua-20260927-a1277c0 (8e74e81). Headless defaults. Apple M4 Pro, 24 GB, macOS 27.0.
+# Recorded 2026-09-27: the worst of three runs.
+
+# A measured value passes up to baseline + tolerance_pct.
+tolerance_pct 20
+
+# Stress2 / Stress3: peak footprint after warm-up, and flat: the least-squares slope may not exceed
+# flat_pct_per_min % of the baseline per minute (a host that never renders grows ~670 MB/min on Stress2).
+footprint_secs 60
+footprint_warm_secs 15
+flat_pct_per_min 10
+stress2.footprint_mb 786
+stress3.footprint_mb 901
+
+# Stress4 (render thread): average submit_frame time.
+stress4_warm_secs 10
+stress4_secs 40
+stress4.render_ms 378
+
+# Sounds: live SoundChannels (one 0.2 s sound per frame, each kept until SOUND_COMPLETE).
+short_secs 20
+sounds.max_active 8
+
+# WeakDict: most weak keys seen before a GC cycle collects them (60 new dead keys per trace).
+weakdict_secs 40
+weakdict.max_keys 594
+
+# smoke: skua.swf to the login screen. The PNG floor tells a drawn frame from a blank one (~2 KB).
+smoke_settle_secs 2
+smoke.callbacks 73
+smoke.min_png_bytes 50000
+
+# lifecycle: stdin EOF to exit.
+lifecycle.eof_exit_ms 1000
