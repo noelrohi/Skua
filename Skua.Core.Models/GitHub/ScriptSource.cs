@@ -3,7 +3,8 @@ using System.Text.Json.Serialization;
 namespace Skua.Core.Models.GitHub;
 
 /// <summary>
-/// The repository Scripts are fetched from, <c>owner/repo@branch</c>; a setting that defaults to <c>auqw/Scripts@Skua</c>.
+/// The repository Scripts are fetched from, <c>owner/repo@branch</c>; a setting whose default is the app's: <c>auqw/Scripts@Skua</c>, which
+/// <c>new ScriptSource()</c> makes, except on macOS, where the Engine passes its own.
 /// </summary>
 public class ScriptSource
 {

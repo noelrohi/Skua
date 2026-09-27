@@ -308,7 +308,15 @@ internal static class Output
         _ => $"Engine '{engine.Name}' is stopped.",
     };
 
-    private static string Source(ScriptSourceDto source) => $"{source.Owner}/{source.Repo}@{source.Branch}";
+    public static string ScriptSource(ScriptSourceResult result) => result.IsDefault
+        ? $"{Source(result.Source)} (the default)"
+        : $"{Source(result.Source)} (set in Skua.settings.json; the default is {Source(result.Default)}, which 'skua scripts source --default' restores)";
+
+    public static string ScriptSourceChanged(ScriptSourceResult result) =>
+        $"Now fetching Scripts from {Source(result.Source)}{(result.IsDefault ? " (the default)" : "")}. Unless the Scripts were last synced from it, "
+        + "the next 'skua scripts update' downloads every Script.";
+
+    private static string Source(ScriptSourceDto source) => ScriptSourceSetting.Format(source);
 
 
     public const string GapNotice = "gap: entries after the cursor are no longer held (evicted, or the Engine restarted).";

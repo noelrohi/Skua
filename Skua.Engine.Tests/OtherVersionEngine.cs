@@ -63,6 +63,12 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
     public Task<ScriptsNewResult> ScriptsNewAsync(string? since, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("A client called scripts_new after a protocol mismatch.");
 
+    public Task<ScriptSourceResult> ScriptsSourceAsync(CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called scripts_source after a protocol mismatch.");
+
+    public Task<ScriptSourceResult> ScriptsSourceSetAsync(string? source, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called scripts_source_set after a protocol mismatch.");
+
     public Task<ScreenshotResult> ScreenshotAsync(int? maxWidth, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("A client called screenshot after a protocol mismatch.");
 

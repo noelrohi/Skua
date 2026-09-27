@@ -2,7 +2,9 @@ using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using Skua.App.Engine.Logging;
 using Skua.Core.AppStartup;
+using Skua.Control;
 using Skua.Core.Interfaces;
+using Skua.Core.Services;
 using Skua.MacOS;
 using Skua.MacOS.GameHost;
 
@@ -18,6 +20,9 @@ internal static class EngineServices
         services.AddSingleton<ISettingsService, EngineSettingsService>();
 
         services.AddCommonServices();
+        // Upstream's CoreBots.cs doesn't compile on macOS, so the Engine's default Script Source is the Mac-ready fork.
+        services.AddSingleton<IGetScriptsService>(s => new GetScriptsService(
+            s.GetRequiredService<IDialogService>(), s.GetRequiredService<ISettingsService>(), ScriptSourceSetting.Default.ToCore()));
 
         services.AddScriptableObjects();
 

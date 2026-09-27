@@ -106,6 +106,11 @@ internal sealed class EngineTools(Func<EngineClientOptions> options)
         CancellationToken cancellationToken = default) =>
         CallAsync(connection => connection.ScriptsNewAsync(since, cancellationToken), cancellationToken);
 
+    [McpServerTool(Name = "scripts_source", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(ScriptSourceResult))]
+    [Description("The Script Source that scripts_search, scripts_list and scripts_update use (owner, repo, branch), whether it is the default (isDefault), and the default. Only a developer changes it, with 'skua scripts source'. Works offline.")]
+    public Task<CallToolResult> ScriptsSource(CancellationToken cancellationToken) =>
+        CallAsync(connection => connection.ScriptsSourceAsync(cancellationToken), cancellationToken);
+
     [McpServerTool(Name = "script_options", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(ScriptOptionsResult))]
     [Description("Compile a Script and list its options: key (what script_start's options take), group, name, type (bool, int, number, string, enum), the stored value (or the default), the default, an enum's choices, and whether it is transient (resets every start, so can't be set). Fails with ScriptNotFound (run scripts_update), CompileFailed with diagnostics, or ScriptRunning while a Script runs.")]
     public Task<CallToolResult> ScriptOptions(

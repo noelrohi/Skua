@@ -1,13 +1,14 @@
 using Skua.App.Engine.Scripts;
 using Skua.Control;
 using Skua.Core.Interfaces;
+using Skua.Core.Models;
 using Skua.Core.Models.GitHub;
 
 namespace Skua.App.Engine;
 
 /// <summary>
-/// <c>scripts_search</c>, <c>scripts_list</c>, <c>scripts_update</c> and <c>scripts_new</c>: finding Scripts in the Script Source, syncing them to
-/// disk, and what the syncs brought.
+/// <c>scripts_search</c>, <c>scripts_list</c>, <c>scripts_update</c>, <c>scripts_new</c>, <c>scripts_source</c> and <c>scripts_source_set</c>:
+/// finding Scripts in the Script Source, syncing them to disk, what the syncs brought, and which Script Source it is.
 /// </summary>
 internal sealed class ScriptSourceOperations
 {
@@ -42,7 +43,7 @@ internal sealed class ScriptSourceOperations
             .ThenBy(s => s.FilePath, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        return new ScriptsSearchResult(ToDto(source), matches.Count, matches.Take(ScriptsSearchResult.MaxScripts).Select(ToDto).ToList());
+        return new ScriptsSearchResult(source.ToDto(), matches.Count, matches.Take(ScriptsSearchResult.MaxScripts).Select(ToDto).ToList());
     }
 
     public async Task<ScriptsListResult> ListAsync(string? folder, CancellationToken cancellationToken)
@@ -70,10 +71,10 @@ internal sealed class ScriptSourceOperations
             .OrderBy(s => s.FilePath, StringComparer.OrdinalIgnoreCase)
             .Select(ToDto)
             .ToList();
-        return new ScriptsListResult(ToDto(source), spelled, folders, direct);
+        return new ScriptsListResult(source.ToDto(), spelled, folders, direct);
     }
 
-    public ScriptsNewResult New(string? since) => _history.New(ToDto(_scriptsService.Source), since);
+    public ScriptsNewResult New(string? since) => _history.New(_scriptsService.Source.ToDto(), since);
 
     /// <remarks>Refused while a Script runs, and holds the Engine's slot, so a Script's files never change under it.</remarks>
     public async Task<ScriptsUpdateResult> UpdateAsync()
@@ -88,9 +89,46 @@ internal sealed class ScriptSourceOperations
             ScriptSource source = _scriptsService.Source;
             ScriptsSyncResult result = await FromScriptSourceAsync(source, () => _scriptsService.SyncScriptsAsync(_shutdown));
             if (result.Added.Count > 0 || result.Changed.Count > 0)
-                _history.Record(ToDto(result.Source), result.Commit, result.Mode == ScriptsSyncMode.Full, Entries(result.Added), Entries(result.Changed));
-            return new ScriptsUpdateResult(ToDto(result.Source), Mode(result.Mode), result.Commit, result.Downloaded, result.Failed,
+                _history.Record(result.Source.ToDto(), result.Commit, result.Mode == ScriptsSyncMode.Full, Entries(result.Added), Entries(result.Changed));
+            return new ScriptsUpdateResult(result.Source.ToDto(), Mode(result.Mode), result.Commit, result.Downloaded, result.Failed,
                 result.Added.Select(s => s.FilePath).ToList(), result.Changed.Select(s => s.FilePath).ToList());
+        }
+        finally
+        {
+            _updating.Release();
+        }
+    }
+
+    /// <remarks>Reads the setting once, so the Script Source and whether it is the default always agree.</remarks>
+    public ScriptSourceResult Source()
+    {
+        ScriptSourceDto? set = ScriptSourceSetting.Read(ClientFileSources.SkuaDIR);
+        return new(set ?? ScriptSourceSetting.Default, IsDefault: set is null, ScriptSourceSetting.Default);
+    }
+
+    /// <param name="source"><c>owner/repo@branch</c>, or null for the default.</param>
+    /// <remarks>
+    /// Refused while a Script runs or an update is in flight, and holds the Engine's slot, so a Script never starts while the Script Source
+    /// changes. The Engine reads the setting afresh at every call, so it takes effect without a restart.
+    /// </remarks>
+    public ScriptSourceResult SetSource(string? source)
+    {
+        if (!_updating.Wait(0))
+            throw RpcErrors.Of(ErrorCode.Busy, "Can't change the Script Source while a Scripts update is running; try again when it's done.");
+
+        try
+        {
+            _runs.EnsureIdle("change the Script Source");
+            using IDisposable lease = _slot.Take("change the Script Source");
+            try
+            {
+                ScriptSourceSetting.Write(ClientFileSources.SkuaDIR, source is null ? null : ScriptSourceSetting.Parse(source));
+            }
+            catch (ControlException e)
+            {
+                throw RpcErrors.Of(e.Code, e.Message);
+            }
+            return Source();
         }
         finally
         {
@@ -129,8 +167,6 @@ internal sealed class ScriptSourceOperations
 
     private static ScriptDto ToDto(ScriptInfo script) =>
         new(script.FilePath, NullIfMissing(script.Name), NullIfMissing(script.Description), Tags(script), script.Downloaded, script.Outdated);
-
-    private static ScriptSourceDto ToDto(ScriptSource source) => new(source.Owner, source.Repo, source.Branch);
 
     private static ScriptsUpdateMode Mode(ScriptsSyncMode mode) => mode switch
     {
