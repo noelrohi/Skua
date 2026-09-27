@@ -270,7 +270,8 @@ public class ScriptSourceTests
         ScriptsNewResult news = await connection.ScriptsNewAsync(null, ct);
         ScriptsNewResult sinceFull = await connection.ScriptsNewAsync(full.Commit[..7], ct);
         ScriptsNewResult sinceLatest = await connection.ScriptsNewAsync(incremental.Commit, ct);
-        ScriptsNewResult sinceTomorrow = await connection.ScriptsNewAsync(DateTimeOffset.UtcNow.AddDays(1).ToString("yyyy-MM-dd"), ct);
+        // The Engine reads a date as local time, as the user who typed it means it.
+        ScriptsNewResult sinceTomorrow = await connection.ScriptsNewAsync(DateTime.Now.AddDays(1).ToString("yyyy-MM-dd"), ct);
         ControlException unknown = await Assert.ThrowsAsync<ControlException>(() => connection.ScriptsNewAsync("not-a-date-or-commit", ct));
 
         Assert.Equal((3, 0), (full.Added.Count, full.Changed.Count));
@@ -312,6 +313,30 @@ public class ScriptSourceTests
         Assert.Equal(["added", "changed"], newsJson.RootElement.GetProperty("scripts").EnumerateArray().Select(s => s.GetProperty("change").GetString()));
         Assert.Equal(0, none.ExitCode);
         Assert.Contains("No Scripts were added or changed", none.Stdout);
+    }
+
+    [Theory]
+    [InlineData("Pacific/Kiritimati", "2026-08-31T10:00:00Z")]
+    [InlineData("Pacific/Pago_Pago", "2026-09-01T11:00:00Z")]
+    public async Task Scripts_new_since_a_date_starts_at_local_midnight_in_the_time_zone_the_CLI_runs_in(string timeZone, string midnight)
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeGitHub github = new();
+        Dictionary<string, string> environment = new(github.Environment()) { ["TZ"] = timeZone };
+
+        ProcessResult date = await sandbox.RunCliAsync(environment, "scripts", "new", "--since", "2026-09-01", "--json");
+        ProcessResult utc = await sandbox.RunCliAsync(environment, "scripts", "new", "--since", "2026-09-01T00:00Z", "--json");
+
+        Assert.True(date.ExitCode == 0, date.Stderr);
+        Assert.True(utc.ExitCode == 0, utc.Stderr);
+        Assert.Equal(DateTimeOffset.Parse(midnight), Since(date));
+        Assert.Equal(DateTimeOffset.Parse("2026-09-01T00:00:00Z"), Since(utc));
+
+        static DateTimeOffset Since(ProcessResult result)
+        {
+            using JsonDocument json = JsonDocument.Parse(result.Stdout);
+            return json.RootElement.GetProperty("since").GetDateTimeOffset();
+        }
     }
 
     [Fact]

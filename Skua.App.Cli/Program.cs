@@ -52,7 +52,7 @@ scriptsList.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async op
     return await connection.ScriptsListAsync(parse.GetValue(scriptsFolder), ct);
 }, Output.ScriptsList));
 
-Option<string?> scriptsSince = new("--since") { Description = "A date (e.g. 2026-09-01) or a commit an update synced to: the last 7 days by default." };
+Option<string?> scriptsSince = new("--since") { Description = "A date or time in local time (e.g. 2026-09-01 for local midnight, or 2026-09-01T00:00Z for UTC), or a commit an update synced to: the last 7 days by default." };
 Command scriptsNew = new("new", "List the Scripts that recent Scripts updates added or changed, and when.") { scriptsSince };
 scriptsNew.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
 {
