@@ -84,6 +84,22 @@ public class GameHostTests
     }
 
     [Fact]
+    public async Task The_Engine_records_the_Game_Host_stats_in_the_debug_log_at_its_interval()
+    {
+        await using EngineSandbox sandbox = new();
+        FakeGameHost gameHost = new FakeGameHost(sandbox).Stats("""{"ticks":{n},"frameRate":30,"maxTickGapMs":35}""");
+        Dictionary<string, string> environment = new(gameHost.Environment()) { ["SKUA_GAMEHOST_STATS_SEC"] = "1" };
+        (_, EngineConnection connection) = await sandbox.StartEngineAsync(environment);
+        using (connection)
+        {
+            List<LogEntryDto> lines = await connection.WaitForLogsAsync(LogKind.Debug, 2, e => e.Text!.StartsWith("[gamehost] stats ", StringComparison.Ordinal));
+
+            Assert.Equal(["""[gamehost] stats {"ticks":1,"frameRate":30,"maxTickGapMs":35}""", """[gamehost] stats {"ticks":2,"frameRate":30,"maxTickGapMs":35}"""],
+                lines.Take(2).Select(e => e.Text));
+        }
+    }
+
+    [Fact]
     public async Task The_Engine_logs_how_many_callbacks_the_loaded_Game_Client_registered()
     {
         await using EngineSandbox sandbox = new();

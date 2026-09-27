@@ -13,13 +13,26 @@ namespace Skua.App.Engine;
 /// </summary>
 internal sealed class GameHostSupervisor : IDisposable
 {
+    /// <summary>Seconds between the Game Host stats lines in the debug log: 60 unless set; 0 turns them off.</summary>
+    public const string StatsIntervalVariable = "SKUA_GAMEHOST_STATS_SEC";
+
+    /// <summary>Starts each debug line with the Game Host's stats JSON; the live-game tests read frame rates and tick gaps from them.</summary>
+    public const string StatsPrefix = "[gamehost] stats ";
+
+    private static readonly TimeSpan StatsTimeout = TimeSpan.FromSeconds(5);
+
     private readonly BridgeFlashUtil _flash;
     private readonly GameStateTracker _tracker;
+    private readonly Timer? _stats;
 
-    private GameHostSupervisor(BridgeFlashUtil flash, GameStateTracker tracker)
+    private GameHostSupervisor(BridgeFlashUtil flash, GameStateTracker tracker, EngineLogs logs)
     {
         _flash = flash;
         _tracker = tracker;
+        TimeSpan interval = TimeSpan.FromSeconds(
+            int.TryParse(Environment.GetEnvironmentVariable(StatsIntervalVariable), out int seconds) && seconds >= 0 ? seconds : 60);
+        if (interval > TimeSpan.Zero)
+            _stats = new Timer(_ => WriteStats(logs), null, interval, interval);
     }
 
     /// <summary>The game state, which this supervisor feeds and owns.</summary>
@@ -72,7 +85,24 @@ internal sealed class GameHostSupervisor : IDisposable
             }
         };
         flash.InitializeFlash();
-        return new GameHostSupervisor(flash, tracker);
+        return new GameHostSupervisor(flash, tracker, logs);
+    }
+
+    /// <summary>
+    /// Records the Game Host's counters since the last line, so a post-mortem or a live-game test sees its frame rate and tick gaps
+    /// (App Nap and timer throttling show up as long gaps).
+    /// </summary>
+    private void WriteStats(EngineLogs logs)
+    {
+        try
+        {
+            if (_flash.Stats(StatsTimeout) is { } json)
+                logs.Write(LogKind.Debug, StatsPrefix + json);
+        }
+        catch (Exception e) when (e is IOException or TimeoutException or InvalidOperationException)
+        {
+            // The Game Host is gone or busy; gamehost.exited or the next line tells.
+        }
     }
 
     public GameStatusDto Status() => new(_flash.IsGameHostRunning, _tracker.State, _tracker.Server);
@@ -80,6 +110,7 @@ internal sealed class GameHostSupervisor : IDisposable
     /// <summary>Closes the Game Host and stops tracking the game. Safe to call more than once.</summary>
     public void Dispose()
     {
+        _stats?.Dispose();
         _flash.Dispose();
         _tracker.Dispose();
     }

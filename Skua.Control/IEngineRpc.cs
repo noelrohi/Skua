@@ -95,7 +95,7 @@ public partial interface IEngineRpc
 
     /// <summary>
     /// Logs the active account in (see <c>skua account</c>), reading its credentials from Keychain, and returns once it is playing with the world
-    /// loaded. An agent's login uses the Test Account instead, unless the active account was added with <c>--allow-agents</c>.
+    /// and its inventory loaded. An agent's login uses the Test Account instead, unless the active account was added with <c>--allow-agents</c>.
     /// Already playing on the requested server (or on any, when none is named), it does nothing; playing elsewhere, it relogs.
     /// </summary>
     /// <param name="server">A server name from <c>servers</c>; without one, the Engine picks an online, non-member server with room.</param>

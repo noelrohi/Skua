@@ -210,6 +210,7 @@ Environment overrides:
 | `SKUA_GITHUB_RAW_URL`, `SKUA_GITHUB_API_URL` | `https://raw.githubusercontent.com/` and `https://api.github.com/`, for tests |
 | `SKUA_AQ_SERVERS_URL` | The game's servers API, `http://content.aq.com/game/api/data/servers`, for tests |
 | `SKUA_SECURITY_TOOL` | The `security` tool that `skua account` and the Engine's login use for Keychain (default `/usr/bin/security`), for tests |
+| `SKUA_GAMEHOST_STATS_SEC` | Seconds between the Game Host's stats lines (ticks, frame rate, largest tick gap) in the `debug` log: 60 by default, 0 for none |
 
 #### Accounts and the Test Account
 
@@ -233,7 +234,7 @@ skua account remove [name]                   # deletes it; removing the active o
 
 The Test Account keeps its reserved name `test` and service `skua-test-account`, which agents and the live tests use. `account add` never touches it except with `--test` (which stores or replaces it, and leaves the active account as it is) or `--name test --replace`, and `account remove` deletes it only by name (`skua account remove test`).
 
-`skua login [server]` (MCP `login`) logs in and returns once it is playing, with the server and the account's username; without a server it picks an online, non-member server with room, and `skua servers` lists them. The CLI's `login` uses the active account. MCP's `login`, an agent's, uses the Test Account unless the active account was added with `--allow-agents`; see ADR 0005. It takes no credentials, and no MCP tool sets or switches an account. The password and the game's `<pword>` login token are redacted from every log, event and log file. While logged in, the Engine holds off idle sleep (`pmset -g assertions` lists it) and keeps the lag killer on, lifting it for screenshots.
+`skua login [server]` (MCP `login`) logs in and returns once it is playing with its inventory loaded, with the server and the account's username; without a server it picks an online, non-member server with room, and `skua servers` lists them. The CLI's `login` uses the active account. MCP's `login`, an agent's, uses the Test Account unless the active account was added with `--allow-agents`; see ADR 0005. It takes no credentials, and no MCP tool sets or switches an account. The password and the game's `<pword>` login token are redacted from every log, event and log file. While logged in, the Engine holds off idle sleep (`pmset -g assertions` lists it) and keeps the lag killer on, lifting it for screenshots.
 
 #### Moving and reading the game
 
@@ -300,6 +301,26 @@ SKUA_SCRIPTS_CHECKOUT="$(realpath ../Scripts)" dotnet test Skua.Engine.Tests --n
 ```
 
 Scripts broken upstream on every platform are listed in `Skua.Engine.Tests/compile-check-known-failures.txt`: the report still shows them, but only a failure missing from that list fails the check, or a listed Script that no longer fails. Without `SKUA_SCRIPTS_CHECKOUT`, the test is skipped. The `Scripts compile check` workflow runs it daily and on demand against `noelrohi/Scripts@Skua`. It never runs on pull requests, so it doesn't block them.
+
+#### Live-game tests
+
+`LiveGameTests` prove the Engine against the real game: a real `skua-engine` with the real Game Host and the Test Account, driven through the Control Surface. They never run in CI, and each logs in once, so run one at a time, on a quiet Mac (1-minute load average under 3, with no other tests, builds or Game Hosts running; the test refuses to start otherwise). Each needs a `noelrohi/Scripts@Skua` checkout, which it copies into a throwaway data folder with the one-time Script Dialog files (`OneTimeMessages.txt`, `DataCollectionSettings.txt`) pre-seeded:
+
+```sh
+git clone --branch Skua https://github.com/noelrohi/Scripts.git ../Scripts
+dotnet build Skua.Engine.Tests
+SKUA_LIVE=smoke SKUA_SCRIPTS_CHECKOUT="$(realpath ../Scripts)" \
+  dotnet test Skua.Engine.Tests --no-build --filter FullyQualifiedName~LiveGameTests
+```
+
+| `SKUA_LIVE` | Run | Passes when |
+|---|---|---|
+| `smoke` | Login; `battleon` for 5 min; `Farm/Leveling.cs` for 15 min (about 25 min) | Game Host footprint < 2 GB; getter p99 ≤ 50 ms every minute but a phase's first; every join ≤ 10 s; no `bridge.error`, panic, death, disconnect or relogin; correct screenshots |
+| `memory` | `Farm/Leveling.cs` for 2 h | As the smoke, and the footprint flat: its slope over the last hour ≤ 1 MB/min |
+| `crowded` | Idle in `battleon` for 2 h | As `memory` |
+| `hidden` | `Farm/Leveling.cs` for 30 min with the screen locked; lock it after the Script starts (the test waits `SKUA_LIVE_LOCK_WAIT_MIN`, 10 min) | The Script keeps logging, the Game Host ticks at ≥ 90% of its frame rate with no tick gap over 250 ms, and screenshots are correct |
+
+`SKUA_LIVE_SERVER` picks the server (Galanoth by default). A login failure, a disconnect, a relogin or the Game Host exiting ends the run at once, and it stops the Script so Core's auto-relogin can't log in again. Every minute the run records the Game Host's and the Engine's footprint (Activity Monitor's Memory, the gate metric) and RSS, and the round trips of `Bot.Player.Cell` measured by an `eval` loop. It writes them to `report.txt` in `Skua.Engine.Tests/bin/<Configuration>/net10.0/live-results/<time>-<run>/` (or `SKUA_LIVE_OUT`), with its screenshots. A failed run also leaves `failure-screenshot.png`, `logs-all.jsonl` (`logs(all)` since its start) and the Engine's JSONL log files there. `LiveRunTests` dry-run the same scenarios against the fake Game Host in CI.
 
 ### Building the Installer
 

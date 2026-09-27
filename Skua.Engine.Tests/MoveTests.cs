@@ -29,6 +29,21 @@ public class MoveTests
     }
 
     [Fact]
+    public async Task A_join_right_after_login_is_not_refused_while_the_inventory_loads()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox, g => g.InventoryDelay(2000));
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        System.Diagnostics.Stopwatch took = System.Diagnostics.Stopwatch.StartNew();
+
+        LocationResult yulgar = await session.Connection.JoinAsync("yulgar", cancellationToken: Ct);
+
+        Assert.Equal(new LocationResult("yulgar", "Enter", "Spawn", AlreadyThere: false), yulgar);
+        Assert.True(took.Elapsed < TimeSpan.FromSeconds(10), $"The join took {took.Elapsed.TotalSeconds:0.0} s.");
+        Assert.Equal(["tfer yulgar Enter Spawn"], (await session.GameHost.CallsAsync()).Where(c => c.StartsWith("tfer ", StringComparison.Ordinal)));
+    }
+
+    [Fact]
     public async Task Join_and_jump_fail_with_NotLoggedIn_before_a_login()
     {
         await using EngineSandbox sandbox = new();

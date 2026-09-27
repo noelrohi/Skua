@@ -42,6 +42,7 @@ internal sealed class FakeGame
     private int _gold = 5000;
     private bool _bankLoaded;
     private DateTime _inventoryAt;
+    private int _inventoryDelay = 500;
     private readonly HashSet<string> _lockedMaps = new(StringComparer.OrdinalIgnoreCase);
     private bool _brokenLogin;
 
@@ -68,6 +69,9 @@ internal sealed class FakeGame
     public void Servers(string json) => _servers = json;
 
     public void ConnectDelay(int milliseconds) => _connectDelay = milliseconds;
+
+    /// <summary>How long after the world the inventory arrives; until then the game refuses map transfers.</summary>
+    public void InventoryDelay(int milliseconds) => _inventoryDelay = milliseconds;
 
     /// <summary>Connecting to <paramref name="server"/> fails with this connection message, as a full server does.</summary>
     public void Reject(string server, string message) => _rejections[server] = message;
@@ -216,8 +220,8 @@ internal sealed class FakeGame
         "world.myAvatar.objData.intGold" => _world ? _gold : null,
         "world.myAvatar.objData.iUpgDays" => _world ? -1 : null,
         "world.myAvatar.objData.strUsername" => _world ? _username : null,
-        "world.myAvatar.items" => _world ? Inventory() : null,
-        "world.myAvatar.items.length" => _world ? Inventory().Count : null,
+        "world.myAvatar.items" => _world ? (InventoryLoaded ? Inventory() : []) : null,
+        "world.myAvatar.items.length" => _world ? (InventoryLoaded ? Inventory().Count : 0) : null,
         "world.myAvatar.objData.iBagSlots" => _world ? 40 : null,
         "world.bankinfo.items" => _world ? (_bankLoaded ? Bank() : []) : null,
         "world.bankinfo.BankArray.length" => _world ? (_bankLoaded ? Bank().Count : 0) : null,
@@ -310,7 +314,7 @@ internal sealed class FakeGame
                 _world = true;
                 _connDetail = null;
                 // The inventory, and with it the bank count, arrives a moment after the world.
-                _inventoryAt = DateTime.UtcNow.AddMilliseconds(500);
+                _inventoryAt = DateTime.UtcNow.AddMilliseconds(_inventoryDelay);
             }
         });
         return Str(true);
@@ -349,7 +353,8 @@ internal sealed class FakeGame
             case ["xt", "zm", "cmd", _, "tfer", _, string map, string cell, string pad]:
                 _note($"tfer {map} {cell} {pad}");
                 string name = map.Split('-')[0].ToLowerInvariant();
-                if (!_connected || _lockedMaps.Contains(name))
+                // Until the inventory has loaded, the game refuses with "Character Inventory is being loaded. Please wait..."
+                if (!_connected || _lockedMaps.Contains(name) || !InventoryLoaded)
                     return;
                 _loading = true;
                 Task.Delay(100).ContinueWith(_ =>
