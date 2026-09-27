@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using StreamJsonRpc;
 
 namespace Skua.Control;
@@ -40,6 +41,18 @@ public sealed class EngineConnection : IDisposable
 
     public Task<ScriptsUpdateResult> ScriptsUpdateAsync(CancellationToken cancellationToken = default) =>
         CallAsync(rpc => rpc.ScriptsUpdateAsync(cancellationToken));
+
+    public Task<LogPage> LogsAsync(LogKind kind = LogKind.All, string? after = null, int? max = null, CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.LogsAsync(kind, after, max, cancellationToken));
+
+    /// <summary>Replays the entries after the cursor, then follows new ones until cancelled.</summary>
+    public async IAsyncEnumerable<LogPage> SubscribeAsync(
+        LogKind[] kinds, string? after = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await using IAsyncEnumerator<LogPage> pages = _proxy.SubscribeAsync(kinds, after, cancellationToken).GetAsyncEnumerator(cancellationToken);
+        while (await CallAsync(async _ => await pages.MoveNextAsync()))
+            yield return pages.Current;
+    }
 
     /// <summary>Calls the Engine and turns its errors into <see cref="ControlException"/>.</summary>
     public async Task<T> CallAsync<T>(Func<IEngineRpc, Task<T>> call)

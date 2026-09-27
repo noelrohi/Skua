@@ -4,6 +4,9 @@
 //   pidfile <path>        write this process's pid to <path>
 //   calllog <path>        append the name of every C call to <path>, one per line
 //   send <type> <text>    send one frame of <type> (one character) with <text> as its UTF-8 payload
+//   log <level> <text>    send an L frame: the level byte (1 error, 2 warn), then <text>
+//   repeat <n> <directive>  run <directive> n times, with {i} in it replaced by 0 to n-1
+//   corrupt               send a frame header declaring a length of 0
 //   reply <name> <xml>    answer every C call to <name> with <xml> (unscripted calls get <undefined/>)
 //   delay <name> <ms>     answer C calls to <name> after <ms>, so later calls are answered first
 //   sleep <ms>            pause
@@ -94,6 +97,11 @@ Thread reader = new(() =>
 reader.Start();
 
 foreach (string line in scenario)
+    Run(line);
+
+reader.Join();
+
+void Run(string line)
 {
     string[] parts = line.Split(' ', 3);
     switch (parts)
@@ -104,6 +112,20 @@ foreach (string line in scenario)
         case ["send", string type, string text]:
             Send(type[0], Encoding.UTF8.GetBytes(text));
             break;
+        case ["log", string level, string text]:
+            Send('L', [byte.Parse(level), .. Encoding.UTF8.GetBytes(text)]);
+            break;
+        case ["repeat", string count, string directive]:
+            for (int i = 0; i < int.Parse(count); i++)
+                Run(directive.Replace("{i}", i.ToString()));
+            break;
+        case ["corrupt"]:
+            lock (writeLock)
+            {
+                stdout.Write(new byte[4]);
+                stdout.Flush();
+            }
+            break;
         case ["sleep", string ms]:
             Thread.Sleep(int.Parse(ms));
             break;
@@ -112,5 +134,3 @@ foreach (string line in scenario)
             break;
     }
 }
-
-reader.Join();

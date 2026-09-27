@@ -16,12 +16,46 @@ internal static class Cli
         }
         catch (ControlException e)
         {
-            if (json)
-                Console.WriteLine(JsonSerializer.Serialize(new ErrorOutput(new ErrorBody(e.Code, e.Message)), Output.JsonOptions));
-            else
-                Console.Error.WriteLine($"skua: {e.Message}");
-            return ExitCodes.For(e.Code);
+            return Fail(json, e);
         }
+    }
+
+    /// <summary>
+    /// Replays the entries of the given kinds after the cursor, then prints new ones as they arrive until interrupted:
+    /// one line each, or one JSON entry per line with <c>--json</c>. A gap is reported on stderr.
+    /// </summary>
+    public static async Task<int> FollowLogsAsync(bool json, LogKind[] kinds, string? after, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using EngineConnection connection = await EngineClient.ConnectAsync(
+                new EngineClientOptions { Endpoint = EngineEndpoint.FromEnvironment() }, cancellationToken);
+            await foreach (LogPage page in connection.SubscribeAsync(kinds, after, cancellationToken))
+            {
+                if (page.Gap)
+                    Console.Error.WriteLine($"skua: {Output.GapNotice}");
+                foreach (LogEntryDto entry in page.Entries)
+                    Console.WriteLine(json ? JsonSerializer.Serialize(entry, ControlJson.Options) : Output.Entry(entry));
+            }
+            return ExitCodes.Success;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return ExitCodes.Success;
+        }
+        catch (ControlException e)
+        {
+            return Fail(json, e);
+        }
+    }
+
+    private static int Fail(bool json, ControlException e)
+    {
+        if (json)
+            Console.WriteLine(JsonSerializer.Serialize(new ErrorOutput(new ErrorBody(e.Code, e.Message)), Output.JsonOptions));
+        else
+            Console.Error.WriteLine($"skua: {e.Message}");
+        return ExitCodes.For(e.Code);
     }
 
     private sealed record ErrorOutput(ErrorBody Error);

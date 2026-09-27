@@ -2,8 +2,10 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net.Sockets;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
+using Skua.App.Engine.Logging;
 using Skua.Control;
 using Skua.Core.Interfaces;
 using Skua.MacOS.GameHost;
@@ -16,19 +18,24 @@ namespace Skua.App.Engine;
 /// </summary>
 internal sealed class Engine : IEngineRpc
 {
+    /// <summary>Extra secrets to redact from every log, one per line; for development and tests.</summary>
+    public const string RedactVariable = "SKUA_REDACT";
+
     private static readonly TimeSpan LockRetry = TimeSpan.FromSeconds(1);
 
     private readonly EngineEndpoint _endpoint;
     private readonly GameHostSupervisor _gameHost;
+    private readonly EngineLogs _logs;
     private readonly Stopwatch _uptime = Stopwatch.StartNew();
     private readonly CancellationTokenSource _shutdown = new();
     private readonly ConcurrentDictionary<JsonRpc, byte> _connections = new();
     private readonly ScriptSourceOperations _scriptSource;
 
-    private Engine(EngineEndpoint endpoint, GameHostSupervisor gameHost, IGetScriptsService scriptsService)
+    private Engine(EngineEndpoint endpoint, GameHostSupervisor gameHost, EngineLogs logs, IGetScriptsService scriptsService)
     {
         _endpoint = endpoint;
         _gameHost = gameHost;
+        _logs = logs;
         _scriptSource = new ScriptSourceOperations(scriptsService, _shutdown.Token);
     }
 
@@ -54,7 +61,15 @@ internal sealed class Engine : IEngineRpc
 
         if (detach)
             Detach.RedirectStdio(endpoint.LogPath);
-        Trace.Listeners.Add(new ConsoleTraceListener(useErrorStream: true));
+        DateTimeOffset started = DateTimeOffset.UtcNow;
+        (LogFile? file, string? fileError) = OpenLogFile(endpoint, started);
+        using EngineLogs logs = new(started, file);
+        foreach (string secret in (Environment.GetEnvironmentVariable(RedactVariable) ?? "").Split('\n'))
+            logs.AddSecret(secret);
+        EngineLog.Attach(logs);
+        logs.Event(EventTypes.EngineStarted, new { name = endpoint.Name, build = Build, protocol = ControlProtocol.Version, pid = Environment.ProcessId });
+        if (fileError is not null)
+            EngineLog.Write($"Not writing a log file: {fileError}");
 
         GameHostLaunch launch;
         try
@@ -68,14 +83,27 @@ internal sealed class Engine : IEngineRpc
         }
 
         // Like the Windows app, the Engine never disposes Core's singletons: they stop with the process, and their Dispose paths throw.
-        ServiceProvider services = EngineServices.Build(launch);
-        using (GameHostSupervisor gameHost = GameHostSupervisor.Start(services))
+        ServiceProvider services = EngineServices.Build(launch, logs);
+        using (GameHostSupervisor gameHost = GameHostSupervisor.Start(services, logs))
         {
-            Engine engine = new(endpoint, gameHost, services.GetRequiredService<IGetScriptsService>());
+            Engine engine = new(endpoint, gameHost, logs, services.GetRequiredService<IGetScriptsService>());
             await engine.ServeAsync();
         }
 
         return EngineExitCodes.Success;
+    }
+
+    /// <summary>Opens this start's JSONL file; without one the Engine still runs, with its logs in memory only.</summary>
+    private static (LogFile? File, string? Error) OpenLogFile(EngineEndpoint endpoint, DateTimeOffset started)
+    {
+        try
+        {
+            return (LogFile.Open(endpoint.LogFilesDir, started), null);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return (null, e.Message);
+        }
     }
 
     public Task<HelloResult> HelloAsync(int protocol, CancellationToken cancellationToken) =>
@@ -98,6 +126,25 @@ internal sealed class Engine : IEngineRpc
 
     public Task<ScriptsUpdateResult> ScriptsUpdateAsync(CancellationToken cancellationToken) =>
         _scriptSource.UpdateAsync();
+
+    public Task<LogPage> LogsAsync(LogKind kind, string? after, int? max, CancellationToken cancellationToken) =>
+        Task.FromResult(_logs.Read([kind], after, max));
+
+    public async IAsyncEnumerable<LogPage> SubscribeAsync(
+        LogKind[] kinds, string? after, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        string? cursor = after;
+        while (true)
+        {
+            Task appended = _logs.NextAppend;
+            LogPage page = _logs.Read(kinds, cursor, EngineLogs.MaxMax);
+            cursor = page.Next;
+            if (page.Entries.Count > 0 || page.Gap)
+                yield return page;
+            else
+                await appended.WaitAsync(cancellationToken);
+        }
+    }
 
     /// <summary>
     /// Takes the lock, or returns null when another Engine holds it. A client checking the lock holds it for an instant,

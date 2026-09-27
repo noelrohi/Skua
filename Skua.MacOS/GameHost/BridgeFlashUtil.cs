@@ -28,7 +28,7 @@ public sealed class BridgeFlashUtil : IFlashUtil
 
     public event FlashCallHandler? FlashCall;
 
-    /// <summary>Raised when a Game Host process has started, with its pid.</summary>
+    /// <summary>Raised when a Game Host process has started, with its pid, before any of its other events.</summary>
     public event Action<int>? GameHostStarted;
 
     /// <summary>Raised when the Game Host process ends, with its exit code.</summary>
@@ -39,6 +39,9 @@ public sealed class BridgeFlashUtil : IFlashUtil
 
     /// <summary>Raised for each Flash log line: AS3 <c>trace()</c>, warnings and uncaught AS3 errors.</summary>
     public event Action<string>? FlashLog;
+
+    /// <summary>Raised when the Game Host sends a corrupt frame, with the reason; the Bridge reads nothing after it.</summary>
+    public event Action<string>? BridgeFailed;
 
     public bool IsGameHostRunning => _gameHost?.IsRunning ?? false;
 
@@ -52,13 +55,14 @@ public sealed class BridgeFlashUtil : IFlashUtil
         _gameHost?.Dispose();
 
         GameHostProcess gameHost = new(_launch.Executable, _launch.Arguments);
+        gameHost.Started += pid => GameHostStarted?.Invoke(pid);
         gameHost.Invoked += OnInvoked;
         gameHost.FlashLog += line => FlashLog?.Invoke(line);
         gameHost.LogLine += line => GameHostLog?.Invoke(line);
+        gameHost.BridgeFailed += error => BridgeFailed?.Invoke(error);
         gameHost.Exited += code => GameHostExited?.Invoke(code);
         gameHost.Start();
         _gameHost = gameHost;
-        GameHostStarted?.Invoke(gameHost.Pid);
     }
 
     public string? Call(string function, params object[] args) => Call<string>(function, args);

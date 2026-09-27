@@ -50,6 +50,12 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
         return Task.CompletedTask;
     }
 
+    public Task<LogPage> LogsAsync(LogKind kind, string? after, int? max, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called logs after a protocol mismatch.");
+
+    public IAsyncEnumerable<LogPage> SubscribeAsync(LogKind[] kinds, string? after, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called subscribe after a protocol mismatch.");
+
     public async ValueTask DisposeAsync()
     {
         _stop.Cancel();

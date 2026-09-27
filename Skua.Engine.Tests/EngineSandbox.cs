@@ -68,6 +68,27 @@ public sealed class EngineSandbox : IAsyncDisposable
 
     public async Task<ProcessResult> RunCliAsync(IDictionary<string, string> environment, params string[] arguments)
     {
+        using Process process = LaunchCli(environment, arguments);
+        Task<string> stdout = process.StandardOutput.ReadToEndAsync();
+        Task<string> stderr = process.StandardError.ReadToEndAsync();
+        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(StopTimeout * 2);
+        await process.WaitForExitAsync(timeout.Token);
+        return new ProcessResult(process.ExitCode, await stdout, await stderr);
+    }
+
+    /// <summary>Starts <c>skua</c> with this sandbox's data folder, for a command that keeps running; disposing the sandbox kills it.</summary>
+    public Process StartCli(params string[] arguments) => StartCli(new Dictionary<string, string>(), arguments);
+
+    public Process StartCli(IDictionary<string, string> environment, params string[] arguments)
+    {
+        Process process = LaunchCli(environment, arguments);
+        _processes.Add(process);
+        return process;
+    }
+
+    private Process LaunchCli(IDictionary<string, string> environment, string[] arguments)
+    {
         ProcessStartInfo startInfo = new(CliExecutable) { RedirectStandardError = true, RedirectStandardOutput = true, RedirectStandardInput = true };
         foreach (string argument in arguments)
             startInfo.ArgumentList.Add(argument);
@@ -77,14 +98,9 @@ public sealed class EngineSandbox : IAsyncDisposable
         foreach ((string key, string value) in environment)
             startInfo.Environment[key] = value;
 
-        using Process process = Process.Start(startInfo)!;
+        Process process = Process.Start(startInfo)!;
         process.StandardInput.Close();
-        Task<string> stdout = process.StandardOutput.ReadToEndAsync();
-        Task<string> stderr = process.StandardError.ReadToEndAsync();
-        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        timeout.CancelAfter(StopTimeout * 2);
-        await process.WaitForExitAsync(timeout.Token);
-        return new ProcessResult(process.ExitCode, await stdout, await stderr);
+        return process;
     }
 
     public async ValueTask DisposeAsync()

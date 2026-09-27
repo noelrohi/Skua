@@ -65,5 +65,27 @@ internal static class Output
 
     private static string Source(ScriptSourceDto source) => $"{source.Owner}/{source.Repo}@{source.Branch}";
 
-    private static string Name(GameState state) => JsonNamingPolicy.CamelCase.ConvertName(state.ToString());
+
+    public const string GapNotice = "gap: entries after the cursor are no longer held (evicted, or the Engine restarted).";
+
+    public static string Logs(LogPage page)
+    {
+        StringBuilder text = new();
+        if (page.Gap)
+            text.AppendLine($"-- {GapNotice}");
+        foreach (LogEntryDto entry in page.Entries)
+            text.AppendLine(Entry(entry));
+        return text.Append($"-- next {page.Next}").ToString();
+    }
+
+    /// <summary>One line: seq, UTC time, kind and run, then the text or the event type and its data.</summary>
+    public static string Entry(LogEntryDto entry)
+    {
+        string time = DateTimeOffset.FromUnixTimeMilliseconds(entry.Ts).UtcDateTime.ToString("HH:mm:ss.fff");
+        string run = entry.Run is { } number ? $" run {number}" : "";
+        string body = entry.Text ?? $"{entry.Type} {JsonSerializer.Serialize(entry.Data, ControlJson.Options)}";
+        return $"{entry.Seq} {time} {Name(entry.Kind)}{run}{(entry.Truncated ? " (truncated)" : "")} {body}";
+    }
+
+    private static string Name<TEnum>(TEnum value) where TEnum : struct, Enum => JsonNamingPolicy.CamelCase.ConvertName(value.ToString());
 }

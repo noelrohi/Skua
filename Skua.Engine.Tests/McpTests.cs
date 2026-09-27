@@ -25,6 +25,24 @@ public class McpTests
     }
 
     [Fact]
+    public async Task Skua_mcp_exposes_logs_with_the_same_arguments_and_page()
+    {
+        await using EngineSandbox sandbox = new();
+        await using McpClient client = await ConnectAsync(sandbox);
+
+        CallToolResult result = await client.CallToolAsync("logs", new Dictionary<string, object?> { ["kind"] = "events", ["max"] = 1 },
+            cancellationToken: TestContext.Current.CancellationToken);
+        CallToolResult bad = await client.CallToolAsync("logs", new Dictionary<string, object?> { ["after"] = "nonsense" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotEqual(true, result.IsError);
+        LogPage page = JsonSerializer.Deserialize<LogPage>(((TextContentBlock)result.Content.Single()).Text, ControlJson.Options)!;
+        Assert.Equal(EventTypes.EngineStarted, Assert.Single(page.Entries).Type);
+        Assert.True(bad.IsError);
+        Assert.StartsWith("InvalidArgument: ", ((TextContentBlock)bad.Content.Single()).Text);
+    }
+
+    [Fact]
     public async Task A_failed_call_returns_isError_with_the_code_and_message()
     {
         await using EngineSandbox sandbox = new();

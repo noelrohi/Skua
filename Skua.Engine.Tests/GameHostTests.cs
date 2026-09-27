@@ -9,7 +9,7 @@ public class GameHostTests
     public async Task Status_reports_the_Game_Host_up_while_it_runs()
     {
         await using EngineSandbox sandbox = new();
-        FakeGameHost gameHost = new FakeGameHost(sandbox).Send('X', "loaded").Send('L', "WARN wgpu: fake");
+        FakeGameHost gameHost = new FakeGameHost(sandbox).Send('X', "loaded").Log(2, "wgpu: fake");
         (_, EngineConnection connection) = await sandbox.StartEngineAsync(gameHost.Environment());
         using (connection)
         {
@@ -99,17 +99,19 @@ public class GameHostTests
     }
 
     [Fact]
-    public async Task A_Game_Host_exit_is_logged()
+    public async Task A_Game_Host_exit_is_a_gamehost_exited_event()
     {
         await using EngineSandbox sandbox = new();
         FakeGameHost gameHost = new FakeGameHost(sandbox).Sleep(200).Exit(3);
-        (Process engine, EngineConnection connection) = await sandbox.StartEngineAsync(gameHost.Environment());
+        (_, EngineConnection connection) = await sandbox.StartEngineAsync(gameHost.Environment());
         using (connection)
+        {
             await WaitForStatusAsync(connection, s => !s.Game.GameHostUp);
 
-        string log = await StopAndReadLogAsync(sandbox, engine);
+            List<LogEntryDto> exited = await connection.WaitForLogsAsync(LogKind.Events, 1, e => e.Type == EventTypes.GameHostExited);
 
-        Assert.Contains("gamehost.exited: the Game Host exited with code 3.", log);
+            Assert.Equal(3, exited.Single().Data!.Value.GetProperty("code").GetInt32());
+        }
     }
 
     [Fact]

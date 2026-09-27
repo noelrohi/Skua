@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Skua.App.Cli;
 using Skua.Control;
@@ -82,6 +83,80 @@ public class CliTests
         Assert.Equal(ExitCodes.For(ErrorCode.InvalidArgument), longPath.ExitCode);
         using JsonDocument error = JsonDocument.Parse(longPath.Stdout);
         Assert.Equal("invalidArgument", error.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Logs_json_prints_a_page_with_its_next_cursor()
+    {
+        await using EngineSandbox sandbox = new();
+
+        ProcessResult result = await sandbox.RunCliAsync("logs", "events", "--max", "1", "--json");
+
+        Assert.Equal(0, result.ExitCode);
+        using JsonDocument json = JsonDocument.Parse(result.Stdout);
+        JsonElement entry = json.RootElement.GetProperty("entries").EnumerateArray().Single();
+        Assert.Equal("engine.started", entry.GetProperty("type").GetString());
+        Assert.Equal("events", entry.GetProperty("kind").GetString());
+        Assert.False(entry.TryGetProperty("text", out _));
+        Assert.False(json.RootElement.GetProperty("gap").GetBoolean());
+        Assert.False(string.IsNullOrEmpty(json.RootElement.GetProperty("next").GetString()));
+    }
+
+    [Fact]
+    public async Task Logs_prints_one_line_per_entry_by_default()
+    {
+        await using EngineSandbox sandbox = new();
+
+        ProcessResult result = await sandbox.RunCliAsync("logs");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("engine.started", result.Stdout);
+        Assert.Contains("next ", result.Stdout);
+    }
+
+    [Fact]
+    public async Task Logs_follow_streams_entries_after_the_cursor_as_JSON_lines()
+    {
+        await using EngineSandbox sandbox = new();
+        FakeGameHost gameHost = new FakeGameHost(sandbox).Send('F', "before").Sleep(1500).Send('F', "live");
+        (_, EngineConnection connection) = await sandbox.StartEngineAsync(gameHost.Environment());
+        using (connection)
+        {
+            await connection.WaitForLogsAsync(LogKind.Flash, 1);
+            LogPage pulled = await connection.LogsAsync(LogKind.Flash, cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Equal("before", Assert.Single(pulled.Entries).Text);
+
+            Process follow = sandbox.StartCli("logs", "flash", "-f", "--after", pulled.Next, "--json");
+            using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(20));
+            string line = (await follow.StandardOutput.ReadLineAsync(timeout.Token))!;
+
+            using JsonDocument entry = JsonDocument.Parse(line);
+            Assert.Equal("live", entry.RootElement.GetProperty("text").GetString());
+            Assert.Equal("flash", entry.RootElement.GetProperty("kind").GetString());
+            Assert.False(follow.HasExited);
+        }
+    }
+
+    [Fact]
+    public async Task Logs_follow_takes_several_kinds_but_a_page_takes_one()
+    {
+        await using EngineSandbox sandbox = new();
+
+        Process follow = sandbox.StartCli("logs", "events", "debug", "-f");
+        ProcessResult page = await sandbox.RunCliAsync("logs", "events", "debug");
+        ProcessResult maxWithFollow = await sandbox.RunCliAsync("logs", "-f", "--max", "5");
+
+        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(20));
+        HashSet<string> kinds = [];
+        while (kinds.Count < 2)
+            kinds.Add((await follow.StandardOutput.ReadLineAsync(timeout.Token))!.Split(' ')[2]);
+        Assert.Equal(["events", "debug"], kinds.Order().Reverse());
+        Assert.Equal(1, page.ExitCode);
+        Assert.Contains("one kind", page.Stderr);
+        Assert.Equal(1, maxWithFollow.ExitCode);
+        Assert.Contains("--max", maxWithFollow.Stderr);
     }
 
     [Fact]
