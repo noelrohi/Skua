@@ -38,6 +38,7 @@ internal sealed class FakeGame
     private int _hp = MaxHp;
     private int _state = 1;
     private bool _bankLoaded;
+    private DateTime _inventoryAt;
     private readonly HashSet<string> _lockedMaps = new(StringComparer.OrdinalIgnoreCase);
     private bool _brokenLogin;
 
@@ -79,6 +80,7 @@ internal sealed class FakeGame
                 ("isNull", [string path]) => Str(Get(path) is null),
                 ("getGameObject", [string path]) => Json(Get(path)),
                 ("getGameObjectS", [string path]) => Json(GetStatic(path)),
+                ("getGameObjectKey", ["world.uoTree", string player]) => Json(_world ? Players()[player] : null),
                 ("callGameFunction" or "callGameFunction0", [string path, .. string[] rest]) => Call(path, rest),
                 ("connectToServer", [string server]) => ConnectToServer(server),
                 ("clickServer", [string serverName]) => ClickServer(serverName),
@@ -186,7 +188,9 @@ internal sealed class FakeGame
         "world.mapLoadInProgress" => _world ? _loading : null,
         "world.curRoom" => _world ? _roomId : null,
         "world.lock.tfer" => _world ? new JsonObject { ["cd"] = 3000, ["ts"] = 0 } : null,
-        "world.uoTree" => _world ? Players() : null,
+        // The game's uoTree is a flash.utils.Dictionary, whose toJSON gives "Dictionary"; the room's names are in areaUsers.
+        "world.uoTree" => _world ? "Dictionary" : null,
+        "world.areaUsers" => _world ? new JsonArray([.. Players().Select(p => JsonValue.Create(p.Key))]) : null,
         "world.myAvatar.dataLeaf.intState" => _world ? _state : null,
         "world.myAvatar.dataLeaf.intHP" => _world ? _hp : null,
         "world.myAvatar.dataLeaf.intHPMax" => _world ? MaxHp : null,
@@ -200,8 +204,11 @@ internal sealed class FakeGame
         "world.myAvatar.items.length" => _world ? Inventory().Count : null,
         "world.myAvatar.objData.iBagSlots" => _world ? 40 : null,
         "world.bankinfo.items" => _world ? (_bankLoaded ? Bank() : []) : null,
+        "world.bankinfo.BankArray.length" => _world ? (_bankLoaded ? Bank().Count : 0) : null,
+        "world.myAvatar.invLoaded" => InventoryLoaded,
         "world.myAvatar.objData.iBankSlots" => _world ? 10 : null,
-        "world.myAvatar.iBankCount" => _world ? Bank().Count : null,
+        // The login's bank count, known before the bank loads.
+        "world.myAvatar.iBankCount" => InventoryLoaded ? Bank().Count : null,
         "world.myAvatar.tempitems" => _world ? TempItems() : null,
         "world.myAvatar.houseitems" => _world ? HouseItems() : null,
         "world.myAvatar.houseitems.length" => _world ? HouseItems().Count : null,
@@ -209,6 +216,8 @@ internal sealed class FakeGame
         "world.questTree" => _world ? QuestTree() : null,
         _ => null,
     };
+
+    private bool InventoryLoaded => _world && DateTime.UtcNow >= _inventoryAt;
 
     private object? GetStatic(string path) => path switch
     {
@@ -239,6 +248,16 @@ internal sealed class FakeGame
                 break;
             case "gotoAndPlay" when args is ["Login"]:
                 ToLoginScreen();
+                break;
+            case "getBank":
+                // The game loads the bank over HTTP, not from the game server; it needs the character's data from the inventory.
+                _note("getBank");
+                if (InventoryLoaded)
+                    Task.Delay(100).ContinueWith(_ =>
+                    {
+                        lock (_lock)
+                            _bankLoaded = _world;
+                    });
                 break;
             case "world.myAvatar.pMC.artLoaded":
                 return Str("true");
@@ -272,6 +291,8 @@ internal sealed class FakeGame
                 Join("battleon", "Enter", "Spawn");
                 _world = true;
                 _connDetail = null;
+                // The inventory, and with it the bank count, arrives a moment after the world.
+                _inventoryAt = DateTime.UtcNow.AddMilliseconds(500);
             }
         });
         return Str(true);
@@ -302,7 +323,7 @@ internal sealed class FakeGame
         _state = 1;
     }
 
-    /// <summary>A packet the Engine sends the game server: a map transfer or a bank load.</summary>
+    /// <summary>A packet the Engine sends the game server: a map transfer, or the old bank load, which gets no reply.</summary>
     private void SendString(string packet)
     {
         switch (packet.Split('%', StringSplitOptions.RemoveEmptyEntries))
@@ -324,10 +345,9 @@ internal sealed class FakeGame
                     }
                 });
                 return;
-            case ["xt", "zm", "loadBank", _, "All"]:
+            case ["xt", "zm", "loadBank", ..]:
+                // The game server no longer answers it (#49).
                 _note("loadBank");
-                _bankLoaded = true;
-                Pext(new JsonObject { ["cmd"] = "loadBank", ["items"] = Bank() });
                 return;
         }
     }

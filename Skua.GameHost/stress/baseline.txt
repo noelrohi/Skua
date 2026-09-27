@@ -1,8 +1,8 @@
 # Thresholds for stress/check.sh. Update with each Ruffle series (README.md, "Changing Ruffle"):
 # run `stress/check.sh --record` a few times and take the worst value.
 #
-# Series: noelrohi/ruffle skua-20260927-a1277c0 (8e74e81). Headless defaults. Apple M4 Pro, 24 GB, macOS 27.0.
-# Recorded 2026-09-27: the worst of three runs.
+# Series: noelrohi/ruffle skua-20260927b-a1277c0 (171ab77). Headless defaults. Apple M4 Pro, 24 GB, macOS 27.0.
+# Recorded 2026-09-27: the worst of three runs on an idle Mac (no other tests, builds or Game Hosts running).
 
 # A measured value passes up to baseline + tolerance_pct.
 tolerance_pct 20
@@ -12,13 +12,13 @@ tolerance_pct 20
 footprint_secs 60
 footprint_warm_secs 15
 flat_pct_per_min 10
-stress2.footprint_mb 786
-stress3.footprint_mb 901
+stress2.footprint_mb 732
+stress3.footprint_mb 897
 
 # Stress4 (render thread): average submit_frame time.
 stress4_warm_secs 10
 stress4_secs 40
-stress4.render_ms 378
+stress4.render_ms 359
 
 # Sounds: live SoundChannels (one 0.2 s sound per frame, each kept until SOUND_COMPLETE).
 short_secs 20

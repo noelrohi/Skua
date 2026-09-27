@@ -8,7 +8,8 @@ usage: check.py --host <skua-gamehost> --swfs <dir with Stress2.swf ...> --skua-
 --record prints the measured values in baseline.txt's format instead of failing on the thresholds.
 Memory is judged by `footprint` (phys_footprint), never RSS: RSS hides compressed pages and most GPU memory.
 """
-import argparse, math, os, re, struct, subprocess, sys, threading, time
+import argparse, json, math, os, re, struct, subprocess, sys, threading, time
+import xml.etree.ElementTree as ET
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
@@ -69,7 +70,6 @@ class Host:
             return self.replies.pop(i, None)
 
     def stats(self):
-        import json
         q = self.ask(b"Q")
         return json.loads(q) if q else {}
 
@@ -231,6 +231,44 @@ class Suite:
         self.check("events", in_order and not wrong,
                    f"{len(h.events)} events in {secs:.1f} s, in order: {in_order}, wrong names: {wrong}")
 
+    # reads: getGameObject of AQW-shaped objects (#49). Each reply parses as JSON with every entry, and every
+    # whole number is written as Flash writes it, "1500000000" and not "1500000000.0": Core's Newtonsoft models
+    # reject the latter for an int, and the whole list then reads as empty. The players' weak-key Dictionary is
+    # written as "Dictionary", as Flash writes it, so the Engine reads it by key.
+    def reads(self):
+        h = self.host(self.swf("Reads"), "reads")
+        h.wait_for(lambda: "getGameObjectKey" in h.callbacks, timeout=20)
+        # Each path's entry count, or for the Dictionary the string Flash writes for it.
+        expect = {("items",): 17, ("bankinfo.items",): 1000, ("uoTree",): "Dictionary", ("areaUsers",): 5,
+                  ("uoTree", "maada"): 14, ("odd",): 8}
+        problems, sizes = [], []
+        for args, count in expect.items():
+            path = args[0] + "".join(f"[{a}]" for a in args[1:])
+            call = "getGameObject" if len(args) == 1 else "getGameObjectKey"
+            reply = h.ask(b"C", f'<invoke name="{call}" returntype="xml"><arguments>'
+                                f'{"".join(f"<string>{a}</string>" for a in args)}</arguments></invoke>'.encode(), timeout=20)
+            try:
+                text = ET.fromstring(reply.decode()).text or ""
+                value = json.loads(text)
+            except Exception as e:
+                problems.append(f"{path}: unreadable reply {reply[:120]!r}: {e}")
+                continue
+            sizes.append(f"{path} {len(reply)} B")
+            got = value if isinstance(count, str) else len(value)
+            if got != count:
+                problems.append(f"{path}: {got}, expected {count}")
+            # Whole numbers below 2^63 (JSON only; strings are skipped).
+            tokens = re.findall(r'"(?:[^"\\]|\\.)*"|(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)', text)
+            bad = sorted({t for t in tokens if t and float(t).is_integer() and abs(float(t)) < 2 ** 63
+                          and not re.fullmatch(r"-?\d+", t)})
+            if bad:
+                problems.append(f"{path}: whole numbers not written as integers: {bad[:4]}")
+        uncaught = h.uncaught()
+        h.close()
+        self.check("reads", not problems and not uncaught,
+                   f"{'; '.join(sizes)}{'; ' + '; '.join(problems) if problems else ''}"
+                   f"{'; uncaught: ' + uncaught[0] if uncaught else ''}")
+
     # smoke: skua.swf loads the game to the login screen; 73 callbacks register; a 958x550 screenshot;
     # no uncaught AS3 errors while it sits there (skua.swf's modules run every frame, before login too).
     def smoke(self):
@@ -301,7 +339,7 @@ class Suite:
     def run(self, only):
         cases = {"stress2": lambda: self.footprint_case("stress2"), "stress3": lambda: self.footprint_case("stress3"),
                  "stress4": self.stress4, "sounds": self.sounds, "weakdict": self.weakdict, "events": self.events,
-                 "smoke": self.smoke, "lifecycle": self.lifecycle}
+                 "reads": self.reads, "smoke": self.smoke, "lifecycle": self.lifecycle}
         for name, case in cases.items():
             if not only or name in only:
                 case()

@@ -1,7 +1,5 @@
-using CommunityToolkit.Mvvm.Messaging;
 using Skua.Control;
 using Skua.Core.Interfaces;
-using Skua.Core.Messaging;
 using Skua.Core.Models.Items;
 using Skua.Core.Models.Players;
 using Skua.Core.Models.Quests;
@@ -15,6 +13,7 @@ namespace Skua.App.Engine.Game;
 internal sealed class GameQueries
 {
     private static readonly TimeSpan BankLoadTimeout = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan BankPollInterval = TimeSpan.FromMilliseconds(250);
 
     /// <summary>How long <c>status</c> waits for the player summary before leaving it out, since <c>status</c> never fails.</summary>
     private static readonly TimeSpan PlayerTimeout = TimeSpan.FromSeconds(3);
@@ -32,8 +31,6 @@ internal sealed class GameQueries
     /// <summary>The world whose bank the game server has sent, or 0 for none; worlds count from 1.</summary>
     private int _bankWorld;
 
-    private volatile TaskCompletionSource? _bankArrived;
-
     public GameQueries(IScriptInterface api, IFlashUtil flash, GameStateTracker tracker, GameActionSlot slot)
     {
         _api = api;
@@ -43,7 +40,6 @@ internal sealed class GameQueries
         _drops = new DropTracker(flash, tracker);
         // Each login starts a new world, whose bank the game server hasn't sent yet.
         tracker.Playing += () => Interlocked.Increment(ref _world);
-        StrongReferenceMessenger.Default.Register<GameQueries, BankLoadedMessage, int>(this, (int)MessageChannels.GameEvents, static (r, _) => r._bankArrived?.TrySetResult());
     }
 
     public async Task<InventoryResult> InventoryAsync(InventoryKind kind, CancellationToken cancellationToken)
@@ -83,11 +79,21 @@ internal sealed class GameQueries
             _api.Map.Name,
             _api.Map.RoomID,
             _api.Map.Cells,
-            // Core's Map.Players reads a field its binding never fills, so this reads the same game object itself.
-            (_flash.GetGameObject<Dictionary<string, PlayerInfo>>("world.uoTree") ?? []).Values.Select(p => new MapPlayerDto(p.Name ?? "", p.Level, p.Cell ?? "", p.Pad ?? "", p.HP, p.MaxHP, p.AFK)).ToList(),
+            ReadPlayers().Select(p => new MapPlayerDto(p.Name ?? "", p.Level, p.Cell ?? "", p.Pad ?? "", p.HP, p.MaxHP, p.AFK)).ToList(),
             _api.Monsters.MapMonsters.Select(m => new MonsterDto(m.ID, m.MapID, m.Name ?? "", m.Cell ?? "", m.HP, m.MaxHP, m.Alive)).ToList()),
             cancellationToken);
     }
+
+    /// <summary>
+    /// The players in the room, the player included. The game's <c>world.uoTree</c> is a <c>flash.utils.Dictionary</c>, which
+    /// <c>JSON.stringify</c> writes as <c>"Dictionary"</c>, so this reads the room's names and then each player's entry. A player who
+    /// leaves between the two reads is left out.
+    /// </summary>
+    private List<PlayerInfo> ReadPlayers() =>
+        (_flash.GetGameObject<List<string>>("world.areaUsers") ?? [])
+            .Select(name => _flash.GetGameObject<PlayerInfo>($"world.uoTree[\"{name}\"]"))
+            .OfType<PlayerInfo>()
+            .ToList();
 
     public Task<DropsResult> DropsAsync(CancellationToken cancellationToken)
     {
@@ -124,8 +130,10 @@ internal sealed class GameQueries
     }
 
     /// <summary>
-    /// Asks the game server for the bank once per login, since the game has none until it does, and waits for it. Core's own
-    /// <c>Load</c> doesn't ask while the bank is open in the game, and its wait for the bank never ends early.
+    /// Loads the bank once per login, since the game has none until it does, and waits for it. It loads as the game itself does,
+    /// with <c>getBank</c> over HTTP: the game server no longer answers Core's <c>loadBank</c> packet. <c>getBank</c> needs the
+    /// character's data, which the game has once the inventory has loaded. The bank has arrived once it holds at least the login's
+    /// bank count of items. That count leaves out AC items, so a bank holding only AC items may be read before they arrive.
     /// </summary>
     private async Task LoadBankAsync(CancellationToken cancellationToken)
     {
@@ -137,27 +145,37 @@ internal sealed class GameQueries
         {
             if (Volatile.Read(ref _bankWorld) == world)
                 return;
-            TaskCompletionSource arrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            _bankArrived = arrived;
-            await Task.Run(() => _api.Send.Packet($"%xt%zm%loadBank%{_api.Map.RoomID}%All%"), cancellationToken);
+            using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(BankLoadTimeout);
             try
             {
-                await arrived.Task.WaitAsync(BankLoadTimeout, cancellationToken);
+                await PollAsync(() => _flash.GetGameObject<bool>("world.myAvatar.invLoaded"), timeout.Token);
+                await Task.Run(() => _flash.CallGameFunction("getBank"), timeout.Token);
+                await PollAsync(BankArrived, timeout.Token);
             }
-            catch (TimeoutException)
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                throw RpcErrors.Of(ErrorCode.Timeout, $"The game server didn't send the bank within {BankLoadTimeout.TotalSeconds:0} s; try again.");
+                throw RpcErrors.Of(ErrorCode.Timeout, $"The game didn't load the bank within {BankLoadTimeout.TotalSeconds:0} s; try again.");
             }
             // A relogin while it loaded makes a new world, which still needs its bank.
             Volatile.Write(ref _bankWorld, world);
         }
         finally
         {
-            _bankArrived = null;
             _bankLoad.Release();
         }
     }
 
+    /// <summary>Whether the bank holds the login's bank count of items; <c>BankArray</c>, unlike <c>items</c>, ignores a search in the game's bank.</summary>
+    private bool BankArrived() =>
+        _flash.GetGameObject<int?>("world.myAvatar.iBankCount") is int count
+        && _flash.GetGameObject<int?>("world.bankinfo.BankArray.length") >= count;
+
+    private static async Task PollAsync(Func<bool> done, CancellationToken cancellationToken)
+    {
+        while (!await Task.Run(done, cancellationToken))
+            await Task.Delay(BankPollInterval, cancellationToken);
+    }
 
     private static ItemDto ToDto(InventoryItem item) =>
         new(item.ID, item.Name, item.Quantity, item.MaxStack, item.CategoryString ?? "", item.Equipped, item.EnhancementLevel);

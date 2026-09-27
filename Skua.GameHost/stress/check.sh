@@ -5,7 +5,7 @@
 # paravirtual GPU). The smoke case loads the live game's login screen, so it needs the network.
 #
 # Usage: stress/check.sh [--only case,case] [--record]
-#   Cases: stress2 stress3 stress4 sounds weakdict events smoke lifecycle
+#   Cases: stress2 stress3 stress4 sounds weakdict events reads smoke lifecycle
 #   --record prints the measured values in baseline.txt's format instead of judging them.
 # Env:
 #   SKUA_SWF         a prebuilt skua.swf (default: built by Skua.AS3/compile-as3.sh, which also caches the
@@ -49,7 +49,7 @@ mxmlc() {
 }
 
 echo "Building the stress SWFs"
-for case in Stress2 Stress3 Stress4 Sounds WeakDict Events; do
+for case in Stress2 Stress3 Stress4 Sounds WeakDict Events Reads; do
     if [ ! "$out_dir/$case.swf" -nt "$stress_dir/$case.as" ]; then
         mxmlc -source-path "$stress_dir" -omit-trace-statements=false -output "$out_dir/$case.swf" "$stress_dir/$case.as"
     fi
