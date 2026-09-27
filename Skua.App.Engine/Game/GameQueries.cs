@@ -1,7 +1,6 @@
 using Skua.Control;
 using Skua.Core.Interfaces;
 using Skua.Core.Models.Items;
-using Skua.Core.Models.Players;
 using Skua.Core.Models.Quests;
 
 namespace Skua.App.Engine.Game;
@@ -79,21 +78,10 @@ internal sealed class GameQueries
             _api.Map.Name,
             _api.Map.RoomID,
             _api.Map.Cells,
-            ReadPlayers().Select(p => new MapPlayerDto(p.Name ?? "", p.Level, p.Cell ?? "", p.Pad ?? "", p.HP, p.MaxHP, p.AFK)).ToList(),
+            (_api.Map.Players ?? []).Select(p => new MapPlayerDto(p.Name ?? "", p.Level, p.Cell ?? "", p.Pad ?? "", p.HP, p.MaxHP, p.AFK)).ToList(),
             _api.Monsters.MapMonsters.Select(m => new MonsterDto(m.ID, m.MapID, m.Name ?? "", m.Cell ?? "", m.HP, m.MaxHP, m.Alive)).ToList()),
             cancellationToken);
     }
-
-    /// <summary>
-    /// The players in the room, the player included. The game's <c>world.uoTree</c> is a <c>flash.utils.Dictionary</c>, which
-    /// <c>JSON.stringify</c> writes as <c>"Dictionary"</c>, so this reads the room's names and then each player's entry. A player who
-    /// leaves between the two reads is left out.
-    /// </summary>
-    private List<PlayerInfo> ReadPlayers() =>
-        (_flash.GetGameObject<List<string>>("world.areaUsers") ?? [])
-            .Select(name => _flash.GetGameObject<PlayerInfo>($"world.uoTree[\"{name}\"]"))
-            .OfType<PlayerInfo>()
-            .ToList();
 
     public Task<DropsResult> DropsAsync(CancellationToken cancellationToken)
     {
