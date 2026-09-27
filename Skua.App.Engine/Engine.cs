@@ -62,11 +62,14 @@ internal sealed class Engine : IEngineRpc
         if (detach)
             Detach.RedirectStdio(endpoint.LogPath);
         DateTimeOffset started = DateTimeOffset.UtcNow;
-        using EngineLogs logs = new(started, LogFile.Open(endpoint.LogFilesDir, started));
+        (LogFile? file, string? fileError) = OpenLogFile(endpoint, started);
+        using EngineLogs logs = new(started, file);
         foreach (string secret in (Environment.GetEnvironmentVariable(RedactVariable) ?? "").Split('\n'))
             logs.AddSecret(secret);
         EngineLog.Attach(logs);
         logs.Event(EventTypes.EngineStarted, new { name = endpoint.Name, build = Build, protocol = ControlProtocol.Version, pid = Environment.ProcessId });
+        if (fileError is not null)
+            EngineLog.Write($"Not writing a log file: {fileError}");
 
         GameHostLaunch launch;
         try
@@ -88,6 +91,19 @@ internal sealed class Engine : IEngineRpc
         }
 
         return EngineExitCodes.Success;
+    }
+
+    /// <summary>Opens this start's JSONL file; without one the Engine still runs, with its logs in memory only.</summary>
+    private static (LogFile? File, string? Error) OpenLogFile(EngineEndpoint endpoint, DateTimeOffset started)
+    {
+        try
+        {
+            return (LogFile.Open(endpoint.LogFilesDir, started), null);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return (null, e.Message);
+        }
     }
 
     public Task<HelloResult> HelloAsync(int protocol, CancellationToken cancellationToken) =>

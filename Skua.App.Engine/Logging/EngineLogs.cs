@@ -35,6 +35,7 @@ internal sealed class EngineLogs : IDisposable
     private long _seq;
     private TaskCompletionSource _appended = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+    /// <param name="file">This start's JSONL file, or null when it couldn't be opened.</param>
     public EngineLogs(DateTimeOffset started, LogFile? file)
     {
         Epoch = started.ToUnixTimeMilliseconds();
@@ -43,9 +44,6 @@ internal sealed class EngineLogs : IDisposable
 
     /// <summary>Identifies this Engine start in cursors, so a cursor from an earlier start reads as a gap.</summary>
     public long Epoch { get; }
-
-    /// <summary>The Script run number that new entries carry, or null outside a run.</summary>
-    public int? Run { get; set; }
 
     /// <summary>
     /// The redaction hook: every later occurrence of <paramref name="secret"/> is redacted before it is stored, published or written.
@@ -106,7 +104,7 @@ internal sealed class EngineLogs : IDisposable
             List<LogEntryDto> entries = [];
             int budget = MaxReplyBytes - ReplyOverheadBytes;
             bool more = false;
-            foreach (LogRecord record in kinds.SelectMany(k => _rings[k].After(afterSeq)).OrderBy(record => record.Entry.Seq))
+            foreach (LogRecord record in Merge(kinds.Select(k => _rings[k].After(afterSeq))))
             {
                 budget -= record.Bytes + 1;
                 if (entries.Count == limit || budget < 0)
@@ -121,12 +119,32 @@ internal sealed class EngineLogs : IDisposable
         }
     }
 
+    /// <summary>Merges seq-ordered sequences into one, lazily, so a page reads only the records it returns.</summary>
+    private static IEnumerable<LogRecord> Merge(IEnumerable<IEnumerable<LogRecord>> sequences)
+    {
+        List<IEnumerator<LogRecord>> heads = [];
+        foreach (IEnumerable<LogRecord> sequence in sequences)
+        {
+            IEnumerator<LogRecord> head = sequence.GetEnumerator();
+            if (head.MoveNext())
+                heads.Add(head);
+        }
+
+        while (heads.Count > 0)
+        {
+            IEnumerator<LogRecord> first = heads.MinBy(head => head.Current.Entry.Seq)!;
+            yield return first.Current;
+            if (!first.MoveNext())
+                heads.Remove(first);
+        }
+    }
+
     private void Append(LogKind kind, string? text, string? type, JsonElement? data, bool truncated)
     {
         long ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         lock (_lock)
         {
-            LogEntryDto entry = new(++_seq, ts, kind, Run, text, type, data, truncated);
+            LogEntryDto entry = new(++_seq, ts, kind, null, text, type, data, truncated);
             byte[] json = JsonSerializer.SerializeToUtf8Bytes(entry, ControlJson.Options);
             if (json.Length > MaxEntryBytes)
             {

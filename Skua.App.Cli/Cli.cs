@@ -21,16 +21,16 @@ internal static class Cli
     }
 
     /// <summary>
-    /// Replays the entries of one kind after the cursor, then prints new ones as they arrive until interrupted:
+    /// Replays the entries of the given kinds after the cursor, then prints new ones as they arrive until interrupted:
     /// one line each, or one JSON entry per line with <c>--json</c>. A gap is reported on stderr.
     /// </summary>
-    public static async Task<int> FollowLogsAsync(bool json, LogKind kind, string? after, CancellationToken cancellationToken)
+    public static async Task<int> FollowLogsAsync(bool json, LogKind[] kinds, string? after, CancellationToken cancellationToken)
     {
         try
         {
             using EngineConnection connection = await EngineClient.ConnectAsync(
                 new EngineClientOptions { Endpoint = EngineEndpoint.FromEnvironment() }, cancellationToken);
-            await foreach (LogPage page in connection.SubscribeAsync([kind], after, cancellationToken))
+            await foreach (LogPage page in connection.SubscribeAsync(kinds, after, cancellationToken))
             {
                 if (page.Gap)
                     Console.Error.WriteLine($"skua: {Output.GapNotice}");

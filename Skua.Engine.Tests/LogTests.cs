@@ -34,7 +34,7 @@ public class LogTests
         (_, EngineConnection connection) = await sandbox.StartEngineAsync(gameHost.Environment());
         using (connection)
         {
-            await WaitForAsync(connection, LogKind.Flash, 450);
+            await connection.WaitForLogsAsync(LogKind.Flash, 450);
 
             List<string> texts = [];
             string? cursor = null;
@@ -61,7 +61,7 @@ public class LogTests
         (_, EngineConnection connection) = await sandbox.StartEngineAsync(gameHost.Environment());
         using (connection)
         {
-            await WaitForAsync(connection, LogKind.Flash, 1);
+            await connection.WaitForLogsAsync(LogKind.Flash, 1);
 
             LogPage page = await connection.LogsAsync(LogKind.All, max: 1000, cancellationToken: Ct);
 
@@ -82,7 +82,7 @@ public class LogTests
         using (connection)
         {
             string before = (await connection.LogsAsync(LogKind.Debug, cancellationToken: Ct)).Next;
-            await WaitForAsync(connection, LogKind.Debug, 1, e => e.Text!.EndsWith("line 10049"));
+            await connection.WaitForLogsAsync(LogKind.Debug, 1, e => e.Text!.EndsWith("line 10049"));
 
             List<LogEntryDto> held = [];
             LogPage page = await connection.LogsAsync(LogKind.Debug, before, 1000, Ct);
@@ -127,10 +127,10 @@ public class LogTests
         (_, EngineConnection connection) = await sandbox.StartEngineAsync(gameHost.Environment());
         using (connection)
         {
-            await WaitForAsync(connection, LogKind.Flash, 3);
+            await connection.WaitForLogsAsync(LogKind.Flash, 3);
             LogPage pulled = await connection.LogsAsync(LogKind.Flash, cancellationToken: Ct);
             Assert.Equal(["early 0", "early 1", "early 2"], pulled.Entries.Select(e => e.Text));
-            await WaitForAsync(connection, LogKind.Flash, 4);
+            await connection.WaitForLogsAsync(LogKind.Flash, 4);
 
             List<string> followed = [];
             using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(Ct);
@@ -155,7 +155,7 @@ public class LogTests
         (_, EngineConnection connection) = await sandbox.StartEngineAsync(gameHost.Environment());
         using (connection)
         {
-            await WaitForAsync(connection, LogKind.Debug, 1, e => e.Text!.Contains("an error"));
+            await connection.WaitForLogsAsync(LogKind.Debug, 1, e => e.Text!.Contains("an error"));
             List<LogEntryDto> held = (await connection.LogsAsync(LogKind.All, max: 1000, cancellationToken: Ct)).Entries.ToList();
 
             string file = Assert.Single(Directory.GetFiles(sandbox.Endpoint.LogFilesDir, "*.jsonl"));
@@ -178,16 +178,14 @@ public class LogTests
         foreach (string file in older)
             await File.WriteAllTextAsync(file, "", Ct);
 
-        using (await sandbox.ConnectAsync())
-        {
-        }
+        (await sandbox.ConnectAsync()).Dispose();
         await EngineClient.StopAsync(sandbox.Endpoint, EngineSandbox.StopTimeout, Ct);
         using EngineConnection connection = await sandbox.ConnectAsync();
 
         string[] kept = Directory.GetFiles(sandbox.Endpoint.LogFilesDir).Order().ToArray();
         Assert.Equal(10, kept.Length);
         Assert.Equal(older[^8..], kept[..8]);
-        string newest = await File.ReadAllLinesAsync(kept[^1], Ct).ContinueWith(t => t.Result[0]);
+        string newest = (await File.ReadAllLinesAsync(kept[^1], Ct))[0];
         Assert.Equal(connection.Hello.Pid, JsonSerializer.Deserialize<LogEntryDto>(newest, ControlJson.Options)!.Data!.Value.GetProperty("pid").GetInt32());
     }
 
@@ -199,7 +197,7 @@ public class LogTests
         (_, EngineConnection connection) = await sandbox.StartEngineAsync(gameHost.Environment());
         using (connection)
         {
-            List<LogEntryDto> entries = await WaitForAsync(connection, LogKind.Flash, 2);
+            List<LogEntryDto> entries = await connection.WaitForLogsAsync(LogKind.Flash, 2);
 
             Assert.True(entries[0].Truncated);
             Assert.InRange(Encoding.UTF8.GetByteCount(entries[0].Text!), 16 * 1024 - 2, 16 * 1024);
@@ -217,7 +215,7 @@ public class LogTests
         (_, EngineConnection connection) = await sandbox.StartEngineAsync(gameHost.Environment());
         using (connection)
         {
-            await WaitForAsync(connection, LogKind.Flash, 100);
+            await connection.WaitForLogsAsync(LogKind.Flash, 100);
 
             LogPage first = await connection.LogsAsync(LogKind.Flash, max: 1000, cancellationToken: Ct);
             LogPage second = await connection.LogsAsync(LogKind.Flash, first.Next, 1000, Ct);
@@ -247,7 +245,7 @@ public class LogTests
         (Process engine, EngineConnection connection) = await sandbox.StartEngineAsync(environment);
         using (connection)
         {
-            await WaitForAsync(connection, LogKind.Flash, 1, e => e.Text == "done");
+            await connection.WaitForLogsAsync(LogKind.Flash, 1, e => e.Text == "done");
 
             LogPage all = await connection.LogsAsync(LogKind.All, max: 1000, cancellationToken: Ct);
             LogPage replayed = await connection.SubscribeAsync([LogKind.All], cancellationToken: Ct).FirstAsync(Ct);
@@ -273,8 +271,8 @@ public class LogTests
         (_, EngineConnection connection) = await sandbox.StartEngineAsync(gameHost.Environment());
         using (connection)
         {
-            List<LogEntryDto> events = await WaitForAsync(connection, LogKind.Events, 1, e => e.Type == EventTypes.GameHostExited);
-            events = (await connection.LogsAsync(LogKind.Events, cancellationToken: Ct)).Entries.ToList();
+            await connection.WaitForLogsAsync(LogKind.Events, 1, e => e.Type == EventTypes.GameHostExited);
+            IReadOnlyList<LogEntryDto> events = (await connection.LogsAsync(LogKind.Events, cancellationToken: Ct)).Entries;
 
             Assert.Equal(
                 [EventTypes.EngineStarted, EventTypes.GameHostStarted, EventTypes.BridgeError, EventTypes.GameHostExited],
@@ -287,6 +285,20 @@ public class LogTests
     }
 
     [Fact]
+    public async Task An_Engine_that_cannot_write_its_log_file_still_serves_its_logs()
+    {
+        await using EngineSandbox sandbox = new();
+        Directory.CreateDirectory(Path.GetDirectoryName(sandbox.Endpoint.LogFilesDir)!);
+        await File.WriteAllTextAsync(sandbox.Endpoint.LogFilesDir, "a file where the folder should be", Ct);
+
+        using EngineConnection connection = await sandbox.ConnectAsync();
+        LogPage page = await connection.LogsAsync(LogKind.All, cancellationToken: Ct);
+
+        Assert.Equal(EventTypes.EngineStarted, page.Entries[0].Type);
+        Assert.Contains(page.Entries, e => e.Text?.StartsWith("Not writing a log file") == true);
+    }
+
+    [Fact]
     public async Task A_malformed_cursor_is_an_invalid_argument()
     {
         await using EngineSandbox sandbox = new();
@@ -295,25 +307,6 @@ public class LogTests
         ControlException error = await Assert.ThrowsAsync<ControlException>(() => connection.LogsAsync(LogKind.All, "not-a-cursor", cancellationToken: Ct));
 
         Assert.Equal(ErrorCode.InvalidArgument, error.Code);
-    }
-
-    /// <summary>Waits until at least <paramref name="count"/> entries of the kind are held, and returns them all.</summary>
-    internal static async Task<List<LogEntryDto>> WaitForAsync(EngineConnection connection, LogKind kind, int count, Func<LogEntryDto, bool>? match = null)
-    {
-        List<LogEntryDto> entries = [];
-        string? cursor = null;
-        Stopwatch waited = Stopwatch.StartNew();
-        while (waited.Elapsed < TimeSpan.FromSeconds(20))
-        {
-            LogPage page = await connection.LogsAsync(kind, cursor, 1000, Ct);
-            entries.AddRange(page.Entries.Where(match ?? (_ => true)));
-            cursor = page.Next;
-            if (entries.Count >= count)
-                return entries;
-            if (page.Entries.Count == 0)
-                await Task.Delay(25, Ct);
-        }
-        throw new TimeoutException($"Only {entries.Count} of {count} {kind} entries arrived.");
     }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

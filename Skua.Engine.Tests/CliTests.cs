@@ -122,7 +122,7 @@ public class CliTests
         (_, EngineConnection connection) = await sandbox.StartEngineAsync(gameHost.Environment());
         using (connection)
         {
-            await LogTests.WaitForAsync(connection, LogKind.Flash, 1);
+            await connection.WaitForLogsAsync(LogKind.Flash, 1);
             LogPage pulled = await connection.LogsAsync(LogKind.Flash, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal("before", Assert.Single(pulled.Entries).Text);
 
@@ -136,6 +136,27 @@ public class CliTests
             Assert.Equal("flash", entry.RootElement.GetProperty("kind").GetString());
             Assert.False(follow.HasExited);
         }
+    }
+
+    [Fact]
+    public async Task Logs_follow_takes_several_kinds_but_a_page_takes_one()
+    {
+        await using EngineSandbox sandbox = new();
+
+        Process follow = sandbox.StartCli("logs", "events", "debug", "-f");
+        ProcessResult page = await sandbox.RunCliAsync("logs", "events", "debug");
+        ProcessResult maxWithFollow = await sandbox.RunCliAsync("logs", "-f", "--max", "5");
+
+        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(20));
+        HashSet<string> kinds = [];
+        while (kinds.Count < 2)
+            kinds.Add((await follow.StandardOutput.ReadLineAsync(timeout.Token))!.Split(' ')[2]);
+        Assert.Equal(["events", "debug"], kinds.Order().Reverse());
+        Assert.Equal(1, page.ExitCode);
+        Assert.Contains("one kind", page.Stderr);
+        Assert.Equal(1, maxWithFollow.ExitCode);
+        Assert.Contains("--max", maxWithFollow.Stderr);
     }
 
     [Fact]

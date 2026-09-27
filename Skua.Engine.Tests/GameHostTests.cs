@@ -108,7 +108,7 @@ public class GameHostTests
         {
             await WaitForStatusAsync(connection, s => !s.Game.GameHostUp);
 
-            List<LogEntryDto> exited = await LogTests.WaitForAsync(connection, LogKind.Events, 1, e => e.Type == EventTypes.GameHostExited);
+            List<LogEntryDto> exited = await connection.WaitForLogsAsync(LogKind.Events, 1, e => e.Type == EventTypes.GameHostExited);
 
             Assert.Equal(3, exited.Single().Data!.Value.GetProperty("code").GetInt32());
         }
