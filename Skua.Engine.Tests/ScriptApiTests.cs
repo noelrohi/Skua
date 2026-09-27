@@ -19,7 +19,7 @@ public class ScriptApiTests
 
         Assert.Null(bank.Error);
         Assert.Equal(["Bank Relic x2"], bank.Value!.Value.EnumerateArray().Select(e => e.GetString()));
-        // The game server no longer answers loadBank (#49).
+        // The game server no longer answers loadBank.
         string[] calls = await session.GameHost.CallsAsync();
         Assert.Single(calls, c => c == "getBank");
         Assert.DoesNotContain("loadBank", calls);

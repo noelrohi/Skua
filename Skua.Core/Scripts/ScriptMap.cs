@@ -71,10 +71,7 @@ public partial class ScriptMap : IScriptMap
 
     // The game keeps world.uoTree in a flash.utils.Dictionary, which JSON.stringify writes as "Dictionary", so this reads the room's
     // names and then each player by key. A player who leaves between the two reads is left out.
-    public List<PlayerInfo> Players => PlayerNames
-        .Select(name => Flash.GetGameObject<PlayerInfo>($"world.uoTree[\"{name}\"]"))
-        .OfType<PlayerInfo>()
-        .ToList();
+    public List<PlayerInfo> Players => PlayerNames.Select(ReadPlayer).OfType<PlayerInfo>().ToList();
     public List<PlayerInfo> CellPlayers => Players.FindAll(p => p.Cell == Player.Cell);
 
     public bool Loaded => !Loading
@@ -127,7 +124,7 @@ public partial class ScriptMap : IScriptMap
 
         for (int attempt = 0; attempt < 3; attempt++)
         {
-            PlayerInfo? player = Flash.GetGameObject<PlayerInfo>($"world.uoTree[\"{lowerUsername}\"]");
+            PlayerInfo? player = ReadPlayer(lowerUsername);
             if (player != null)
                 return player;
 
@@ -137,6 +134,8 @@ public partial class ScriptMap : IScriptMap
 
         return null;
     }
+
+    private PlayerInfo? ReadPlayer(string name) => Flash.GetGameObject<PlayerInfo>($"world.uoTree[\"{name}\"]");
 
     [MethodCallBinding("world.reloadCurrentMap", GameFunction = true)]
     private void _reload()

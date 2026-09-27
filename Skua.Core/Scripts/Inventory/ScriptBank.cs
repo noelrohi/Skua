@@ -67,8 +67,8 @@ public partial class ScriptBank : IScriptBank
             return;
     }
 
-    /// <summary>How many times <see cref="Load"/> sleeps for <see cref="IScriptWait.WAIT_SLEEP"/> in each of its waits: 20 s by default.</summary>
-    private const int LoadTimeout = 200;
+    /// <summary>How many times each of <see cref="Load"/>'s waits sleeps for <see cref="IScriptWait.WAIT_SLEEP"/>: 20 s by default.</summary>
+    private const int LoadWaitSleeps = 200;
 
     public void Load(bool waitForLoad = true)
     {
@@ -76,11 +76,12 @@ public partial class ScriptBank : IScriptBank
             return;
         // This loads the bank as the game itself does, with getBank over HTTP: the game server no longer answers the loadBank packet.
         // getBank needs the character's data, which the game has once the inventory has loaded.
-        if (!Wait.ForTrue(() => Flash.GetGameObject<bool>("world.myAvatar.invLoaded"), LoadTimeout))
+        bool InventoryLoaded() => Flash.GetGameObject<bool>("world.myAvatar.invLoaded");
+        if (waitForLoad ? !Wait.ForTrue(InventoryLoaded, LoadWaitSleeps) : !InventoryLoaded())
             return;
         Flash.CallGameFunction("getBank");
         if (waitForLoad)
-            Wait.ForBankLoad(LoadTimeout);
+            Wait.ForBankLoad(LoadWaitSleeps);
     }
 
     public bool Swap(string invItem, string bankItem)
