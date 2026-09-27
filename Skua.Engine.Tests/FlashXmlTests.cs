@@ -22,4 +22,15 @@ public class FlashXmlTests
     {
         Assert.Equal(ObjectXml, FlashXml.ToFlashXml(FlashXml.FromFlashXml(XElement.Parse(ObjectXml))));
     }
+
+    [Theory]
+    [InlineData("Tom & Jerry")]
+    [InlineData("<b>bold</b> > plain")]
+    [InlineData("\"double\" and 'single' quotes")]
+    [InlineData("Ünïcødé ☃ 日本語")]
+    [InlineData("&amp; stays literal")]
+    public void A_string_return_reads_back_verbatim(string value)
+    {
+        Assert.Equal(value, FlashXml.ReadReturn(FlashXml.ToFlashXml(value), typeof(string)));
+    }
 }

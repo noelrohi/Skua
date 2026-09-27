@@ -39,7 +39,12 @@ public static class FlashXml
     public static object? ReadReturn(string result, Type type)
     {
         XElement el = XElement.Parse(result);
-        return el is null || el.FirstNode is null ? default : Convert.ChangeType(el.FirstNode.ToString(), type);
+        return el.FirstNode switch
+        {
+            null => default,
+            XText text => Convert.ChangeType(text.Value, type),
+            XNode node => Convert.ChangeType(node.ToString(), type)
+        };
     }
 
     public static string ToFlashXml(object o)
