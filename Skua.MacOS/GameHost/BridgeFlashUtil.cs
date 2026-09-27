@@ -3,7 +3,6 @@ using Skua.Core.Flash;
 using Skua.Core.Interfaces;
 using Skua.Core.Messaging;
 using Skua.Core.Utils;
-using System.Text;
 using System.Xml.Linq;
 
 namespace Skua.MacOS.GameHost;
@@ -108,7 +107,7 @@ public sealed class BridgeFlashUtil : IFlashUtil
     /// <exception cref="IOException">The Game Host is gone.</exception>
     /// <exception cref="TimeoutException">No reply came within <paramref name="timeout"/>.</exception>
     public string? Stats(TimeSpan timeout) =>
-        _gameHost is { IsRunning: true } gameHost ? Encoding.UTF8.GetString(gameHost.Request('Q', [], timeout)) : null;
+        _gameHost is { IsRunning: true } gameHost ? gameHost.Stats(timeout) : null;
 
     public object FromFlashXml(XElement el) => FlashXml.FromFlashXml(el);
 

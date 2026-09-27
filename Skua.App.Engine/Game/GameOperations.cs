@@ -167,9 +167,9 @@ internal sealed class GameOperations
         while (!_flash.GetGameObject<bool>("world.myAvatar.invLoaded"))
         {
             if (!_tracker.IsPlaying())
-                throw RpcErrors.Of(ErrorCode.LoginFailed, $"The Test Account stopped playing on {server.Name} before its inventory loaded.");
+                throw RpcErrors.Of(ErrorCode.LoginFailed, $"The account stopped playing on {server.Name} before its inventory loaded.");
             if (waited.Elapsed > timeout)
-                throw RpcErrors.Of(ErrorCode.Timeout, $"The Test Account was playing on {server.Name}, but its inventory hadn't loaded after {timeout.TotalSeconds:0} s.");
+                throw RpcErrors.Of(ErrorCode.Timeout, $"The account was playing on {server.Name}, but its inventory hadn't loaded after {timeout.TotalSeconds:0} s.");
             await Task.Delay(WaitStep, cancellationToken);
         }
         string actual = !_flash.IsNull("objServerInfo") && _flash.GetGameObject<string>("objServerInfo.sName") is { Length: > 0 } name ? name : server.Name;

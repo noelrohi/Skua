@@ -107,6 +107,11 @@ public sealed class GameHostProcess : IDisposable
     /// <exception cref="TimeoutException">No reply came within <see cref="RequestTimeout"/>.</exception>
     public string Call(string invokeXml) => Encoding.UTF8.GetString(Request('C', Encoding.UTF8.GetBytes(invokeXml), RequestTimeout));
 
+    /// <summary>The Game Host's loop and render counters as JSON; the maxima reset when read.</summary>
+    /// <exception cref="IOException">The Game Host is gone.</exception>
+    /// <exception cref="TimeoutException">No reply came within <paramref name="timeout"/>.</exception>
+    public string Stats(TimeSpan timeout) => Encoding.UTF8.GetString(Request('Q', [], timeout));
+
     /// <summary>
     /// Has the Game Host render a frame and capture it, scaled down to <paramref name="maxWidth"/> if wider (0 keeps the native size).
     /// Returns null when the Game Host couldn't capture one.

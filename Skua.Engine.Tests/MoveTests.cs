@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Skua.Control;
 
 namespace Skua.Engine.Tests;
@@ -34,7 +35,7 @@ public class MoveTests
         await using EngineSandbox sandbox = new();
         await using GameFixture session = await GameFixture.StartAsync(sandbox, g => g.InventoryDelay(2000));
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
-        System.Diagnostics.Stopwatch took = System.Diagnostics.Stopwatch.StartNew();
+        Stopwatch took = Stopwatch.StartNew();
 
         LocationResult yulgar = await session.Connection.JoinAsync("yulgar", cancellationToken: Ct);
 

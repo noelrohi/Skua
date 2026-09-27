@@ -115,9 +115,6 @@ public static class LiveSettings
     /// <summary>How many minutes the hidden-running check waits for the screen to be locked or the display to sleep; 10 unless set.</summary>
     public const string HideWaitVariable = "SKUA_LIVE_HIDE_WAIT_MIN";
 
-    /// <summary>The Scripts checkout the runs copy into their data folder (shared with the compile check).</summary>
-    public const string ScriptsCheckoutVariable = "SKUA_SCRIPTS_CHECKOUT";
-
     public static string Server => Environment.GetEnvironmentVariable(ServerVariable) is { Length: > 0 } server ? server : "Galanoth";
 
     public static TimeSpan HideWait =>
@@ -134,9 +131,9 @@ public static class LiveSettings
     /// <summary>Options for a live run on a quiet Mac, with the Scripts checkout; it fails at once without one.</summary>
     public static LiveRunOptions Options(string name)
     {
-        string? checkout = Environment.GetEnvironmentVariable(ScriptsCheckoutVariable);
+        string? checkout = Environment.GetEnvironmentVariable(CompileCheck.CheckoutVariable);
         Assert.False(string.IsNullOrEmpty(checkout) || !Directory.Exists(checkout),
-            $"Set {ScriptsCheckoutVariable} to a noelrohi/Scripts@Skua checkout; the live runs play Scripts from it.");
+            $"Set {CompileCheck.CheckoutVariable} to a noelrohi/Scripts@Skua checkout; the live runs play Scripts from it.");
         string root = Environment.GetEnvironmentVariable(OutVariable) is { Length: > 0 } dir ? dir : Path.Combine(EngineSandbox.BinDir, "live-results");
         return new LiveRunOptions
         {

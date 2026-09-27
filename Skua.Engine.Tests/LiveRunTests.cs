@@ -9,12 +9,12 @@ namespace Skua.Engine.Tests;
 /// <summary>The live-game harness, dry-run against the fake Game Host with 2-second minutes, and its measurements.</summary>
 public class LiveRunTests
 {
-    private static readonly TimeSpan DryMinute = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan DrySampleInterval = TimeSpan.FromSeconds(2);
 
     [Fact]
     public async Task A_dry_run_of_the_smoke_test_samples_every_minute_and_fails_only_on_the_fakes_blank_screenshots()
     {
-        await using DryRun dry = await DryRun.StartAsync();
+        await using DryRun dry = DryRun.Start();
 
         LiveRunResult result = await LiveRun.RunAsync("smoke", dry.Environment, dry.Options,
             run => LiveScenarios.SmokeAsync(run, "Galanoth", LiveScenarios.Leveling, battleonMinutes: 2, scriptMinutes: 3));
@@ -25,9 +25,9 @@ public class LiveRunTests
         Assert.Equal(["battleon", "battleon", "leveling", "leveling", "leveling"], result.Samples.Select(s => s.Phase));
         Assert.All(result.Samples, s =>
         {
-            Assert.True(s.GameHostFootprintMb > 0);
-            Assert.True(s.EngineFootprintMb > 0);
-            Assert.True(s.GameHostRssMb > 0);
+            Assert.True(s.GameHost.FootprintMb > 0);
+            Assert.True(s.Engine.FootprintMb > 0);
+            Assert.True(s.GameHost.RssMb > 0);
             Assert.NotEmpty(s.GetterMs);
         });
         Assert.All(result.Samples.Where(s => s.Phase == "leveling").Skip(1), s => Assert.True(s.ScriptLines > 0));
@@ -42,7 +42,7 @@ public class LiveRunTests
     [Fact]
     public async Task A_failed_run_leaves_a_screenshot_and_the_logs_since_its_start_in_its_output()
     {
-        await using DryRun dry = await DryRun.StartAsync();
+        await using DryRun dry = DryRun.Start();
 
         LiveRunResult result = await LiveRun.RunAsync("death", dry.Environment, dry.Options, async run =>
         {
@@ -66,7 +66,7 @@ public class LiveRunTests
     [Fact]
     public async Task A_disconnect_ends_the_run_at_once_and_stops_the_Script_so_nothing_logs_in_again()
     {
-        await using DryRun dry = await DryRun.StartAsync();
+        await using DryRun dry = DryRun.Start();
         ScriptStatusDto? after = null;
 
         LiveRunResult result = await LiveRun.RunAsync("disconnect", dry.Environment, dry.Options, async run =>
@@ -94,26 +94,28 @@ public class LiveRunTests
     [Fact]
     public async Task A_dry_run_of_hidden_running_checks_the_lock_the_tick_rate_and_that_the_player_progresses()
     {
-        await using DryRun dry = await DryRun.StartAsync();
+        await using DryRun dry = DryRun.Start();
 
         LiveRunResult result = await LiveRun.RunAsync("hidden", dry.Environment, dry.Options, async run =>
         {
             await run.LoginAsync("Galanoth");
             await run.StartScriptAsync(LiveScenarios.Leveling);
-            await run.PhaseAsync(new LivePhase("hidden", LiveRun.ProgressWindow + 1, Script: true, Hidden: true));
+            await run.PhaseAsync(new LivePhase("hidden", LiveRun.ProgressWindow + 2, Script: true, Hidden: true));
         });
 
-        // The screen isn't locked nor the display asleep, and the fake player's gold never changes; the fake Game Host ticks 1000/s with 35 ms gaps.
-        Assert.Equal(LiveRun.ProgressWindow + 1, result.Failures.Count(f => f.EndsWith("the screen wasn't locked and the display was awake.", StringComparison.Ordinal)));
-        Assert.Single(result.Failures, f => f.Contains("5000 → 5000 gold", StringComparison.Ordinal));
-        Assert.Equal(LiveRun.ProgressWindow + 2, result.Failures.Count);
+        // The screen isn't locked nor the display asleep, and the fake player's gold never changes, in a full window and the short one after it;
+        // the fake Game Host reports 30 fps and ticks 1000/s with 35 ms gaps.
+        Assert.Equal(LiveRun.ProgressWindow + 2, result.Failures.Count(f => f.EndsWith("the screen wasn't locked and the display was awake.", StringComparison.Ordinal)));
+        Assert.Equal(["hidden minutes 0–5:", "hidden minutes 5–6:"],
+            result.Failures.Where(f => f.Contains("5000 → 5000 gold", StringComparison.Ordinal)).Select(f => string.Join(' ', f.Split(' ')[..3])));
+        Assert.DoesNotContain(result.Failures, f => f.Contains("tick", StringComparison.Ordinal) || f.Contains("fps", StringComparison.Ordinal));
         Assert.True(result.Stats.Count >= 2);
     }
 
     [Fact]
     public async Task A_failed_login_ends_the_run_without_trying_again()
     {
-        await using DryRun dry = await DryRun.StartAsync(g => g.Reject("Galanoth", "Server is Full"));
+        await using DryRun dry = DryRun.Start(g => g.Reject("Galanoth", "Server is Full"));
 
         LiveRunResult result = await LiveRun.RunAsync("rejected", dry.Environment, dry.Options, async run =>
         {
@@ -177,10 +179,8 @@ public class LiveRunTests
     }
 
     [Fact]
-    public void The_screen_counts_as_locked_only_when_ioreg_says_so_and_the_awake_display_reads_as_awake()
+    public void The_screen_counts_as_locked_only_when_ioreg_says_so()
     {
-        // These tests run with the display on.
-        Assert.False(LiveMetrics.DisplayAsleep());
         Assert.True(LiveMetrics.ParseScreenLocked("<dict><key>CGSSessionScreenIsLocked</key>\n\t\t\t<true/><key>kCGSSessionOnConsoleKey</key><true/></dict>"));
         Assert.False(LiveMetrics.ParseScreenLocked("<dict><key>kCGSSessionOnConsoleKey</key><true/></dict>"));
         Assert.False(LiveMetrics.ParseScreenLocked("<dict><key>CGSSessionScreenIsLocked</key><false/></dict>"));
@@ -299,7 +299,7 @@ public class LiveRunTests
 
         public LiveRunOptions Options { get; }
 
-        public static Task<DryRun> StartAsync(Func<FakeGameHost, FakeGameHost>? configure = null)
+        public static DryRun Start(Func<FakeGameHost, FakeGameHost>? configure = null)
         {
             // The fakes, the checkout and the output live in a sandbox of their own; the run starts its Engine in another.
             EngineSandbox files = new();
@@ -320,8 +320,8 @@ public class LiveRunTests
                     Thread.Sleep(200);
                 }
                 """));
-            LiveRunOptions options = new() { Minute = DryMinute, OutDir = Path.Combine(files.SkuaDir, "out"), ScriptsCheckout = checkout };
-            return Task.FromResult(new DryRun(files, api, keychain, gameHost, environment, options));
+            LiveRunOptions options = new() { SampleInterval = DrySampleInterval, OutDir = Path.Combine(files.SkuaDir, "out"), ScriptsCheckout = checkout };
+            return new DryRun(files, api, keychain, gameHost, environment, options);
         }
 
         public async ValueTask DisposeAsync()

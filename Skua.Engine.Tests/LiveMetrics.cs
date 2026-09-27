@@ -9,8 +9,10 @@ namespace Skua.Engine.Tests;
 /// <summary>The measurements the live-game tests judge the Engine by: footprint, getter latency, Game Host stats and screenshots.</summary>
 public static partial class LiveMetrics
 {
-    /// <summary>The Game Client's stage size, which a screenshot has at its native size.</summary>
+    /// <summary>The Game Client's stage width, which a screenshot has at its native size.</summary>
     public const int StageWidth = 958;
+
+    /// <summary>The Game Client's stage height, which a screenshot has at its native size.</summary>
     public const int StageHeight = 550;
 
     /// <summary>The value at quantile <paramref name="q"/> (0 to 1) of <paramref name="values"/>, by nearest rank.</summary>

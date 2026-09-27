@@ -10,7 +10,7 @@ namespace Skua.Engine.Tests;
 public sealed record LiveRunOptions
 {
     /// <summary>How long one sample takes; a phase lasts a whole number of them. A minute, except in the dry runs against the fake Game Host.</summary>
-    public TimeSpan Minute { get; init; } = TimeSpan.FromMinutes(1);
+    public TimeSpan SampleInterval { get; init; } = TimeSpan.FromMinutes(1);
 
     /// <summary>The folder the run's report, screenshots and, on failure, its logs go in.</summary>
     public required string OutDir { get; init; }
@@ -28,8 +28,18 @@ public sealed record LiveRunResult(string OutDir, IReadOnlyList<string> Failures
 {
     public bool Passed => Failures.Count == 0;
 
-    public void AssertPassed() =>
+    /// <summary>Writes the run's report to the test output, then fails the test unless the run passed.</summary>
+    public void AssertPassed()
+    {
+        TestContext.Current.TestOutputHelper?.WriteLine(File.ReadAllText(Path.Combine(OutDir, "report.txt")));
         Assert.True(Passed, $"The live run failed; its report, a screenshot and the logs are in {OutDir}:\n- {string.Join("\n- ", Failures)}");
+    }
+}
+
+/// <summary>A process's footprint (Activity Monitor's Memory, the gate metric) and RSS in MB; each null when it couldn't be read.</summary>
+public sealed record ProcessMemory(double? FootprintMb, double? RssMb)
+{
+    public static async Task<ProcessMemory> ReadAsync(int pid) => new(await LiveMetrics.FootprintMbAsync(pid), await LiveMetrics.RssMbAsync(pid));
 }
 
 /// <summary>One sample: memory of both processes and the getter latencies measured during it.</summary>
@@ -39,8 +49,7 @@ public sealed record LiveRunResult(string OutDir, IReadOnlyList<string> Failures
 /// <param name="DisplayAsleep">Whether the main display was asleep when the sample ended.</param>
 /// <param name="Player">The player as <c>status</c> summarised it when the sample ended, or null when it didn't.</param>
 public sealed record MinuteSample(
-    string Phase, int Minute, DateTimeOffset At, double? GameHostFootprintMb, double? GameHostRssMb, double? EngineFootprintMb, double? EngineRssMb,
-    IReadOnlyList<double> GetterMs, double Load, bool Locked, bool DisplayAsleep, int ScriptLines, PlayerDto? Player)
+    string Phase, int Minute, DateTimeOffset At, ProcessMemory GameHost, ProcessMemory Engine, IReadOnlyList<double> GetterMs, double Load, bool Locked, bool DisplayAsleep, int ScriptLines, PlayerDto? Player)
 {
     /// <summary>Whether nobody could see the game: the screen was locked or the display asleep.</summary>
     public bool Hidden => Locked || DisplayAsleep;
@@ -74,7 +83,11 @@ public sealed class LiveRun
     /// <summary>"Flat": the footprint's least-squares slope over the last hour, in MB per minute (#13's pass was 0.29, its no-go 8.4).</summary>
     public const double MaxSlopeMbPerMin = 1;
 
+    /// <summary>The getter gate: <c>Bot.Player.Cell</c>'s p99 round trip in every sample but a phase's first, which holds its join or Script start.</summary>
     public const double MaxGetterP99Ms = 50;
+
+    /// <summary>Hidden running: the frame rate the Game Host must report, the Game Client's 30 fps.</summary>
+    public const double FrameRate = 30;
 
     public static readonly TimeSpan MaxJoin = TimeSpan.FromSeconds(10);
 
@@ -278,7 +291,7 @@ public sealed class LiveRun
     /// <summary>Runs one phase: a sample every minute, then its gates.</summary>
     public async Task PhaseAsync(LivePhase phase)
     {
-        Note($"phase {phase.Name}: {phase.Minutes} × {_options.Minute.TotalSeconds:0} s");
+        Note($"phase {phase.Name}: {phase.Minutes} × {_options.SampleInterval.TotalSeconds:0} s");
         long startTs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         List<MinuteSample> samples = [];
         for (int minute = 0; minute < phase.Minutes && !Fatal.IsCancellationRequested; minute++)
@@ -292,30 +305,30 @@ public sealed class LiveRun
                 Fail($"{phase.Name} minute {minute}: the screen wasn't locked and the display was awake.");
             if (phase.ScreenshotEvery is { } every && minute > 0 && minute % every == 0)
                 await CheckScreenshotAsync($"{phase.Name}-{minute}");
-            if (_options.Minute - took.Elapsed is { Ticks: > 0 } rest)
+            if (_options.SampleInterval - took.Elapsed is { Ticks: > 0 } rest)
                 await Task.Delay(rest, Ct);
         }
         if (Fatal.IsCancellationRequested)
             throw new LiveRunEnded();
 
         Judge(phase, samples, startTs);
-        if (phase.Script && await _connection.ScriptStatusAsync(Ct) is { State: not ScriptState.Running } status)
-            Fail($"{phase.Name}: the Script isn't running at the end; it is {status.State}, last run {status.LastRun?.Outcome} {status.LastRun?.Error}");
+        if (phase.Script && await _connection.ScriptWaitAsync(0, Ct) is { Reason: not ScriptWaitReason.Timeout } wait)
+            Fail($"{phase.Name}: the Script isn't running at the end: script_wait returned {wait.Reason}, last run {wait.Status.LastRun?.Outcome} {wait.Status.LastRun?.Error}");
         if (phase.ScreenshotEvery is not null)
             await CheckScreenshotAsync($"{phase.Name}-end");
     }
 
     private void Judge(LivePhase phase, List<MinuteSample> samples, long startTs)
     {
-        // The first sample holds the phase's join or the Script's start.
-        foreach (MinuteSample sample in samples.Skip(1))
+        foreach (MinuteSample sample in samples)
         {
+            // The getter gate leaves out the first sample, which holds the phase's join or the Script's start.
             double p99 = LiveMetrics.Percentile(sample.GetterMs, 0.99);
-            if (sample.GetterMs.Count == 0)
+            if (sample.Minute > 0 && sample.GetterMs.Count == 0)
                 Fail($"{phase.Name} minute {sample.Minute}: no getter round trips were measured.");
-            else if (p99 > MaxGetterP99Ms)
+            else if (sample.Minute > 0 && p99 > MaxGetterP99Ms)
                 Fail($"{phase.Name} minute {sample.Minute}: getter p99 {p99:0.0} ms, over {MaxGetterP99Ms} ms.");
-            if (sample.GameHostFootprintMb is not { } footprint)
+            if (sample.GameHost.FootprintMb is not { } footprint)
                 Fail($"{phase.Name} minute {sample.Minute}: the Game Host's footprint couldn't be read.");
             else if (footprint >= MaxFootprintMb)
                 Fail($"{phase.Name} minute {sample.Minute}: the Game Host's footprint is {footprint:0} MB, not under {MaxFootprintMb} MB.");
@@ -324,8 +337,8 @@ public sealed class LiveRun
         if (phase.FlatForMinutes is { } window)
         {
             List<(double X, double Y)> points = samples.TakeLast(window)
-                .Where(s => s.GameHostFootprintMb is not null)
-                .Select(s => ((s.At - samples[0].At).TotalMinutes, s.GameHostFootprintMb!.Value)).ToList();
+                .Where(s => s.GameHost.FootprintMb is not null)
+                .Select(s => ((s.At - samples[0].At).TotalMinutes, s.GameHost.FootprintMb!.Value)).ToList();
             double slope = LiveMetrics.Slope(points);
             Note($"{phase.Name}: footprint slope over the last {points.Count} samples {slope:+0.00;-0.00} MB/min");
             if (slope > MaxSlopeMbPerMin)
@@ -334,11 +347,13 @@ public sealed class LiveRun
 
         if (phase.Hidden)
         {
-            for (int end = ProgressWindow; end < samples.Count; end += ProgressWindow)
+            // Windows of ProgressWindow samples, the last one shorter when the phase doesn't divide evenly.
+            for (int start = 0; start < samples.Count - 1; start += ProgressWindow)
             {
-                (PlayerDto? from, PlayerDto? to) = (samples[end - ProgressWindow].Player, samples[end].Player);
+                int end = Math.Min(start + ProgressWindow, samples.Count - 1);
+                (PlayerDto? from, PlayerDto? to) = (samples[start].Player, samples[end].Player);
                 if (from is null || to is null || (to.Gold <= from.Gold && to.Level <= from.Level))
-                    Fail($"{phase.Name} minutes {end - ProgressWindow}–{end}: the player's gold and level didn't rise " +
+                    Fail($"{phase.Name} minutes {start}–{end}: the player's gold and level didn't rise " +
                          $"({from?.Gold} → {to?.Gold} gold, level {from?.Level} → {to?.Level}), so the Script isn't progressing.");
             }
 
@@ -351,6 +366,8 @@ public sealed class LiveRun
             for (int i = 1; i < stats.Count; i++)
             {
                 double ticks = LiveMetrics.TicksPerSecond(stats[i - 1], stats[i]);
+                if (Math.Abs(stats[i].FrameRate - FrameRate) > 1)
+                    Fail($"{phase.Name}: the Game Host reported {stats[i].FrameRate} fps, not {FrameRate}.");
                 if (!(ticks >= MinTickShare * stats[i].FrameRate))
                     Fail($"{phase.Name}: the Game Host ticked {ticks:0.0}/s, under {MinTickShare:P0} of its {stats[i].FrameRate} fps.");
                 if (!(stats[i].MaxTickGapMs <= MaxTickGapMs))
@@ -362,7 +379,7 @@ public sealed class LiveRun
     private async Task<MinuteSample> SampleAsync(string phase, int minute)
     {
         long from = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        IReadOnlyList<double> getter = await MeasureGetterAsync(_options.Minute * 0.9);
+        IReadOnlyList<double> getter = await MeasureGetterAsync(_options.SampleInterval * 0.9);
         int enginePid = _connection.Hello.Pid;
         long to = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         int scriptLines;
@@ -370,9 +387,7 @@ public sealed class LiveRun
             scriptLines = _scriptLineTimes.Count(t => t >= from && t < to);
         return new MinuteSample(
             phase, minute, DateTimeOffset.Now,
-            await LiveMetrics.FootprintMbAsync(_gameHostPid), await LiveMetrics.RssMbAsync(_gameHostPid),
-            await LiveMetrics.FootprintMbAsync(enginePid), await LiveMetrics.RssMbAsync(enginePid),
-            getter, await LiveMetrics.LoadAverageAsync(), await LiveMetrics.ScreenLockedAsync(), LiveMetrics.DisplayAsleep(), scriptLines,
+            await ProcessMemory.ReadAsync(_gameHostPid), await ProcessMemory.ReadAsync(enginePid), getter, await LiveMetrics.LoadAverageAsync(), await LiveMetrics.ScreenLockedAsync(), LiveMetrics.DisplayAsleep(), scriptLines,
             (await _connection.StatusAsync(Ct)).Game.Player);
     }
 
@@ -541,6 +556,8 @@ public sealed class LiveRun
                 while (true)
                 {
                     LogPage page = await _connection.LogsAsync(LogKind.All, cursor, 1000, Ct);
+                    if (page.Gap)
+                        Note("logs-all.jsonl misses entries the rings no longer hold; engine-logs has every entry");
                     foreach (LogEntryDto entry in page.Entries)
                         await logs.WriteLineAsync(JsonSerializer.Serialize(entry, ControlJson.Options));
                     cursor = page.Next;
@@ -566,18 +583,18 @@ public sealed class LiveRun
         foreach (IGrouping<string, MinuteSample> phase in _samples.GroupBy(s => s.Phase))
         {
             List<MinuteSample> judged = phase.Skip(1).ToList();
-            double[] footprints = phase.Select(s => s.GameHostFootprintMb ?? double.NaN).ToArray();
+            double[] footprints = phase.Select(s => s.GameHost.FootprintMb ?? double.NaN).ToArray();
             double worstP99 = judged.Select(s => LiveMetrics.Percentile(s.GetterMs, 0.99)).DefaultIfEmpty(double.NaN).Max();
             Note($"summary {phase.Key}: {phase.Count()} samples; Game Host footprint {footprints.Min():0}–{footprints.Max():0} MB, " +
-                 $"RSS {phase.Min(s => s.GameHostRssMb ?? double.NaN):0}–{phase.Max(s => s.GameHostRssMb ?? double.NaN):0} MB; " +
-                 $"Engine footprint up to {phase.Max(s => s.EngineFootprintMb ?? double.NaN):0} MB; worst getter p99 {worstP99:0.00} ms");
+                 $"RSS {phase.Min(s => s.GameHost.RssMb ?? double.NaN):0}–{phase.Max(s => s.GameHost.RssMb ?? double.NaN):0} MB; " +
+                 $"Engine footprint up to {phase.Max(s => s.Engine.FootprintMb ?? double.NaN):0} MB; worst getter p99 {worstP99:0.00} ms");
         }
         foreach (string failure in _failures)
             _report.WriteLine("FAIL " + failure);
     }
 
     private static string Describe(MinuteSample s) => string.Create(CultureInfo.InvariantCulture,
-        $"{s.Phase} m{s.Minute}: gamehost fp={s.GameHostFootprintMb:0} rss={s.GameHostRssMb:0} MB; engine fp={s.EngineFootprintMb:0} rss={s.EngineRssMb:0} MB; " +
+        $"{s.Phase} m{s.Minute}: gamehost fp={s.GameHost.FootprintMb:0} rss={s.GameHost.RssMb:0} MB; engine fp={s.Engine.FootprintMb:0} rss={s.Engine.RssMb:0} MB; " +
         $"getter n={s.GetterMs.Count} p50={LiveMetrics.Percentile(s.GetterMs, 0.5):0.000} p99={LiveMetrics.Percentile(s.GetterMs, 0.99):0.000} " +
         $"max={s.GetterMs.DefaultIfEmpty(double.NaN).Max():0.0} ms; script lines={s.ScriptLines}; " +
         $"player level={s.Player?.Level} gold={s.Player?.Gold} map={s.Player?.Map} combat={s.Player?.InCombat}; load={s.Load:0.00}; locked={s.Locked}; display asleep={s.DisplayAsleep}");
