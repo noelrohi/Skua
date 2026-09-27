@@ -6,7 +6,7 @@ namespace Skua.Control;
 /// The Control Surface contract: every method the Engine serves over JSON-RPC.
 /// </summary>
 /// <remarks>
-/// Each method other than <c>hello</c> and <c>shutdown</c> is one snake_case MCP tool and one <c>skua</c> subcommand with the same arguments and DTOs.
+/// Each method other than <c>hello</c>, <c>shutdown</c> and <c>shutdown_if_idle</c> is one snake_case MCP tool and one <c>skua</c> subcommand with the same arguments and DTOs.
 /// Failures are JSON-RPC errors whose code maps to an <see cref="ErrorCode"/> through <see cref="ErrorCodes"/>.
 /// </remarks>
 [JsonRpcContract]
@@ -23,6 +23,13 @@ public partial interface IEngineRpc
     /// <summary>Starts a cooperative shutdown and returns before it finishes. Frozen across protocol versions.</summary>
     [JsonRpcMethod("shutdown")]
     Task ShutdownAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Like <c>shutdown</c>, but refuses with <see cref="ErrorCode.ScriptRunning"/> while a Script runs, or <see cref="ErrorCode.Busy"/>
+    /// while a command holds the Engine, and keeps any from starting once it has accepted. Frozen across protocol versions.
+    /// </summary>
+    [JsonRpcMethod("shutdown_if_idle")]
+    Task ShutdownIfIdleAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Searches the Script Source's <c>scripts.json</c>: every word of <paramref name="query"/> must appear in a Script's name,

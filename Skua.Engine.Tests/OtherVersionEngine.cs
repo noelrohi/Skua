@@ -5,21 +5,32 @@ using StreamJsonRpc;
 namespace Skua.Engine.Tests;
 
 /// <summary>
-/// Stands in for an Engine from another build: it holds the lock, serves the socket and answers <c>hello</c> with another protocol version.
+/// Stands in for an Engine from another build: it holds the lock, serves the socket and answers <c>hello</c> with another build and,
+/// by default, another protocol version. It answers nothing else but <c>shutdown</c> and <c>shutdown_if_idle</c>.
 /// </summary>
 public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
 {
     public const int OtherProtocol = ControlProtocol.Version + 1;
 
+    public const string OtherBuild = "0.0.0-other";
+
     private readonly EngineEndpoint _endpoint;
+    private readonly int _protocol;
+    private readonly bool _scriptRunning;
+    private readonly bool _predatesShutdownIfIdle;
     private readonly EngineLock _lock;
     private readonly Socket _listener = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
     private readonly CancellationTokenSource _stop = new();
     private readonly Task _accepting;
 
-    public OtherVersionEngine(EngineSandbox sandbox)
+    /// <param name="scriptRunning">Whether <c>shutdown_if_idle</c> refuses, as while a Script runs.</param>
+    /// <param name="predatesShutdownIfIdle">Whether it is an Engine from before <c>shutdown_if_idle</c>, which doesn't have the method.</param>
+    public OtherVersionEngine(EngineSandbox sandbox, int protocol = OtherProtocol, bool scriptRunning = false, bool predatesShutdownIfIdle = false)
     {
         _endpoint = sandbox.Endpoint;
+        _protocol = protocol;
+        _scriptRunning = scriptRunning;
+        _predatesShutdownIfIdle = predatesShutdownIfIdle;
         Directory.CreateDirectory(_endpoint.EnginesDir);
         _lock = EngineLock.TryAcquire(_endpoint.LockPath)!;
         _listener.Bind(new UnixDomainSocketEndPoint(_endpoint.SocketPath));
@@ -29,8 +40,10 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
 
     public bool StatusCalled { get; private set; }
 
+    public bool ShutdownRequested => _stop.IsCancellationRequested;
+
     public Task<HelloResult> HelloAsync(int protocol, CancellationToken cancellationToken) =>
-        Task.FromResult(new HelloResult(OtherProtocol, "0.0.0-other", _endpoint.Name, Environment.ProcessId));
+        Task.FromResult(new HelloResult(_protocol, OtherBuild, _endpoint.Name, Environment.ProcessId));
 
     public Task<StatusDto> StatusAsync(CancellationToken cancellationToken)
     {
@@ -51,6 +64,18 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
     {
         _stop.Cancel();
         return Task.CompletedTask;
+    }
+
+    public Task ShutdownIfIdleAsync(CancellationToken cancellationToken)
+    {
+        if (_predatesShutdownIfIdle)
+            throw new LocalRpcException("Method not found.") { ErrorCode = (int)StreamJsonRpc.Protocol.JsonRpcErrorCode.MethodNotFound };
+        if (_scriptRunning)
+            throw new LocalRpcException("Can't replace the Engine while a Script is running.")
+            {
+                ErrorCode = ErrorCodes.ToWire(ErrorCode.ScriptRunning),
+            };
+        return ShutdownAsync(cancellationToken);
     }
 
     public Task<LogPage> LogsAsync(LogKind kind, string? after, int? max, CancellationToken cancellationToken) =>

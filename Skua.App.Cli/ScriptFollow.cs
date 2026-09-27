@@ -42,8 +42,7 @@ internal sealed class ScriptFollow
     {
         try
         {
-            using EngineConnection connection = await EngineClient.ConnectAsync(
-                new EngineClientOptions { Endpoint = EngineEndpoint.FromEnvironment() }, cancellationToken);
+            using EngineConnection connection = await EngineClient.ConnectAsync(Cli.Options(), cancellationToken);
             ScriptStartResult started = await start(connection);
             Console.WriteLine(json ? JsonSerializer.Serialize(started, ControlJson.Options) : Output.ScriptStart(started));
             return await new ScriptFollow(connection, json, !Console.IsInputRedirected, started.Run).FollowAsync(cancellationToken);

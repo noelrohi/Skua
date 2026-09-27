@@ -16,7 +16,7 @@ public enum ErrorCode
     InvalidArgument = 9,
     LoginFailed = 10,
 
-    /// <summary>The running Engine speaks another protocol version; the user must run <c>skua engine stop</c>.</summary>
+    /// <summary>The running Engine speaks another protocol version and wasn't replaced; the user must run <c>skua engine stop</c>.</summary>
     ProtocolMismatch = 11,
 
     /// <summary>No Engine could be reached: it failed to start, or it is starting or hung.</summary>

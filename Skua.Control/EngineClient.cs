@@ -17,6 +17,19 @@ public sealed record EngineClientOptions
     /// <summary>How long to wait for a starting Engine to answer.</summary>
     public TimeSpan StartTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
+    /// <summary>The build this client expects; an Engine from any other build is stale.</summary>
+    public string Build { get; init; } = ControlProtocol.Build;
+
+    /// <summary>
+    /// Whether connecting replaces a stale Engine, one from another build or protocol version: it is stopped and a new one started when idle,
+    /// and never while a Script runs. Only short-lived clients set it; a long-lived one, like an MCP server from an older install, would
+    /// replace the newer Engine.
+    /// </summary>
+    public bool ReplaceStale { get; init; }
+
+    /// <summary>Receives a one-line notice when connecting replaces a stale Engine, or keeps one.</summary>
+    public Action<string>? Notice { get; init; }
+
     /// <summary><c>skua-engine</c> next to this program, unless <c>SKUA_ENGINE</c> overrides it.</summary>
     public static string DefaultEngineExecutable() =>
         Environment.GetEnvironmentVariable(EngineExecutableVariable) is { Length: > 0 } path
@@ -37,11 +50,37 @@ public static class EngineClient
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(50);
     private static readonly TimeSpan HelloTimeout = TimeSpan.FromSeconds(10);
 
-    /// <summary>Connects to the Engine, auto-starting it if needed, and checks its protocol version.</summary>
-    /// <exception cref="ControlException"><see cref="ErrorCode.EngineUnavailable"/> or <see cref="ErrorCode.ProtocolMismatch"/>.</exception>
+    /// <summary>Long enough for an Engine being replaced to close its Game Host.</summary>
+    private static readonly TimeSpan ReplaceTimeout = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Connects to the Engine, auto-starting it if needed, and checks its protocol version; with <see cref="EngineClientOptions.ReplaceStale"/>,
+    /// it first replaces an idle Engine from another build.
+    /// </summary>
+    /// <exception cref="ControlException">
+    /// <see cref="ErrorCode.EngineUnavailable"/> or <see cref="ErrorCode.ProtocolMismatch"/>; <see cref="ErrorCode.ScriptRunning"/> or
+    /// <see cref="ErrorCode.Busy"/> for an Engine on another protocol version that is too busy to replace; <see cref="ErrorCode.Timeout"/>
+    /// when the Engine being replaced doesn't stop in time.
+    /// </exception>
     public static async Task<EngineConnection> ConnectAsync(EngineClientOptions options, CancellationToken cancellationToken = default)
     {
         EngineConnection connection = await ConnectOrStartAsync(options, cancellationToken);
+        bool replaced;
+        try
+        {
+            replaced = options.ReplaceStale && await ReplaceIfStaleAsync(options, connection, cancellationToken);
+        }
+        catch
+        {
+            connection.Dispose();
+            throw;
+        }
+        if (replaced)
+        {
+            connection.Dispose();
+            connection = await ConnectOrStartAsync(options, cancellationToken);
+        }
+
         try
         {
             connection.EnsureCompatible();
@@ -82,6 +121,54 @@ public static class EngineClient
             }
         }
 
+        await WaitUntilStoppedAsync(endpoint, timeout, cancellationToken);
+        return true;
+    }
+
+    /// <summary>
+    /// Stops the Engine behind <paramref name="connection"/> when it is from another build and idle, and returns whether it did. A busy one
+    /// is kept, with a notice, when it speaks this protocol version, and fails the connect when it doesn't.
+    /// </summary>
+    private static async Task<bool> ReplaceIfStaleAsync(EngineClientOptions options, EngineConnection connection, CancellationToken cancellationToken)
+    {
+        HelloResult engine = connection.Hello;
+        if (engine.Protocol == ControlProtocol.Version && engine.Build == options.Build)
+            return false;
+
+        string staleEngine = $"Engine '{engine.EngineName}' from another build ({engine.Build}, protocol {engine.Protocol})";
+        try
+        {
+            if (!await connection.ShutdownIfIdleAsync(cancellationToken))
+            {
+                // EnsureCompatible refuses an incompatible one, with a stop hint.
+                if (connection.IsCompatible)
+                    options.Notice?.Invoke($"{staleEngine} wasn't replaced: it is too old to replace safely; run 'skua engine stop' to replace it.");
+                return false;
+            }
+        }
+        catch (ControlException e) when (e.Code is ErrorCode.ScriptRunning or ErrorCode.Busy)
+        {
+            string kept = $"{staleEngine} wasn't replaced, because {(e.Code == ErrorCode.ScriptRunning ? "a Script is running in it" : "it is busy with another command")}";
+            if (!connection.IsCompatible)
+                throw new ControlException(e.Code,
+                    $"{kept}, and this skua speaks protocol {ControlProtocol.Version}. Wait for it to finish, or run 'skua engine stop', which stops its Script too; then try again.",
+                    e);
+            options.Notice?.Invoke($"{kept}; a later skua command replaces it once it's idle.");
+            return false;
+        }
+        catch (ControlException e) when (e.Code == ErrorCode.EngineUnavailable)
+        {
+            // The Engine may close the connection before its reply arrives.
+        }
+
+        await WaitUntilStoppedAsync(options.Endpoint, ReplaceTimeout, cancellationToken);
+        options.Notice?.Invoke($"Replaced {staleEngine} with build {options.Build}, protocol {ControlProtocol.Version}.");
+        return true;
+    }
+
+    /// <summary>Waits until the Engine has released its lock.</summary>
+    private static async Task WaitUntilStoppedAsync(EngineEndpoint endpoint, TimeSpan timeout, CancellationToken cancellationToken)
+    {
         Stopwatch waited = Stopwatch.StartNew();
         while (EngineLock.IsHeld(endpoint.LockPath))
         {
@@ -89,7 +176,6 @@ public static class EngineClient
                 throw new ControlException(ErrorCode.Timeout, $"Engine '{endpoint.Name}' didn't stop within {timeout.TotalSeconds:0} s.");
             await Task.Delay(PollInterval, cancellationToken);
         }
-        return true;
     }
 
     /// <summary>Connects to the Engine, auto-starting it if needed, without checking its protocol version.</summary>
