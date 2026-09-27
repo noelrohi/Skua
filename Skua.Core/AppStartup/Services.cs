@@ -263,9 +263,13 @@ public static class Services
                         .Where(s => !s.Contains("xunit"));
 
                     // Every managed DLL in the runtime directory is referenced, so Scripts don't depend on which assemblies happen to be loaded yet.
-                    IEnumerable<string> runtimePaths = Directory
-                        .EnumerateFiles(RuntimeEnvironment.GetRuntimeDirectory(), "*.dll")
-                        .Order(StringComparer.OrdinalIgnoreCase)
+                    // The host's framework directories add Microsoft.WindowsDesktop.App (System.Windows.Forms) on Windows.
+                    string[] frameworkDirectories = (AppContext.GetData("NATIVE_DLL_SEARCH_DIRECTORIES") as string ?? string.Empty)
+                        .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
+                    IEnumerable<string> runtimePaths = frameworkDirectories
+                        .Prepend(RuntimeEnvironment.GetRuntimeDirectory())
+                        .Where(Directory.Exists)
+                        .SelectMany(dir => Directory.EnumerateFiles(dir, "*.dll").Order(StringComparer.OrdinalIgnoreCase))
                         .Where(IsManagedAssembly);
 
                     HashSet<string> paths = new(StringComparer.OrdinalIgnoreCase);
@@ -338,7 +342,7 @@ public static class Services
             using PEReader reader = new(stream);
             return reader.HasMetadata && reader.GetMetadataReader().IsAssembly;
         }
-        catch (Exception e) when (e is BadImageFormatException or IOException)
+        catch (Exception e) when (e is IOException or BadImageFormatException)
         {
             return false;
         }

@@ -17,7 +17,7 @@ This document provides instructions for building the Skua project from source, i
 1. **.NET 10.0 SDK or later**
    - Download from: [Microsoft](https://dotnet.microsoft.com/download)
    - Verify installation: `dotnet --version`
-   - Project targets: `net10.0-windows` for applications and libraries
+   - Project targets: `net10.0-windows` for applications and UI libraries; `net10.0` for Skua.Core, Skua.Core.Interfaces, Skua.Core.Models and Skua.Core.Utils
 
 2. **Visual Studio 2026** (for MSBuild and WiX support)
    - Workloads required:
