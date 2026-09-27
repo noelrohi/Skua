@@ -6,7 +6,10 @@ using Skua.Control;
 
 namespace Skua.App.Cli.Mcp;
 
-/// <summary>The MCP tools: one snake_case tool per Control Surface method, with the same arguments and DTOs.</summary>
+/// <summary>
+/// The MCP tools: one snake_case tool per Control Surface method, with the same arguments and DTOs, except that <c>screenshot</c> returns its PNG
+/// as an image block.
+/// </summary>
 [McpServerToolType]
 internal sealed class EngineTools(Func<EngineClientOptions> options)
 {

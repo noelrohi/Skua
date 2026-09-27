@@ -425,17 +425,18 @@ impl Host {
 
 /// Sends the 'I' reply: the frame, scaled down to `max_width` if wider, as PNG (w = h = 0 if none).
 fn screenshot_reply(id: u32, frames: u64, max_width: u32, image: Option<image::RgbaImage>) {
-    match image.map(|img| encode_screenshot(img, max_width)) {
-        Some(Ok((width, height, png))) => bridge::send(frame::encode_image(id, width, height, frames, &png)),
+    let (width, height, png) = match image.map(|img| encode_screenshot(img, max_width)) {
+        Some(Ok(encoded)) => encoded,
         Some(Err(e)) => {
             tracing::error!("screenshot PNG: {e}");
-            bridge::send(frame::encode_image(id, 0, 0, frames, &[]));
+            (0, 0, Vec::new())
         }
         None => {
             tracing::error!("screenshot: the renderer captured no frame");
-            bridge::send(frame::encode_image(id, 0, 0, frames, &[]));
+            (0, 0, Vec::new())
         }
-    }
+    };
+    bridge::send(frame::encode_image(id, width, height, frames, &png));
 }
 
 /// The frame as PNG, scaled down to `max_width` (0 = native) if wider, keeping its aspect ratio; with its final size.

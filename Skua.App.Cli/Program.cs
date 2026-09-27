@@ -79,7 +79,7 @@ screenshot.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async opt
     using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
     ScreenshotResult shot = await connection.ScreenshotAsync(parse.GetValue(screenshotMaxWidth), ct);
     return await ScreenshotFile.WriteAsync(shot, parse.GetValue(screenshotOut), ct);
-}, file => file.Path));
+}, Output.Screenshot));
 
 Command engineStart = new("start", "Start the Engine if it isn't running.");
 engineStart.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), options => EngineCommands.StartAsync(options, ct), Output.Engine));

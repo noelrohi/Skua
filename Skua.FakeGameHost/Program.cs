@@ -179,9 +179,9 @@ static byte[] Png(int width, int height)
     MemoryStream pixels = new();
     using (ZLibStream zlib = new(pixels, CompressionLevel.Fastest, leaveOpen: true))
     {
-        byte[] row = new byte[1 + width * 3];
+        byte[] row = new byte[1 + (width * 3)];
         for (int x = 0; x < width; x++)
-            (row[1 + x * 3], row[2 + x * 3], row[3 + x * 3]) = ((byte)0x20, (byte)0x40, (byte)0x80);
+            (row[1 + (x * 3)], row[2 + (x * 3)], row[3 + (x * 3)]) = ((byte)0x20, (byte)0x40, (byte)0x80);
         for (int y = 0; y < height; y++)
             zlib.Write(row);
     }

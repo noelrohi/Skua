@@ -92,7 +92,10 @@ public sealed class EngineSandbox : IAsyncDisposable
         // In the data folder, so files the CLI writes by default stay in the sandbox.
         ProcessStartInfo startInfo = new(CliExecutable)
         {
-            RedirectStandardError = true, RedirectStandardOutput = true, RedirectStandardInput = true, WorkingDirectory = SkuaDir,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            RedirectStandardInput = true,
+            WorkingDirectory = SkuaDir,
         };
         foreach (string argument in arguments)
             startInfo.ArgumentList.Add(argument);

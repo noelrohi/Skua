@@ -117,20 +117,31 @@ public class ScreenshotTests
     }
 
     [Fact]
-    public async Task A_screenshot_the_Game_Host_never_answers_fails_with_Timeout_after_10_s()
+    public async Task Screenshots_the_Game_Host_never_answers_fail_with_Timeout_10_s_after_each_call()
     {
         await using EngineSandbox sandbox = new();
-        FakeGameHost gameHost = new FakeGameHost(sandbox).Delay("screenshot", 60_000);
+        FakeGameHost gameHost = new FakeGameHost(sandbox).LogCalls().Delay("screenshot", 60_000);
         (_, EngineConnection connection) = await sandbox.StartEngineAsync(gameHost.Environment());
         using (connection)
         {
-            Stopwatch waited = Stopwatch.StartNew();
-            ControlException error = await Assert.ThrowsAsync<ControlException>(
-                () => connection.ScreenshotAsync(cancellationToken: TestContext.Current.CancellationToken));
+            Task<TimeSpan> native = TimeOutAsync(connection, null);
+            await WaitForCallsAsync(gameHost, 1);
+            // This one first waits for the native capture, which never ends: the wait counts toward its 10 s.
+            Task<TimeSpan> small = TimeOutAsync(connection, 100);
 
-            Assert.Equal(ErrorCode.Timeout, error.Code);
-            Assert.InRange(waited.Elapsed.TotalSeconds, 9.5, 20);
+            Assert.InRange((await native).TotalSeconds, 9.5, 11.5);
+            Assert.InRange((await small).TotalSeconds, 9.5, 11.5);
         }
+    }
+
+    /// <summary>How long a screenshot took to fail with <see cref="ErrorCode.Timeout"/>.</summary>
+    private static async Task<TimeSpan> TimeOutAsync(EngineConnection connection, int? maxWidth)
+    {
+        Stopwatch waited = Stopwatch.StartNew();
+        ControlException error = await Assert.ThrowsAsync<ControlException>(
+            () => connection.ScreenshotAsync(maxWidth, TestContext.Current.CancellationToken));
+        Assert.Equal(ErrorCode.Timeout, error.Code);
+        return waited.Elapsed;
     }
 
     [Theory]

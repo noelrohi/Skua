@@ -190,6 +190,18 @@ public class CliTests
     }
 
     [Fact]
+    public async Task Screenshots_without_out_each_write_their_own_file()
+    {
+        await using EngineSandbox sandbox = new();
+
+        ProcessResult[] results = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => sandbox.RunCliAsync("screenshot")));
+
+        Assert.All(results, r => Assert.Equal(0, r.ExitCode));
+        Assert.Equal(4, results.Select(r => r.Stdout.Trim()).Distinct().Count());
+        Assert.Equal(4, Directory.GetFiles(sandbox.SkuaDir, "skua-screenshot-*.png").Length);
+    }
+
+    [Fact]
     public async Task Screenshot_to_an_unwritable_path_exits_with_the_invalid_argument_code()
     {
         await using EngineSandbox sandbox = new();

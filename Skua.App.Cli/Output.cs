@@ -54,6 +54,9 @@ internal static class Output
         return text;
     }
 
+    /// <summary>Only the path, so a script can use it.</summary>
+    public static string Screenshot(ScreenshotFile file) => file.Path;
+
     public static string Engine(EngineStateDto engine) => engine.State switch
     {
         EngineState.Running when engine.Compatible == false =>
