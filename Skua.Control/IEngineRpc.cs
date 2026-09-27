@@ -6,7 +6,8 @@ namespace Skua.Control;
 /// The Control Surface contract: every method the Engine serves over JSON-RPC.
 /// </summary>
 /// <remarks>
-/// Each method other than <c>hello</c>, <c>shutdown</c> and <c>shutdown_if_idle</c> is one snake_case MCP tool and one <c>skua</c> subcommand with the same arguments and DTOs.
+/// Each method other than <c>hello</c>, <c>shutdown</c> and <c>shutdown_if_idle</c> is one snake_case MCP tool and one <c>skua</c> subcommand with the same arguments and DTOs,
+/// except the CLI-only <c>subscribe</c> and <c>scripts_source_set</c>: agents follow logs by paging, and only a developer changes the Script Source.
 /// Failures are JSON-RPC errors whose code maps to an <see cref="ErrorCode"/> through <see cref="ErrorCodes"/>.
 /// </remarks>
 [JsonRpcContract]

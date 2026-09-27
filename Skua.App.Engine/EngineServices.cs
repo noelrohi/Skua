@@ -22,7 +22,7 @@ internal static class EngineServices
         services.AddCommonServices();
         // Upstream's CoreBots.cs doesn't compile on macOS, so the Engine's default Script Source is the Mac-ready fork.
         services.AddSingleton<IGetScriptsService>(s => new GetScriptsService(
-            s.GetRequiredService<IDialogService>(), s.GetRequiredService<ISettingsService>(), EngineSettingsService.ToCore(ScriptSourceSetting.Default)));
+            s.GetRequiredService<IDialogService>(), s.GetRequiredService<ISettingsService>(), ScriptSourceSetting.Default.ToCore()));
 
         services.AddScriptableObjects();
 

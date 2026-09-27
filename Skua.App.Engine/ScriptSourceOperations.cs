@@ -43,7 +43,7 @@ internal sealed class ScriptSourceOperations
             .ThenBy(s => s.FilePath, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        return new ScriptsSearchResult(ToDto(source), matches.Count, matches.Take(ScriptsSearchResult.MaxScripts).Select(ToDto).ToList());
+        return new ScriptsSearchResult(source.ToDto(), matches.Count, matches.Take(ScriptsSearchResult.MaxScripts).Select(ToDto).ToList());
     }
 
     public async Task<ScriptsListResult> ListAsync(string? folder, CancellationToken cancellationToken)
@@ -71,10 +71,10 @@ internal sealed class ScriptSourceOperations
             .OrderBy(s => s.FilePath, StringComparer.OrdinalIgnoreCase)
             .Select(ToDto)
             .ToList();
-        return new ScriptsListResult(ToDto(source), spelled, folders, direct);
+        return new ScriptsListResult(source.ToDto(), spelled, folders, direct);
     }
 
-    public ScriptsNewResult New(string? since) => _history.New(ToDto(_scriptsService.Source), since);
+    public ScriptsNewResult New(string? since) => _history.New(_scriptsService.Source.ToDto(), since);
 
     /// <remarks>Refused while a Script runs, and holds the Engine's slot, so a Script's files never change under it.</remarks>
     public async Task<ScriptsUpdateResult> UpdateAsync()
@@ -89,8 +89,8 @@ internal sealed class ScriptSourceOperations
             ScriptSource source = _scriptsService.Source;
             ScriptsSyncResult result = await FromScriptSourceAsync(source, () => _scriptsService.SyncScriptsAsync(_shutdown));
             if (result.Added.Count > 0 || result.Changed.Count > 0)
-                _history.Record(ToDto(result.Source), result.Commit, result.Mode == ScriptsSyncMode.Full, Entries(result.Added), Entries(result.Changed));
-            return new ScriptsUpdateResult(ToDto(result.Source), Mode(result.Mode), result.Commit, result.Downloaded, result.Failed,
+                _history.Record(result.Source.ToDto(), result.Commit, result.Mode == ScriptsSyncMode.Full, Entries(result.Added), Entries(result.Changed));
+            return new ScriptsUpdateResult(result.Source.ToDto(), Mode(result.Mode), result.Commit, result.Downloaded, result.Failed,
                 result.Added.Select(s => s.FilePath).ToList(), result.Changed.Select(s => s.FilePath).ToList());
         }
         finally
@@ -99,8 +99,12 @@ internal sealed class ScriptSourceOperations
         }
     }
 
-    public ScriptSourceResult Source() =>
-        new(ToDto(_scriptsService.Source), ScriptSourceSetting.Read(ClientFileSources.SkuaDIR) is null, ScriptSourceSetting.Default);
+    /// <remarks>Reads the setting once, so the Script Source and whether it is the default always agree.</remarks>
+    public ScriptSourceResult Source()
+    {
+        ScriptSourceDto? set = ScriptSourceSetting.Read(ClientFileSources.SkuaDIR);
+        return new(set ?? ScriptSourceSetting.Default, IsDefault: set is null, ScriptSourceSetting.Default);
+    }
 
     /// <param name="source"><c>owner/repo@branch</c>, or null for the default.</param>
     /// <remarks>
@@ -163,8 +167,6 @@ internal sealed class ScriptSourceOperations
 
     private static ScriptDto ToDto(ScriptInfo script) =>
         new(script.FilePath, NullIfMissing(script.Name), NullIfMissing(script.Description), Tags(script), script.Downloaded, script.Outdated);
-
-    private static ScriptSourceDto ToDto(ScriptSource source) => new(source.Owner, source.Repo, source.Branch);
 
     private static ScriptsUpdateMode Mode(ScriptsSyncMode mode) => mode switch
     {

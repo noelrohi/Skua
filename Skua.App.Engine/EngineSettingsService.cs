@@ -1,7 +1,6 @@
 using Skua.Control;
 using Skua.Core.Interfaces;
 using Skua.Core.Models;
-using Skua.Core.Models.GitHub;
 using Skua.Core.Services;
 
 namespace Skua.App.Engine;
@@ -46,9 +45,7 @@ internal sealed class EngineSettingsService : ISettingsService
 
     /// <summary>Null while the setting is unset, so a save leaves it out and the Engine's default applies.</summary>
     private void ReloadScriptSource() =>
-        _settings.GetShared().ScriptSource = ScriptSourceSetting.Read(ClientFileSources.SkuaDIR) is { } source ? ToCore(source) : null;
-
-    public static ScriptSource ToCore(ScriptSourceDto source) => new() { Owner = source.Owner, Repo = source.Repo, Branch = source.Branch };
+        _settings.GetShared().ScriptSource = ScriptSourceSetting.Read(ClientFileSources.SkuaDIR)?.ToCore();
 
     public void Initialize(AppRole role) => _settings.Initialize(role);
 
