@@ -52,14 +52,17 @@ internal sealed partial class LogScrubber
         }
     }
 
-    private string Scrub(string text, int maxBytes, ref bool truncated)
+    /// <summary>Redacts each registered secret and the login token, without cutting.</summary>
+    public string Redact(string text)
     {
         foreach (string secret in _secrets)
             text = text.Replace(secret, Redacted, StringComparison.Ordinal);
         if (text.Contains("<pword>", StringComparison.Ordinal))
             text = LoginToken().Replace(text, "${open}" + Redacted + "${close}");
-        return Cut(text, maxBytes, ref truncated);
+        return text;
     }
+
+    private string Scrub(string text, int maxBytes, ref bool truncated) => Cut(Redact(text), maxBytes, ref truncated);
 
     /// <summary>
     /// The login token in the game's own trace of its login: <c>&lt;pword&gt;&lt;![CDATA[…]]&gt;&lt;/pword&gt;</c>, or without CDATA,

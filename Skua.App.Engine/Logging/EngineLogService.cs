@@ -12,6 +12,8 @@ namespace Skua.App.Engine.Logging;
 /// </summary>
 internal sealed class EngineLogService : ILogService
 {
+    private static readonly AsyncLocal<List<string>?> s_captured = new();
+
     private readonly EngineLogs _logs;
 
     public EngineLogService(EngineLogs logs)
@@ -28,8 +30,21 @@ internal sealed class EngineLogService : ILogService
 
     public void ScriptLog(string message)
     {
-        if (message is not null)
-            _logs.Write(LogKind.Script, message);
+        if (message is null)
+            return;
+        string stored = _logs.Write(LogKind.Script, message);
+        if (s_captured.Value is { } lines)
+        {
+            lock (lines)
+                lines.Add(stored);
+        }
+    }
+
+    /// <summary>Also collects, as stored, the Script log lines this async flow writes from now on, until disposed; for <c>eval</c>.</summary>
+    public static IDisposable CaptureScriptLines(List<string> lines)
+    {
+        s_captured.Value = lines;
+        return new Capture();
     }
 
     public void FlashLog(string message)
@@ -59,5 +74,10 @@ internal sealed class EngineLogService : ILogService
         // The same line as Core's LogService writes.
         FlashLog($"{message.Function} Args[{args.Length}] {(args.Length > 0 ? $"= {{{string.Join(",", args)}}} " : "")}threw {message.Exception.GetType().Name}: {message.Exception.Message}");
         _logs.Event(EventTypes.BridgeError, new { function = message.Function, args, error = $"{message.Exception.GetType().Name}: {message.Exception.Message}" });
+    }
+
+    private sealed class Capture : IDisposable
+    {
+        public void Dispose() => s_captured.Value = null;
     }
 }

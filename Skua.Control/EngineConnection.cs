@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using StreamJsonRpc;
 
 namespace Skua.Control;
@@ -71,6 +72,25 @@ public sealed class EngineConnection : IDisposable
 
     public Task<DropsResult> DropsAsync(CancellationToken cancellationToken = default) =>
         CallAsync(rpc => rpc.DropsAsync(cancellationToken));
+    public Task<ScriptOptionsResult> ScriptOptionsAsync(string script, CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.ScriptOptionsAsync(script, cancellationToken));
+
+    public Task<ScriptStartResult> ScriptStartAsync(
+        string script, IReadOnlyDictionary<string, string>? options = null, DialogMode? dialogs = null, int? dialogTimeoutSec = null,
+        CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.ScriptStartAsync(script, options, dialogs, dialogTimeoutSec, cancellationToken));
+
+    public Task<ScriptStopResult> ScriptStopAsync(CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.ScriptStopAsync(cancellationToken));
+
+    public Task<ScriptStatusDto> ScriptStatusAsync(CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.ScriptStatusAsync(cancellationToken));
+
+    public Task<ScriptWaitResult> ScriptWaitAsync(int? timeoutSec = null, CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.ScriptWaitAsync(timeoutSec, cancellationToken));
+
+    public Task<EvalResult> EvalAsync(string code, int? timeoutSec = null, CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.EvalAsync(code, timeoutSec, cancellationToken));
 
     /// <summary>Replays the entries after the cursor, then follows new ones until cancelled.</summary>
     public async IAsyncEnumerable<LogPage> SubscribeAsync(
@@ -93,7 +113,7 @@ public sealed class EngineConnection : IDisposable
         }
         catch (RemoteInvocationException e) when (ErrorCodes.FromWire(e.ErrorCode) is ErrorCode code)
         {
-            throw new ControlException(code, e.Message, e);
+            throw new ControlException(code, e.Message, e, Diagnostics(e.ErrorData));
         }
         catch (ConnectionLostException e)
         {
@@ -102,4 +122,11 @@ public sealed class EngineConnection : IDisposable
     }
 
     public void Dispose() => _rpc.Dispose();
+
+    /// <summary>The diagnostics in an error's <see cref="ErrorDataDto"/>, if it has any.</summary>
+    private static IReadOnlyList<string>? Diagnostics(object? errorData) =>
+        errorData is JsonElement { ValueKind: JsonValueKind.Object } data
+        && data.TryGetProperty("diagnostics", out JsonElement diagnostics) && diagnostics.ValueKind == JsonValueKind.Array
+            ? diagnostics.EnumerateArray().Select(d => d.GetString() ?? "").ToList()
+            : null;
 }

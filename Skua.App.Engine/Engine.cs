@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
 using Skua.App.Engine.Game;
 using Skua.App.Engine.Logging;
+using Skua.App.Engine.Scripts;
 using Skua.Control;
 using Skua.Core.Interfaces;
 using Skua.MacOS.GameHost;
@@ -36,21 +37,29 @@ internal sealed class Engine : IEngineRpc
     private readonly GameOperations _game;
     private readonly MoveOperations _moves;
     private readonly GameQueries _queries;
+    private readonly ScriptOperations _scripts;
+    private readonly EvalOperations _eval;
 
     private Engine(EngineEndpoint endpoint, GameHostSupervisor gameHost, EngineLogs logs, IServiceProvider services)
     {
         _endpoint = endpoint;
         _gameHost = gameHost;
         _logs = logs;
-        _scriptSource = new ScriptSourceOperations(services.GetRequiredService<IGetScriptsService>(), _shutdown.Token);
+        IScriptManager manager = services.GetRequiredService<IScriptManager>();
+        ScriptRuns runs = new(logs, manager, services.GetRequiredService<IScriptOption>());
+        ActionSlot slot = new();
+        SemaphoreSlim compiling = new(1, 1);
+        _scriptSource = new ScriptSourceOperations(services.GetRequiredService<IGetScriptsService>(), runs, slot, _shutdown.Token);
         _screenshots = new ScreenshotOperations(services.GetRequiredService<BridgeFlashUtil>(), services.GetRequiredService<IScriptOption>());
-        GameActionSlot slot = new(gameHost.Tracker, services.GetRequiredService<IScriptManager>());
+        GameActionSlot gameSlot = new(gameHost.Tracker, runs, slot);
         _game = new GameOperations(
             services.GetRequiredService<IScriptServers>(), services.GetRequiredService<IFlashUtil>(), services.GetRequiredService<ISettingsService>(), logs,
-            gameHost.Tracker, slot);
+            gameHost.Tracker, gameSlot);
         _moves = new MoveOperations(
-            services.GetRequiredService<IScriptMap>(), services.GetRequiredService<IScriptPlayer>(), services.GetRequiredService<IScriptWait>(), gameHost.Tracker, slot);
-        _queries = new GameQueries(services.GetRequiredService<IScriptInterface>(), services.GetRequiredService<IFlashUtil>(), gameHost.Tracker, slot);
+            services.GetRequiredService<IScriptMap>(), services.GetRequiredService<IScriptPlayer>(), services.GetRequiredService<IScriptWait>(), gameHost.Tracker, gameSlot);
+        _queries = new GameQueries(services.GetRequiredService<IScriptInterface>(), services.GetRequiredService<IFlashUtil>(), gameHost.Tracker, gameSlot);
+        _scripts = new ScriptOperations(manager, runs, slot, compiling);
+        _eval = new EvalOperations(manager, services.GetRequiredService<IScriptInterface>(), logs, compiling);
     }
 
     public static string Build { get; } =
@@ -126,7 +135,7 @@ internal sealed class Engine : IEngineRpc
     public async Task<StatusDto> StatusAsync(CancellationToken cancellationToken)
     {
         EngineInfoDto engine = new(_endpoint.Name, Build, ControlProtocol.Version, Math.Round(_uptime.Elapsed.TotalSeconds, 1), Environment.ProcessId);
-        return new StatusDto(engine, _gameHost.Status() with { Player = await _queries.PlayerAsync() });
+        return new StatusDto(engine, _gameHost.Status() with { Player = await _queries.PlayerAsync() }, _scripts.Status());
     }
 
     public Task ShutdownAsync(CancellationToken cancellationToken)
@@ -187,6 +196,25 @@ internal sealed class Engine : IEngineRpc
     public Task<MapDto> MapAsync(CancellationToken cancellationToken) => _queries.MapAsync(cancellationToken);
 
     public Task<DropsResult> DropsAsync(CancellationToken cancellationToken) => _queries.DropsAsync(cancellationToken);
+    public Task<ScriptOptionsResult> ScriptOptionsAsync(string script, CancellationToken cancellationToken) =>
+        _scripts.OptionsAsync(script);
+
+    // A client going away mustn't abandon a start half done, so the start ignores cancellation.
+    public Task<ScriptStartResult> ScriptStartAsync(
+        string script, IReadOnlyDictionary<string, string>? options, DialogMode? dialogs, int? dialogTimeoutSec, CancellationToken cancellationToken) =>
+        _scripts.StartAsync(script, options, dialogs, dialogTimeoutSec);
+
+    public Task<ScriptStopResult> ScriptStopAsync(CancellationToken cancellationToken) =>
+        _scripts.StopAsync(cancellationToken);
+
+    public Task<ScriptStatusDto> ScriptStatusAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(_scripts.Status());
+
+    public Task<ScriptWaitResult> ScriptWaitAsync(int? timeoutSec, CancellationToken cancellationToken) =>
+        _scripts.WaitAsync(timeoutSec, cancellationToken);
+
+    public Task<EvalResult> EvalAsync(string code, int? timeoutSec, CancellationToken cancellationToken) =>
+        _eval.EvalAsync(code, timeoutSec, cancellationToken);
 
     /// <summary>
     /// Takes the lock, or returns null when another Engine holds it. A client checking the lock holds it for an instant,
@@ -246,7 +274,7 @@ internal sealed class Engine : IEngineRpc
         finally
         {
             listener.Dispose();
-            Stop();
+            await StopAsync();
         }
     }
 
@@ -272,10 +300,22 @@ internal sealed class Engine : IEngineRpc
         }
     }
 
-    /// <summary>The shutdown order: the Game Host closes first (without logging out), then the connections, then the socket; the lock goes last.</summary>
-    private void Stop()
+    /// <summary>
+    /// The shutdown order: the Script stops cooperatively, then the Game Host closes (without logging out), then the connections,
+    /// then the socket; the lock goes last.
+    /// </summary>
+    private async Task StopAsync()
     {
         EngineLog.Write("Shutting down.");
+        try
+        {
+            if ((await _scripts.StopAsync(CancellationToken.None)).WasRunning)
+                EngineLog.Write("Stopped the running Script.");
+        }
+        catch (Exception e)
+        {
+            EngineLog.Write($"Stopping the Script failed: {e}");
+        }
         _gameHost.Dispose();
         foreach (JsonRpc rpc in _connections.Keys)
             rpc.Dispose();

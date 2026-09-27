@@ -85,4 +85,17 @@ public static class EventTypes
 
     /// <summary>The game marked the player AFK: <c>{}</c>.</summary>
     public const string PlayerAfk = "player.afk";
+
+    /// <summary>
+    /// A run started: <c>{run, script, restart}</c>. A restart by Core's auto-relogin is the same run, with <c>restart</c> true.
+    /// </summary>
+    public const string ScriptStarted = "script.started";
+
+    /// <summary>
+    /// A run ended: <c>{run, script, outcome, durationSec, relogins, error?}</c>, the outcome one of <see cref="ScriptOutcome"/>.
+    /// </summary>
+    public const string ScriptStopped = "script.stopped";
+
+    /// <summary>A Script threw: <c>{run, script, error, stack}</c>, the stack cut to 4 KB. <c>script.stopped</c> follows.</summary>
+    public const string ScriptError = "script.error";
 }

@@ -3,7 +3,7 @@ namespace Skua.Control;
 public sealed record HelloResult(int Protocol, string Build, string EngineName, int Pid);
 
 /// <summary>The reply to <c>status</c>. Fields that don't apply yet are null.</summary>
-public sealed record StatusDto(EngineInfoDto Engine, GameStatusDto Game);
+public sealed record StatusDto(EngineInfoDto Engine, GameStatusDto Game, ScriptStatusDto Script);
 
 public sealed record EngineInfoDto(string Name, string Build, int Protocol, double UptimeSec, int Pid);
 
@@ -56,7 +56,8 @@ public sealed record LoginResult(string Server, bool AlreadyLoggedIn);
 public sealed record LogoutResult(bool WasLoggedIn);
 
 /// <summary>The data of a JSON-RPC error raised by the Engine.</summary>
-public sealed record ErrorDataDto(ErrorCode Code);
+/// <param name="Diagnostics">The compiler's errors, one per line, for <see cref="ErrorCode.CompileFailed"/>; else null.</param>
+public sealed record ErrorDataDto(ErrorCode Code, IReadOnlyList<string>? Diagnostics = null);
 
 /// <summary>The repository the Engine fetches Scripts from: <c>owner/repo@branch</c>.</summary>
 public sealed record ScriptSourceDto(string Owner, string Repo, string Branch);

@@ -5,11 +5,15 @@ namespace Skua.Control;
 /// </summary>
 public sealed class ControlException : Exception
 {
-    public ControlException(ErrorCode code, string message, Exception? innerException = null)
+    public ControlException(ErrorCode code, string message, Exception? innerException = null, IReadOnlyList<string>? diagnostics = null)
         : base(message, innerException)
     {
         Code = code;
+        Diagnostics = diagnostics;
     }
 
     public ErrorCode Code { get; }
+
+    /// <summary>The compiler's errors, one per line, for <see cref="ErrorCode.CompileFailed"/>; else null.</summary>
+    public IReadOnlyList<string>? Diagnostics { get; }
 }
