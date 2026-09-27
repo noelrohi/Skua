@@ -109,7 +109,7 @@ public class CliTests
         Assert.Equal((0, "Now on yulgar in Upstairs (Left)."), (join.ExitCode, join.Stdout.Trim()));
         using (JsonDocument location = JsonDocument.Parse(jump.Stdout))
             Assert.True(location.RootElement.GetProperty("alreadyThere").GetBoolean());
-        Assert.Contains("Player  SkuaTester, level 10 Healer, HP 1000/1000, MP 80/100, 5000 gold, on yulgar in Upstairs (Left)", status.Stdout);
+        Assert.Contains("Player  SkuaTester, level 10 Healer, XP 1500/4000 (37.5%), HP 1000/1000, MP 80/100, 5000 gold, on yulgar in Upstairs (Left)", status.Stdout);
         Assert.Equal(0, bank.ExitCode);
         Assert.StartsWith("bank: 1/10 slots used", bank.Stdout);
         Assert.Contains("Bank Relic  2/10  Item", bank.Stdout);

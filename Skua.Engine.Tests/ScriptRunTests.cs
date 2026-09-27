@@ -70,6 +70,8 @@ public class ScriptRunTests
 
         ScriptStartResult start = await game.Connection.ScriptStartAsync("Tests/Loop.cs", cancellationToken: Ct);
         ScriptWaitResult running = await game.Connection.ScriptWaitAsync(0, Ct);
+        await Task.Delay(300, Ct);
+        ScriptStatusDto later = await game.Connection.ScriptStatusAsync(Ct);
         ScriptStopResult stop = await game.Connection.ScriptStopAsync(Ct);
         ScriptStopResult again = await game.Connection.ScriptStopAsync(Ct);
 
@@ -77,6 +79,7 @@ public class ScriptRunTests
         Assert.Equal(ScriptState.Running, running.Status.State);
         Assert.Equal((start.Run, "Tests/Loop.cs", 0, false, DialogMode.Ask, 120),
             (running.Status.Run!.Number, running.Status.Run.Script, running.Status.Run.Relogins, running.Status.Run.ReloggingIn, running.Status.Run.Dialogs, running.Status.Run.DialogTimeoutSec));
+        Assert.InRange(later.Run!.ElapsedSec - running.Status.Run.ElapsedSec, 0.3, 30);
         Assert.True(stop.WasRunning);
         Assert.True(stop.Ended);
         Assert.Equal(ScriptState.Idle, stop.Status.State);

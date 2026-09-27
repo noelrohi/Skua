@@ -16,4 +16,8 @@ public enum ScriptsSyncMode
 /// <param name="Commit">The Script Source commit synced to.</param>
 /// <param name="Downloaded">How many Script files were downloaded.</param>
 /// <param name="Failed">The paths of Scripts that failed to download; the commit isn't recorded, so the next sync retries them.</param>
-public sealed record ScriptsSyncResult(ScriptSource Source, ScriptsSyncMode Mode, string Commit, int Downloaded, IReadOnlyList<string> Failed);
+/// <param name="Added">The downloaded Scripts that weren't on disk before, by path.</param>
+/// <param name="Changed">The downloaded Scripts that replaced an older copy on disk, by path.</param>
+public sealed record ScriptsSyncResult(
+    ScriptSource Source, ScriptsSyncMode Mode, string Commit, int Downloaded, IReadOnlyList<string> Failed,
+    IReadOnlyList<ScriptInfo> Added, IReadOnlyList<ScriptInfo> Changed);

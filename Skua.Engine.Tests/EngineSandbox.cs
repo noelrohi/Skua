@@ -66,9 +66,18 @@ public sealed class EngineSandbox : IAsyncDisposable
     /// <summary>Runs <c>skua</c> to completion with this sandbox's data folder in its environment.</summary>
     public Task<ProcessResult> RunCliAsync(params string[] arguments) => RunCliAsync(new Dictionary<string, string>(), arguments);
 
-    public async Task<ProcessResult> RunCliAsync(IDictionary<string, string> environment, params string[] arguments)
+    public Task<ProcessResult> RunCliAsync(IDictionary<string, string> environment, params string[] arguments) =>
+        RunCliWithInputAsync(environment, null, arguments);
+
+    /// <summary>Runs <c>skua</c> to completion with <paramref name="input"/> as its standard input, which then closes.</summary>
+    public async Task<ProcessResult> RunCliWithInputAsync(IDictionary<string, string> environment, string? input, params string[] arguments)
     {
-        using Process process = LaunchCli(environment, arguments);
+        using Process process = LaunchCli(environment, arguments, closeInput: input is null);
+        if (input is not null)
+        {
+            await process.StandardInput.WriteAsync(input);
+            process.StandardInput.Close();
+        }
         Task<string> stdout = process.StandardOutput.ReadToEndAsync();
         Task<string> stderr = process.StandardError.ReadToEndAsync();
         using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
@@ -98,7 +107,7 @@ public sealed class EngineSandbox : IAsyncDisposable
         return process;
     }
 
-    private Process LaunchCli(IDictionary<string, string> environment, string[] arguments, bool terminal = false)
+    private Process LaunchCli(IDictionary<string, string> environment, string[] arguments, bool terminal = false, bool closeInput = true)
     {
         // In the data folder, so files the CLI writes by default stay in the sandbox.
         ProcessStartInfo startInfo = new(terminal ? "/usr/bin/script" : CliExecutable)
@@ -117,7 +126,7 @@ public sealed class EngineSandbox : IAsyncDisposable
             startInfo.Environment[key] = value;
 
         Process process = Process.Start(startInfo)!;
-        if (!terminal)
+        if (!terminal && closeInput)
             process.StandardInput.Close();
         return process;
     }

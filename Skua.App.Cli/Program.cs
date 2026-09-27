@@ -40,7 +40,27 @@ scriptsUpdate.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async 
     return await connection.ScriptsUpdateAsync(ct);
 }, Output.ScriptsUpdate));
 
-Command scripts = new("scripts", "Find and sync Scripts from the Script Source.") { scriptsSearch, scriptsUpdate };
+Argument<string?> scriptsFolder = new("folder")
+{
+    Description = "A folder of the Script Source, e.g. Farm or Farm/Special, ignoring case; the top by default.",
+    Arity = ArgumentArity.ZeroOrOne,
+};
+Command scriptsList = new("list", "Browse a folder of the Script Source: its subfolders, and its Scripts with their descriptions.") { scriptsFolder };
+scriptsList.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
+{
+    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
+    return await connection.ScriptsListAsync(parse.GetValue(scriptsFolder), ct);
+}, Output.ScriptsList));
+
+Option<string?> scriptsSince = new("--since") { Description = "A date (e.g. 2026-09-01) or a commit an update synced to: the last 7 days by default." };
+Command scriptsNew = new("new", "List the Scripts that recent Scripts updates added or changed, and when.") { scriptsSince };
+scriptsNew.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
+{
+    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
+    return await connection.ScriptsNewAsync(parse.GetValue(scriptsSince), ct);
+}, Output.ScriptsNew));
+
+Command scripts = new("scripts", "Find, browse and sync Scripts from the Script Source.") { scriptsSearch, scriptsList, scriptsUpdate, scriptsNew };
 
 Argument<LogKind[]> logKinds = new("kind")
 {
@@ -84,12 +104,49 @@ Argument<string?> loginServer = new("server")
     Arity = ArgumentArity.ZeroOrOne,
 };
 Option<int?> loginTimeout = new("--timeout") { Description = "Seconds to wait for the world: 120 by default." };
-Command login = new("login", "Log the Test Account in with its credentials from Keychain, and wait until it is playing.") { loginServer, loginTimeout };
+Command login = new("login", "Log the active account (see 'skua account') in with its credentials from Keychain, and wait until it is playing.") { loginServer, loginTimeout };
 login.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
 {
     using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
     return await connection.LoginAsync(parse.GetValue(loginServer), parse.GetValue(loginTimeout), ct);
 }, Output.Login));
+
+Option<string?> accountName = new("--name")
+{
+    Description = "The account's name, as [a-z0-9-]{1,16}: by default its username in lower case. test is the Test Account's.",
+};
+Option<bool> accountTest = new("--test") { Description = "Store (or replace) the Test Account, which agents and the live tests use, instead of a personal account." };
+Option<bool> accountAllowAgents = new("--allow-agents")
+{
+    Description = "Let agents' logins (MCP's) use this account while it is active; otherwise they use the Test Account.",
+};
+Argument<string?> accountUsername = new("username") { Description = "The account's username; without one, it is asked for.", Arity = ArgumentArity.ZeroOrOne };
+Option<bool> accountReplace = new("--replace") { Description = "Replace the account already stored under the name, e.g. to change its password." };
+Command accountAdd = new("add", "Store a personal account in Keychain, asking for its password without echoing it, and make 'skua login' use it.")
+{
+    accountUsername, accountName, accountReplace, accountTest, accountAllowAgents,
+};
+accountAdd.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), _ => AccountCommands.AddAsync(
+    parse.GetValue(accountName), parse.GetValue(accountUsername), parse.GetValue(accountReplace), parse.GetValue(accountTest),
+    parse.GetValue(accountAllowAgents), ct), Output.AccountAdded));
+
+Argument<string?> accountShowName = new("name") { Description = "An account's name; by default the one 'skua login' uses.", Arity = ArgumentArity.ZeroOrOne };
+Command accountShow = new("show", "Show an account's username, Keychain service and whether agents may use it, never its password.") { accountShowName };
+accountShow.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), _ => AccountCommands.ShowAsync(parse.GetValue(accountShowName), ct), Output.Account));
+
+Argument<string> accountUseName = new("name") { Description = "An account's name: test for the Test Account, or one given to 'skua account add --name'." };
+Command accountUse = new("use", "Make 'skua login' use another account in Keychain; the next login switches to it.") { accountUseName };
+accountUse.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), _ => AccountCommands.UseAsync(parse.GetValue(accountUseName)!, ct), Output.AccountUsed));
+
+Argument<string?> accountRemoveName = new("name") { Description = "An account's name; by default the one 'skua login' uses.", Arity = ArgumentArity.ZeroOrOne };
+Command accountRemove = new("remove", "Delete an account from Keychain; if 'skua login' used it, it uses the Test Account again.") { accountRemoveName };
+accountRemoveName.Description = "An account's name; by default the one 'skua login' uses, unless that is the Test Account, which must be named.";
+accountRemove.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), _ => AccountCommands.RemoveAsync(parse.GetValue(accountRemoveName), ct), Output.AccountRemoved));
+
+Command account = new("account", "Keep the accounts 'skua login' uses in Keychain; the password never leaves the prompt and Keychain.")
+{
+    accountAdd, accountShow, accountUse, accountRemove,
+};
 
 Command logout = new("logout", "Log out to the login screen.");
 logout.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
@@ -187,9 +244,13 @@ Option<DialogMode?> startDialogs = new("--dialogs") { Description = "ask (the de
 Option<int?> startDialogTimeout = new("--dialog-timeout") { Description = "Seconds a Question waits in ask mode: 120 by default." };
 Option<bool> startFollow = new("--follow", "-f")
 {
-    Description = "Print the run's log lines and events until it ends, and ask its Questions in the terminal when stdin is one.",
+    Description = "Print the run's log lines and events until it ends, under a live status line on a terminal, and ask its Questions there.",
 };
-Command scriptStart = new("start", "Store the given options, compile the Script and start it.") { scriptPath, startOptions, startDialogs, startDialogTimeout, startFollow };
+Option<bool> startNoUpdate = new("--no-update") { Description = "Start the Scripts on disk as they are, without bringing them up to date with the Script Source first." };
+Command scriptStart = new("start", "Update the Scripts from the Script Source, store the given options, compile the Script and start it.")
+{
+    scriptPath, startOptions, startDialogs, startDialogTimeout, startFollow, startNoUpdate,
+};
 scriptStart.Validators.Add(result =>
 {
     if (result.GetValue(startOptions)!.FirstOrDefault(o => o.IndexOf('=') < 1) is { } bad)
@@ -198,8 +259,14 @@ scriptStart.Validators.Add(result =>
 scriptStart.SetAction((parse, ct) =>
 {
     Dictionary<string, string> values = parse.GetValue(startOptions)!.Select(o => o.Split('=', 2)).ToDictionary(p => p[0], p => p[1]);
-    Task<ScriptStartResult> Start(EngineConnection connection) =>
-        connection.ScriptStartAsync(parse.GetValue(scriptPath)!, values, parse.GetValue(startDialogs), parse.GetValue(startDialogTimeout), ct);
+    string path = parse.GetValue(scriptPath)!;
+    async Task<ScriptStartResult> Start(EngineConnection connection)
+    {
+        // A Script outside the Script Source has nothing to update.
+        if (!parse.GetValue(startNoUpdate) && !Path.IsPathRooted(path))
+            await Cli.UpdateBeforeStartAsync(connection, parse.GetValue(json), ct);
+        return await connection.ScriptStartAsync(path, values, parse.GetValue(startDialogs), parse.GetValue(startDialogTimeout), ct);
+    }
     return parse.GetValue(startFollow)
         ? ScriptFollow.RunAsync(parse.GetValue(json), Start, ct)
         : Cli.RunAsync(parse.GetValue(json), async options =>
@@ -232,6 +299,19 @@ scriptWait.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async opt
 }, Output.ScriptWait));
 
 Command script = new("script", "Run Scripts: options, start, stop, status and wait.") { scriptOptions, scriptStart, scriptStop, scriptStatus, scriptWait };
+
+Option<int> watchInterval = new("--interval")
+{
+    Description = "Seconds between lines without a terminal or with --json: 2 by default.",
+    DefaultValueFactory = _ => 2,
+};
+Command watch = new("watch", "Show the game's progress and the running Script's log under a live status line; Ctrl-C leaves the Script running.") { watchInterval };
+watchInterval.Validators.Add(result =>
+{
+    if (result.GetValueOrDefault<int>() < 1)
+        result.AddError("--interval takes at least 1 second.");
+});
+watch.SetAction((parse, ct) => Watch.RunAsync(parse.GetValue(json), parse.GetValue(watchInterval), ct));
 
 Command dialogs = new("dialogs", "List the pending Questions of Scripts, or answer one.");
 dialogs.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
@@ -278,6 +358,6 @@ mcp.SetAction((_, ct) => McpServer.RunAsync(ct));
 
 RootCommand root = new("Drive a Skua Engine.")
 {
-    json, status, servers, login, logout, join, jump, inventory, quests, map, drops, scripts, script, dialogs, eval, logs, screenshot, engine, mcp,
+    json, status, account, servers, login, logout, join, jump, inventory, quests, map, drops, scripts, script, watch, dialogs, eval, logs, screenshot, engine, mcp,
 };
 return await root.Parse(args).InvokeAsync();

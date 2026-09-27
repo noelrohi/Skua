@@ -14,7 +14,7 @@ namespace Skua.App.Cli.Mcp;
 internal sealed class EngineTools(Func<EngineClientOptions> options)
 {
     [McpServerTool(Name = "status", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(StatusDto))]
-    [Description("Liveness and a summary of the Skua Engine and its game, with the player (name, level, class, hp/mp, gold, map/cell/pad, alive, inCombat) while playing, and the pending Questions (pendingDialogs). Never fails; fields that don't apply are null. Starts the Engine if it isn't running, but never logs in.")]
+    [Description("Liveness and a summary of the Skua Engine and its game, with the player (name, level, class, hp/mp, gold, map/cell/pad, alive, inCombat, xp, requiredXp and xpPercent toward the next level) while playing, the running Script with its elapsedSec, and the pending Questions (pendingDialogs). Never fails; fields that don't apply are null. Starts the Engine if it isn't running, but never logs in.")]
     public Task<CallToolResult> Status(CancellationToken cancellationToken) =>
         CallAsync(connection => connection.StatusAsync(cancellationToken), cancellationToken);
 
@@ -24,12 +24,12 @@ internal sealed class EngineTools(Func<EngineClientOptions> options)
         CallAsync(connection => connection.ServersAsync(cancellationToken), cancellationToken);
 
     [McpServerTool(Name = "login", Idempotent = true, UseStructuredContent = true, OutputSchemaType = typeof(LoginResult))]
-    [Description("Log the Test Account in; the Engine reads its credentials from Keychain, so none are passed. Returns once it is playing with the world loaded, with the server it plays on. Already playing on the server (or on any, when none is named) it does nothing; playing elsewhere, it relogs. Fails with LoginFailed and the game's reason (e.g. a full server), Timeout, InvalidArgument for an unknown server, Busy during another login, logout, join or jump, or ScriptRunning.")]
+    [Description("Log the Test Account in; the Engine reads its credentials from Keychain, so none are passed. A developer may instead have made an account active with 'skua account add --allow-agents', which this then uses. Returns once it is playing with the world loaded, with the server it plays on and the account's username. Already playing on the server (or on any, when none is named) it does nothing; playing elsewhere, it relogs. Fails with LoginFailed and the game's reason (e.g. a full server), Timeout, InvalidArgument for an unknown server, Busy during another login, logout, join or jump, or ScriptRunning.")]
     public Task<CallToolResult> Login(
         [Description("A server name from the servers tool; omit it to let the Engine pick an online, non-member server with room.")] string? server = null,
         [Description("Seconds to wait for the world: 120 by default.")] int? timeoutSec = null,
         CancellationToken cancellationToken = default) =>
-        CallAsync(connection => connection.LoginAsync(server, timeoutSec, cancellationToken), cancellationToken);
+        CallAsync(connection => connection.AgentLoginAsync(server, timeoutSec, cancellationToken), cancellationToken);
 
     [McpServerTool(Name = "logout", Idempotent = true, UseStructuredContent = true, OutputSchemaType = typeof(LogoutResult))]
     [Description("Log out to the login screen. A deliberate logout: game.disconnected reports reason logout and the state becomes loginScreen. Does nothing when not logged in.")]
@@ -88,9 +88,23 @@ internal sealed class EngineTools(Func<EngineClientOptions> options)
         CallAsync(connection => connection.ScriptsSearchAsync(query, tag, cancellationToken), cancellationToken);
 
     [McpServerTool(Name = "scripts_update", UseStructuredContent = true, OutputSchemaType = typeof(ScriptsUpdateResult))]
-    [Description("Sync the Scripts on disk with the Script Source. The first sync downloads every Script (full); later ones download only the Scripts changed since the last synced commit (incremental), or nothing (upToDate). Fails with Busy while another update runs.")]
+    [Description("Sync the Scripts on disk with the Script Source. The first sync downloads every Script (full); later ones download only the Scripts changed since the last synced commit (incremental), or nothing (upToDate). added and changed list the downloaded Scripts that were new on disk or replaced an older copy; scripts_new lists them later. Fails with Busy while another update runs.")]
     public Task<CallToolResult> ScriptsUpdate(CancellationToken cancellationToken) =>
         CallAsync(connection => connection.ScriptsUpdateAsync(cancellationToken), cancellationToken);
+
+    [McpServerTool(Name = "scripts_list", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(ScriptsListResult))]
+    [Description("Browse one folder of the Script Source's scripts.json: its subfolders (path and how many Scripts each holds) and the Scripts directly in it, with name, description, tags, downloaded and outdated. Fails with InvalidArgument when no Script is in the folder.")]
+    public Task<CallToolResult> ScriptsList(
+        [Description("A folder's path, e.g. \"Farm\" or \"Farm/Special\", ignoring case; omit it for the top.")] string? folder = null,
+        CancellationToken cancellationToken = default) =>
+        CallAsync(connection => connection.ScriptsListAsync(folder, cancellationToken), cancellationToken);
+
+    [McpServerTool(Name = "scripts_new", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(ScriptsNewResult))]
+    [Description("The Scripts that scripts_update added or changed on disk since a point, the latest first: path, name, change (added or changed), when and the commit. A full download is the starting point, not news. Reads the Engine's record of its updates, so it works offline.")]
+    public Task<CallToolResult> ScriptsNew(
+        [Description("A date or time (e.g. \"2026-09-01\"), or a commit (its first 7 characters or more) an update synced to; omit it for the last 7 days.")] string? since = null,
+        CancellationToken cancellationToken = default) =>
+        CallAsync(connection => connection.ScriptsNewAsync(since, cancellationToken), cancellationToken);
 
     [McpServerTool(Name = "script_options", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(ScriptOptionsResult))]
     [Description("Compile a Script and list its options: key (what script_start's options take), group, name, type (bool, int, number, string, enum), the stored value (or the default), the default, an enum's choices, and whether it is transient (resets every start, so can't be set). Fails with ScriptNotFound (run scripts_update), CompileFailed with diagnostics, or ScriptRunning while a Script runs.")]

@@ -57,6 +57,12 @@ public sealed class EngineConnection : IDisposable
     public Task<ScriptsUpdateResult> ScriptsUpdateAsync(CancellationToken cancellationToken = default) =>
         CallAsync(rpc => rpc.ScriptsUpdateAsync(cancellationToken));
 
+    public Task<ScriptsListResult> ScriptsListAsync(string? folder = null, CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.ScriptsListAsync(folder, cancellationToken));
+
+    public Task<ScriptsNewResult> ScriptsNewAsync(string? since = null, CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.ScriptsNewAsync(since, cancellationToken));
+
     public Task<LogPage> LogsAsync(LogKind kind = LogKind.All, string? after = null, int? max = null, CancellationToken cancellationToken = default) =>
         CallAsync(rpc => rpc.LogsAsync(kind, after, max, cancellationToken));
 
@@ -64,7 +70,11 @@ public sealed class EngineConnection : IDisposable
         CallAsync(rpc => rpc.ServersAsync(cancellationToken));
 
     public Task<LoginResult> LoginAsync(string? server = null, int? timeoutSec = null, CancellationToken cancellationToken = default) =>
-        CallAsync(rpc => rpc.LoginAsync(server, timeoutSec, cancellationToken));
+        CallAsync(rpc => rpc.LoginAsync(server, timeoutSec, asAgent: false, cancellationToken));
+
+    /// <summary>An agent's login: with the Test Account, unless the active account allows agents.</summary>
+    public Task<LoginResult> AgentLoginAsync(string? server = null, int? timeoutSec = null, CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.LoginAsync(server, timeoutSec, asAgent: true, cancellationToken));
 
     public Task<LogoutResult> LogoutAsync(CancellationToken cancellationToken = default) =>
         CallAsync(rpc => rpc.LogoutAsync(cancellationToken));

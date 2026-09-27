@@ -57,6 +57,29 @@ internal static class Cli
         }
     }
 
+    /// <summary>
+    /// Brings the Scripts up to date before <c>skua script start</c>, and says so in one line when it downloaded any: on stdout, or on stderr with
+    /// <c>--json</c> so stdout stays the start's result. When the Script Source can't be reached it warns, and the start goes on with the Scripts on
+    /// disk.
+    /// </summary>
+    public static async Task UpdateBeforeStartAsync(EngineConnection connection, bool json, CancellationToken cancellationToken)
+    {
+        try
+        {
+            ScriptsUpdateResult update = await connection.ScriptsUpdateAsync(cancellationToken);
+            if (Output.StartUpdate(update) is { } line)
+                (json ? Console.Error : Console.Out).WriteLine(json ? $"skua: {line}" : line);
+        }
+        // The start refuses the same way, and says why.
+        catch (ControlException e) when (e.Code == ErrorCode.ScriptRunning)
+        {
+        }
+        catch (ControlException e) when (e.Code is not (ErrorCode.EngineUnavailable or ErrorCode.ProtocolMismatch))
+        {
+            Console.Error.WriteLine($"skua: couldn't update the Scripts ({e.Message}); starting the local copy.");
+        }
+    }
+
     public static int Fail(bool json, ControlException e)
     {
         if (json)

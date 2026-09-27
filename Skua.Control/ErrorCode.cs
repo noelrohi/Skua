@@ -27,6 +27,12 @@ public enum ErrorCode
 
     /// <summary>The game's servers API couldn't be reached or returned no servers.</summary>
     ServersUnavailable = 14,
+
+    /// <summary>No account is in Keychain under the name or service asked for.</summary>
+    AccountNotFound = 15,
+
+    /// <summary>macOS's <c>security</c> tool failed to read or change Keychain, e.g. because access was denied.</summary>
+    KeychainFailed = 16,
 }
 
 /// <summary>

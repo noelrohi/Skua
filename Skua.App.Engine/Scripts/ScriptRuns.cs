@@ -372,7 +372,9 @@ internal sealed class ScriptRuns
 
     private ScriptStatusDto StatusLocked() => new(
         _state,
-        _run is { } run ? new ScriptRunDto(run.Number, run.Script, run.StartedAt, run.Relogins, run.ReloginPending, run.Dialogs, run.DialogTimeoutSec) : null,
+        _run is { } run ? new ScriptRunDto(
+            run.Number, run.Script, run.StartedAt, run.Relogins, run.ReloginPending, run.Dialogs, run.DialogTimeoutSec, Math.Round(run.Clock.Elapsed.TotalSeconds, 1))
+            : null,
         _lastRun);
 
     private sealed class Run(int number, string script, DialogMode dialogs, int dialogTimeoutSec)

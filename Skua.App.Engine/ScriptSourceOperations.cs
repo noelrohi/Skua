@@ -5,7 +5,10 @@ using Skua.Core.Models.GitHub;
 
 namespace Skua.App.Engine;
 
-/// <summary><c>scripts_search</c> and <c>scripts_update</c>: finding Scripts in the Script Source and syncing them to disk.</summary>
+/// <summary>
+/// <c>scripts_search</c>, <c>scripts_list</c>, <c>scripts_update</c> and <c>scripts_new</c>: finding Scripts in the Script Source, syncing them to
+/// disk, and what the syncs brought.
+/// </summary>
 internal sealed class ScriptSourceOperations
 {
     private readonly IGetScriptsService _scriptsService;
@@ -13,6 +16,7 @@ internal sealed class ScriptSourceOperations
     private readonly ActionSlot _slot;
     private readonly CancellationToken _shutdown;
     private readonly SemaphoreSlim _updating = new(1, 1);
+    private readonly ScriptHistory _history = new();
 
     /// <param name="shutdown">Ends an update in flight; a client disconnecting doesn't.</param>
     public ScriptSourceOperations(IGetScriptsService scriptsService, ScriptRuns runs, ActionSlot slot, CancellationToken shutdown)
@@ -41,6 +45,36 @@ internal sealed class ScriptSourceOperations
         return new ScriptsSearchResult(ToDto(source), matches.Count, matches.Take(ScriptsSearchResult.MaxScripts).Select(ToDto).ToList());
     }
 
+    public async Task<ScriptsListResult> ListAsync(string? folder, CancellationToken cancellationToken)
+    {
+        ScriptSource source = _scriptsService.Source;
+        List<ScriptInfo> scripts = await FromScriptSourceAsync(source, () => _scriptsService.FetchScriptsAsync(cancellationToken));
+
+        string wanted = (folder ?? "").Trim().Trim('/');
+        string prefix = wanted.Length == 0 ? "" : wanted + "/";
+        List<ScriptInfo> inFolder = scripts.Where(s => s.FilePath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (inFolder.Count == 0)
+            throw RpcErrors.Of(ErrorCode.InvalidArgument, $"The Script Source {source} has no Scripts in a folder '{wanted}'; 'skua scripts list' shows its folders.");
+
+        // The folder as the Script Source spells it.
+        string spelled = wanted.Length == 0 ? "" : inFolder[0].FilePath[..wanted.Length];
+        List<ScriptFolderDto> folders = inFolder
+            .Select(s => s.FilePath[prefix.Length..])
+            .Where(rest => rest.Contains('/'))
+            .GroupBy(rest => rest[..rest.IndexOf('/')], StringComparer.OrdinalIgnoreCase)
+            .Select(g => new ScriptFolderDto(prefix.Length == 0 ? g.Key : $"{spelled}/{g.Key}", g.Count()))
+            .OrderBy(f => f.Path, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        List<ScriptDto> direct = inFolder
+            .Where(s => !s.FilePath[prefix.Length..].Contains('/'))
+            .OrderBy(s => s.FilePath, StringComparer.OrdinalIgnoreCase)
+            .Select(ToDto)
+            .ToList();
+        return new ScriptsListResult(ToDto(source), spelled, folders, direct);
+    }
+
+    public ScriptsNewResult New(string? since) => _history.New(ToDto(_scriptsService.Source), since);
+
     /// <remarks>Refused while a Script runs, and holds the Engine's slot, so a Script's files never change under it.</remarks>
     public async Task<ScriptsUpdateResult> UpdateAsync()
     {
@@ -53,7 +87,10 @@ internal sealed class ScriptSourceOperations
             using IDisposable lease = _slot.Take("update the Scripts");
             ScriptSource source = _scriptsService.Source;
             ScriptsSyncResult result = await FromScriptSourceAsync(source, () => _scriptsService.SyncScriptsAsync(_shutdown));
-            return new ScriptsUpdateResult(ToDto(result.Source), Mode(result.Mode), result.Commit, result.Downloaded, result.Failed);
+            if (result.Added.Count > 0 || result.Changed.Count > 0)
+                _history.Record(ToDto(result.Source), result.Commit, result.Mode == ScriptsSyncMode.Full, Entries(result.Added), Entries(result.Changed));
+            return new ScriptsUpdateResult(ToDto(result.Source), Mode(result.Mode), result.Commit, result.Downloaded, result.Failed,
+                result.Added.Select(s => s.FilePath).ToList(), result.Changed.Select(s => s.FilePath).ToList());
         }
         finally
         {
@@ -86,6 +123,9 @@ internal sealed class ScriptSourceOperations
 
     private static IReadOnlyList<string> Tags(ScriptInfo script) =>
         (script.Tags ?? []).Select(NullIfMissing).OfType<string>().ToList();
+
+    private static List<ScriptHistory.ScriptEntry> Entries(IReadOnlyList<ScriptInfo> scripts) =>
+        scripts.Select(s => new ScriptHistory.ScriptEntry(s.FilePath, NullIfMissing(s.Name))).ToList();
 
     private static ScriptDto ToDto(ScriptInfo script) =>
         new(script.FilePath, NullIfMissing(script.Name), NullIfMissing(script.Description), Tags(script), script.Downloaded, script.Outdated);

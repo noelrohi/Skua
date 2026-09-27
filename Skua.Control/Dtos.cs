@@ -17,8 +17,17 @@ public sealed record GameStatusDto(bool GameHostUp, GameState State, string? Ser
 /// <summary>The player, as <c>status</c> summarises it.</summary>
 /// <param name="Class">The equipped class, or null when none is.</param>
 /// <param name="InCombat">Whether the player is fighting.</param>
+/// <param name="Xp">The XP earned toward the next level.</param>
+/// <param name="RequiredXp">The XP the next level needs; 0 when there is no next level.</param>
+/// <param name="XpPercent"><see cref="Xp"/> as a percentage of <see cref="RequiredXp"/>, to one decimal; null when there is no next level.</param>
 public sealed record PlayerDto(
-    string Name, int Level, string? Class, int Hp, int MaxHp, int Mp, int MaxMp, int Gold, string Map, string Cell, string Pad, bool Alive, bool InCombat);
+    string Name, int Level, string? Class, int Hp, int MaxHp, int Mp, int MaxMp, int Gold, string Map, string Cell, string Pad, bool Alive, bool InCombat,
+    int Xp, int RequiredXp, double? XpPercent)
+{
+    /// <summary><paramref name="xp"/> as a percentage of <paramref name="requiredXp"/>, to one decimal; null when there is no next level.</summary>
+    public static double? Percent(int xp, int requiredXp) =>
+        requiredXp > 0 ? Math.Round(100.0 * xp / requiredXp, 1, MidpointRounding.AwayFromZero) : null;
+}
 
 public enum GameState
 {
@@ -48,9 +57,10 @@ public sealed record ServerDto(string Name, bool Online, int PlayerCount, int Ma
 public sealed record ServersResult(IReadOnlyList<ServerDto> Servers);
 
 /// <summary>The reply to <c>login</c>.</summary>
-/// <param name="Server">The server the Test Account is playing on.</param>
+/// <param name="Server">The server the account is playing on.</param>
 /// <param name="AlreadyLoggedIn">Whether it was already playing there, so nothing was done.</param>
-public sealed record LoginResult(string Server, bool AlreadyLoggedIn);
+/// <param name="Username">The username of the account that logged in, from Keychain.</param>
+public sealed record LoginResult(string Server, bool AlreadyLoggedIn, string Username);
 
 /// <summary>The reply to <c>logout</c>.</summary>
 /// <param name="WasLoggedIn">Whether the Test Account was logged in; a logout at the login screen does nothing.</param>
@@ -98,7 +108,43 @@ public sealed record ScreenshotResult(int Width, int Height, long Frame, byte[] 
 /// <param name="Commit">The Script Source commit the Scripts are now synced to.</param>
 /// <param name="Downloaded">How many Script files were downloaded.</param>
 /// <param name="Failed">The paths of Scripts that failed to download; the next update retries them.</param>
-public sealed record ScriptsUpdateResult(ScriptSourceDto Source, ScriptsUpdateMode Mode, string Commit, int Downloaded, IReadOnlyList<string> Failed);
+/// <param name="Added">The paths of the downloaded Scripts that weren't on disk before.</param>
+/// <param name="Changed">The paths of the downloaded Scripts that replaced an older copy on disk.</param>
+public sealed record ScriptsUpdateResult(
+    ScriptSourceDto Source, ScriptsUpdateMode Mode, string Commit, int Downloaded, IReadOnlyList<string> Failed, IReadOnlyList<string> Added, IReadOnlyList<string> Changed);
+
+/// <summary>A folder of the Script Source.</summary>
+/// <param name="Path">Its path in the Script Source, e.g. <c>Farm/Special</c>.</param>
+/// <param name="Scripts">How many Scripts it holds, with its subfolders'.</param>
+public sealed record ScriptFolderDto(string Path, int Scripts);
+
+/// <summary>The reply to <c>scripts_list</c>: one folder of the Script Source.</summary>
+/// <param name="Folder">The folder's path as the Script Source spells it; empty for the top.</param>
+/// <param name="Folders">Its subfolders, by path.</param>
+/// <param name="Scripts">The Scripts directly in it, by path.</param>
+public sealed record ScriptsListResult(ScriptSourceDto Source, string Folder, IReadOnlyList<ScriptFolderDto> Folders, IReadOnlyList<ScriptDto> Scripts);
+
+public enum ScriptChange
+{
+    /// <summary>The update downloaded a Script that wasn't on disk.</summary>
+    Added,
+
+    /// <summary>The update replaced a Script on disk with a newer version.</summary>
+    Changed,
+}
+
+/// <summary>A Script that a Script Source update added or changed.</summary>
+/// <param name="Name">Its name from <c>scripts.json</c> at the time, or null when it had none.</param>
+/// <param name="Change">Added if any update in the window added it, else changed.</param>
+/// <param name="At">When the last update in the window that touched it ran.</param>
+/// <param name="Commit">The Script Source commit that update synced to.</param>
+public sealed record NewScriptDto(string Path, string? Name, ScriptChange Change, DateTimeOffset At, string Commit);
+
+/// <summary>The reply to <c>scripts_new</c>.</summary>
+/// <param name="Since">Where the window starts: updates after this time count.</param>
+/// <param name="Updates">How many updates in the window added or changed Scripts.</param>
+/// <param name="Scripts">The Scripts they added or changed, the latest first.</param>
+public sealed record ScriptsNewResult(ScriptSourceDto Source, DateTimeOffset Since, int Updates, IReadOnlyList<NewScriptDto> Scripts);
 
 /// <summary>The reply to <c>join</c> and <c>jump</c>: where the player ended up.</summary>
 /// <param name="Map">The map's name, without a room number.</param>

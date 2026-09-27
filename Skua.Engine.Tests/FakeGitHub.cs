@@ -36,6 +36,9 @@ public sealed class FakeGitHub : IAsyncDisposable
     /// <summary>Delays every raw file response, so a test can catch an update in flight.</summary>
     public TimeSpan RawDelay { get; set; }
 
+    /// <summary>Answers every request with 503, as GitHub does when it can't be reached through a proxy or is down.</summary>
+    public bool Down { get; set; }
+
     /// <summary>Every request path served so far, in order, e.g. <c>/raw/auqw/Scripts/refs/heads/Skua/scripts.json</c>.</summary>
     public IReadOnlyList<string> Requests => [.. _requests];
 
@@ -117,6 +120,8 @@ public sealed class FakeGitHub : IAsyncDisposable
 
     private async Task<(int Status, byte[] Body)> RouteAsync(string path)
     {
+        if (Down)
+            return (503, Encoding.UTF8.GetBytes("""{"message":"Service Unavailable"}"""));
         string[] parts = path.Trim('/').Split('/');
         lock (_repos)
         {

@@ -17,8 +17,8 @@
 //                         appends a line to <path>.done
 //
 // With `game <username> <password>` it also simulates the AQW game behind skua.swf (see FakeGame.cs), which accepts that
-// account; `servers <json>`, `connect-delay <ms>` and `reject <server> <message>` configure it, and `lose-connection <message>`,
-// `kick`, `logout-button`, `die`, `combat`, `afk`, `join <map>`, `cell <cell>`, `blip <ms>`, `connection-message <message>`, `broken-login`,
+// account; `servers <json>`, `connect-delay <ms>`, `reject <server> <message>` and `account <username> <password>` (another account it accepts) configure it, and `lose-connection <message>`,
+// `kick`, `logout-button`, `die`, `combat`, `afk`, `join <map>`, `cell <cell>`, `gain <xp> <gold>`, `blip <ms>`, `connection-message <message>`, `broken-login`,
 // `login-response` (the last login's response again), `lock-map <map>` (transfers to it are ignored), `drop <id> <qty> <name>` and
 // `pickup <id>` act in it.
 // The call log adds ` lag-killed` to a screenshot taken while the game's lag killer hides the world, and records what the game did:
@@ -100,6 +100,9 @@ foreach (string line in scenario)
             break;
         case ["reject", string server, string message]:
             game?.Reject(server, message);
+            break;
+        case ["account", string username, string password]:
+            game?.Account(username, password);
             break;
     }
 }

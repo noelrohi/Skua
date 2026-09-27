@@ -253,6 +253,199 @@ public class ScriptSourceTests
         Assert.True(script.GetProperty("downloaded").GetBoolean());
     }
 
+    [Fact]
+    public async Task An_update_reports_the_Scripts_it_added_and_changed_and_scripts_new_lists_exactly_those()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeGitHub github = new();
+        github.Commit("auqw", "Scripts", "Skua", Leveling, Gold, CoreBots);
+        using EngineConnection connection = await StartEngineAsync(sandbox, github);
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        ScriptsUpdateResult full = await connection.ScriptsUpdateAsync(ct);
+        ScriptsNewResult afterFull = await connection.ScriptsNewAsync(null, ct);
+
+        github.Commit("auqw", "Scripts", "Skua", Gold with { Content = "// gold v2" }, new FakeScript("Story/Doomwood.cs", "// story", "Doomwood Story", "Completes the Doomwood saga."));
+        DateTimeOffset before = DateTimeOffset.UtcNow;
+        ScriptsUpdateResult incremental = await connection.ScriptsUpdateAsync(ct);
+        ScriptsNewResult news = await connection.ScriptsNewAsync(null, ct);
+        ScriptsNewResult sinceFull = await connection.ScriptsNewAsync(full.Commit[..7], ct);
+        ScriptsNewResult sinceLatest = await connection.ScriptsNewAsync(incremental.Commit, ct);
+        ScriptsNewResult sinceTomorrow = await connection.ScriptsNewAsync(DateTimeOffset.UtcNow.AddDays(1).ToString("yyyy-MM-dd"), ct);
+        ControlException unknown = await Assert.ThrowsAsync<ControlException>(() => connection.ScriptsNewAsync("not-a-date-or-commit", ct));
+
+        Assert.Equal((3, 0), (full.Added.Count, full.Changed.Count));
+        // A full download is the starting point, not news.
+        Assert.Empty(afterFull.Scripts);
+        Assert.Equal(["Story/Doomwood.cs"], incremental.Added);
+        Assert.Equal(["Farm/Gold.cs"], incremental.Changed);
+        Assert.Equal(
+            [("Farm/Gold.cs", (string?)"Gold Farm", ScriptChange.Changed, incremental.Commit), ("Story/Doomwood.cs", "Doomwood Story", ScriptChange.Added, incremental.Commit)],
+            news.Scripts.Select(s => (s.Path, s.Name, s.Change, s.Commit)));
+        Assert.All(news.Scripts, s => Assert.InRange(s.At, before, DateTimeOffset.UtcNow));
+        Assert.Equal(news.Scripts, sinceFull.Scripts);
+        Assert.Empty(sinceLatest.Scripts);
+        Assert.Empty(sinceTomorrow.Scripts);
+        Assert.Equal(ErrorCode.InvalidArgument, unknown.Code);
+        Assert.True(File.Exists(Path.Combine(sandbox.SkuaDir, "scripts-history.json")));
+    }
+
+    [Fact]
+    public async Task The_CLI_update_prints_the_counts_and_scripts_new_lists_them()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeGitHub github = new();
+        github.Commit("auqw", "Scripts", "Skua", Leveling, Gold);
+        await sandbox.RunCliAsync(github.Environment(), "scripts", "update");
+        github.Commit("auqw", "Scripts", "Skua", Leveling with { Content = "// leveling v2" }, CoreBots);
+
+        ProcessResult update = await sandbox.RunCliAsync(github.Environment(), "scripts", "update");
+        ProcessResult news = await sandbox.RunCliAsync(github.Environment(), "scripts", "new");
+        ProcessResult json = await sandbox.RunCliAsync(github.Environment(), "scripts", "new", "--json");
+        ProcessResult none = await sandbox.RunCliAsync(github.Environment(), "scripts", "new", "--since", "2999-01-01");
+
+        Assert.True(update.ExitCode == 0, update.Stderr);
+        Assert.Contains("1 new, 1 changed; see 'skua scripts new'", update.Stdout);
+        Assert.True(news.ExitCode == 0, news.Stderr);
+        Assert.Matches(@"CoreBots\.cs\s+new\s+", news.Stdout);
+        Assert.Matches(@"Farm/Leveling\.cs\s+changed\s+", news.Stdout);
+        using JsonDocument newsJson = JsonDocument.Parse(json.Stdout);
+        Assert.Equal(["added", "changed"], newsJson.RootElement.GetProperty("scripts").EnumerateArray().Select(s => s.GetProperty("change").GetString()));
+        Assert.Equal(0, none.ExitCode);
+        Assert.Contains("No Scripts were added or changed", none.Stdout);
+    }
+
+    [Fact]
+    public async Task Scripts_list_browses_a_folder_of_the_Script_Source_with_its_subfolders_and_descriptions()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeGitHub github = new();
+        FakeScript voidScript = new("Farm/Special/Void.cs", "// void", "Void", "Farms the Void.");
+        github.Commit("auqw", "Scripts", "Skua", Leveling, Gold, voidScript, CoreBots);
+        using EngineConnection connection = await StartEngineAsync(sandbox, github);
+        CancellationToken ct = TestContext.Current.CancellationToken;
+
+        ScriptsListResult farm = await connection.ScriptsListAsync("farm/", ct);
+        ScriptsListResult root = await connection.ScriptsListAsync(null, ct);
+        ControlException missing = await Assert.ThrowsAsync<ControlException>(() => connection.ScriptsListAsync("Nope", ct));
+
+        Assert.Equal("Farm", farm.Folder);
+        Assert.Equal([new ScriptFolderDto("Farm/Special", 1)], farm.Folders);
+        Assert.Equal(["Farm/Gold.cs", "Farm/Leveling.cs"], farm.Scripts.Select(s => s.Path));
+        Assert.Equal("Farms gold.", farm.Scripts[0].Description);
+        Assert.Equal("", root.Folder);
+        Assert.Equal([new ScriptFolderDto("Farm", 3)], root.Folders);
+        Assert.Equal(["CoreBots.cs"], root.Scripts.Select(s => s.Path));
+        Assert.Equal(ErrorCode.InvalidArgument, missing.Code);
+        Assert.Contains("'Nope'", missing.Message);
+    }
+
+    [Fact]
+    public async Task The_CLI_lists_a_folder_as_a_tree()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeGitHub github = new();
+        github.Commit("auqw", "Scripts", "Skua", Leveling, Gold, new FakeScript("Farm/Special/Void.cs", "// void"), CoreBots);
+
+        ProcessResult farm = await sandbox.RunCliAsync(github.Environment(), "scripts", "list", "Farm");
+        ProcessResult json = await sandbox.RunCliAsync(github.Environment(), "scripts", "list", "--json");
+
+        Assert.True(farm.ExitCode == 0, farm.Stderr);
+        Assert.Equal(
+            """
+            Farm/ in auqw/Scripts@Skua: 2 Scripts, 1 folder
+            ├── Special/  1 Script
+            ├── Gold.cs  Farms gold.
+            └── Leveling.cs  Levels you to 100.
+            """,
+            farm.Stdout.TrimEnd().ReplaceLineEndings("\n"));
+        using JsonDocument root = JsonDocument.Parse(json.Stdout);
+        Assert.Equal("Farm", root.RootElement.GetProperty("folders").EnumerateArray().Single().GetProperty("path").GetString());
+        Assert.Equal("CoreBots.cs", root.RootElement.GetProperty("scripts").EnumerateArray().Single().GetProperty("path").GetString());
+    }
+
+    [Fact]
+    public async Task Skua_mcp_exposes_scripts_list_and_scripts_new()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeGitHub github = new();
+        github.Commit("auqw", "Scripts", "Skua", Leveling, Gold);
+        await using McpClient client = await McpTests.ConnectAsync(sandbox, github.Environment());
+        CancellationToken ct = TestContext.Current.CancellationToken;
+
+        IList<McpClientTool> tools = await client.ListToolsAsync(cancellationToken: ct);
+        CallToolResult list = await client.CallToolAsync("scripts_list", new Dictionary<string, object?> { ["folder"] = "Farm" }, cancellationToken: ct);
+        CallToolResult news = await client.CallToolAsync("scripts_new", cancellationToken: ct);
+
+        Assert.Equal(2, tools.Count(t => t.Name is "scripts_list" or "scripts_new" && t.ProtocolTool.Annotations?.ReadOnlyHint == true));
+        Assert.NotEqual(true, list.IsError);
+        Assert.Equal(2, list.StructuredContent!.Value.GetProperty("scripts").GetArrayLength());
+        Assert.NotEqual(true, news.IsError);
+        Assert.Equal(0, news.StructuredContent!.Value.GetProperty("scripts").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Script_start_updates_the_Scripts_first_unless_told_not_to_and_starts_the_local_copy_when_offline()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeAqApi api = new(GameFixture.Servers);
+        FakeKeychain keychain = new(sandbox);
+        await using FakeGitHub github = new();
+        Dictionary<string, string> environment = GameFixture.Environment(new FakeGameHost(sandbox).Game(keychain, GameFixture.Servers), api, keychain);
+        foreach ((string key, string value) in github.Environment())
+            environment[key] = value;
+        github.Commit("auqw", "Scripts", "Skua", Hello("v1"), Leveling);
+
+        ProcessResult first = await sandbox.RunCliAsync(environment, "script", "start", "Tests/Hello.cs", "--follow");
+        github.Commit("auqw", "Scripts", "Skua", Hello("v2"));
+        github.ClearRequests();
+        ProcessResult changed = await sandbox.RunCliAsync(environment, "script", "start", "Tests/Hello.cs", "--follow");
+        IReadOnlyList<string> requests = github.Requests;
+        ProcessResult upToDate = await sandbox.RunCliAsync(environment, "script", "start", "Tests/Hello.cs", "--follow");
+        github.Commit("auqw", "Scripts", "Skua", Hello("v3"));
+        ProcessResult noUpdate = await sandbox.RunCliAsync(environment, "script", "start", "Tests/Hello.cs", "--follow", "--no-update");
+        github.Down = true;
+        ProcessResult offline = await sandbox.RunCliAsync(environment, "script", "start", "Tests/Hello.cs", "--follow");
+
+        Assert.True(first.ExitCode == 0, first.Stderr);
+        Assert.Contains("Downloaded 2 Scripts from auqw/Scripts@Skua", first.Stdout);
+        Assert.Contains("hello v1", first.Stdout);
+        Assert.True(changed.ExitCode == 0, changed.Stderr);
+        Assert.Contains("Updated the Scripts from auqw/Scripts@Skua: 0 new, 1 changed; see 'skua scripts new'.", changed.Stdout);
+        Assert.Contains("hello v2", changed.Stdout);
+        // One head check, the compare, then only the changed Script.
+        Assert.Equal(1, requests.Count(r => r.EndsWith("/commits/Skua", StringComparison.Ordinal)));
+        Assert.Equal(["Tests/Hello.cs"], requests.Where(r => r.EndsWith(".cs", StringComparison.Ordinal)).Select(r => r.Split("/Skua/")[^1]));
+        Assert.DoesNotContain("Updated", upToDate.Stdout);
+        Assert.DoesNotContain("Downloaded", upToDate.Stdout);
+        Assert.Contains("hello v2", noUpdate.Stdout);
+        Assert.Equal(0, offline.ExitCode);
+        Assert.Contains("hello v2", offline.Stdout);
+        Assert.Contains("skua: couldn't update the Scripts", offline.Stderr);
+        Assert.Contains("starting the local copy", offline.Stderr);
+    }
+
+    [Fact]
+    public async Task Script_start_json_keeps_stdout_the_start_result_and_reports_the_update_on_stderr()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeAqApi api = new(GameFixture.Servers);
+        await using FakeGitHub github = new();
+        FakeKeychain keychain = new(sandbox);
+        Dictionary<string, string> environment = GameFixture.Environment(new FakeGameHost(sandbox).Game(keychain, GameFixture.Servers), api, keychain);
+        foreach ((string key, string value) in github.Environment())
+            environment[key] = value;
+        github.Commit("auqw", "Scripts", "Skua", Hello("v1"));
+
+        ProcessResult start = await sandbox.RunCliAsync(environment, "script", "start", "Tests/Hello.cs", "--json");
+
+        Assert.True(start.ExitCode == 0, start.Stderr);
+        using JsonDocument json = JsonDocument.Parse(start.Stdout);
+        Assert.Equal(1, json.RootElement.GetProperty("run").GetInt32());
+        Assert.Contains("Downloaded 1 Scripts", start.Stderr);
+    }
+
+    private static FakeScript Hello(string version) => new("Tests/Hello.cs", TestScripts.Main($"bot.Log(\"hello {version}\");"), "Hello", "Says hello.");
+
     private static async Task<EngineConnection> StartEngineAsync(EngineSandbox sandbox, FakeGitHub github)
     {
         (_, EngineConnection connection) = await sandbox.StartEngineAsync(github.Environment());

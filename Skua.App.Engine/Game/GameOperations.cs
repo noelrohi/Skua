@@ -30,7 +30,11 @@ internal sealed class GameOperations
     private readonly EngineLogs _logs;
     private readonly GameStateTracker _tracker;
     private readonly GameActionSlot _slot;
-    private TestAccount? _account;
+
+    /// <summary>The Keychain service of the account the game last logged in with, and its username.</summary>
+    private string? _loggedInService;
+
+    private string? _loggedInUsername;
 
     public GameOperations(IScriptServers servers, IFlashUtil flash, ISettingsService settings, EngineLogs logs, GameStateTracker tracker, GameActionSlot slot)
     {
@@ -48,7 +52,8 @@ internal sealed class GameOperations
         return new ServersResult(servers.Select(ToDto).ToList());
     }
 
-    public async Task<LoginResult> LoginAsync(string? serverName, int? timeoutSec, CancellationToken cancellationToken)
+    /// <param name="asAgent">Whether an agent asks, whose login uses the Test Account unless the active account allows agents.</param>
+    public async Task<LoginResult> LoginAsync(string? serverName, int? timeoutSec, bool asAgent, CancellationToken cancellationToken)
     {
         if (timeoutSec < 1)
             throw RpcErrors.Of(ErrorCode.InvalidArgument, $"timeoutSec must be at least 1, not {timeoutSec}.");
@@ -57,18 +62,23 @@ internal sealed class GameOperations
         // Straight after an Engine start, the Game Client may still be loading.
         await _tracker.WaitReadyAsync(LoadWait, cancellationToken);
         using IDisposable lease = await _slot.BeginAsync("log in");
-        if (serverName is null && _tracker is { State: GameState.Playing, Server: { } current })
-            return new LoginResult(current, AlreadyLoggedIn: true);
+        // Playing with another account than the one to use relogs, since 'skua account' may have switched it.
+        string service = await ServiceAsync(asAgent, cancellationToken);
+        bool sameAccount = service == _loggedInService;
+        if (serverName is null && sameAccount && _tracker is { State: GameState.Playing, Server: { } current })
+            return new LoginResult(current, AlreadyLoggedIn: true, _loggedInUsername!);
 
         Server server = Choose(await FetchServersAsync(), serverName);
-        if (_tracker is { State: GameState.Playing, Server: { } playing } && string.Equals(playing, server.Name, StringComparison.OrdinalIgnoreCase))
-            return new LoginResult(playing, AlreadyLoggedIn: true);
+        if (sameAccount && _tracker is { State: GameState.Playing, Server: { } playing } && string.Equals(playing, server.Name, StringComparison.OrdinalIgnoreCase))
+            return new LoginResult(playing, AlreadyLoggedIn: true, _loggedInUsername!);
 
-        TestAccount account = await ReadAccountAsync(cancellationToken);
+        TestAccount account = await ReadAccountAsync(service, cancellationToken);
         _tracker.LoginStarted();
         try
         {
-            return await LogInAsync(account, server, timeout, cancellationToken);
+            LoginResult result = await LogInAsync(account, server, timeout, cancellationToken);
+            (_loggedInService, _loggedInUsername) = (service, account.Username);
+            return result;
         }
         finally
         {
@@ -109,7 +119,7 @@ internal sealed class GameOperations
         Task relogin = Task.Factory.StartNew(() => _servers.Relogin(server.Name), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         try
         {
-            return await WaitForWorldAsync(server, relogin, before, timeout, cancellationToken);
+            return new LoginResult(await WaitForWorldAsync(server, relogin, before, timeout, cancellationToken), AlreadyLoggedIn: false, account.Username);
         }
         finally
         {
@@ -125,7 +135,8 @@ internal sealed class GameOperations
         }
     }
 
-    private async Task<LoginResult> WaitForWorldAsync(Server server, Task relogin, string? before, TimeSpan timeout, CancellationToken cancellationToken)
+    /// <returns>The server the game plays on.</returns>
+    private async Task<string> WaitForWorldAsync(Server server, Task relogin, string? before, TimeSpan timeout, CancellationToken cancellationToken)
     {
         Stopwatch waited = Stopwatch.StartNew();
         // A relogin from another server is playing until Core has logged out.
@@ -148,11 +159,11 @@ internal sealed class GameOperations
                 throw RpcErrors.Of(ErrorCode.LoginFailed, $"The login on {server.Name} failed: {message}");
             if (waited.Elapsed > timeout)
                 throw RpcErrors.Of(ErrorCode.Timeout,
-                    $"The Test Account wasn't playing on {server.Name} after {timeout.TotalSeconds:0} s; the game shows {(message is null ? "no connection message" : $"'{message}'")}.");
+                    $"The account wasn't playing on {server.Name} after {timeout.TotalSeconds:0} s; the game shows {(message is null ? "no connection message" : $"'{message}'")}.");
             await Task.Delay(WaitStep, cancellationToken);
         }
         string actual = !_flash.IsNull("objServerInfo") && _flash.GetGameObject<string>("objServerInfo.sName") is { Length: > 0 } name ? name : server.Name;
-        return new LoginResult(actual, AlreadyLoggedIn: false);
+        return actual;
     }
 
     /// <summary>The named server, or else an online, non-member server with room, the emptiest first.</summary>
@@ -187,20 +198,39 @@ internal sealed class GameOperations
         GameStateTracker.IsConnectionLost(message) || RefusalMessages.Any(m => message.Contains(m, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
-    /// Reads the Test Account from Keychain once per Engine, and registers its password as a secret before anything can log it,
-    /// also as it appears in Bridge XML and in JSON.
+    /// The Keychain service of the account to log in: the active one, except that an agent gets the Test Account unless the active account's
+    /// Keychain item carries <see cref="AccountSetting.AllowAgentsComment"/>. The comment is read without the password, so without asking macOS.
     /// </summary>
-    private async Task<TestAccount> ReadAccountAsync(CancellationToken cancellationToken)
+    private async Task<string> ServiceAsync(bool asAgent, CancellationToken cancellationToken)
     {
-        if (_account is not null)
-            return _account;
-        string service = _settings.Get<string>(TestAccount.ServiceSetting)!;
+        string active = _settings.Get<string>(TestAccount.ServiceSetting)!;
+        if (!asAgent || active == AccountSetting.DefaultService)
+            return active;
+        KeychainAttributes? attributes;
+        try
+        {
+            attributes = await Keychain.FindAsync(active, cancellationToken);
+        }
+        catch (ControlException e) when (e.Code == ErrorCode.KeychainFailed)
+        {
+            EngineLog.Write($"Couldn't read whether the active account allows agents, so an agent's login uses the Test Account: {e.Message}");
+            return AccountSetting.DefaultService;
+        }
+        return attributes?.Comment == AccountSetting.AllowAgentsComment ? active : AccountSetting.DefaultService;
+    }
+
+    /// <summary>
+    /// Reads the account from Keychain at every login, since 'skua account' may have changed it, and registers its password as a secret before
+    /// anything can log it, also as it appears in Bridge XML and in JSON.
+    /// </summary>
+    private async Task<TestAccount> ReadAccountAsync(string service, CancellationToken cancellationToken)
+    {
         TestAccount account = await TestAccount.ReadAsync(service, cancellationToken);
         _logs.AddSecret(account.Password);
         _logs.AddSecret(SecurityElement.Escape(account.Password));
         _logs.AddSecret(JsonEncodedText.Encode(account.Password, JavaScriptEncoder.UnsafeRelaxedJsonEscaping).ToString());
         _logs.AddSecret(JsonEncodedText.Encode(account.Password).ToString());
-        return _account = account;
+        return account;
     }
 
     /// <exception cref="StreamJsonRpc.LocalRpcException"><see cref="ErrorCode.ServersUnavailable"/>.</exception>
