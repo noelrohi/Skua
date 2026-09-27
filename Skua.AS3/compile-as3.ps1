@@ -6,6 +6,47 @@ param(
     [string]$SDKPath = "."
 )
 
+# Hashes the SWF's DoABC tags, which identify a build. The file hash changes on every build because
+# mxmlc writes a compile timestamp into the ProductInfo tag.
+function Get-DoAbcSha256([string]$Path) {
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    $signature = [System.Text.Encoding]::ASCII.GetString($bytes, 0, 3)
+    $body = [System.IO.MemoryStream]::new()
+    if ($signature -eq "CWS") {
+        $zlib = [System.IO.Compression.ZLibStream]::new(
+            [System.IO.MemoryStream]::new($bytes, 8, $bytes.Length - 8),
+            [System.IO.Compression.CompressionMode]::Decompress)
+        $zlib.CopyTo($body)
+        $zlib.Dispose()
+    } elseif ($signature -eq "FWS") {
+        $body.Write($bytes, 8, $bytes.Length - 8)
+    } else {
+        throw "Not an uncompressed or zlib SWF: $signature"
+    }
+    $data = $body.ToArray()
+
+    # Skip the frame RECT, frame rate and frame count.
+    $pos = [int][Math]::Floor((5 + 4 * ($data[0] -shr 3) + 7) / 8) + 4
+    $abc = [System.IO.MemoryStream]::new()
+    while ($pos -lt $data.Length) {
+        $header = [BitConverter]::ToUInt16($data, $pos)
+        $pos += 2
+        $code = $header -shr 6
+        $length = $header -band 0x3f
+        if ($length -eq 0x3f) {
+            $length = [BitConverter]::ToInt32($data, $pos)
+            $pos += 4
+        }
+        # DoABC, DoABC2
+        if ($code -eq 72 -or $code -eq 82) { $abc.Write($data, $pos, $length) }
+        $pos += $length
+    }
+    if ($abc.Length -eq 0) { throw "No DoABC tag in $Path" }
+
+    $abc.Position = 0
+    return (Get-FileHash -InputStream $abc -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+
 Write-Host "Skua AS3 Compilation Helper" -ForegroundColor Cyan
 Write-Host "================================" -ForegroundColor Cyan
 
@@ -32,11 +73,12 @@ if ($mxmlcPath) {
     
     # Compile using mxmlc
     Write-Host "🔧 Compiling with mxmlc..." -ForegroundColor Yellow
-    & mxmlc -source-path "skua\src" -default-size 958 550 -output $outputPath "skua\src\skua\Main.as" -target-player 28.0 -optimize
+    & mxmlc -source-path "skua\src" -default-size 958 550 -output $outputPath "skua\src\skua\Main.as" -target-player 32.0 -optimize
     
     if ($LASTEXITCODE -eq 0 -and (Test-Path $outputPath)) {
         Write-Host "✅ Compilation successful! Output: $outputPath" -ForegroundColor Green
         Write-Host "📁 SWF size: $((Get-Item $outputPath).Length) bytes" -ForegroundColor Green
+        Write-Host "🔑 DoABC sha256: $(Get-DoAbcSha256 (Resolve-Path $outputPath).Path)" -ForegroundColor Green
         exit 0
     } else {
         Write-Host "❌ Compilation failed with mxmlc" -ForegroundColor Red

@@ -155,6 +155,15 @@ dotnet build --configuration Release -p:Platform=x86
 dotnet build Skua.App.WPF\Skua.App.WPF.csproj --configuration Release
 ```
 
+### Building skua.swf
+
+`skua.swf` targets Flash Player 32.0. `playerglobal28_0.swc` can no longer be downloaded, so the build uses `playerglobal32_0.swc`.
+
+- **Windows:** `Skua.AS3\compile-as3.ps1` runs `mxmlc` from your Flex SDK. The SDK needs `frameworks\libs\player\32.0\playerglobal.swc`.
+- **macOS:** `Skua.AS3/compile-as3.sh` downloads Apache Flex SDK 4.16.1 and `playerglobal32_0.swc` itself, checks them against pinned SHA-256s, and caches them in `~/Library/Caches/skua-as3`. It needs Java (17 works).
+
+Both scripts write `Skua.AS3/skua/bin/skua.swf` and print the SHA-256 of its `DoABC` tags. Compare builds by that hash, not the file hash: `mxmlc` writes a compile timestamp into every SWF.
+
 ### Building the Installer
 
 Requires WiX CLI and MSBuild:

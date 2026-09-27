@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Builds skua.swf on macOS with Apache Flex SDK 4.16.1 and Adobe playerglobal 32.0.
-# The Windows build is compile-as3.ps1; this script uses the same mxmlc flags except -target-player 32.0,
-# because playerglobal28_0.swc can no longer be downloaded.
+# The Windows build is compile-as3.ps1; this script uses the same mxmlc flags.
 #
 # Usage: ./compile-as3.sh [-o <output.swf>]
 #   Default output: skua/bin/skua.swf (the path the Windows projects link).
@@ -26,7 +25,7 @@ output="$script_dir/skua/bin/skua.swf"
 while [ $# -gt 0 ]; do
     case "$1" in
         -o) output="${2:?-o needs a path}"; shift 2 ;;
-        -h|--help) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "Unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -38,6 +37,28 @@ if ! java -version >/dev/null 2>&1; then
 fi
 
 sha256() { shasum -a 256 "$1" | cut -d ' ' -f 1; }
+
+# doabc_sha256 <swf>: hashes the SWF's DoABC tags, which identify a build. The file hash changes on every
+# build because mxmlc writes a compile timestamp into the ProductInfo tag.
+doabc_sha256() {
+    perl -MIO::Uncompress::Inflate=inflate -MDigest::SHA=sha256_hex -e '
+        local $/; my $swf = <STDIN>;
+        my ($sig, $body) = (substr($swf, 0, 3), substr($swf, 8));
+        if ($sig eq "CWS") { inflate(\$body => \my $out) or die "cannot inflate SWF\n"; $body = $out }
+        elsif ($sig ne "FWS") { die "not an uncompressed or zlib SWF: $sig\n" }
+        my $pos = int((5 + 4 * (ord($body) >> 3) + 7) / 8) + 4;  # frame RECT, frame rate, frame count
+        my $abc = "";
+        while ($pos < length $body) {
+            my $header = unpack("v", substr($body, $pos, 2)); $pos += 2;
+            my ($code, $len) = ($header >> 6, $header & 0x3f);
+            if ($len == 0x3f) { $len = unpack("V", substr($body, $pos, 4)); $pos += 4 }
+            $abc .= substr($body, $pos, $len) if $code == 72 || $code == 82;  # DoABC, DoABC2
+            $pos += $len;
+        }
+        die "no DoABC tag\n" if $abc eq "";
+        print sha256_hex($abc), "\n";
+    ' < "$1"
+}
 
 # fetch <url> <dest> <sha256>: downloads once, then reuses the cached file while its checksum matches.
 fetch() {
@@ -91,4 +112,4 @@ if [ ! -f "$output" ]; then
     echo "mxmlc did not produce $output" >&2
     exit 1
 fi
-echo "Built $output ($(wc -c < "$output" | tr -d ' ') bytes, sha256 $(sha256 "$output"))"
+echo "Built $output ($(wc -c < "$output" | tr -d ' ') bytes, DoABC sha256 $(doabc_sha256 "$output"))"
