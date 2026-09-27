@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net.Sockets;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
@@ -41,6 +40,8 @@ internal sealed class Engine : IEngineRpc
     private readonly ScriptOperations _scripts;
     private readonly EvalOperations _eval;
     private readonly DialogOperations _dialogs;
+    private readonly ScriptRuns _runs;
+    private readonly ActionSlot _slot;
 
     private Engine(EngineEndpoint endpoint, GameHostSupervisor gameHost, EngineLogs logs, IServiceProvider services)
     {
@@ -50,24 +51,24 @@ internal sealed class Engine : IEngineRpc
         IScriptManager manager = services.GetRequiredService<IScriptManager>();
         ScriptDialogBroker broker = services.GetRequiredService<ScriptDialogBroker>();
         _dialogs = new DialogOperations(broker, logs);
-        ScriptRuns runs = new(logs, manager, services.GetRequiredService<IScriptOption>(), broker);
-        ActionSlot slot = new();
+        _runs = new(logs, manager, services.GetRequiredService<IScriptOption>(), broker);
+        _slot = new();
         SemaphoreSlim compiling = new(1, 1);
-        _scriptSource = new ScriptSourceOperations(services.GetRequiredService<IGetScriptsService>(), runs, slot, _shutdown.Token);
+        _scriptSource = new ScriptSourceOperations(services.GetRequiredService<IGetScriptsService>(), _runs, _slot, _shutdown.Token);
         _screenshots = new ScreenshotOperations(services.GetRequiredService<BridgeFlashUtil>(), services.GetRequiredService<IScriptOption>());
-        GameActionSlot gameSlot = new(gameHost.Tracker, runs, slot);
+        GameActionSlot gameSlot = new(gameHost.Tracker, _runs, _slot);
         _game = new GameOperations(
             services.GetRequiredService<IScriptServers>(), services.GetRequiredService<IFlashUtil>(), services.GetRequiredService<ISettingsService>(), logs,
             gameHost.Tracker, gameSlot);
         _moves = new MoveOperations(
             services.GetRequiredService<IScriptMap>(), services.GetRequiredService<IScriptPlayer>(), services.GetRequiredService<IScriptWait>(), gameHost.Tracker, gameSlot);
         _queries = new GameQueries(services.GetRequiredService<IScriptInterface>(), services.GetRequiredService<IFlashUtil>(), gameHost.Tracker, gameSlot);
-        _scripts = new ScriptOperations(manager, runs, broker, slot, compiling);
+        _scripts = new ScriptOperations(manager, _runs, broker, _slot, compiling);
         _eval = new EvalOperations(manager, services.GetRequiredService<IScriptInterface>(), logs, compiling);
     }
 
-    public static string Build { get; } =
-        typeof(Engine).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
+    /// <summary>The build a CLI compares with its own, which it shares when built together, to tell whether this Engine is stale.</summary>
+    public static string Build => ControlProtocol.Build;
 
     public static async Task<int> RunAsync(EngineEndpoint endpoint, bool detach)
     {
@@ -145,6 +146,25 @@ internal sealed class Engine : IEngineRpc
     public Task ShutdownAsync(CancellationToken cancellationToken)
     {
         EngineLog.Write("Shutdown requested over the Control Surface.");
+        _shutdown.Cancel();
+        return Task.CompletedTask;
+    }
+
+    public Task ShutdownIfIdleAsync(CancellationToken cancellationToken)
+    {
+        const string action = "replace the Engine";
+        // The lease is never returned, so no command starts a Script while the Engine shuts down.
+        IDisposable lease = _slot.Take(action);
+        try
+        {
+            _runs.EnsureIdle(action);
+        }
+        catch
+        {
+            lease.Dispose();
+            throw;
+        }
+        EngineLog.Write("Shutdown requested over the Control Surface, to replace this Engine with another build.");
         _shutdown.Cancel();
         return Task.CompletedTask;
     }

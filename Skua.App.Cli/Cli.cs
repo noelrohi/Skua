@@ -7,11 +7,19 @@ namespace Skua.App.Cli;
 /// <summary>Runs one command against the Engine and turns its result or failure into output and an exit code.</summary>
 internal static class Cli
 {
+    /// <summary>How every command connects: it replaces an idle Engine from another build, and says so on stderr.</summary>
+    public static EngineClientOptions Options() => new()
+    {
+        Endpoint = EngineEndpoint.FromEnvironment(),
+        ReplaceStale = true,
+        Notice = line => Console.Error.WriteLine($"skua: {line}"),
+    };
+
     public static async Task<int> RunAsync<T>(bool json, Func<EngineClientOptions, Task<T>> command, Func<T, string> human)
     {
         try
         {
-            T result = await command(new EngineClientOptions { Endpoint = EngineEndpoint.FromEnvironment() });
+            T result = await command(Options());
             Console.WriteLine(json ? JsonSerializer.Serialize(result, Output.JsonOptions) : human(result));
             return ExitCodes.Success;
         }
@@ -29,8 +37,7 @@ internal static class Cli
     {
         try
         {
-            using EngineConnection connection = await EngineClient.ConnectAsync(
-                new EngineClientOptions { Endpoint = EngineEndpoint.FromEnvironment() }, cancellationToken);
+            using EngineConnection connection = await EngineClient.ConnectAsync(Options(), cancellationToken);
             await foreach (LogPage page in connection.SubscribeAsync(kinds, after, cancellationToken))
             {
                 if (page.Gap)

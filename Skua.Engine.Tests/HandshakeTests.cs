@@ -15,6 +15,7 @@ public class HandshakeTests
         Assert.Equal(ErrorCode.ProtocolMismatch, error.Code);
         Assert.Contains("run 'skua engine stop'", error.Message, StringComparison.OrdinalIgnoreCase);
         Assert.False(other.StatusCalled);
+        Assert.False(other.ShutdownRequested);
     }
 
     [Fact]

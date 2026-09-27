@@ -164,6 +164,22 @@ dotnet build Skua.App.WPF\Skua.App.WPF.csproj --configuration Release
 
 Both scripts write `Skua.AS3/skua/bin/skua.swf` and print the SHA-256 of its `DoABC` tags. Compare builds by that hash, not the file hash: `mxmlc` writes a compile timestamp into every SWF.
 
+### Install on macOS
+
+```sh
+./install-macos.sh
+skua status
+```
+
+The script needs the .NET 10 SDK (`brew install dotnet`), [Rust](https://rustup.rs) and Java (17 works). It builds everything (the first run takes about 5 minutes, for the Game Host) and publishes `skua`, `skua-engine`, `skua-gamehost` and `skua.swf` side by side in `~/.local/share/skua/versions/<build>/`. The publish is self-contained, so they start without `DOTNET_ROOT`. It links `~/.local/bin/skua` to that build, and says so if `~/.local/bin` isn't on PATH yet. `SKUA_INSTALL_DIR` and `SKUA_BIN_DIR` change the two folders, and any arguments go to `dotnet publish`, such as the escape hatches in the next section.
+
+To update, `git pull` and run it again. A build is the version and the commit, plus the time for uncommitted changes. The script keeps the two builds before the new one, and any build a process still runs from. The next `skua` command finds the old build's Engine and replaces it, saying so on one line. It never stops an Engine whose Script is running:
+
+- If that Engine speaks the same protocol version, the command still runs against it, with a notice on stderr, and a later command replaces it once the Script ends.
+- If it speaks another protocol version, the command fails with `ScriptRunning` (exit 12). Wait for the Script to end, or run `skua engine stop`, which stops the Script too.
+
+`skua mcp` never replaces an Engine, because an MCP server outlives an update and would replace the newer Engine with its own; restart the MCP client after an update.
+
 ### Building the macOS Engine and CLI
 
 `Skua.MacOS.slnf` builds the headless Engine (`skua-engine`), the CLI (`skua`, which is also the MCP server as `skua mcp`) and their tests:
@@ -179,7 +195,7 @@ On macOS, building `Skua.App.Engine` also builds the Game Host and `skua.swf`, s
 - **`skua.swf`:** `Skua.AS3/compile-as3.sh`, rerun only when an AS3 source changes.
 - **Escape hatches:** `-p:SkuaGameHostPath=<file>` uses a prebuilt `skua-gamehost` instead of running cargo, and `-p:SkuaSwfPath=<file>` a prebuilt `skua.swf` instead of running mxmlc.
 
-The output is flat: `skua`, `skua-engine`, `skua-gamehost` and `skua.swf` sit side by side in `Skua.App.Engine/bin/<Configuration>/net10.0/` (and in `dotnet publish` output). `skua` auto-starts the `skua-engine` next to it, and the Engine starts the `skua-gamehost` and `skua.swf` next to itself. For MCP clients, the config is `{"command": "skua", "args": ["mcp"]}`. With a Homebrew .NET, set `DOTNET_ROOT` so the executables find the runtime.
+The output is flat: `skua`, `skua-engine`, `skua-gamehost` and `skua.swf` sit side by side in `Skua.App.Engine/bin/<Configuration>/net10.0/` (and in `dotnet publish` output). `skua` auto-starts the `skua-engine` next to it, and the Engine starts the `skua-gamehost` and `skua.swf` next to itself. For MCP clients, the config is `{"command": "skua", "args": ["mcp"]}`. These builds need an installed .NET runtime: with a Homebrew .NET, set `DOTNET_ROOT=/opt/homebrew/opt/dotnet/libexec` so the executables find it. A dev build's `skua` replaces an Engine from another build as an installed one does, but its build is only the version and the commit: after rebuilding uncommitted changes, run `skua engine stop`.
 
 The tests never run the real Game Host, read the real Keychain or reach AQW: they point `SKUA_GAMEHOST` at a fake that speaks the Bridge frames and simulates the game, `SKUA_SECURITY_TOOL` at a fake `security`, and `SKUA_AQ_SERVERS_URL` at a fake servers API.
 

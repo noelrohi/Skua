@@ -15,6 +15,7 @@ internal static class McpServer
     {
         HostApplicationBuilder builder = Host.CreateEmptyApplicationBuilder(new HostApplicationBuilderSettings());
         builder.Services
+            // Unlike the CLI, it never replaces a stale Engine: it outlives an update, and would replace the newer Engine with its own.
             .AddSingleton(() => new EngineClientOptions { Endpoint = EngineEndpoint.FromEnvironment() })
             .AddMcpServer(options => options.ServerInfo = new Implementation
             {

@@ -37,6 +37,20 @@ public sealed class EngineConnection : IDisposable
     public Task ShutdownAsync(CancellationToken cancellationToken = default) =>
         CallAsync(async rpc => { await rpc.ShutdownAsync(cancellationToken); return true; });
 
+    /// <summary>Shuts the Engine down unless it is busy. Returns false for an Engine from before <c>shutdown_if_idle</c>, which it leaves running.</summary>
+    /// <exception cref="ControlException"><see cref="ErrorCode.ScriptRunning"/> or <see cref="ErrorCode.Busy"/> when the Engine is busy.</exception>
+    public async Task<bool> ShutdownIfIdleAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await CallAsync(async rpc => { await rpc.ShutdownIfIdleAsync(cancellationToken); return true; });
+        }
+        catch (RemoteMethodNotFoundException)
+        {
+            return false;
+        }
+    }
+
     public Task<ScriptsSearchResult> ScriptsSearchAsync(string query, string? tag = null, CancellationToken cancellationToken = default) =>
         CallAsync(rpc => rpc.ScriptsSearchAsync(query, tag, cancellationToken));
 

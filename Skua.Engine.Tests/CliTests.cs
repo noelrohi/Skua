@@ -121,10 +121,10 @@ public class CliTests
     }
 
     [Fact]
-    public async Task A_protocol_mismatch_exits_with_its_code_and_a_stop_hint()
+    public async Task A_protocol_mismatch_with_an_Engine_it_cant_replace_exits_with_its_code_and_a_stop_hint()
     {
         await using EngineSandbox sandbox = new();
-        await using OtherVersionEngine other = new(sandbox);
+        await using OtherVersionEngine other = new(sandbox, predatesShutdownIfIdle: true);
 
         ProcessResult human = await sandbox.RunCliAsync("status");
         ProcessResult json = await sandbox.RunCliAsync("status", "--json");
@@ -134,6 +134,7 @@ public class CliTests
         Assert.Equal(ExitCodes.For(ErrorCode.ProtocolMismatch), json.ExitCode);
         using JsonDocument error = JsonDocument.Parse(json.Stdout);
         Assert.Equal("protocolMismatch", error.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.False(other.ShutdownRequested);
     }
 
     [Fact]
