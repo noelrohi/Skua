@@ -118,6 +118,10 @@ internal sealed class FakeGame
                 case ["broken-login"]:
                     _brokenLogin = true;
                     return true;
+                case ["login-response"]:
+                    // The last login's response again, as the Engine sees one that reaches it late.
+                    LoginAccepted();
+                    return true;
                 case ["kick"]:
                     ToLoginScreen();
                     _kicked = true;
@@ -264,7 +268,7 @@ internal sealed class FakeGame
                 }
                 _connected = true;
                 _server = name;
-                PextStr(["loginResponse", "-1", "true", "1", _username, "Welcome"]);
+                LoginAccepted();
                 Join("battleon", "Enter", "Spawn");
                 _world = true;
                 _connDetail = null;
@@ -420,6 +424,8 @@ internal sealed class FakeGame
     };
 
     private void Pext(JsonObject data) => Send("pext", new JsonObject { ["params"] = new JsonObject { ["type"] = "json", ["dataObj"] = data } }.ToJsonString());
+
+    private void LoginAccepted() => PextStr(["loginResponse", "-1", "true", "1", _username, "Welcome"]);
 
     private void PextStr(string[] data) =>
         Send("pext", new JsonObject { ["params"] = new JsonObject { ["type"] = "str", ["dataObj"] = new JsonArray([.. data.Select(d => JsonValue.Create(d))]) } }.ToJsonString());

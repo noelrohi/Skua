@@ -309,30 +309,15 @@ public class LoginTests
         await using EngineSandbox sandbox = new();
         await using GameFixture session = await GameFixture.StartAsync(sandbox);
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
-        await WaitForCallAsync(session.GameHost, "killLag true");
+        await session.GameHost.WaitForCallAsync("killLag true");
 
         await session.Connection.ScreenshotAsync(cancellationToken: Ct);
-        string[] calls = await WaitForCallAsync(session.GameHost, "killLag true", after: "screenshot 0");
+        string[] calls = await session.GameHost.WaitForCallAsync("killLag true", after: "screenshot 0");
 
         Assert.Contains("screenshot 0", calls);
         Assert.DoesNotContain("screenshot 0 lag-killed", calls);
         int shot = Array.IndexOf(calls, "screenshot 0");
         Assert.Equal("killLag false", calls[..shot].Last(c => c.StartsWith("killLag", StringComparison.Ordinal)));
-    }
-
-    private static async Task<string[]> WaitForCallAsync(FakeGameHost gameHost, string call, string? after = null)
-    {
-        Stopwatch waited = Stopwatch.StartNew();
-        while (true)
-        {
-            string[] calls = await gameHost.CallsAsync();
-            int from = after is null ? 0 : Array.IndexOf(calls, after) + 1;
-            if ((after is null || from > 0) && calls[from..].Contains(call))
-                return calls;
-            if (waited.Elapsed > TimeSpan.FromSeconds(10))
-                throw new TimeoutException($"No '{call}' call{(after is null ? "" : $" after '{after}'")}.");
-            await Task.Delay(50, Ct);
-        }
     }
 
     private static async Task<string> AssertionsAsync()

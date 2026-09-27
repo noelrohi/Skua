@@ -71,6 +71,32 @@ public class GameStateTests
     }
 
     [Fact]
+    public async Task A_login_response_that_reaches_the_Engine_after_the_connection_was_lost_isnt_a_second_disconnect()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        await session.GameHost.DoAsync("lose-connection Your connection to the server has been lost.");
+        await session.Connection.WaitForEventAsync(EventTypes.GameDisconnected);
+
+        // Core handles each game call before the Engine, so a busy Engine can see the login's response only now.
+        await session.GameHost.DoAsync("login-response");
+        // The Engine handles game calls in order, so once this join is an event, the response has been handled.
+        await session.GameHost.DoAsync("join yulgar");
+        await session.Connection.WaitForEventAsync(EventTypes.MapJoined, e => e.Data!.Value.GetProperty("map").GetString() == "yulgar");
+        GameState state = (await session.Connection.StatusAsync(Ct)).Game.State;
+        // The Test Account was already disconnected, so the Game Host exiting isn't a disconnect either.
+        using (Process gameHost = Process.GetProcessById(await session.GameHost.PidAsync()))
+            gameHost.Kill();
+        await session.Connection.WaitForEventAsync(EventTypes.GameState, e => GameEvents.To(e) == "notStarted");
+
+        Assert.Equal(GameState.Disconnected, state);
+        Assert.Equal(
+            ["loggingIn→playing", "game.disconnected connectionLost", "playing→disconnected", "disconnected→notStarted"],
+            (await GameEvents.AllAsync(session.Connection)).Select(GameEvents.Describe).TakeLast(4));
+    }
+
+    [Fact]
     public async Task A_disconnected_game_stays_disconnected_until_a_login()
     {
         await using EngineSandbox sandbox = new();
@@ -191,8 +217,8 @@ public class GameStateTests
             events.Select(GameEvents.Describe).SkipWhile(d => !d.StartsWith("game.disconnected", StringComparison.Ordinal)));
         Assert.Equal(GameState.Playing, (await session.Connection.StatusAsync(Ct)).Game.State);
         // Back to playing after a relogin, the lag killer is on again, though Core turned it off while stopping for the relogin.
-        string[] calls = await session.GameHost.CallsAsync();
-        Assert.Contains("killLag true", calls[(Array.LastIndexOf(calls, "clickServer") + 1)..]);
+        // It goes on once the state is playing, so the call may still be on its way.
+        await session.GameHost.WaitForCallAsync("killLag true", after: "clickServer");
     }
 
     /// <summary>Waits a moment for the poll, then checks that status reports the state the last <c>game.state</c> event moved to.</summary>
