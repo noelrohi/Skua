@@ -16,8 +16,8 @@ internal sealed class FakeGame
     private readonly object _lock = new();
     private readonly Action<string> _invoke;
     private readonly Action<string> _note;
-    private readonly string _username;
-    private readonly string _password;
+    private string _username;
+    private readonly Dictionary<string, string> _accounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _rejections = new(StringComparer.OrdinalIgnoreCase);
     private string _servers = "[]";
     private int _connectDelay = 300;
@@ -37,12 +37,16 @@ internal sealed class FakeGame
     private bool _loading;
     private int _hp = MaxHp;
     private int _state = 1;
+    private int _level = 10;
+    private int _xp = 1500;
+    private int _gold = 5000;
     private bool _bankLoaded;
     private DateTime _inventoryAt;
     private readonly HashSet<string> _lockedMaps = new(StringComparer.OrdinalIgnoreCase);
     private bool _brokenLogin;
 
     private const int MaxHp = 1000;
+    private const int RequiredXp = 4000;
 
     /// <summary>Whether the lag killer hides the world, as <c>killLag</c> last set it.</summary>
     public bool LagKilled { get; private set; }
@@ -52,10 +56,13 @@ internal sealed class FakeGame
     public FakeGame(string username, string password, Action<string> invoke, Action<string> note)
     {
         _username = username;
-        _password = password;
+        _accounts[username] = password;
         _invoke = invoke;
         _note = note;
     }
+
+    /// <summary>Another account the game accepts; the player is the account that last logged in.</summary>
+    public void Account(string username, string password) => _accounts[username] = password;
 
     /// <summary>The server list the game shows once the account has logged in, as the servers API's JSON.</summary>
     public void Servers(string json) => _servers = json;
@@ -143,6 +150,13 @@ internal sealed class FakeGame
                 case ["combat"]:
                     _state = 2;
                     return true;
+                case ["gain", string rest] when rest.Split(' ') is [string xp, string gold]:
+                    // Reaching the required XP levels up, and the next level's XP starts from what is left over.
+                    _xp += int.Parse(xp);
+                    _gold += int.Parse(gold);
+                    for (; _xp >= RequiredXp; _xp -= RequiredXp)
+                        _level++;
+                    return true;
                 case ["join", string map]:
                     Join(map, "Enter", "Spawn");
                     return true;
@@ -195,9 +209,11 @@ internal sealed class FakeGame
         "world.myAvatar.dataLeaf.intHP" => _world ? _hp : null,
         "world.myAvatar.dataLeaf.intHPMax" => _world ? MaxHp : null,
         "world.myAvatar.dataLeaf.intMPMax" => _world ? 100 : null,
-        "world.myAvatar.dataLeaf.intLevel" => _world ? 10 : null,
+        "world.myAvatar.dataLeaf.intLevel" => _world ? _level : null,
+        "world.myAvatar.objData.intExp" => _world ? _xp : null,
+        "world.myAvatar.objData.intExpToLevel" => _world ? RequiredXp : null,
         "world.myAvatar.objData.intMP" => _world ? 80 : null,
-        "world.myAvatar.objData.intGold" => _world ? 5000 : null,
+        "world.myAvatar.objData.intGold" => _world ? _gold : null,
         "world.myAvatar.objData.iUpgDays" => _world ? -1 : null,
         "world.myAvatar.objData.strUsername" => _world ? _username : null,
         "world.myAvatar.items" => _world ? Inventory() : null,
@@ -237,7 +253,9 @@ internal sealed class FakeGame
                     return "<broken";
                 _loginName = username;
                 _loginPassword = password;
-                _account = username == _username && password == _password;
+                _account = _accounts.TryGetValue(username, out string? accepted) && accepted == password;
+                if (_account)
+                    _username = username;
                 _kicked = false;
                 break;
             case "logout":
@@ -392,7 +410,7 @@ internal sealed class FakeGame
         {
             [me] = new JsonObject
             {
-                ["uoName"] = me, ["strUsername"] = _username, ["intLevel"] = 10, ["strFrame"] = _cell, ["strPad"] = _pad, ["intHP"] = _hp, ["intHPMax"] = MaxHp,
+                ["uoName"] = me, ["strUsername"] = _username, ["intLevel"] = _level, ["strFrame"] = _cell, ["strPad"] = _pad, ["intHP"] = _hp, ["intHPMax"] = MaxHp,
                 ["intMP"] = 80, ["afk"] = false, ["intState"] = _state, ["entID"] = 1,
             },
             ["artixfan"] = new JsonObject

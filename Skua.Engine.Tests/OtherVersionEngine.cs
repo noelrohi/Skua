@@ -57,6 +57,12 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
     public Task<ScriptsUpdateResult> ScriptsUpdateAsync(CancellationToken cancellationToken) =>
         throw new InvalidOperationException("A client called scripts_update after a protocol mismatch.");
 
+    public Task<ScriptsListResult> ScriptsListAsync(string? folder, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called scripts_list after a protocol mismatch.");
+
+    public Task<ScriptsNewResult> ScriptsNewAsync(string? since, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called scripts_new after a protocol mismatch.");
+
     public Task<ScreenshotResult> ScreenshotAsync(int? maxWidth, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("A client called screenshot after a protocol mismatch.");
 
@@ -87,7 +93,7 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
     public Task<ServersResult> ServersAsync(CancellationToken cancellationToken) =>
         throw new InvalidOperationException("A client called servers after a protocol mismatch.");
 
-    public Task<LoginResult> LoginAsync(string? server, int? timeoutSec, CancellationToken cancellationToken) =>
+    public Task<LoginResult> LoginAsync(string? server, int? timeoutSec, bool asAgent, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("A client called login after a protocol mismatch.");
 
     public Task<LogoutResult> LogoutAsync(CancellationToken cancellationToken) =>

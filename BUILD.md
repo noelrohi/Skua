@@ -209,17 +209,31 @@ Environment overrides:
 | `SKUA_GAMEHOST`, `SKUA_SWF` | The Game Host the Engine runs, and the SWF it loads (default `skua-gamehost` and `skua.swf` next to the Engine); a missing file fails the start with an error naming its path |
 | `SKUA_GITHUB_RAW_URL`, `SKUA_GITHUB_API_URL` | `https://raw.githubusercontent.com/` and `https://api.github.com/`, for tests |
 | `SKUA_AQ_SERVERS_URL` | The game's servers API, `http://content.aq.com/game/api/data/servers`, for tests |
-| `SKUA_SECURITY_TOOL` | The `security` tool that reads the Test Account from Keychain (default `/usr/bin/security`), for tests |
+| `SKUA_SECURITY_TOOL` | The `security` tool that `skua account` and the Engine's login use for Keychain (default `/usr/bin/security`), for tests |
 
-#### Test Account
+#### Accounts and the Test Account
 
-`skua login [server]` (MCP `login`) logs the Test Account in and returns once it is playing; without a server it picks an online, non-member server with room, and `skua servers` lists them. It takes no credentials: the Engine reads the Test Account from Keychain, as the generic password under the service `skua-test-account`, whose account is the username. Add it once, and choose "Always Allow" when macOS asks whether `security` may read it (an unsigned rebuild may ask again):
+Three steps from a fresh install to a running Script, with your own account:
 
 ```sh
-security add-generic-password -s skua-test-account -a <username> -w   # asks for the password
+skua account add                           # asks for the username and password
+skua login Galanoth                        # logs it in; without a server the Engine picks one
+skua script start Farm/Leveling.cs --follow
 ```
 
-To use another service, set `TestAccountService` under `client` in `<SkuaDIR>/Skua.settings.json`. The password and the game's `<pword>` login token are redacted from every log, event and log file. While logged in, the Engine holds off idle sleep (`pmset -g assertions` lists it) and keeps the lag killer on, lifting it for screenshots.
+`skua account add [username]` asks for the password without echoing it, and stores both in Keychain as a generic password, whose account is the username. The password goes to `security` on its standard input, so it never appears on a command line, in shell history or in any output. It stores a personal account, named after its username in lower case (`MainUser` becomes `mainuser`, under the service `skua-account-mainuser`) or `--name`, and makes it the active account. Nothing needs editing or restarting: the `TestAccountService` setting (under `client` in `<SkuaDIR>/Skua.settings.json`) names the active account, and the Engine reads it and the account from Keychain at every login, relogging a game that plays with another account. Choose "Always Allow" when macOS asks whether `security` may read it (an unsigned rebuild may ask again).
+
+```sh
+skua account add --name alt --allow-agents   # agents' logins may use it while it is active
+skua account add --name alt --replace        # replaces a stored account, e.g. its password
+skua account show [name]                     # username, service and whether agents may use it; never the password
+skua account use alt                         # the next 'skua login' uses it
+skua account remove [name]                   # deletes it; removing the active one makes the Test Account active
+```
+
+The Test Account keeps its reserved name `test` and service `skua-test-account`, which agents and the live tests use. `account add` never touches it except with `--test` (which stores or replaces it, and leaves the active account as it is) or `--name test --replace`, and `account remove` deletes it only by name (`skua account remove test`).
+
+`skua login [server]` (MCP `login`) logs in and returns once it is playing, with the server and the account's username; without a server it picks an online, non-member server with room, and `skua servers` lists them. The CLI's `login` uses the active account. MCP's `login`, an agent's, uses the Test Account unless the active account was added with `--allow-agents`; see ADR 0005. It takes no credentials, and no MCP tool sets or switches an account. The password and the game's `<pword>` login token are redacted from every log, event and log file. While logged in, the Engine holds off idle sleep (`pmset -g assertions` lists it) and keeps the lag killer on, lifting it for screenshots.
 
 #### Moving and reading the game
 
@@ -227,7 +241,17 @@ Once playing, `skua join <map> [cell] [pad]` and `skua jump <cell> [pad]` (MCP `
 
 #### Script Source
 
-`skua scripts update` (MCP `scripts_update`) syncs Scripts into `<SkuaDIR>/Scripts` from the Script Source, `auqw/Scripts@Skua` by default. The first sync from a Script Source downloads every Script; later ones download only the Scripts changed since the last synced commit. `skua scripts search <query> [--tag <tag>]` (MCP `scripts_search`) searches its `scripts.json`.
+`skua scripts update` (MCP `scripts_update`) syncs Scripts into `<SkuaDIR>/Scripts` from the Script Source, `auqw/Scripts@Skua` by default. The first sync from a Script Source downloads every Script; later ones check the head commit once and download only the Scripts changed since the last synced commit, ending with a summary such as "3 new, 12 changed". `skua script start` runs the same update first, unless given `--no-update`; when GitHub can't be reached it warns and starts the Scripts on disk.
+
+Finding Scripts, and what's new:
+
+```sh
+skua scripts search [query] [--tag <tag>]   # MCP scripts_search; no query lists every Script
+skua scripts list [folder]                  # MCP scripts_list; one folder as a tree, e.g. 'skua scripts list Farm', with descriptions
+skua scripts new [--since <date|commit>]    # MCP scripts_new; what updates added or changed, and when: the last 7 days by default
+```
+
+Each update that downloads Scripts is recorded in `<SkuaDIR>/scripts-history.json`, next to `scripts-commit.txt`, so `scripts new` works offline. A full download is the starting point, so it isn't listed as new.
 
 To use a fork, set `ScriptSource` under `shared` in `<SkuaDIR>/Skua.settings.json`, then run `skua engine stop`, since the Engine reads settings when it starts:
 
@@ -246,16 +270,19 @@ Script files always come from the Script Source itself, not from the `downloadUr
 A Script is named by its path in the Script Source (`Farm/Leveling.cs`) or by an absolute path.
 
 ```sh
+skua script start Farm/Leveling.cs --follow           # updates the Scripts, starts it, prints its log under a live status line
+skua watch                                            # the same live view for a Script already running; Ctrl-C leaves it running
 skua script options Farm/Leveling.cs                  # keys, types, stored values, defaults, choices
 skua script start Farm/Leveling.cs --option key=value # stores the values, compiles, starts
 skua script wait --timeout 600                        # returns when the run ends, or on timeout
 skua script status
 skua script stop                                      # cooperative; about 10 s at most
 skua eval 'Bot.Player.Level'                          # a C# expression or statements against Bot
-skua script start Farm/Leveling.cs --follow           # prints the run until it ends; asks its Questions in the terminal
 skua dialogs                                          # the pending Questions
 skua dialogs answer 3 Yes                             # the first answer wins
 ```
+
+On a terminal, `--follow` and `skua watch` keep a status line under the log, refreshed every second: level, XP toward the next level as a percentage, gold with the change since the follow began, map, and the run's elapsed time. `--follow` also asks the run's Questions there. Without a terminal, `--follow` prints only the log, and `skua watch [--interval <s>]` prints one status line per interval (a `ProgressDto` per line with `--json`). `status` (MCP `status`) reports the same: the player's `xp`, `requiredXp` and `xpPercent`, and the run's `elapsedSec`.
 
 The MCP tools are `script_options`, `script_start`, `script_stop`, `script_status`, `script_wait`, `dialogs`, `dialog_answer` and `eval`. A compile failure is `CompileFailed` with the compiler's diagnostics. While a Script runs, `login`, `logout`, `join`, `jump`, `scripts update` and `script options` are refused with `ScriptRunning`; queries, logs, screenshots and `eval` still work. Each run has a number, which its log entries carry as `run`, and `script.started`, `script.error` and `script.stopped` events. A restart by Core's auto-relogin is the same run, counted in its `relogins`. Core's options window, which it opens at a Script's first start, does nothing headless: the Script runs with its stored values. `eval` runs off the Script Thread with a 30 s limit, and returns the value as JSON, the log lines it wrote, and what it threw.
 

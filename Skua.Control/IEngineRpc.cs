@@ -47,6 +47,25 @@ public partial interface IEngineRpc
     Task<ScriptsUpdateResult> ScriptsUpdateAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// One folder of the Script Source's <c>scripts.json</c>: its subfolders, with how many Scripts each holds, and the Scripts directly in it.
+    /// Fails with <see cref="ErrorCode.InvalidArgument"/> when no Script is in the folder.
+    /// </summary>
+    /// <param name="folder">A folder's path, e.g. <c>Farm</c> or <c>Farm/Special</c>, ignoring case; null or empty for the top.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    [JsonRpcMethod("scripts_list")]
+    Task<ScriptsListResult> ScriptsListAsync(string? folder = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The Scripts that <c>scripts_update</c> added or changed on disk since a point, from the Engine's record of its updates; a full download
+    /// is the starting point, not news. Works offline.
+    /// </summary>
+    /// <param name="since">A date or time, or a commit (its first 7 characters or more) an update synced to; by default the last 7 days.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    /// <remarks>Fails with <see cref="ErrorCode.InvalidArgument"/> for a <paramref name="since"/> that is neither a date nor a recorded commit.</remarks>
+    [JsonRpcMethod("scripts_new")]
+    Task<ScriptsNewResult> ScriptsNewAsync(string? since = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// A page of entries of one kind (or all, merged by seq) after the cursor, or from the oldest entry held when there is none.
     /// </summary>
     /// <param name="kind">One kind, or <see cref="LogKind.All"/>.</param>
@@ -75,11 +94,13 @@ public partial interface IEngineRpc
     Task<ServersResult> ServersAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Logs the Test Account in, reading its credentials from Keychain, and returns once it is playing with the world loaded.
+    /// Logs the active account in (see <c>skua account</c>), reading its credentials from Keychain, and returns once it is playing with the world
+    /// loaded. An agent's login uses the Test Account instead, unless the active account was added with <c>--allow-agents</c>.
     /// Already playing on the requested server (or on any, when none is named), it does nothing; playing elsewhere, it relogs.
     /// </summary>
     /// <param name="server">A server name from <c>servers</c>; without one, the Engine picks an online, non-member server with room.</param>
     /// <param name="timeoutSec">How long to wait for the world: 120 s by default.</param>
+    /// <param name="asAgent">Whether an agent asks, as MCP's <c>login</c> does, rather than a developer at the CLI.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
     /// <remarks>
     /// Fails with <see cref="ErrorCode.LoginFailed"/> and the game's reason (a full or offline server, a rejected account),
@@ -87,7 +108,7 @@ public partial interface IEngineRpc
     /// before the Game Client has loaded, and <see cref="ErrorCode.Busy"/> while another login, logout, join or jump runs.
     /// </remarks>
     [JsonRpcMethod("login")]
-    Task<LoginResult> LoginAsync(string? server = null, int? timeoutSec = null, CancellationToken cancellationToken = default);
+    Task<LoginResult> LoginAsync(string? server = null, int? timeoutSec = null, bool asAgent = false, CancellationToken cancellationToken = default);
 
     /// <summary>Logs out to the login screen; a deliberate logout, so the game isn't reported disconnected. Does nothing when not logged in.</summary>
     [JsonRpcMethod("logout")]

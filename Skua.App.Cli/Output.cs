@@ -49,7 +49,8 @@ internal static class Output
     private static string Player(PlayerDto player)
     {
         string state = !player.Alive ? ", dead" : player.InCombat ? ", in combat" : "";
-        return $"{player.Name}, level {player.Level}{(player.Class is { } playerClass ? $" {playerClass}" : "")}, HP {player.Hp}/{player.MaxHp}, MP {player.Mp}/{player.MaxMp}, " +
+        string xp = player.XpPercent is { } percent ? $", XP {player.Xp}/{player.RequiredXp} ({percent:0.0}%)" : "";
+        return $"{player.Name}, level {player.Level}{(player.Class is { } playerClass ? $" {playerClass}" : "")}{xp}, HP {player.Hp}/{player.MaxHp}, MP {player.Mp}/{player.MaxMp}, " +
             $"{player.Gold} gold, on {player.Map} in {player.Cell} ({player.Pad}){state}";
     }
 
@@ -154,11 +155,18 @@ internal static class Output
 
     private static string ScriptLine(ScriptStatusDto status) => status switch
     {
-        { Run: { } run } => $"{Name(status.State)} {run.Script}, run {run.Number}"
+        { Run: { } run } => $"{Name(status.State)} {run.Script}, run {run.Number}, {Duration(run.ElapsedSec)}"
             + $"{(run.ReloggingIn ? ", waiting for the auto-relogin" : "")}{(run.Relogins > 0 ? $", {run.Relogins} relogins" : "")}",
         { LastRun: { } last } => $"{Name(status.State)}; {RunResult(last)}",
         _ => Name(status.State),
     };
+
+    /// <summary>A run's elapsed time: <c>42 s</c>, <c>12:05</c> or <c>1:02:05</c>.</summary>
+    public static string Duration(double seconds)
+    {
+        TimeSpan time = TimeSpan.FromSeconds(Math.Floor(seconds));
+        return time.TotalHours >= 1 ? $"{(int)time.TotalHours}:{time:mm\\:ss}" : time.TotalMinutes >= 1 ? $"{time:m\\:ss}" : $"{time.TotalSeconds:0} s";
+    }
 
     private static string RunResult(ScriptRunResultDto run) =>
         $"Run {run.Number} ({run.Script}) {Name(run.Outcome)} after {run.DurationSec:0.#} s{(run.Error is { } error ? $": {error}" : "")}.";
@@ -178,6 +186,25 @@ internal static class Output
 
     public static string Login(LoginResult result) =>
         result.AlreadyLoggedIn ? $"Already playing on {result.Server}." : $"Logged in on {result.Server}.";
+
+    public static string AccountAdded(AccountDto account) =>
+        $"Added account {account.Name} ({account.Username}) to Keychain as '{account.Service}'"
+        + (account.Active ? "; 'skua login' now uses it" : "; agents' logins use it")
+        + (account.AllowAgents && account.Service != AccountSetting.DefaultService ? ", and so may agents' while it is active." : ".");
+
+    public static string Account(AccountDto account)
+    {
+        string[] flags = [.. account.Active ? ["active"] : Array.Empty<string>(), .. account.AllowAgents ? ["agents allowed"] : Array.Empty<string>()];
+        return $"{AccountName(account)}{(flags.Length > 0 ? $" ({string.Join(", ", flags)})" : "")}: {account.Username}, Keychain service '{account.Service}'";
+    }
+
+    public static string AccountUsed(AccountDto account) => $"Now using {AccountName(account, lower: true)} ({account.Username}); 'skua login' uses it.";
+
+    public static string AccountRemoved(AccountDto account) =>
+        $"Removed {AccountName(account, lower: true)} ({account.Username}) from Keychain{(account.Active ? "; 'skua login' uses the Test Account again" : "")}.";
+
+    private static string AccountName(AccountDto account, bool lower = false) =>
+        account.Name is { } name ? $"{(lower ? "account" : "Account")} {name}" : $"{(lower ? "the" : "The")} account under '{account.Service}'";
 
     public static string Logout(LogoutResult result) => result.WasLoggedIn ? "Logged out." : "Not logged in.";
 
@@ -208,9 +235,65 @@ internal static class Output
             ScriptsUpdateMode.Incremental => $"Downloaded {result.Downloaded} changed Scripts from {Source(result.Source)} at {commit}.",
             _ => $"The Scripts are up to date with {Source(result.Source)} at {commit}.",
         };
+        if (result.Mode == ScriptsUpdateMode.Incremental && result.Added.Count + result.Changed.Count > 0)
+            text += $"\n{ChangeCounts(result)}; see 'skua scripts new'.";
         if (result.Failed.Count > 0)
             text += $"\n{result.Failed.Count} failed to download; run 'skua scripts update' again: {string.Join(", ", result.Failed)}";
         return text;
+    }
+
+    /// <summary>What the update before <c>skua script start</c> did, in one line; null when it downloaded nothing and nothing failed.</summary>
+    public static string? StartUpdate(ScriptsUpdateResult result) => result switch
+    {
+        { Mode: ScriptsUpdateMode.UpToDate } or { Downloaded: 0, Failed.Count: 0 } => null,
+        { Mode: ScriptsUpdateMode.Full } => ScriptsUpdate(result).ReplaceLineEndings(" "),
+        _ => $"Updated the Scripts from {Source(result.Source)}: {ChangeCounts(result)}; see 'skua scripts new'."
+            + (result.Failed.Count > 0 ? $" {result.Failed.Count} failed to download: {string.Join(", ", result.Failed)}." : ""),
+    };
+
+    /// <summary>e.g. <c>3 new, 12 changed</c>.</summary>
+    public static string ChangeCounts(ScriptsUpdateResult result) => $"{result.Added.Count} new, {result.Changed.Count} changed";
+
+    /// <summary>The folder as a tree one level deep: its subfolders with their Script counts, then its Scripts with their descriptions.</summary>
+    public static string ScriptsList(ScriptsListResult result)
+    {
+        string folder = result.Folder.Length == 0 ? "The top" : $"{result.Folder}/";
+        StringBuilder text = new($"{folder} in {Source(result.Source)}: {Count(result.Scripts.Count, "Script")}, {Count(result.Folders.Count, "folder")}");
+        List<string> lines =
+        [
+            .. result.Folders.Select(f => $"{Leaf(f.Path)}/  {Count(f.Scripts, "Script")}"),
+            .. result.Scripts.Select(s => s.Description is { } description ? $"{Leaf(s.Path)}  {Clip(description, 100)}" : Leaf(s.Path)),
+        ];
+        for (int i = 0; i < lines.Count; i++)
+            text.AppendLine().Append(i == lines.Count - 1 ? "└── " : "├── ").Append(lines[i]);
+        return text.ToString();
+    }
+
+    public static string ScriptsNew(ScriptsNewResult result)
+    {
+        string since = $"since {result.Since.ToLocalTime():yyyy-MM-dd HH:mm}";
+        if (result.Scripts.Count == 0)
+            return $"No Scripts were added or changed by updates from {Source(result.Source)} {since}.";
+
+        StringBuilder text = new($"{Count(result.Scripts.Count, "Script")} added or changed by {Count(result.Updates, "update")} from {Source(result.Source)} {since}:");
+        int width = result.Scripts.Max(s => s.Path.Length);
+        foreach (NewScriptDto script in result.Scripts)
+        {
+            string change = script.Change == ScriptChange.Added ? "new" : "changed";
+            string commit = script.Commit.Length > 7 ? script.Commit[..7] : script.Commit;
+            text.AppendLine().Append($"  {script.Path.PadRight(width)}  {change,-7}  {script.At.ToLocalTime():yyyy-MM-dd HH:mm}  {commit}  {script.Name}".TrimEnd());
+        }
+        return text.ToString();
+    }
+
+    private static string Leaf(string path) => path[(path.LastIndexOf('/') + 1)..];
+
+    private static string Count(int count, string noun) => $"{count} {noun}{(count == 1 ? "" : "s")}";
+
+    private static string Clip(string text, int max)
+    {
+        string line = text.ReplaceLineEndings(" ");
+        return line.Length <= max ? line : line[..(max - 1)] + "…";
     }
 
     /// <summary>Only the path, so a script can use it.</summary>
@@ -249,5 +332,5 @@ internal static class Output
         return $"{entry.Seq} {time} {Name(entry.Kind)}{run}{(entry.Truncated ? " (truncated)" : "")} {body}";
     }
 
-    private static string Name<TEnum>(TEnum value) where TEnum : struct, Enum => JsonNamingPolicy.CamelCase.ConvertName(value.ToString());
+    internal static string Name<TEnum>(TEnum value) where TEnum : struct, Enum => JsonNamingPolicy.CamelCase.ConvertName(value.ToString());
 }

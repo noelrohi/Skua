@@ -25,8 +25,8 @@ public sealed class FakeGameHost
     public string CallLog { get; private set; } = "";
 
     /// <summary>
-    /// Makes every Engine these tests start run an idle fake Game Host, find no Test Account and no servers API unless a test says
-    /// otherwise, so none ever runs the real Game Host, reads the real Keychain or reaches content.aq.com.
+    /// Makes every Engine these tests start run an idle fake Game Host, find no Test Account, no servers API and no Script Source unless a
+    /// test says otherwise, so none ever runs the real Game Host, reads the real Keychain or reaches content.aq.com or GitHub.
     /// Child processes inherit it, including Engines auto-started by the CLI.
     /// </summary>
     [ModuleInitializer]
@@ -40,6 +40,8 @@ public sealed class FakeGameHost
         System.Environment.SetEnvironmentVariable("SKUA_SECURITY_TOOL", FakeKeychain.Empty(EngineSandbox.BinDir));
         // The discard port: nothing listens, so the request fails at once.
         System.Environment.SetEnvironmentVariable(Skua.Core.Scripts.ScriptServers.ServersUrlEnvironmentVariable, "http://127.0.0.1:9/game/api/data/servers");
+        System.Environment.SetEnvironmentVariable(Skua.Core.Models.GitHub.ScriptSource.RawUrlEnvironmentVariable, "http://127.0.0.1:9/raw/");
+        System.Environment.SetEnvironmentVariable(Skua.Core.Models.GitHub.ScriptSource.ApiUrlEnvironmentVariable, "http://127.0.0.1:9/api/");
     }
 
     /// <summary>
@@ -70,6 +72,13 @@ public sealed class FakeGameHost
     public FakeGameHost ConnectDelay(int milliseconds)
     {
         _lines.Insert(_lines.FindIndex(l => l.StartsWith("game ", StringComparison.Ordinal)) + 1, $"connect-delay {milliseconds}");
+        return this;
+    }
+
+    /// <summary>The simulated game also accepts this account, e.g. one that <c>skua account add</c> stores.</summary>
+    public FakeGameHost Account(string username, string password)
+    {
+        _lines.Insert(_lines.FindIndex(l => l.StartsWith("game ", StringComparison.Ordinal)) + 1, $"account {username} {password}");
         return this;
     }
 

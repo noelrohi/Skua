@@ -56,7 +56,7 @@ public class LoginTests
             LoginResult result = await connection.LoginAsync("galanoth", cancellationToken: Ct);
             StatusDto status = await connection.StatusAsync(Ct);
 
-            Assert.Equal(new LoginResult("Galanoth", false), result);
+            Assert.Equal(new LoginResult("Galanoth", false, "SkuaTester"), result);
             Assert.Equal(GameState.Playing, status.Game.State);
             Assert.Equal("Galanoth", status.Game.Server);
             Assert.Equal(
@@ -73,7 +73,7 @@ public class LoginTests
 
         LoginResult result = await session.Connection.LoginAsync(cancellationToken: Ct);
 
-        Assert.Equal(new LoginResult("Sir Ver", false), result);
+        Assert.Equal(new LoginResult("Sir Ver", false, "SkuaTester"), result);
     }
 
     [Fact]
@@ -88,14 +88,15 @@ public class LoginTests
         LoginResult other = await session.Connection.LoginAsync("Sir Ver", cancellationToken: Ct);
         StatusDto status = await session.Connection.StatusAsync(Ct);
 
-        Assert.Equal(new LoginResult("Galanoth", true), same);
-        Assert.Equal(new LoginResult("Galanoth", true), any);
-        Assert.Equal(new LoginResult("Sir Ver", false), other);
+        Assert.Equal(new LoginResult("Galanoth", true, "SkuaTester"), same);
+        Assert.Equal(new LoginResult("Galanoth", true, "SkuaTester"), any);
+        Assert.Equal(new LoginResult("Sir Ver", false, "SkuaTester"), other);
         Assert.Equal(("Sir Ver", GameState.Playing), (status.Game.Server, status.Game.State));
         Assert.Equal(
             [EventTypes.GameLoaded, "notStarted→loginScreen", "loginScreen→loggingIn", "loggingIn→playing", "playing→loggingIn", "loggingIn→playing"],
             (await GameEvents.AllAsync(session.Connection)).Select(GameEvents.Describe));
-        Assert.Equal(1, session.Keychain.Reads);
+        // Each login reads the account afresh, since 'skua account' may have changed it.
+        Assert.Equal(2, session.Keychain.Reads);
     }
 
     [Fact]

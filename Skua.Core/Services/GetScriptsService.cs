@@ -350,7 +350,7 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
         string? storedSha = GetStoredCommitSha(source);
 
         if (storedSha == headSha)
-            return new ScriptsSyncResult(source, ScriptsSyncMode.UpToDate, headSha, 0, []);
+            return new ScriptsSyncResult(source, ScriptsSyncMode.UpToDate, headSha, 0, [], [], []);
 
         List<ScriptInfo> scripts = await FetchScriptsAsync(source, token);
         List<ScriptInfo> toDownload;
@@ -368,13 +368,17 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
         }
 
         ConcurrentBag<string> failed = new();
+        ConcurrentBag<ScriptInfo> added = new();
+        ConcurrentBag<ScriptInfo> changed = new();
         int downloaded = 0;
         await Parallel.ForEachAsync(toDownload, new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = token }, async (script, ct) =>
         {
             try
             {
+                bool existed = script.Downloaded;
                 await DownloadScriptAsync(source, script, ct);
                 Interlocked.Increment(ref downloaded);
+                (existed ? changed : added).Add(script);
             }
             catch (Exception) when (!ct.IsCancellationRequested)
             {
@@ -393,7 +397,9 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
             string.IsNullOrEmpty(storedSha) ? ScriptsSyncMode.Full : ScriptsSyncMode.Incremental,
             headSha,
             downloaded,
-            failed.Order(StringComparer.Ordinal).ToList());
+            failed.Order(StringComparer.Ordinal).ToList(),
+            added.OrderBy(s => s.FilePath, StringComparer.Ordinal).ToList(),
+            changed.OrderBy(s => s.FilePath, StringComparer.Ordinal).ToList());
     }
 
     public IEnumerable<ScriptInfo> GetOutdatedScripts()

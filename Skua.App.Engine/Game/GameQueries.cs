@@ -113,8 +113,10 @@ internal sealed class GameQueries
         string? name = _flash.GetGameObject<string>("world.myAvatar.objData.strUsername");
         // Not Core's CurrentClass, which is null while the player is dead.
         string? playerClass = _api.Inventory.Items.Find(i => i is { Equipped: true, Category: ItemCategory.Class })?.Name;
+        int xp = player.XP;
+        int requiredXp = player.RequiredXP;
         return new PlayerDto(name ?? player.Username ?? "", player.Level, playerClass, player.Health, player.MaxHealth, player.Mana, player.MaxMana, player.Gold,
-            _api.Map.Name, player.Cell, player.Pad, Alive: state > 0, InCombat: state == 2);
+            _api.Map.Name, player.Cell, player.Pad, Alive: state > 0, InCombat: state == 2, xp, requiredXp, PlayerDto.Percent(xp, requiredXp));
     }
 
     /// <summary>

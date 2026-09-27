@@ -54,7 +54,9 @@ public sealed record ScriptStatusDto(ScriptState State, ScriptRunDto? Run, Scrip
 /// <param name="Script">The Script as <c>script_start</c> named it: a Script Source path, or an absolute path.</param>
 /// <param name="Relogins">How many times Core's auto-relogin restarted it.</param>
 /// <param name="ReloggingIn">Whether its thread has ended for an auto-relogin that will restart it.</param>
-public sealed record ScriptRunDto(int Number, string Script, DateTimeOffset StartedAt, int Relogins, bool ReloggingIn, DialogMode Dialogs, int DialogTimeoutSec);
+/// <param name="ElapsedSec">How long it has run so far, to a tenth of a second, as the Engine's clock measures it.</param>
+public sealed record ScriptRunDto(
+    int Number, string Script, DateTimeOffset StartedAt, int Relogins, bool ReloggingIn, DialogMode Dialogs, int DialogTimeoutSec, double ElapsedSec);
 
 /// <summary>A run that ended.</summary>
 /// <param name="Error">Why it failed, for <see cref="ScriptOutcome.Error"/>: the exception's type and message.</param>

@@ -175,6 +175,12 @@ internal sealed class Engine : IEngineRpc
     public Task<ScriptsUpdateResult> ScriptsUpdateAsync(CancellationToken cancellationToken) =>
         _scriptSource.UpdateAsync();
 
+    public Task<ScriptsListResult> ScriptsListAsync(string? folder, CancellationToken cancellationToken) =>
+        _scriptSource.ListAsync(folder, cancellationToken);
+
+    public Task<ScriptsNewResult> ScriptsNewAsync(string? since, CancellationToken cancellationToken) =>
+        Task.FromResult(_scriptSource.New(since));
+
     public Task<LogPage> LogsAsync(LogKind kind, string? after, int? max, CancellationToken cancellationToken) =>
         Task.FromResult(_logs.Read([kind], after, max));
 
@@ -199,8 +205,8 @@ internal sealed class Engine : IEngineRpc
 
     public Task<ServersResult> ServersAsync(CancellationToken cancellationToken) => _game.ServersAsync();
 
-    public Task<LoginResult> LoginAsync(string? server, int? timeoutSec, CancellationToken cancellationToken) =>
-        _game.LoginAsync(server, timeoutSec, cancellationToken);
+    public Task<LoginResult> LoginAsync(string? server, int? timeoutSec, bool asAgent, CancellationToken cancellationToken) =>
+        _game.LoginAsync(server, timeoutSec, asAgent, cancellationToken);
 
     public Task<LogoutResult> LogoutAsync(CancellationToken cancellationToken) =>
         _game.LogoutAsync(cancellationToken);

@@ -155,7 +155,10 @@ public class QueryTests
         StatusDto after = await session.Connection.StatusAsync(Ct);
 
         Assert.Null(before.Game.Player);
-        Assert.Equal(new PlayerDto(session.Keychain.Username, 10, "Healer", 1000, 1000, 80, 100, 5000, "battleon", "r2", "Right", Alive: true, InCombat: false), playing.Game.Player);
+        Assert.Equal(
+            new PlayerDto(session.Keychain.Username, 10, "Healer", 1000, 1000, 80, 100, 5000, "battleon", "r2", "Right", Alive: true, InCombat: false,
+                Xp: 1500, RequiredXp: 4000, XpPercent: 37.5),
+            playing.Game.Player);
         Assert.Null(after.Game.Player);
     }
 
@@ -173,6 +176,23 @@ public class QueryTests
 
         Assert.Equal((true, true), (fighting.Alive, fighting.InCombat));
         Assert.Equal((false, false, 0), (dead.Alive, dead.InCombat, dead.Hp));
+    }
+
+    [Fact]
+    public async Task Status_reports_the_XP_and_gold_as_the_game_changes_them()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+
+        await session.GameHost.DoAsync("gain 250 1200");
+        PlayerDto gained = (await session.Connection.StatusAsync(Ct)).Game.Player!;
+        await session.GameHost.DoAsync("gain 2250 0");
+        PlayerDto levelled = (await session.Connection.StatusAsync(Ct)).Game.Player!;
+
+        Assert.Equal((1750, 4000, 43.8, 6200), (gained.Xp, gained.RequiredXp, gained.XpPercent, gained.Gold));
+        // Reaching the required XP levels up and starts the next level's XP from zero.
+        Assert.Equal((11, 0, 0.0), (levelled.Level, levelled.Xp, levelled.XpPercent));
     }
 
     private static void AssertQuest(QuestDto expected, QuestDto actual)
