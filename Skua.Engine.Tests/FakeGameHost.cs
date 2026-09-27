@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Skua.MacOS.GameHost;
 
@@ -58,8 +59,7 @@ public sealed class FakeGameHost
     /// </summary>
     public FakeGameHost Game(FakeKeychain keychain, params FakeServer[] servers)
     {
-        ControlFile = Path.Combine(Path.GetDirectoryName(ScenarioPath)!, "fake-gamehost.control");
-        _lines.Add($"control {ControlFile}");
+        Control();
         _lines.Add($"game {keychain.Username} {keychain.Password}");
         _lines.Add($"servers {FakeServer.ListJson(servers)}");
         _lines.Add("""send E <invoke name="loaded" returntype="xml"><arguments></arguments></invoke>""");
@@ -82,9 +82,19 @@ public sealed class FakeGameHost
 
     public string ControlFile { get; private set; } = "";
 
+    /// <summary>Lets <see cref="DoAsync"/> run directives while the fake runs, so a test decides when they happen.</summary>
+    public FakeGameHost Control()
+    {
+        if (ControlFile.Length > 0)
+            return this;
+        ControlFile = Path.Combine(Path.GetDirectoryName(ScenarioPath)!, "fake-gamehost.control");
+        _lines.Add($"control {ControlFile}");
+        return this;
+    }
+
     /// <summary>
-    /// Makes the running simulated game act, e.g. <c>kick</c> or <c>lose-connection &lt;message&gt;</c>, and returns once it has;
-    /// see Skua.FakeGameHost/Program.cs.
+    /// Runs a directive in the running fake, e.g. <c>repeat 3 send F line {i}</c>, or makes the simulated game act, e.g. <c>kick</c> or
+    /// <c>lose-connection &lt;message&gt;</c>, and returns once it has; see <see cref="Control"/> and Skua.FakeGameHost/Program.cs.
     /// </summary>
     public async Task DoAsync(string directive)
     {
@@ -183,4 +193,20 @@ public sealed class FakeGameHost
     /// <summary>The names of the calls the Engine has made so far, in order; see <see cref="LogCalls"/>.</summary>
     public async Task<string[]> CallsAsync() =>
         File.Exists(CallLog) ? await File.ReadAllLinesAsync(CallLog, TestContext.Current.CancellationToken) : [];
+
+    /// <summary>Waits until the Engine has made <paramref name="call"/>, after the last <paramref name="after"/> when given, and returns the calls so far.</summary>
+    public async Task<string[]> WaitForCallAsync(string call, string? after = null)
+    {
+        Stopwatch waited = Stopwatch.StartNew();
+        while (true)
+        {
+            string[] calls = await CallsAsync();
+            int from = after is null ? 0 : Array.LastIndexOf(calls, after) + 1;
+            if ((after is null || from > 0) && calls[from..].Contains(call))
+                return calls;
+            if (waited.Elapsed > TimeSpan.FromSeconds(10))
+                throw new TimeoutException($"No '{call}' call{(after is null ? "" : $" after '{after}'")}.");
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+        }
+    }
 }

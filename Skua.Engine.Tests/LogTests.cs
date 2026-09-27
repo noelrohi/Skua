@@ -77,11 +77,14 @@ public class LogTests
     public async Task After_eviction_logs_reports_a_gap_and_resumes_from_the_oldest_entry_held()
     {
         await using EngineSandbox sandbox = new();
-        FakeGameHost gameHost = new FakeGameHost(sandbox).Sleep(1000).Repeat(10_050, "log 2 line {i}");
+        FakeGameHost gameHost = new FakeGameHost(sandbox).Control();
         (_, EngineConnection connection) = await sandbox.StartEngineAsync(gameHost.Environment());
         using (connection)
         {
+            // The Engine's own line about the Game Host comes before the cursor, so only the Game Host's lines come after it.
+            await connection.WaitForLogsAsync(LogKind.Debug, 1, e => e.Text!.StartsWith("Game Host started"));
             string before = (await connection.LogsAsync(LogKind.Debug, cancellationToken: Ct)).Next;
+            await gameHost.DoAsync("repeat 10050 log 2 line {i}");
             await connection.WaitForLogsAsync(LogKind.Debug, 1, e => e.Text!.EndsWith("line 10049"));
 
             List<LogEntryDto> held = [];
@@ -122,23 +125,31 @@ public class LogTests
     public async Task Subscribe_replays_from_a_pull_cursor_then_follows_live_entries_without_missing_any()
     {
         await using EngineSandbox sandbox = new();
-        FakeGameHost gameHost = new FakeGameHost(sandbox)
-            .Repeat(3, "send F early {i}").Sleep(1500).Repeat(3, "send F between {i}").Sleep(1000).Repeat(3, "send F live {i}");
+        FakeGameHost gameHost = new FakeGameHost(sandbox).Control().Repeat(3, "send F early {i}");
         (_, EngineConnection connection) = await sandbox.StartEngineAsync(gameHost.Environment());
         using (connection)
         {
             await connection.WaitForLogsAsync(LogKind.Flash, 3);
             LogPage pulled = await connection.LogsAsync(LogKind.Flash, cancellationToken: Ct);
             Assert.Equal(["early 0", "early 1", "early 2"], pulled.Entries.Select(e => e.Text));
-            await connection.WaitForLogsAsync(LogKind.Flash, 4);
+            // Recorded after the pull and before the subscribe, so the subscribe replays them.
+            await gameHost.DoAsync("repeat 3 send F between {i}");
+            await connection.WaitForLogsAsync(LogKind.Flash, 6);
 
             List<string> followed = [];
+            bool live = false;
             using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(Ct);
             stop.CancelAfter(TimeSpan.FromSeconds(20));
             await foreach (LogPage page in connection.SubscribeAsync([LogKind.Flash], pulled.Next, stop.Token))
             {
                 Assert.False(page.Gap);
                 followed.AddRange(page.Entries.Select(e => e.Text!));
+                // Recorded once the replay has arrived, so the subscribe follows them live.
+                if (!live && followed.Count >= 3)
+                {
+                    live = true;
+                    await gameHost.DoAsync("repeat 3 send F live {i}");
+                }
                 if (followed.Count >= 6)
                     break;
             }

@@ -46,7 +46,7 @@ internal sealed class GameStateTracker : IDisposable
 
     private string? _refusal;
 
-    /// <summary>Counts commits, so a poll that read the game before one is dropped.</summary>
+    /// <summary>Counts commits and disconnects, so a poll that read the game before one is dropped and an edge reads again.</summary>
     private long _generation;
 
     public GameStateTracker(IFlashUtil flash, EngineLogs logs, PowerAssertion power)
@@ -139,17 +139,13 @@ internal sealed class GameStateTracker : IDisposable
     /// <summary>The game server accepted the login, or refused it with a message.</summary>
     public void LoginResponse(bool accepted, string? message)
     {
-        lock (_lock)
+        if (!accepted)
         {
-            if (!accepted)
-            {
+            lock (_lock)
                 _refusal = message is { Length: > 0 } ? message : "no reason given";
-                return;
-            }
-            if (_hostUp)
-                _loggedIn = true;
+            return;
         }
-        Evaluate(edge: true);
+        Evaluate(edge: true, loginAccepted: true);
     }
 
     /// <summary>The reason the game server refused a login since the last call, if it did.</summary>
@@ -283,7 +279,8 @@ internal sealed class GameStateTracker : IDisposable
     /// Reads the game, then applies what it found; a poll's finding must hold twice, an edge's applies at once. A poll whose reading
     /// an edge overtook is dropped, and an edge reads again.
     /// </summary>
-    private void Evaluate(bool edge)
+    /// <param name="loginAccepted">The edge is an accepted login response, which logs the Test Account in if the game is still connected.</param>
+    private void Evaluate(bool edge, bool loginAccepted = false)
     {
         bool playing = false;
         for (int attempt = 0; attempt < MaxRereads; attempt++)
@@ -307,7 +304,7 @@ internal sealed class GameStateTracker : IDisposable
                         continue;
                     return;
                 }
-                playing = Apply(sample, edge);
+                playing = Apply(sample, edge, loginAccepted);
             }
             break;
         }
@@ -316,7 +313,7 @@ internal sealed class GameStateTracker : IDisposable
     }
 
     /// <summary>Applies a reading under the lock; returns whether the state became <see cref="GameState.Playing"/>.</summary>
-    private bool Apply(Sample? sample, bool edge)
+    private bool Apply(Sample? sample, bool edge, bool loginAccepted)
     {
         if (!_hostUp || !_loaded)
         {
@@ -325,6 +322,10 @@ internal sealed class GameStateTracker : IDisposable
         }
         if (sample is null)
             return false;
+        // Core handles each game call first, so a response can reach the tracker after the connection it came on has gone:
+        // that login is over, and logging it in again would make its loss a second disconnect.
+        if (loginAccepted && sample.LoggedIn && !IsConnectionLost(sample.Message))
+            _loggedIn = true;
 
         (GameState next, DisconnectReason? loss, string? detail) = Derive(sample);
         if (next == _state)
@@ -385,6 +386,7 @@ internal sealed class GameStateTracker : IDisposable
 
     private void Disconnect(DisconnectReason reason, string? detail)
     {
+        _generation++;
         _loggedIn = false;
         _lastExitDeliberate = reason == DisconnectReason.Logout;
         _logs.Event(EventTypes.GameDisconnected, detail is null ? new { reason } : new { reason, detail });
