@@ -33,4 +33,10 @@ public class FlashXmlTests
     {
         Assert.Equal(value, FlashXml.ReadReturn(FlashXml.ToFlashXml(value), typeof(string)));
     }
+
+    [Fact]
+    public void A_string_return_is_decoded_once()
+    {
+        Assert.Equal("Tom & Jerry <3> &amp;", FlashXml.ReadReturn("<string>Tom &amp; Jerry &lt;3&gt; &amp;amp;</string>", typeof(string)));
+    }
 }
