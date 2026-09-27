@@ -69,10 +69,12 @@ public partial class ScriptMap : IScriptMap
     [ObjectBinding("world.areaUsers", Default = "new()")]
     private List<string> _playerNames = new();
 
-    [ObjectBinding("world.uoTree", Default = "new()")]
-    private readonly Dictionary<string, PlayerInfo> _playersDictionary = new();
-
-    public List<PlayerInfo> Players => _playersDictionary.Values.ToList();
+    // The game keeps world.uoTree in a flash.utils.Dictionary, which JSON.stringify writes as "Dictionary", so this reads the room's
+    // names and then each player by key. A player who leaves between the two reads is left out.
+    public List<PlayerInfo> Players => PlayerNames
+        .Select(name => Flash.GetGameObject<PlayerInfo>($"world.uoTree[\"{name}\"]"))
+        .OfType<PlayerInfo>()
+        .ToList();
     public List<PlayerInfo> CellPlayers => Players.FindAll(p => p.Cell == Player.Cell);
 
     public bool Loaded => !Loading
@@ -122,9 +124,6 @@ public partial class ScriptMap : IScriptMap
     public PlayerInfo? GetPlayer(string username)
     {
         string lowerUsername = username.ToLower();
-
-        if (_playersDictionary.TryGetValue(lowerUsername, out PlayerInfo? cachedPlayer))
-            return cachedPlayer;
 
         for (int attempt = 0; attempt < 3; attempt++)
         {

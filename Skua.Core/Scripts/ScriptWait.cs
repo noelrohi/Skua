@@ -60,14 +60,12 @@ public class ScriptWait : IScriptWait
 
         StrongReferenceMessenger.Default.Register<ScriptWait, ItemBoughtMessage>(this, (r, m) => r._itemBuyEvent.Set());
         StrongReferenceMessenger.Default.Register<ScriptWait, ItemSoldMessage>(this, (r, m) => r._itemSellEvent.Set());
-        StrongReferenceMessenger.Default.Register<ScriptWait, BankLoadedMessage>(this, (r, m) => r._bankLoadEvent.Set());
     }
 
     public int WAIT_SLEEP { get; set; } = 100;
 
     private readonly AutoResetEvent _itemBuyEvent = new(false);
     private readonly AutoResetEvent _itemSellEvent = new(false);
-    private readonly AutoResetEvent _bankLoadEvent = new(false);
 
     public bool OverrideTimeout { get; set; } = false;
     public int PlayerActionTimeout { get; set; } = 15;
@@ -207,7 +205,10 @@ public class ScriptWait : IScriptWait
 
     public bool ForBankLoad(int timeout = 20)
     {
-        return _bankLoadEvent.WaitOne(timeout * WAIT_SLEEP);
+        // The bank has loaded once it holds the login's bank count of items; that count leaves out AC items, so a bank holding only
+        // AC items may be read before they arrive. BankArray, unlike items, ignores a search in the game's bank.
+        return ForTrue(() => Flash.GetGameObject<int?>("world.myAvatar.iBankCount") is int count
+                             && Flash.GetGameObject<int?>("world.bankinfo.BankArray.length") >= count, timeout);
     }
 
     public bool ForQuestAccept(int id, int timeout = 14)
