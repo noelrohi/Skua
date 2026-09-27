@@ -16,11 +16,68 @@ internal static class Output
         string gameLine = game.GameHostUp
             ? $"Game Host up, {Name(game.State)}{(game.Server is { } server ? $" on {server}" : "")}"
             : "Game Host down";
-        return $"""
+        string text = $"""
             Engine  {engine.Name} (pid {engine.Pid}, up {engine.UptimeSec:0} s, build {engine.Build}, protocol {engine.Protocol})
             Game    {gameLine}
             """;
+        return game.Player is { } player ? $"{text}\nPlayer  {Player(player)}" : text;
     }
+
+    private static string Player(PlayerDto player)
+    {
+        string state = !player.Alive ? ", dead" : player.InCombat ? ", in combat" : "";
+        return $"{player.Name}, level {player.Level}{(player.Class is { } playerClass ? $" {playerClass}" : "")}, HP {player.Hp}/{player.MaxHp}, MP {player.Mp}/{player.MaxMp}, " +
+            $"{player.Gold} gold, on {player.Map} in {player.Cell} ({player.Pad}){state}";
+    }
+
+    public static string Location(LocationResult result) =>
+        $"{(result.AlreadyThere ? "Already" : "Now")} on {result.Map} in {result.Cell} ({result.Pad}).";
+
+    public static string Inventory(InventoryResult result)
+    {
+        StringBuilder text = new(result.TotalSlots is { } total
+            ? $"{Name(result.Kind)}: {result.UsedSlots}/{total} slots used"
+            : $"{Name(result.Kind)}: {result.UsedSlots} items");
+        foreach (ItemDto item in result.Items)
+        {
+            string equipped = item.Equipped ? "  equipped" : "";
+            string enhancement = item.EnhancementLevel > 0 ? $"  enhancement {item.EnhancementLevel}" : "";
+            text.AppendLine().Append($"  {item.Id,8}  {item.Name}  {item.Qty}/{item.MaxStack}  {item.Category}{equipped}{enhancement}");
+        }
+        return text.ToString();
+    }
+
+    public static string Quests(QuestsResult result)
+    {
+        if (result.Quests.Count == 0)
+            return result.Filter == QuestFilter.Active ? "No quests are active." : "No quests are loaded.";
+
+        StringBuilder text = new();
+        foreach (QuestDto quest in result.Quests)
+        {
+            text.AppendLine($"{quest.Id} {quest.Name}: {Name(quest.Status)}{(quest.MemberOnly ? ", member-only" : "")}");
+            foreach (QuestRequirementDto requirement in quest.Requirements)
+                text.AppendLine($"    needs {requirement.Name} {requirement.Have}/{requirement.Qty}{(requirement.Temp ? " (temp)" : "")}");
+            foreach (QuestRewardDto reward in quest.Rewards)
+                text.AppendLine($"    rewards {reward.Name} x{reward.Qty}");
+        }
+        return text.ToString().TrimEnd();
+    }
+
+    public static string Map(MapDto map)
+    {
+        IEnumerable<string> players = map.Players.Select(p => $"{p.Name} (level {p.Level}, {p.Cell}{(p.Afk ? ", AFK" : "")})");
+        IEnumerable<string> monsters = map.Monsters.Select(m => $"{m.Name} #{m.MapId} ({m.Cell}, {(m.Alive ? $"HP {m.Hp}/{m.MaxHp}" : "dead")})");
+        return $"""
+            Map       {map.Name} (room {map.RoomId})
+            Cells     {string.Join(", ", map.Cells)}
+            Players   {string.Join(", ", players)}
+            Monsters  {(map.Monsters.Count > 0 ? string.Join(", ", monsters) : "none")}
+            """;
+    }
+
+    public static string Drops(DropsResult result) =>
+        result.Drops.Count == 0 ? "No drops." : string.Join("\n", result.Drops.Select(d => $"{d.Id,8}  {d.Name} x{d.Qty}"));
 
     public static string Servers(ServersResult result)
     {

@@ -205,6 +205,10 @@ security add-generic-password -s skua-test-account -a <username> -w   # asks for
 
 To use another service, set `TestAccountService` under `client` in `<SkuaDIR>/Skua.settings.json`. The password and the game's `<pword>` login token are redacted from every log, event and log file. While logged in, the Engine holds off idle sleep (`pmset -g assertions` lists it) and keeps the lag killer on, lifting it for screenshots.
 
+#### Moving and reading the game
+
+Once playing, `skua join <map> [cell] [pad]` and `skua jump <cell> [pad]` (MCP `join`, `jump`) move the player and print where it ended up; `skua status` adds a player summary. `skua inventory [inventory|bank|temp|house]`, `skua quests [loaded|active]`, `skua map` and `skua drops` (MCP tools of the same names) read the game as DTOs; the bank is fetched from the game server the first time it is listed after each login. Anything else is for `eval`.
+
 #### Script Source
 
 `skua scripts update` (MCP `scripts_update`) syncs Scripts into `<SkuaDIR>/Scripts` from the Script Source, `auqw/Scripts@Skua` by default. The first sync from a Script Source downloads every Script; later ones download only the Scripts changed since the last synced commit. `skua scripts search <query> [--tag <tag>]` (MCP `scripts_search`) searches its `scripts.json`.

@@ -10,7 +10,14 @@ public sealed record EngineInfoDto(string Name, string Build, int Protocol, doub
 /// <param name="GameHostUp">Whether the Game Host process is running.</param>
 /// <param name="State">The game state, as the <c>game.state</c> events report it.</param>
 /// <param name="Server">The server the player is on, or null when not playing.</param>
-public sealed record GameStatusDto(bool GameHostUp, GameState State, string? Server);
+/// <param name="Player">A summary of the player, or null when not playing or when the game didn't answer in time.</param>
+public sealed record GameStatusDto(bool GameHostUp, GameState State, string? Server, PlayerDto? Player = null);
+
+/// <summary>The player, as <c>status</c> summarises it.</summary>
+/// <param name="Class">The equipped class, or null when none is.</param>
+/// <param name="InCombat">Whether the player is fighting.</param>
+public sealed record PlayerDto(
+    string Name, int Level, string? Class, int Hp, int MaxHp, int Mp, int MaxMp, int Gold, string Map, string Cell, string Pad, bool Alive, bool InCombat);
 
 public enum GameState
 {
@@ -90,3 +97,85 @@ public sealed record ScreenshotResult(int Width, int Height, long Frame, byte[] 
 /// <param name="Downloaded">How many Script files were downloaded.</param>
 /// <param name="Failed">The paths of Scripts that failed to download; the next update retries them.</param>
 public sealed record ScriptsUpdateResult(ScriptSourceDto Source, ScriptsUpdateMode Mode, string Commit, int Downloaded, IReadOnlyList<string> Failed);
+
+/// <summary>The reply to <c>join</c> and <c>jump</c>: where the player ended up.</summary>
+/// <param name="Map">The map's name, without a room number.</param>
+/// <param name="AlreadyThere">Whether the player was already there, so nothing was done.</param>
+public sealed record LocationResult(string Map, string Cell, string Pad, bool AlreadyThere);
+
+/// <summary>Which of the player's item stores <c>inventory</c> lists.</summary>
+public enum InventoryKind
+{
+    Inventory,
+
+    /// <summary>The bank, which the Engine loads from the game server the first time it is listed after each login.</summary>
+    Bank,
+
+    /// <summary>The temporary inventory, which holds quest items and has no slot limit.</summary>
+    Temp,
+
+    House,
+}
+
+/// <summary>An item in one of the player's item stores.</summary>
+/// <param name="Id">The item's ID, the same for every copy of the item.</param>
+/// <param name="Category">The game's category, e.g. <c>Sword</c>, <c>Class</c> or <c>Quest Item</c>.</param>
+/// <param name="EnhancementLevel">The enhancement level, or null for a temporary item, which has none.</param>
+public sealed record ItemDto(int Id, string Name, int Qty, int MaxStack, string Category, bool Equipped, int? EnhancementLevel);
+
+/// <summary>The reply to <c>inventory</c>.</summary>
+/// <param name="TotalSlots">How many slots the store has, or null for the temporary inventory, which has no limit.</param>
+public sealed record InventoryResult(InventoryKind Kind, int UsedSlots, int? TotalSlots, IReadOnlyList<ItemDto> Items);
+
+/// <summary>Which quests <c>quests</c> lists.</summary>
+public enum QuestFilter
+{
+    /// <summary>Every quest the Game Client has loaded, accepted or not.</summary>
+    Loaded,
+
+    /// <summary>Only the accepted quests.</summary>
+    Active,
+}
+
+public enum QuestStatus
+{
+    NotAccepted,
+    InProgress,
+
+    /// <summary>Accepted, with every requirement met.</summary>
+    Completable,
+}
+
+/// <summary>An item a quest needs to be turned in.</summary>
+/// <param name="Qty">How many the quest needs.</param>
+/// <param name="Have">How many the player has, in the inventory or, for a temporary item, the temporary inventory.</param>
+public sealed record QuestRequirementDto(int ItemId, string Name, int Qty, int Have, bool Temp);
+
+/// <summary>An item a quest can reward.</summary>
+public sealed record QuestRewardDto(int ItemId, string Name, int Qty);
+
+public sealed record QuestDto(
+    int Id, string Name, QuestStatus Status, bool MemberOnly, int Gold, int Xp, IReadOnlyList<QuestRequirementDto> Requirements, IReadOnlyList<QuestRewardDto> Rewards);
+
+/// <summary>The reply to <c>quests</c>.</summary>
+public sealed record QuestsResult(QuestFilter Filter, IReadOnlyList<QuestDto> Quests);
+
+/// <summary>Another player, or the player, on the map.</summary>
+/// <param name="Name">The player's name, in lower case as the game keys it.</param>
+public sealed record MapPlayerDto(string Name, int Level, string Cell, string Pad, int Hp, int MaxHp, bool Afk);
+
+/// <summary>A monster on the map.</summary>
+/// <param name="Id">The kind of monster, the same on every map.</param>
+/// <param name="MapId">This monster on this map, which targets it.</param>
+public sealed record MonsterDto(int Id, int MapId, string Name, string Cell, int Hp, int MaxHp, bool Alive);
+
+/// <summary>The reply to <c>map</c>.</summary>
+/// <param name="RoomId">The game's ID for this instance of the map.</param>
+/// <param name="Cells">The map's cells, which <c>jump</c> takes.</param>
+public sealed record MapDto(string Name, int RoomId, IReadOnlyList<string> Cells, IReadOnlyList<MapPlayerDto> Players, IReadOnlyList<MonsterDto> Monsters);
+
+/// <summary>An item dropped for the player and not yet picked up or rejected.</summary>
+public sealed record DropDto(int Id, string Name, int Qty);
+
+/// <summary>The reply to <c>drops</c>.</summary>
+public sealed record DropsResult(IReadOnlyList<DropDto> Drops);

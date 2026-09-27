@@ -68,6 +68,24 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
     public Task<LogoutResult> LogoutAsync(CancellationToken cancellationToken) =>
         throw new InvalidOperationException("A client called logout after a protocol mismatch.");
 
+    public Task<LocationResult> JoinAsync(string map, string? cell, string? pad, int? timeoutSec, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called join after a protocol mismatch.");
+
+    public Task<LocationResult> JumpAsync(string cell, string? pad, int? timeoutSec, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called jump after a protocol mismatch.");
+
+    public Task<InventoryResult> InventoryAsync(InventoryKind kind, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called inventory after a protocol mismatch.");
+
+    public Task<QuestsResult> QuestsAsync(QuestFilter filter, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called quests after a protocol mismatch.");
+
+    public Task<MapDto> MapAsync(CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called map after a protocol mismatch.");
+
+    public Task<DropsResult> DropsAsync(CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called drops after a protocol mismatch.");
+
     public async ValueTask DisposeAsync()
     {
         _stop.Cancel();

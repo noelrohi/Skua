@@ -54,6 +54,24 @@ public sealed class EngineConnection : IDisposable
     public Task<LogoutResult> LogoutAsync(CancellationToken cancellationToken = default) =>
         CallAsync(rpc => rpc.LogoutAsync(cancellationToken));
 
+    public Task<LocationResult> JoinAsync(string map, string? cell = null, string? pad = null, int? timeoutSec = null, CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.JoinAsync(map, cell, pad, timeoutSec, cancellationToken));
+
+    public Task<LocationResult> JumpAsync(string cell, string? pad = null, int? timeoutSec = null, CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.JumpAsync(cell, pad, timeoutSec, cancellationToken));
+
+    public Task<InventoryResult> InventoryAsync(InventoryKind kind = InventoryKind.Inventory, CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.InventoryAsync(kind, cancellationToken));
+
+    public Task<QuestsResult> QuestsAsync(QuestFilter filter = QuestFilter.Loaded, CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.QuestsAsync(filter, cancellationToken));
+
+    public Task<MapDto> MapAsync(CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.MapAsync(cancellationToken));
+
+    public Task<DropsResult> DropsAsync(CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.DropsAsync(cancellationToken));
+
     /// <summary>Replays the entries after the cursor, then follows new ones until cancelled.</summary>
     public async IAsyncEnumerable<LogPage> SubscribeAsync(
         LogKind[] kinds, string? after = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
