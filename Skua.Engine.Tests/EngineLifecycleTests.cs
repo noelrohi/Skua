@@ -88,7 +88,7 @@ public class EngineLifecycleTests
     public async Task A_held_lock_without_an_answering_socket_is_reported_as_starting_or_hung()
     {
         await using EngineSandbox sandbox = new();
-        Directory.CreateDirectory(Path.GetDirectoryName(sandbox.Endpoint.SocketPath)!);
+        Directory.CreateDirectory(sandbox.Endpoint.EnginesDir);
         using EngineLock hung = EngineLock.TryAcquire(sandbox.Endpoint.LockPath)!;
 
         ControlException error = await Assert.ThrowsAsync<ControlException>(() =>

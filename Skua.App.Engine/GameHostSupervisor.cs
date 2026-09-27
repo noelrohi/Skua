@@ -47,7 +47,6 @@ internal sealed class GameHostSupervisor : IDisposable
         return new GameStatusDto(up, up ? null : GameState.NotStarted, null);
     }
 
-    public void Stop() => _process?.Dispose();
-
-    public void Dispose() => Stop();
+    /// <summary>Closes the Game Host, if one runs. Safe to call more than once.</summary>
+    public void Dispose() => _process?.Dispose();
 }

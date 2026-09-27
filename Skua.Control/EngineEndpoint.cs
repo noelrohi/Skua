@@ -6,8 +6,8 @@ namespace Skua.Control;
 /// Where one Engine listens and locks. Both the Engine and its clients compute it with the same rules.
 /// </summary>
 /// <remarks>
-/// The socket is <c>&lt;SkuaDIR&gt;/engines/&lt;name&gt;.sock</c> unless <c>SKUA_ENGINE_SOCKET</c> overrides it,
-/// and the lock file sits next to the socket with a <c>.lock</c> extension.
+/// The socket is <c>&lt;SkuaDIR&gt;/engines/&lt;name&gt;.sock</c> unless <c>SKUA_ENGINE_SOCKET</c> overrides it.
+/// The lock and the log always sit in <c>&lt;SkuaDIR&gt;/engines</c>, so one data folder never runs two Engines of the same name.
 /// </remarks>
 public sealed record EngineEndpoint
 {
@@ -25,7 +25,9 @@ public sealed record EngineEndpoint
         Name = name;
         SkuaDir = skuaDir;
         SocketPath = socketPath;
-        LockPath = Path.ChangeExtension(socketPath, ".lock");
+        EnginesDir = Path.Combine(skuaDir, "engines");
+        LockPath = Path.Combine(EnginesDir, name + ".lock");
+        LogPath = Path.Combine(EnginesDir, name + ".log");
     }
 
     public string Name { get; }
@@ -34,10 +36,13 @@ public sealed record EngineEndpoint
 
     public string SocketPath { get; }
 
+    /// <summary>Where the lock, the log and (unless overridden) the socket live; only the user may enter it.</summary>
+    public string EnginesDir { get; }
+
     public string LockPath { get; }
 
     /// <summary>The Engine's own diagnostics when it runs detached.</summary>
-    public string LogPath => Path.ChangeExtension(SocketPath, ".log");
+    public string LogPath { get; }
 
     /// <summary>The default Skua data folder, honouring <c>SKUA_DIR</c>.</summary>
     public static string DefaultSkuaDir() =>

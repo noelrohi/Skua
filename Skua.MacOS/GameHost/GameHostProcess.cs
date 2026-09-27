@@ -11,7 +11,6 @@ public sealed class GameHostProcess : IDisposable
     private static readonly TimeSpan ExitGrace = TimeSpan.FromSeconds(1);
 
     private readonly Process _process;
-    private readonly object _writeLock = new();
     private Stream? _stdin;
     private bool _disposed;
 
@@ -62,12 +61,6 @@ public sealed class GameHostProcess : IDisposable
         new Thread(ReadLoop) { IsBackground = true, Name = "Game Host reader" }.Start();
     }
 
-    public void Send(char type, ReadOnlySpan<byte> payload)
-    {
-        lock (_writeLock)
-            BridgeFrames.Write(_stdin ?? throw new InvalidOperationException("The Game Host isn't started."), type, payload);
-    }
-
     /// <summary>Closes the Game Host's stdin so it exits, and kills it if it doesn't within a second.</summary>
     public void Dispose()
     {
@@ -79,8 +72,7 @@ public sealed class GameHostProcess : IDisposable
         {
             try
             {
-                lock (_writeLock)
-                    _stdin.Close();
+                _stdin.Close();
             }
             catch (IOException)
             {

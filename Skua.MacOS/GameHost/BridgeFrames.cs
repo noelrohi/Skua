@@ -35,14 +35,4 @@ public static class BridgeFrames
 
         return new BridgeFrame((char)body[0], body[1..]);
     }
-
-    public static void Write(Stream stream, char type, ReadOnlySpan<byte> payload)
-    {
-        byte[] frame = new byte[4 + 1 + payload.Length];
-        BinaryPrimitives.WriteUInt32LittleEndian(frame, (uint)(1 + payload.Length));
-        frame[4] = (byte)type;
-        payload.CopyTo(frame.AsSpan(5));
-        stream.Write(frame);
-        stream.Flush();
-    }
 }

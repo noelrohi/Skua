@@ -14,12 +14,12 @@ public class EndpointTests
     }
 
     [Fact]
-    public void An_override_moves_the_socket_and_its_lock()
+    public void An_override_moves_only_the_socket()
     {
         EngineEndpoint endpoint = EngineEndpoint.Resolve("default", "/tmp/skua", "/tmp/other/e.sock");
 
         Assert.Equal("/tmp/other/e.sock", endpoint.SocketPath);
-        Assert.Equal("/tmp/other/e.lock", endpoint.LockPath);
+        Assert.Equal("/tmp/skua/engines/default.lock", endpoint.LockPath);
     }
 
     [Theory]

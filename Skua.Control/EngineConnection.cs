@@ -26,7 +26,7 @@ public sealed class EngineConnection : IDisposable
     {
         if (!IsCompatible)
             throw new ControlException(ErrorCode.ProtocolMismatch,
-                $"The running Engine '{Hello.EngineName}' (build {Hello.Build}) speaks protocol {Hello.Protocol}, but this client speaks {ControlProtocol.Version}. Run 'skua engine stop', then try again.");
+                $"The running Engine '{Hello.EngineName}' (build {Hello.Build}) speaks protocol {Hello.Protocol}, but this skua speaks {ControlProtocol.Version}. Run 'skua engine stop', then try again.");
     }
 
     public Task<StatusDto> StatusAsync(CancellationToken cancellationToken = default) =>

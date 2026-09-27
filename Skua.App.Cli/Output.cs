@@ -21,12 +21,12 @@ internal static class Output
             """;
     }
 
-    public static string EngineState(EngineStateDto engine) => engine.State switch
+    public static string Engine(EngineStateDto engine) => engine.State switch
     {
-        "running" when engine.Compatible == false =>
+        EngineState.Running when engine.Compatible == false =>
             $"Engine '{engine.Name}' is running (pid {engine.Pid}, build {engine.Build}) on protocol {engine.Protocol}, not {ControlProtocol.Version}; run 'skua engine stop'.",
-        "running" => $"Engine '{engine.Name}' is running (pid {engine.Pid}, build {engine.Build}).",
-        "startingOrHung" => $"Engine '{engine.Name}' is starting or hung; its socket {engine.Socket} doesn't answer.",
+        EngineState.Running => $"Engine '{engine.Name}' is running (pid {engine.Pid}, build {engine.Build}).",
+        EngineState.StartingOrHung => $"Engine '{engine.Name}' is starting or hung; its socket {engine.Socket} doesn't answer.",
         _ => $"Engine '{engine.Name}' is stopped.",
     };
 

@@ -14,6 +14,8 @@ namespace Skua.App.Engine;
 /// </summary>
 internal sealed class Engine : IEngineRpc
 {
+    private static readonly TimeSpan LockRetry = TimeSpan.FromSeconds(1);
+
     private readonly EngineEndpoint _endpoint;
     private readonly GameHostSupervisor _gameHost;
     private readonly Stopwatch _uptime = Stopwatch.StartNew();
@@ -31,11 +33,13 @@ internal sealed class Engine : IEngineRpc
 
     public static async Task<int> RunAsync(EngineEndpoint endpoint, bool detach)
     {
-        string engineDir = Path.GetDirectoryName(endpoint.SocketPath)!;
-        if (!Directory.Exists(engineDir))
-            Directory.CreateDirectory(engineDir, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        foreach (string dir in new[] { endpoint.EnginesDir, Path.GetDirectoryName(endpoint.SocketPath)! })
+        {
+            if (!Directory.Exists(dir))
+                Directory.CreateDirectory(dir, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
 
-        using EngineLock? engineLock = EngineLock.TryAcquire(endpoint.LockPath);
+        using EngineLock? engineLock = await AcquireLockAsync(endpoint);
         if (engineLock is null)
         {
             // An auto-start that lost the race stays quiet; its client connects to the running Engine.
@@ -84,6 +88,37 @@ internal sealed class Engine : IEngineRpc
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Takes the lock, or returns null when another Engine holds it. A client checking the lock holds it for an instant,
+    /// so a failed attempt is retried for a moment unless a running Engine already answers on the socket.
+    /// </summary>
+    private static async Task<EngineLock?> AcquireLockAsync(EngineEndpoint endpoint)
+    {
+        Stopwatch waited = Stopwatch.StartNew();
+        while (true)
+        {
+            if (EngineLock.TryAcquire(endpoint.LockPath) is { } acquired)
+                return acquired;
+            if (waited.Elapsed > LockRetry || await SocketAnswersAsync(endpoint.SocketPath))
+                return null;
+            await Task.Delay(50);
+        }
+    }
+
+    private static async Task<bool> SocketAnswersAsync(string socketPath)
+    {
+        using Socket socket = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        try
+        {
+            await socket.ConnectAsync(new UnixDomainSocketEndPoint(socketPath));
+            return true;
+        }
+        catch (SocketException)
+        {
+            return false;
+        }
+    }
+
     private async Task ServeAsync()
     {
         using PosixSignalRegistration sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, OnSignal);
@@ -93,8 +128,16 @@ internal sealed class Engine : IEngineRpc
         Socket listener = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         try
         {
-            listener.Bind(new UnixDomainSocketEndPoint(_endpoint.SocketPath));
-            File.SetUnixFileMode(_endpoint.SocketPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            // A umask of 0177 makes bind create the socket as 0600, so others never reach it, even in a shared directory.
+            int umask = Umask.Set(0b001_111_111);
+            try
+            {
+                listener.Bind(new UnixDomainSocketEndPoint(_endpoint.SocketPath));
+            }
+            finally
+            {
+                Umask.Set(umask);
+            }
             listener.Listen();
             EngineLog.Write($"Engine '{_endpoint.Name}' (build {Build}, protocol {ControlProtocol.Version}) listening on {_endpoint.SocketPath}.");
 
@@ -133,7 +176,7 @@ internal sealed class Engine : IEngineRpc
     private void Stop()
     {
         EngineLog.Write("Shutting down.");
-        _gameHost.Stop();
+        _gameHost.Dispose();
         foreach (JsonRpc rpc in _connections.Keys)
             rpc.Dispose();
         File.Delete(_endpoint.SocketPath);

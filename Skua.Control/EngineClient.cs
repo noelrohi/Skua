@@ -28,8 +28,8 @@ public sealed record EngineClientOptions
 /// Connects to an Engine, starting one when none is running.
 /// </summary>
 /// <remarks>
-/// When the socket doesn't answer, the client starts an Engine. If the lock was free, the socket was stale: the new Engine removes it and serves.
-/// If the lock was held, an Engine is starting: the new one exits at once, and the client waits for the other and reports it as starting or hung if it never answers.
+/// When the socket doesn't answer and the lock is free, the socket is stale: the client starts an Engine, which removes it and serves.
+/// When the lock is held, an Engine is starting: the client starts none, waits for it, and reports it as starting or hung if it never answers.
 /// Starting an Engine never logs in.
 /// </remarks>
 public static class EngineClient
@@ -54,10 +54,6 @@ public static class EngineClient
         return connection;
     }
 
-    /// <summary>Connects to a running Engine of any protocol version, or returns null when none answers. Never starts one.</summary>
-    public static Task<EngineConnection?> TryConnectAsync(EngineEndpoint endpoint, CancellationToken cancellationToken = default) =>
-        TryOpenAsync(endpoint, cancellationToken);
-
     /// <summary>
     /// Asks the Engine of any protocol version to shut down, and waits until it has released its lock.
     /// Returns false when no Engine was running.
@@ -67,13 +63,12 @@ public static class EngineClient
     /// </exception>
     public static async Task<bool> StopAsync(EngineEndpoint endpoint, TimeSpan timeout, CancellationToken cancellationToken = default)
     {
-        using (EngineConnection? connection = await TryOpenAsync(endpoint, cancellationToken))
+        using (EngineConnection? connection = await TryConnectAsync(endpoint, cancellationToken))
         {
             if (connection is null)
             {
                 if (EngineLock.IsHeld(endpoint.LockPath))
-                    throw new ControlException(ErrorCode.EngineUnavailable,
-                        $"Engine '{endpoint.Name}' is starting or hung: it holds {endpoint.LockPath} but {endpoint.SocketPath} doesn't answer. See {endpoint.LogPath}.");
+                    throw StartingOrHung(endpoint);
                 return false;
             }
 
@@ -101,26 +96,28 @@ public static class EngineClient
     public static async Task<EngineConnection> ConnectOrStartAsync(EngineClientOptions options, CancellationToken cancellationToken = default)
     {
         EngineEndpoint endpoint = options.Endpoint;
-        if (await TryOpenAsync(endpoint, cancellationToken) is { } running)
+        if (await TryConnectAsync(endpoint, cancellationToken) is { } running)
             return running;
 
-        // The Engine itself takes the lock and removes a stale socket; it exits at once when another Engine holds the lock.
-        using Process started = Start(options);
+        // The new Engine removes the stale socket itself, once it holds the lock. If another client wins the race to start one, it exits at once.
+        using Process? started = EngineLock.IsHeld(endpoint.LockPath) ? null : Start(options);
         Stopwatch waited = Stopwatch.StartNew();
         while (waited.Elapsed < options.StartTimeout)
         {
             await Task.Delay(PollInterval, cancellationToken);
-            if (await TryOpenAsync(endpoint, cancellationToken) is { } connection)
+            if (await TryConnectAsync(endpoint, cancellationToken) is { } connection)
                 return connection;
 
-            if (started.HasExited && started.ExitCode != EngineExitCodes.AlreadyRunning)
+            if (started is { HasExited: true } && started.ExitCode != EngineExitCodes.AlreadyRunning)
                 throw new ControlException(ErrorCode.EngineUnavailable,
                     $"The Engine exited during start with code {started.ExitCode}; see {endpoint.LogPath}.");
         }
 
-        throw new ControlException(ErrorCode.EngineUnavailable,
-            $"Engine '{endpoint.Name}' is starting or hung: it holds {endpoint.LockPath} but {endpoint.SocketPath} doesn't answer. See {endpoint.LogPath}.");
+        throw StartingOrHung(endpoint);
     }
+
+    private static ControlException StartingOrHung(EngineEndpoint endpoint) => new(ErrorCode.EngineUnavailable,
+        $"Engine '{endpoint.Name}' is starting or hung: it holds {endpoint.LockPath} but {endpoint.SocketPath} doesn't answer. See {endpoint.LogPath}.");
 
     private static Process Start(EngineClientOptions options)
     {
@@ -142,7 +139,8 @@ public static class EngineClient
             ?? throw new ControlException(ErrorCode.EngineUnavailable, $"Couldn't start '{options.EngineExecutable}'.");
     }
 
-    private static async Task<EngineConnection?> TryOpenAsync(EngineEndpoint endpoint, CancellationToken cancellationToken)
+    /// <summary>Connects to a running Engine of any protocol version, or returns null when none answers. Never starts one.</summary>
+    public static async Task<EngineConnection?> TryConnectAsync(EngineEndpoint endpoint, CancellationToken cancellationToken = default)
     {
         Socket socket = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         try

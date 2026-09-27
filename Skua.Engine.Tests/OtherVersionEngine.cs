@@ -20,7 +20,7 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
     public OtherVersionEngine(EngineSandbox sandbox)
     {
         _endpoint = sandbox.Endpoint;
-        Directory.CreateDirectory(Path.GetDirectoryName(_endpoint.SocketPath)!);
+        Directory.CreateDirectory(_endpoint.EnginesDir);
         _lock = EngineLock.TryAcquire(_endpoint.LockPath)!;
         _listener.Bind(new UnixDomainSocketEndPoint(_endpoint.SocketPath));
         _listener.Listen();
