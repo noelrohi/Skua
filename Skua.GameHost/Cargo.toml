@@ -1,0 +1,36 @@
+[package]
+name = "skua-gamehost"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Skua's macOS Game Host: runs skua.swf in embedded Ruffle and carries the Bridge over stdin/stdout"
+
+# Ruffle comes from the noelrohi/ruffle fork by full rev (ADR 0004); the tag keeps the rev reachable.
+# rev 8e74e81571ab98e767d60198115f4e292cca68cc = tag skua-20260927-a1277c0 (branch skua on upstream a1277c0).
+# No [patch] section: wgpu-hal and gc-arena are stock. Local Ruffle work: see README.md.
+[dependencies]
+ruffle_core = { git = "https://github.com/noelrohi/ruffle", rev = "8e74e81571ab98e767d60198115f4e292cca68cc", features = ["default_font", "lzma", "default_compatibility_rules"] }
+ruffle_render = { git = "https://github.com/noelrohi/ruffle", rev = "8e74e81571ab98e767d60198115f4e292cca68cc" }
+ruffle_render_wgpu = { git = "https://github.com/noelrohi/ruffle", rev = "8e74e81571ab98e767d60198115f4e292cca68cc" }
+ruffle_frontend_utils = { git = "https://github.com/noelrohi/ruffle", rev = "8e74e81571ab98e767d60198115f4e292cca68cc", features = ["navigator"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+async-task = "4.7.1"
+futures = "0.3"
+image = { version = "0.25", default-features = false, features = ["png"] }
+roxmltree = "0.20"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = "2"
+minifb = "0.28"
+objc2 = "0.6"
+# diag only: the Metal peak command-buffer counter (diag/wgpu-hal-*.patch) and wgpu's resource counters.
+wgpu-hal = { version = "=30.0.1", optional = true }
+wgpu = { version = "=30.0.1", features = ["counters"], optional = true }
+
+[features]
+# Census and memory frames. Builds only against the skua-diag branch plus the patched gc-arena and wgpu-hal
+# in diag/ (see README.md); CI never builds it.
+diag = ["dep:wgpu-hal", "dep:wgpu"]
+
+[profile.release]
+debug = "line-tables-only"

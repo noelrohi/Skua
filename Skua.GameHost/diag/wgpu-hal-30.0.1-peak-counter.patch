@@ -1,0 +1,19 @@
+--- a/src/metal/command.rs
++++ b/src/metal/command.rs
+@@ -488,6 +488,7 @@
+             .queue_shared
+             .command_buffer_created_not_submitted
+             .fetch_add(1, atomic::Ordering::AcqRel);
++        crate::SKUA_MAX_OUTSTANDING.fetch_max(previous + 1, atomic::Ordering::Relaxed);
+         if previous >= adapter::MAX_COMMAND_BUFFERS {
+             let current = previous + 1;
+             log::warn!(
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -3084,3 +3084,6 @@
+     pub stride: u64,
+     pub count: u64,
+ }
++
++/// skua #6 instrumentation: peak Metal command buffers created but not yet submitted.
++pub static SKUA_MAX_OUTSTANDING: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
