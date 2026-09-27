@@ -38,4 +38,18 @@ public partial interface IEngineRpc
     /// </summary>
     [JsonRpcMethod("scripts_update")]
     Task<ScriptsUpdateResult> ScriptsUpdateAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// A page of entries of one kind (or all, merged by seq) after the cursor, or from the oldest entry held when there is none.
+    /// </summary>
+    /// <param name="kind">One kind, or <see cref="LogKind.All"/>.</param>
+    /// <param name="after">The <see cref="LogPage.Next"/> of an earlier page, or null for the oldest entry held.</param>
+    /// <param name="max">Entries per page: 200 by default, capped at 1000. A reply also stays within 1 MB.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    [JsonRpcMethod("logs")]
+    Task<LogPage> LogsAsync(LogKind kind = LogKind.All, string? after = null, int? max = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Replays the entries of the given kinds after the cursor, then follows new ones until cancelled. CLI-only.</summary>
+    [JsonRpcMethod("subscribe")]
+    IAsyncEnumerable<LogPage> SubscribeAsync(LogKind[] kinds, string? after = null, CancellationToken cancellationToken = default);
 }

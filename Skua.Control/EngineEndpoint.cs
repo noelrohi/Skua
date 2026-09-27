@@ -28,6 +28,7 @@ public sealed record EngineEndpoint
         EnginesDir = Path.Combine(skuaDir, "engines");
         LockPath = Path.Combine(EnginesDir, name + ".lock");
         LogPath = Path.Combine(EnginesDir, name + ".log");
+        LogFilesDir = Path.Combine(EnginesDir, "logs", name);
     }
 
     public string Name { get; }
@@ -43,6 +44,9 @@ public sealed record EngineEndpoint
 
     /// <summary>The Engine's own diagnostics when it runs detached.</summary>
     public string LogPath { get; }
+
+    /// <summary>Where the Engine writes one JSONL file of its log entries per start, keeping the last 10.</summary>
+    public string LogFilesDir { get; }
 
     /// <summary>The default Skua data folder, honouring <c>SKUA_DIR</c>.</summary>
     public static string DefaultSkuaDir() =>

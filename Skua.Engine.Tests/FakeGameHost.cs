@@ -63,6 +63,27 @@ public sealed class FakeGameHost
         return this;
     }
 
+    /// <summary>Sends an 'L' log line at a level (1 error, 2 warn).</summary>
+    public FakeGameHost Log(int level, string text)
+    {
+        _lines.Add($"log {level} {text}");
+        return this;
+    }
+
+    /// <summary>Runs one directive <paramref name="count"/> times, with <c>{i}</c> in it replaced by 0, 1, 2…</summary>
+    public FakeGameHost Repeat(int count, string directive)
+    {
+        _lines.Add($"repeat {count} {directive}");
+        return this;
+    }
+
+    /// <summary>Sends a frame header that declares a length of 0, which corrupts the Bridge stream.</summary>
+    public FakeGameHost Corrupt()
+    {
+        _lines.Add("corrupt");
+        return this;
+    }
+
     public FakeGameHost Sleep(int milliseconds)
     {
         _lines.Add($"sleep {milliseconds}");

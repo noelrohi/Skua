@@ -28,6 +28,15 @@ internal sealed class EngineTools(Func<EngineClientOptions> options)
     public Task<CallToolResult> ScriptsUpdate(CancellationToken cancellationToken) =>
         CallAsync(connection => connection.ScriptsUpdateAsync(cancellationToken), cancellationToken);
 
+    [McpServerTool(Name = "logs", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(LogPage))]
+    [Description("A page of the Engine's log entries in seq order, with the cursor for the next page and whether entries after the given cursor are gone (evicted, or the Engine restarted). Each entry has seq, ts (UTC ms), kind and run, then text or type + data.")]
+    public Task<CallToolResult> Logs(
+        [Description("script, debug, flash, events, or all (merged by seq).")] LogKind kind = LogKind.All,
+        [Description("Return entries after this cursor: the 'next' of an earlier reply. Omit it to start from the oldest entry held.")] string? after = null,
+        [Description("Entries per page: 200 by default, at most 1000. A reply also stays within 1 MB.")] int? max = null,
+        CancellationToken cancellationToken = default) =>
+        CallAsync(connection => connection.LogsAsync(kind, after, max, cancellationToken), cancellationToken);
+
     /// <summary>Calls the Engine and returns the DTO as JSON text plus structured content, or the error code and message with isError.</summary>
     private async Task<CallToolResult> CallAsync<T>(Func<EngineConnection, Task<T>> call, CancellationToken cancellationToken)
     {

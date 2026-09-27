@@ -66,6 +66,9 @@ public sealed class GameHostProcess : IDisposable
         }
     }
 
+    /// <summary>Raised once the process runs with its pid, before any frame, log line or exit is raised.</summary>
+    public event Action<int>? Started;
+
     /// <summary>Raised on the dispatch thread, in order, with the invoke XML of each <c>ExternalInterface.call</c> from the Game Client.</summary>
     public event Action<string>? Invoked;
 
@@ -74,6 +77,9 @@ public sealed class GameHostProcess : IDisposable
 
     /// <summary>Raised for each Ruffle/wgpu log line and stderr line of the Game Host, and when the Bridge stops.</summary>
     public event Action<string>? LogLine;
+
+    /// <summary>Raised once when the Game Host sends a corrupt frame; the Bridge reads nothing after it.</summary>
+    public event Action<string>? BridgeFailed;
 
     /// <summary>Raised once when the Game Host process ends, with its exit code.</summary>
     public event Action<int>? Exited;
@@ -87,6 +93,7 @@ public sealed class GameHostProcess : IDisposable
 
         _process.Start();
         _stdin = _process.StandardInput.BaseStream;
+        Started?.Invoke(_process.Id);
         _process.BeginErrorReadLine();
         new Thread(ReadLoop) { IsBackground = true, Name = "Game Host reader" }.Start();
         new Thread(DispatchLoop) { IsBackground = true, Name = "Game Host dispatch" }.Start();
@@ -171,7 +178,11 @@ public sealed class GameHostProcess : IDisposable
             while (BridgeFrames.ReadAsync(stdout).GetAwaiter().GetResult() is { } frame)
                 Receive(frame);
         }
-        catch (Exception e) when (e is IOException or InvalidDataException or ObjectDisposedException)
+        catch (InvalidDataException e)
+        {
+            BridgeFailed?.Invoke(e.Message);
+        }
+        catch (Exception e) when (e is IOException or ObjectDisposedException)
         {
             LogLine?.Invoke($"Bridge read stopped: {e.Message}");
         }
