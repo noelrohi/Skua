@@ -79,6 +79,7 @@ internal sealed class ScriptHistory
         // A short commit, as git abbreviates it; so a year alone is read as a date.
         if (since.Length >= 7 && updates.LastOrDefault(u => u.Commit.StartsWith(since, StringComparison.OrdinalIgnoreCase)) is { } reached)
             return reached.At;
+        // Local time, as the user who typed the date means it: the Engine takes its time zone from the CLI that starts it.
         if (DateTimeOffset.TryParse(since, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out DateTimeOffset time))
             return time;
         throw RpcErrors.Of(ErrorCode.InvalidArgument,

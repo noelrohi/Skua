@@ -254,6 +254,8 @@ skua scripts new [--since <date|commit>]    # MCP scripts_new; what updates adde
 
 Each update that downloads Scripts is recorded in `<SkuaDIR>/scripts-history.json`, next to `scripts-commit.txt`, so `scripts new` works offline. A full download is the starting point, so it isn't listed as new.
 
+`--since` takes a date or a time, read as local time: `--since 2026-09-01` starts at midnight on the Mac's clock, not UTC. Add an offset to give another zone, e.g. `2026-09-01T00:00Z`. The Engine reads the date in the time zone it started with, which it takes from the CLI that starts it: the Mac's own, or `TZ` if set. After changing the zone, run `skua engine stop` so the next command starts an Engine in the new one.
+
 To use a fork, set `ScriptSource` under `shared` in `<SkuaDIR>/Skua.settings.json`, then run `skua engine stop`, since the Engine reads settings when it starts:
 
 ```json

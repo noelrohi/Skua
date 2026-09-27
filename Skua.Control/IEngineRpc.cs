@@ -59,7 +59,7 @@ public partial interface IEngineRpc
     /// The Scripts that <c>scripts_update</c> added or changed on disk since a point, from the Engine's record of its updates; a full download
     /// is the starting point, not news. Works offline.
     /// </summary>
-    /// <param name="since">A date or time, or a commit (its first 7 characters or more) an update synced to; by default the last 7 days.</param>
+    /// <param name="since">A date or time, in the Engine's local time unless it has an offset, or a commit (its first 7 characters or more) an update synced to; by default the last 7 days.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
     /// <remarks>Fails with <see cref="ErrorCode.InvalidArgument"/> for a <paramref name="since"/> that is neither a date nor a recorded commit.</remarks>
     [JsonRpcMethod("scripts_new")]

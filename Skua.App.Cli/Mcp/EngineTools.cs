@@ -102,7 +102,7 @@ internal sealed class EngineTools(Func<EngineClientOptions> options)
     [McpServerTool(Name = "scripts_new", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(ScriptsNewResult))]
     [Description("The Scripts that scripts_update added or changed on disk since a point, the latest first: path, name, change (added or changed), when and the commit. A full download is the starting point, not news. Reads the Engine's record of its updates, so it works offline.")]
     public Task<CallToolResult> ScriptsNew(
-        [Description("A date or time (e.g. \"2026-09-01\"), or a commit (its first 7 characters or more) an update synced to; omit it for the last 7 days.")] string? since = null,
+        [Description("A date or time, in the Engine's local time unless it has an offset (e.g. \"2026-09-01\" is local midnight, \"2026-09-01T00:00Z\" is UTC), or a commit (its first 7 characters or more) an update synced to; omit it for the last 7 days.")] string? since = null,
         CancellationToken cancellationToken = default) =>
         CallAsync(connection => connection.ScriptsNewAsync(since, cancellationToken), cancellationToken);
 
