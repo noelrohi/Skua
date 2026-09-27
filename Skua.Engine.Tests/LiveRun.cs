@@ -20,6 +20,10 @@ public sealed record LiveRunOptions
 
     /// <summary>The Scripts checkout copied into the data folder, for runs that start a Script.</summary>
     public string? ScriptsCheckout { get; init; }
+
+    /// <summary>Whether the screen is locked and whether the display is asleep; the Mac's own, except in the dry runs.</summary>
+    public Func<Task<(bool Locked, bool DisplayAsleep)>> Visibility { get; init; } =
+        async () => (await LiveMetrics.ScreenLockedAsync(), LiveMetrics.DisplayAsleep());
 }
 
 /// <summary>The outcome of a live run.</summary>
@@ -279,13 +283,14 @@ public sealed class LiveRun
     {
         Note($"waiting up to {timeout.TotalMinutes:0} min for the screen to be locked or the display to sleep");
         Stopwatch waited = Stopwatch.StartNew();
-        while (!LiveMetrics.DisplayAsleep() && !await LiveMetrics.ScreenLockedAsync())
+        while (await _options.Visibility() is (false, false))
         {
             if (waited.Elapsed > timeout)
                 throw End($"The screen wasn't locked, nor the display asleep, within {timeout.TotalMinutes:0} min.");
             await Task.Delay(TimeSpan.FromSeconds(5), Ct);
         }
-        Note($"hidden after {waited.Elapsed.TotalSeconds:0} s: locked={await LiveMetrics.ScreenLockedAsync()}, display asleep={LiveMetrics.DisplayAsleep()}");
+        (bool locked, bool asleep) = await _options.Visibility();
+        Note($"hidden after {waited.Elapsed.TotalSeconds:0} s: locked={locked}, display asleep={asleep}");
     }
 
     /// <summary>Runs one phase: a sample every minute, then its gates.</summary>
@@ -363,6 +368,10 @@ public sealed class LiveRun
                 stats = _stats.Where(s => s.Ts > startTs).ToList();
             if (stats.Count < 2)
                 Fail($"{phase.Name}: only {stats.Count} Game Host stats lines arrived, so its frame rate is unknown.");
+            else
+                Note($"{phase.Name}: {stats.Count} Game Host stats lines; frame rate {string.Join("/", stats.Select(s => s.FrameRate).Distinct())} fps, " +
+                     $"ticks {stats.Zip(stats.Skip(1), LiveMetrics.TicksPerSecond).Min():0}–{stats.Zip(stats.Skip(1), LiveMetrics.TicksPerSecond).Max():0}/s, " +
+                     $"largest tick gap {stats.Skip(1).Max(s => s.MaxTickGapMs)} ms");
             for (int i = 1; i < stats.Count; i++)
             {
                 double ticks = LiveMetrics.TicksPerSecond(stats[i - 1], stats[i]);
@@ -385,9 +394,10 @@ public sealed class LiveRun
         int scriptLines;
         lock (_scriptLineTimes)
             scriptLines = _scriptLineTimes.Count(t => t >= from && t < to);
+        (bool locked, bool asleep) = await _options.Visibility();
         return new MinuteSample(
             phase, minute, DateTimeOffset.Now,
-            await ProcessMemory.ReadAsync(_gameHostPid), await ProcessMemory.ReadAsync(enginePid), getter, await LiveMetrics.LoadAverageAsync(), await LiveMetrics.ScreenLockedAsync(), LiveMetrics.DisplayAsleep(), scriptLines,
+            await ProcessMemory.ReadAsync(_gameHostPid), await ProcessMemory.ReadAsync(enginePid), getter, await LiveMetrics.LoadAverageAsync(), locked, asleep, scriptLines,
             (await _connection.StatusAsync(Ct)).Game.Player);
     }
 

@@ -109,6 +109,8 @@ public class LiveRunTests
         Assert.Equal(["hidden minutes 0–5:", "hidden minutes 5–6:"],
             result.Failures.Where(f => f.Contains("5000 → 5000 gold", StringComparison.Ordinal)).Select(f => string.Join(' ', f.Split(' ')[..3])));
         Assert.DoesNotContain(result.Failures, f => f.Contains("tick", StringComparison.Ordinal) || f.Contains("fps", StringComparison.Ordinal));
+        Assert.Contains("fps, ticks 1000–1000/s, largest tick gap 35 ms",
+            await File.ReadAllTextAsync(Path.Combine(result.OutDir, "report.txt"), TestContext.Current.CancellationToken));
         Assert.True(result.Stats.Count >= 2);
     }
 
@@ -320,7 +322,14 @@ public class LiveRunTests
                     Thread.Sleep(200);
                 }
                 """));
-            LiveRunOptions options = new() { SampleInterval = DrySampleInterval, OutDir = Path.Combine(files.SkuaDir, "out"), ScriptsCheckout = checkout };
+            LiveRunOptions options = new()
+            {
+                SampleInterval = DrySampleInterval,
+                OutDir = Path.Combine(files.SkuaDir, "out"),
+                ScriptsCheckout = checkout,
+                // Visible, whatever the Mac's own screen and display are doing.
+                Visibility = () => Task.FromResult((false, false)),
+            };
             return new DryRun(files, api, keychain, gameHost, environment, options);
         }
 
