@@ -63,6 +63,12 @@ public sealed class EngineConnection : IDisposable
     public Task<ScriptsNewResult> ScriptsNewAsync(string? since = null, CancellationToken cancellationToken = default) =>
         CallAsync(rpc => rpc.ScriptsNewAsync(since, cancellationToken));
 
+    public Task<ScriptSourceResult> ScriptsSourceAsync(CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.ScriptsSourceAsync(cancellationToken));
+
+    public Task<ScriptSourceResult> ScriptsSourceSetAsync(string? source, CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.ScriptsSourceSetAsync(source, cancellationToken));
+
     public Task<LogPage> LogsAsync(LogKind kind = LogKind.All, string? after = null, int? max = null, CancellationToken cancellationToken = default) =>
         CallAsync(rpc => rpc.LogsAsync(kind, after, max, cancellationToken));
 

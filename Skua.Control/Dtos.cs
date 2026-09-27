@@ -73,6 +73,12 @@ public sealed record ErrorDataDto(ErrorCode Code, IReadOnlyList<string>? Diagnos
 /// <summary>The repository the Engine fetches Scripts from: <c>owner/repo@branch</c>.</summary>
 public sealed record ScriptSourceDto(string Owner, string Repo, string Branch);
 
+/// <summary>The reply to <c>scripts_source</c> and <c>scripts_source_set</c>.</summary>
+/// <param name="Source">The Script Source the Engine fetches Scripts from.</param>
+/// <param name="IsDefault">Whether the setting is unset, so <see cref="Source"/> is <see cref="Default"/>.</param>
+/// <param name="Default">The Script Source the Engine uses when the setting is unset.</param>
+public sealed record ScriptSourceResult(ScriptSourceDto Source, bool IsDefault, ScriptSourceDto Default);
+
 /// <summary>A Script in the Script Source.</summary>
 /// <param name="Path">The Script's path in the Script Source, which identifies it, e.g. <c>Farm/Leveling.cs</c>.</param>
 /// <param name="Name">The Script's name from <c>scripts.json</c>, or null when it has none.</param>

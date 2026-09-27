@@ -160,8 +160,9 @@ public class SharedSettings
     [JsonPropertyName("CheckBotScriptsUpdates")]
     public bool CheckBotScriptsUpdates { get; set; } = true;
 
+    /// <summary>The Script Source, or null for the app's default; left unset, it stays out of the file, so the default can change.</summary>
     [JsonPropertyName("ScriptSource")]
-    public ScriptSource ScriptSource { get; set; } = new();
+    public ScriptSource? ScriptSource { get; set; }
 
     [JsonExtensionData]
     public Dictionary<string, object>? ExtensionData { get; set; }
@@ -194,8 +195,7 @@ public class SharedSettings
         if (string.IsNullOrEmpty(ApplicationVersion))
             ApplicationVersion = ClientFileSources.AssemblyVersion;
 
-        ScriptSource ??= new();
-        ScriptSource.InitializeDefaults();
+        ScriptSource?.InitializeDefaults();
     }
 }
 

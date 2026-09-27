@@ -12,7 +12,7 @@ public interface IGetScriptsService : INotifyPropertyChanged
     int Missing => Total - Downloaded;
     RangedObservableCollection<ScriptInfo> Scripts { get; }
 
-    /// <summary>The Script Source setting that Scripts and their data files come from.</summary>
+    /// <summary>The Script Source that Scripts and their data files come from: the setting, or the app's default while it is unset.</summary>
     ScriptSource Source { get; }
 
     ValueTask<List<ScriptInfo>> GetScriptsAsync(IProgress<string>? progress, CancellationToken token);

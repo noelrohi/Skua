@@ -65,6 +65,21 @@ public partial interface IEngineRpc
     [JsonRpcMethod("scripts_new")]
     Task<ScriptsNewResult> ScriptsNewAsync(string? since = null, CancellationToken cancellationToken = default);
 
+    /// <summary>The Script Source the Engine fetches Scripts from, whether it is the default, and the default. Works offline.</summary>
+    [JsonRpcMethod("scripts_source")]
+    Task<ScriptSourceResult> ScriptsSourceAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sets the Script Source in the settings file, or resets it to the default, keeping the rest of the file; the Engine uses it from the next
+    /// call, and the next <c>scripts_update</c> from a Script Source other than the last one synced is a full download. CLI-only. Refused with
+    /// <see cref="ErrorCode.ScriptRunning"/> while a Script runs and <see cref="ErrorCode.Busy"/> during an update.
+    /// </summary>
+    /// <param name="source"><c>owner/repo@branch</c>, e.g. <c>noelrohi/Scripts@Skua</c>, or null for the default.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    /// <remarks>Fails with <see cref="ErrorCode.InvalidArgument"/> for a <paramref name="source"/> that isn't <c>owner/repo@branch</c>.</remarks>
+    [JsonRpcMethod("scripts_source_set")]
+    Task<ScriptSourceResult> ScriptsSourceSetAsync(string? source, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// A page of entries of one kind (or all, merged by seq) after the cursor, or from the oldest entry held when there is none.
     /// </summary>

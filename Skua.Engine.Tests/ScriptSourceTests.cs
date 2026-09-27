@@ -12,17 +12,55 @@ public class ScriptSourceTests
     private static readonly FakeScript Gold = new("Farm/Gold.cs", "// gold v1", "Gold Farm", "Farms gold.", "farm", "gold");
     private static readonly FakeScript CoreBots = new("CoreBots.cs", "// core v1");
 
+    private static readonly FakeScript LevelingWithCoreBots = new("Farm/Leveling.cs", """
+        //cs_include Scripts/CoreBots.cs
+        using Skua.Core.Interfaces;
+
+        public class Leveling
+        {
+            public void ScriptMain(IScriptInterface bot) => new CoreBots().Ask();
+        }
+        """, "Leveling", "Levels you to 100.");
+
+    /// <summary>Like upstream's CoreBots.cs: it uses Windows Forms, which macOS lacks.</summary>
+    private static readonly FakeScript UpstreamCoreBots = new("CoreBots.cs", """
+        using System.Windows.Forms;
+
+        public class CoreBots
+        {
+            public void Ask() => MessageBox.Show("Continue?");
+        }
+        """);
+
+    /// <summary>Like the fork's patched CoreBots.cs: the Windows Forms use is behind <c>#if !MACOS</c>.</summary>
+    private static readonly FakeScript MacCoreBots = new("CoreBots.cs", """
+        #if !MACOS
+        using System.Windows.Forms;
+        #endif
+
+        public class CoreBots
+        {
+        #if !MACOS
+            public void Ask() => MessageBox.Show("Continue?");
+        #else
+            public void Ask() { }
+        #endif
+        }
+        """);
+
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
     [Fact]
     public async Task The_first_update_downloads_the_full_tree_from_the_default_Script_Source()
     {
         await using EngineSandbox sandbox = new();
         await using FakeGitHub github = new();
-        github.Commit("auqw", "Scripts", "Skua", Leveling, Gold, CoreBots);
+        github.Commit("noelrohi", "Scripts", "Skua", Leveling, Gold, CoreBots);
         using EngineConnection connection = await StartEngineAsync(sandbox, github);
 
         ScriptsUpdateResult result = await connection.ScriptsUpdateAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal(new ScriptSourceDto("auqw", "Scripts", "Skua"), result.Source);
+        Assert.Equal(new ScriptSourceDto("noelrohi", "Scripts", "Skua"), result.Source);
         Assert.Equal(ScriptsUpdateMode.Full, result.Mode);
         Assert.Equal(3, result.Downloaded);
         Assert.Empty(result.Failed);
@@ -31,20 +69,40 @@ public class ScriptSourceTests
     }
 
     [Fact]
-    public async Task The_Script_Source_setting_decides_where_scripts_json_and_the_files_come_from()
+    public async Task With_no_settings_the_Engine_syncs_the_Mac_ready_fork_so_Leveling_compiles()
     {
         await using EngineSandbox sandbox = new();
         await using FakeGitHub github = new();
-        github.Commit("auqw", "Scripts", "Skua", Leveling, CoreBots);
-        github.Commit("noelrohi", "Scripts", "Skua", Leveling, CoreBots with { Content = "// core v1 // skua-macos: patched" });
-        SetScriptSource(sandbox, "noelrohi", "Scripts", "Skua");
-        using EngineConnection connection = await StartEngineAsync(sandbox, github);
+        github.Commit("auqw", "Scripts", "Skua", LevelingWithCoreBots, UpstreamCoreBots);
+        github.Commit("noelrohi", "Scripts", "Skua", LevelingWithCoreBots, MacCoreBots);
+        await using GameFixture game = await GameFixture.StartAsync(sandbox, environment: github.Environment());
 
-        ScriptsUpdateResult result = await connection.ScriptsUpdateAsync(TestContext.Current.CancellationToken);
+        ScriptsUpdateResult update = await game.Connection.ScriptsUpdateAsync(Ct);
+        ScriptOptionsResult options = await game.Connection.ScriptOptionsAsync("Farm/Leveling.cs", Ct);
 
-        Assert.Equal(new ScriptSourceDto("noelrohi", "Scripts", "Skua"), result.Source);
-        Assert.Equal("// core v1 // skua-macos: patched", await ReadScriptAsync(sandbox, "CoreBots.cs"));
+        Assert.Equal(new ScriptSourceDto("noelrohi", "Scripts", "Skua"), update.Source);
         Assert.DoesNotContain(github.Requests, r => r.Contains("/auqw/", StringComparison.OrdinalIgnoreCase));
+        Assert.Empty(options.Options);
+    }
+
+    [Fact]
+    public async Task An_explicit_Script_Source_setting_wins_over_the_default()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeGitHub github = new();
+        github.Commit("auqw", "Scripts", "Skua", LevelingWithCoreBots, UpstreamCoreBots);
+        github.Commit("noelrohi", "Scripts", "Skua", LevelingWithCoreBots, MacCoreBots);
+        SetScriptSource(sandbox, "auqw", "Scripts", "Skua");
+        await using GameFixture game = await GameFixture.StartAsync(sandbox, environment: github.Environment());
+
+        ScriptsUpdateResult update = await game.Connection.ScriptsUpdateAsync(Ct);
+        ControlException compile = await Assert.ThrowsAsync<ControlException>(() => game.Connection.ScriptOptionsAsync("Farm/Leveling.cs", Ct));
+
+        Assert.Equal(new ScriptSourceDto("auqw", "Scripts", "Skua"), update.Source);
+        Assert.DoesNotContain(github.Requests, r => r.Contains("/noelrohi/", StringComparison.OrdinalIgnoreCase));
+        // The fake stands in for upstream's CoreBots, whose Windows Forms don't compile on macOS.
+        Assert.Equal(ErrorCode.CompileFailed, compile.Code);
+        Assert.Contains(compile.Diagnostics!, d => d.Contains("System.Windows", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -52,14 +110,14 @@ public class ScriptSourceTests
     {
         await using EngineSandbox sandbox = new();
         await using FakeGitHub github = new();
-        github.Commit("auqw", "Scripts", "Skua", Leveling, Gold, CoreBots);
+        github.Commit("noelrohi", "Scripts", "Skua", Leveling, Gold, CoreBots);
         using EngineConnection connection = await StartEngineAsync(sandbox, github);
         await connection.ScriptsUpdateAsync(TestContext.Current.CancellationToken);
 
-        github.Commit("auqw", "Scripts", "Skua", Gold with { Content = "// gold v2" });
+        github.Commit("noelrohi", "Scripts", "Skua", Gold with { Content = "// gold v2" });
         github.ClearRequests();
         ScriptsUpdateResult incremental = await connection.ScriptsUpdateAsync(TestContext.Current.CancellationToken);
-        IReadOnlyList<string> downloaded = github.ScriptDownloads("auqw", "Scripts", "Skua");
+        IReadOnlyList<string> downloaded = github.ScriptDownloads("noelrohi", "Scripts", "Skua");
         ScriptsUpdateResult upToDate = await connection.ScriptsUpdateAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(ScriptsUpdateMode.Incremental, incremental.Mode);
@@ -72,25 +130,93 @@ public class ScriptSourceTests
     }
 
     [Fact]
-    public async Task Changing_the_Script_Source_makes_the_next_update_a_full_download_from_it()
+    public async Task Changing_the_Script_Source_takes_effect_without_a_restart_and_makes_the_next_update_a_full_download_from_it()
     {
         await using EngineSandbox sandbox = new();
         await using FakeGitHub github = new();
-        github.Commit("auqw", "Scripts", "Skua", Leveling, CoreBots);
         github.Commit("noelrohi", "Scripts", "Skua", Leveling, CoreBots with { Content = "// core fork" });
-        using (EngineConnection upstream = await StartEngineAsync(sandbox, github))
-        {
-            await upstream.ScriptsUpdateAsync(TestContext.Current.CancellationToken);
-        }
-        await EngineClient.StopAsync(sandbox.Endpoint, EngineSandbox.StopTimeout, TestContext.Current.CancellationToken);
+        github.Commit("auqw", "Scripts", "Skua", Leveling, CoreBots);
+        using EngineConnection connection = await StartEngineAsync(sandbox, github);
+        await connection.ScriptsUpdateAsync(Ct);
 
-        SetScriptSource(sandbox, "noelrohi", "Scripts", "Skua");
-        using EngineConnection fork = await StartEngineAsync(sandbox, github);
-        ScriptsUpdateResult result = await fork.ScriptsUpdateAsync(TestContext.Current.CancellationToken);
+        ScriptSourceResult set = await connection.ScriptsSourceSetAsync("auqw/Scripts@Skua", Ct);
+        ScriptsUpdateResult upstream = await connection.ScriptsUpdateAsync(Ct);
+        string upstreamCore = await ReadScriptAsync(sandbox, "CoreBots.cs");
+        ScriptSourceResult reset = await connection.ScriptsSourceSetAsync(null, Ct);
+        ScriptsUpdateResult fork = await connection.ScriptsUpdateAsync(Ct);
 
-        Assert.Equal(ScriptsUpdateMode.Full, result.Mode);
-        Assert.Equal(new ScriptSourceDto("noelrohi", "Scripts", "Skua"), result.Source);
+        Assert.Equal(new ScriptSourceResult(new("auqw", "Scripts", "Skua"), IsDefault: false, ScriptSourceSetting.Default), set);
+        Assert.Equal((ScriptsUpdateMode.Full, new ScriptSourceDto("auqw", "Scripts", "Skua")), (upstream.Mode, upstream.Source));
+        Assert.Equal("// core v1", upstreamCore);
+        Assert.Equal(new ScriptSourceResult(ScriptSourceSetting.Default, IsDefault: true, ScriptSourceSetting.Default), reset);
+        Assert.Equal((ScriptsUpdateMode.Full, ScriptSourceSetting.Default), (fork.Mode, fork.Source));
         Assert.Equal("// core fork", await ReadScriptAsync(sandbox, "CoreBots.cs"));
+    }
+
+    [Fact]
+    public async Task The_CLI_shows_sets_and_resets_the_Script_Source_leaving_the_other_settings_alone()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeGitHub github = new();
+        string settings = Path.Combine(sandbox.SkuaDir, "Skua.settings.json");
+        File.WriteAllText(settings, """{"shared":{"CheckBotScriptsUpdates":false},"client":{"TestAccountService":"skua-account-main","AnimationFrameRate":24}}""");
+
+        ProcessResult shown = await sandbox.RunCliAsync(github.Environment(), "scripts", "source");
+        ProcessResult set = await sandbox.RunCliAsync(github.Environment(), "scripts", "source", "auqw/Scripts@Skua", "--json");
+        ProcessResult shownSet = await sandbox.RunCliAsync(github.Environment(), "scripts", "source");
+        string afterSet = File.ReadAllText(settings);
+        ProcessResult reset = await sandbox.RunCliAsync(github.Environment(), "scripts", "source", "--default");
+        ProcessResult shownReset = await sandbox.RunCliAsync(github.Environment(), "scripts", "source", "--json");
+        ProcessResult invalid = await sandbox.RunCliAsync(github.Environment(), "scripts", "source", "not a source");
+        ProcessResult both = await sandbox.RunCliAsync(github.Environment(), "scripts", "source", "auqw/Scripts@Skua", "--default");
+
+        Assert.True(shown.ExitCode == 0, shown.Stderr);
+        Assert.Equal("noelrohi/Scripts@Skua (the default)", shown.Stdout.Trim());
+        Assert.True(set.ExitCode == 0, set.Stderr);
+        using (JsonDocument json = JsonDocument.Parse(set.Stdout))
+        {
+            Assert.Equal("auqw", json.RootElement.GetProperty("source").GetProperty("owner").GetString());
+            Assert.False(json.RootElement.GetProperty("isDefault").GetBoolean());
+            Assert.Equal("noelrohi", json.RootElement.GetProperty("default").GetProperty("owner").GetString());
+        }
+        Assert.StartsWith("auqw/Scripts@Skua (set in Skua.settings.json; the default is noelrohi/Scripts@Skua", shownSet.Stdout);
+        using (JsonDocument file = JsonDocument.Parse(afterSet))
+        {
+            Assert.Equal("auqw", file.RootElement.GetProperty("shared").GetProperty("ScriptSource").GetProperty("Owner").GetString());
+            Assert.False(file.RootElement.GetProperty("shared").GetProperty("CheckBotScriptsUpdates").GetBoolean());
+            Assert.Equal("skua-account-main", file.RootElement.GetProperty("client").GetProperty("TestAccountService").GetString());
+            Assert.Equal(24, file.RootElement.GetProperty("client").GetProperty("AnimationFrameRate").GetInt32());
+        }
+        Assert.True(reset.ExitCode == 0, reset.Stderr);
+        Assert.Contains("Now fetching Scripts from noelrohi/Scripts@Skua (the default)", reset.Stdout);
+        using (JsonDocument json = JsonDocument.Parse(shownReset.Stdout))
+            Assert.True(json.RootElement.GetProperty("isDefault").GetBoolean());
+        using (JsonDocument file = JsonDocument.Parse(File.ReadAllText(settings)))
+        {
+            Assert.False(file.RootElement.GetProperty("shared").TryGetProperty("ScriptSource", out _));
+            Assert.False(file.RootElement.GetProperty("shared").GetProperty("CheckBotScriptsUpdates").GetBoolean());
+            Assert.Equal("skua-account-main", file.RootElement.GetProperty("client").GetProperty("TestAccountService").GetString());
+            Assert.Equal(24, file.RootElement.GetProperty("client").GetProperty("AnimationFrameRate").GetInt32());
+        }
+        Assert.Equal(ExitCodes.For(ErrorCode.InvalidArgument), invalid.ExitCode);
+        Assert.Contains("owner/repo@branch", invalid.Stderr);
+        Assert.NotEqual(0, both.ExitCode);
+    }
+
+    [Fact]
+    public async Task Changing_the_Script_Source_is_refused_while_a_Script_runs()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture game = await GameFixture.StartAsync(sandbox);
+        TestScripts.Write(sandbox, "Tests/Loop.cs", TestScripts.Loop);
+        await game.Connection.ScriptStartAsync("Tests/Loop.cs", cancellationToken: Ct);
+
+        ControlException refused = await Assert.ThrowsAsync<ControlException>(() => game.Connection.ScriptsSourceSetAsync("auqw/Scripts@Skua", Ct));
+        ScriptSourceResult source = await game.Connection.ScriptsSourceAsync(Ct);
+        await game.Connection.ScriptStopAsync(Ct);
+
+        Assert.Equal(ErrorCode.ScriptRunning, refused.Code);
+        Assert.True(source.IsDefault);
     }
 
     [Fact]
@@ -98,7 +224,7 @@ public class ScriptSourceTests
     {
         await using EngineSandbox sandbox = new();
         await using FakeGitHub github = new();
-        github.Commit("auqw", "Scripts", "Skua", Leveling, Gold, CoreBots, new FakeScript("Story/Doomwood.cs", "// story", "Doomwood Story", "Completes the Doomwood saga.", "story"));
+        github.Commit("noelrohi", "Scripts", "Skua", Leveling, Gold, CoreBots, new FakeScript("Story/Doomwood.cs", "// story", "Doomwood Story", "Completes the Doomwood saga.", "story"));
         using EngineConnection connection = await StartEngineAsync(sandbox, github);
         CancellationToken ct = TestContext.Current.CancellationToken;
 
@@ -116,14 +242,14 @@ public class ScriptSourceTests
     {
         await using EngineSandbox sandbox = new();
         await using FakeGitHub github = new();
-        github.Commit("auqw", "Scripts", "Skua", Leveling, CoreBots);
+        github.Commit("noelrohi", "Scripts", "Skua", Leveling, CoreBots);
         using EngineConnection connection = await StartEngineAsync(sandbox, github);
 
         ScriptsSearchResult result = await connection.ScriptsSearchAsync("core", null, TestContext.Current.CancellationToken);
         ScriptDto leveling = (await connection.ScriptsSearchAsync("leveling", null, TestContext.Current.CancellationToken)).Scripts.Single();
 
         ScriptDto core = Assert.Single(result.Scripts);
-        Assert.Equal(new ScriptSourceDto("auqw", "Scripts", "Skua"), result.Source);
+        Assert.Equal(new ScriptSourceDto("noelrohi", "Scripts", "Skua"), result.Source);
         Assert.Null(core.Name);
         Assert.Null(core.Description);
         Assert.Empty(core.Tags);
@@ -136,14 +262,14 @@ public class ScriptSourceTests
     {
         await using EngineSandbox sandbox = new();
         await using FakeGitHub github = new();
-        github.Commit("auqw", "Scripts", "Skua", Leveling, Gold);
+        github.Commit("noelrohi", "Scripts", "Skua", Leveling, Gold);
         using EngineConnection connection = await StartEngineAsync(sandbox, github);
         CancellationToken ct = TestContext.Current.CancellationToken;
 
         ScriptDto before = (await connection.ScriptsSearchAsync("leveling", null, ct)).Scripts.Single();
         await connection.ScriptsUpdateAsync(ct);
         ScriptDto synced = (await connection.ScriptsSearchAsync("leveling", null, ct)).Scripts.Single();
-        github.Commit("auqw", "Scripts", "Skua", Leveling with { Content = "// leveling v2" });
+        github.Commit("noelrohi", "Scripts", "Skua", Leveling with { Content = "// leveling v2" });
         ScriptDto upstreamChanged = (await connection.ScriptsSearchAsync("leveling", null, ct)).Scripts.Single();
 
         Assert.Equal((false, false), (before.Downloaded, before.Outdated));
@@ -157,7 +283,7 @@ public class ScriptSourceTests
         await using EngineSandbox sandbox = new();
         await using FakeGitHub github = new();
         FakeScript[] many = Enumerable.Range(0, ScriptsSearchResult.MaxScripts + 5).Select(i => new FakeScript($"Many/Script{i:000}.cs", $"// {i}")).ToArray();
-        github.Commit("auqw", "Scripts", "Skua", many);
+        github.Commit("noelrohi", "Scripts", "Skua", many);
         using EngineConnection connection = await StartEngineAsync(sandbox, github);
 
         ScriptsSearchResult result = await connection.ScriptsSearchAsync("many", null, TestContext.Current.CancellationToken);
@@ -171,7 +297,7 @@ public class ScriptSourceTests
     {
         await using EngineSandbox sandbox = new();
         await using FakeGitHub github = new() { RawDelay = TimeSpan.FromMilliseconds(500) };
-        github.Commit("auqw", "Scripts", "Skua", Leveling);
+        github.Commit("noelrohi", "Scripts", "Skua", Leveling);
         using EngineConnection connection = await StartEngineAsync(sandbox, github);
 
         Task<ScriptsUpdateResult> first = connection.ScriptsUpdateAsync(TestContext.Current.CancellationToken);
@@ -203,7 +329,7 @@ public class ScriptSourceTests
     {
         await using EngineSandbox sandbox = new();
         await using FakeGitHub github = new();
-        github.Commit("auqw", "Scripts", "Skua", Leveling, Gold);
+        github.Commit("noelrohi", "Scripts", "Skua", Leveling, Gold);
 
         ProcessResult update = await sandbox.RunCliAsync(github.Environment(), "scripts", "update", "--json");
         ProcessResult search = await sandbox.RunCliAsync(github.Environment(), "scripts", "search", "farm", "--tag", "xp", "--json");
@@ -237,7 +363,7 @@ public class ScriptSourceTests
     {
         await using EngineSandbox sandbox = new();
         await using FakeGitHub github = new();
-        github.Commit("auqw", "Scripts", "Skua", Leveling, Gold);
+        github.Commit("noelrohi", "Scripts", "Skua", Leveling, Gold);
         await using McpClient client = await McpTests.ConnectAsync(sandbox, github.Environment());
         CancellationToken ct = TestContext.Current.CancellationToken;
 
@@ -254,17 +380,35 @@ public class ScriptSourceTests
     }
 
     [Fact]
+    public async Task Skua_mcp_shows_the_Script_Source_read_only_and_cannot_change_it()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeGitHub github = new();
+        await using McpClient client = await McpTests.ConnectAsync(sandbox, github.Environment());
+        CancellationToken ct = TestContext.Current.CancellationToken;
+
+        IList<McpClientTool> tools = await client.ListToolsAsync(cancellationToken: ct);
+        CallToolResult source = await client.CallToolAsync("scripts_source", cancellationToken: ct);
+
+        Assert.True(tools.Single(t => t.Name == "scripts_source").ProtocolTool.Annotations?.ReadOnlyHint);
+        Assert.DoesNotContain(tools, t => t.Name.StartsWith("scripts_source_", StringComparison.Ordinal));
+        Assert.NotEqual(true, source.IsError);
+        Assert.Equal("noelrohi", source.StructuredContent!.Value.GetProperty("source").GetProperty("owner").GetString());
+        Assert.True(source.StructuredContent!.Value.GetProperty("isDefault").GetBoolean());
+    }
+
+    [Fact]
     public async Task An_update_reports_the_Scripts_it_added_and_changed_and_scripts_new_lists_exactly_those()
     {
         await using EngineSandbox sandbox = new();
         await using FakeGitHub github = new();
-        github.Commit("auqw", "Scripts", "Skua", Leveling, Gold, CoreBots);
+        github.Commit("noelrohi", "Scripts", "Skua", Leveling, Gold, CoreBots);
         using EngineConnection connection = await StartEngineAsync(sandbox, github);
         CancellationToken ct = TestContext.Current.CancellationToken;
         ScriptsUpdateResult full = await connection.ScriptsUpdateAsync(ct);
         ScriptsNewResult afterFull = await connection.ScriptsNewAsync(null, ct);
 
-        github.Commit("auqw", "Scripts", "Skua", Gold with { Content = "// gold v2" }, new FakeScript("Story/Doomwood.cs", "// story", "Doomwood Story", "Completes the Doomwood saga."));
+        github.Commit("noelrohi", "Scripts", "Skua", Gold with { Content = "// gold v2" }, new FakeScript("Story/Doomwood.cs", "// story", "Doomwood Story", "Completes the Doomwood saga."));
         DateTimeOffset before = DateTimeOffset.UtcNow;
         ScriptsUpdateResult incremental = await connection.ScriptsUpdateAsync(ct);
         ScriptsNewResult news = await connection.ScriptsNewAsync(null, ct);
@@ -295,9 +439,9 @@ public class ScriptSourceTests
     {
         await using EngineSandbox sandbox = new();
         await using FakeGitHub github = new();
-        github.Commit("auqw", "Scripts", "Skua", Leveling, Gold);
+        github.Commit("noelrohi", "Scripts", "Skua", Leveling, Gold);
         await sandbox.RunCliAsync(github.Environment(), "scripts", "update");
-        github.Commit("auqw", "Scripts", "Skua", Leveling with { Content = "// leveling v2" }, CoreBots);
+        github.Commit("noelrohi", "Scripts", "Skua", Leveling with { Content = "// leveling v2" }, CoreBots);
 
         ProcessResult update = await sandbox.RunCliAsync(github.Environment(), "scripts", "update");
         ProcessResult news = await sandbox.RunCliAsync(github.Environment(), "scripts", "new");
@@ -345,7 +489,7 @@ public class ScriptSourceTests
         await using EngineSandbox sandbox = new();
         await using FakeGitHub github = new();
         FakeScript voidScript = new("Farm/Special/Void.cs", "// void", "Void", "Farms the Void.");
-        github.Commit("auqw", "Scripts", "Skua", Leveling, Gold, voidScript, CoreBots);
+        github.Commit("noelrohi", "Scripts", "Skua", Leveling, Gold, voidScript, CoreBots);
         using EngineConnection connection = await StartEngineAsync(sandbox, github);
         CancellationToken ct = TestContext.Current.CancellationToken;
 
@@ -369,7 +513,7 @@ public class ScriptSourceTests
     {
         await using EngineSandbox sandbox = new();
         await using FakeGitHub github = new();
-        github.Commit("auqw", "Scripts", "Skua", Leveling, Gold, new FakeScript("Farm/Special/Void.cs", "// void"), CoreBots);
+        github.Commit("noelrohi", "Scripts", "Skua", Leveling, Gold, new FakeScript("Farm/Special/Void.cs", "// void"), CoreBots);
 
         ProcessResult farm = await sandbox.RunCliAsync(github.Environment(), "scripts", "list", "Farm");
         ProcessResult json = await sandbox.RunCliAsync(github.Environment(), "scripts", "list", "--json");
@@ -377,7 +521,7 @@ public class ScriptSourceTests
         Assert.True(farm.ExitCode == 0, farm.Stderr);
         Assert.Equal(
             """
-            Farm/ in auqw/Scripts@Skua: 2 Scripts, 1 folder
+            Farm/ in noelrohi/Scripts@Skua: 2 Scripts, 1 folder
             ├── Special/  1 Script
             ├── Gold.cs  Farms gold.
             └── Leveling.cs  Levels you to 100.
@@ -393,7 +537,7 @@ public class ScriptSourceTests
     {
         await using EngineSandbox sandbox = new();
         await using FakeGitHub github = new();
-        github.Commit("auqw", "Scripts", "Skua", Leveling, Gold);
+        github.Commit("noelrohi", "Scripts", "Skua", Leveling, Gold);
         await using McpClient client = await McpTests.ConnectAsync(sandbox, github.Environment());
         CancellationToken ct = TestContext.Current.CancellationToken;
 
@@ -418,24 +562,24 @@ public class ScriptSourceTests
         Dictionary<string, string> environment = GameFixture.Environment(new FakeGameHost(sandbox).Game(keychain, GameFixture.Servers), api, keychain);
         foreach ((string key, string value) in github.Environment())
             environment[key] = value;
-        github.Commit("auqw", "Scripts", "Skua", Hello("v1"), Leveling);
+        github.Commit("noelrohi", "Scripts", "Skua", Hello("v1"), Leveling);
 
         ProcessResult first = await sandbox.RunCliAsync(environment, "script", "start", "Tests/Hello.cs", "--follow");
-        github.Commit("auqw", "Scripts", "Skua", Hello("v2"));
+        github.Commit("noelrohi", "Scripts", "Skua", Hello("v2"));
         github.ClearRequests();
         ProcessResult changed = await sandbox.RunCliAsync(environment, "script", "start", "Tests/Hello.cs", "--follow");
         IReadOnlyList<string> requests = github.Requests;
         ProcessResult upToDate = await sandbox.RunCliAsync(environment, "script", "start", "Tests/Hello.cs", "--follow");
-        github.Commit("auqw", "Scripts", "Skua", Hello("v3"));
+        github.Commit("noelrohi", "Scripts", "Skua", Hello("v3"));
         ProcessResult noUpdate = await sandbox.RunCliAsync(environment, "script", "start", "Tests/Hello.cs", "--follow", "--no-update");
         github.Down = true;
         ProcessResult offline = await sandbox.RunCliAsync(environment, "script", "start", "Tests/Hello.cs", "--follow");
 
         Assert.True(first.ExitCode == 0, first.Stderr);
-        Assert.Contains("Downloaded 2 Scripts from auqw/Scripts@Skua", first.Stdout);
+        Assert.Contains("Downloaded 2 Scripts from noelrohi/Scripts@Skua", first.Stdout);
         Assert.Contains("hello v1", first.Stdout);
         Assert.True(changed.ExitCode == 0, changed.Stderr);
-        Assert.Contains("Updated the Scripts from auqw/Scripts@Skua: 0 new, 1 changed; see 'skua scripts new'.", changed.Stdout);
+        Assert.Contains("Updated the Scripts from noelrohi/Scripts@Skua: 0 new, 1 changed; see 'skua scripts new'.", changed.Stdout);
         Assert.Contains("hello v2", changed.Stdout);
         // One head check, the compare, then only the changed Script.
         Assert.Equal(1, requests.Count(r => r.EndsWith("/commits/Skua", StringComparison.Ordinal)));
@@ -459,7 +603,7 @@ public class ScriptSourceTests
         Dictionary<string, string> environment = GameFixture.Environment(new FakeGameHost(sandbox).Game(keychain, GameFixture.Servers), api, keychain);
         foreach ((string key, string value) in github.Environment())
             environment[key] = value;
-        github.Commit("auqw", "Scripts", "Skua", Hello("v1"));
+        github.Commit("noelrohi", "Scripts", "Skua", Hello("v1"));
 
         ProcessResult start = await sandbox.RunCliAsync(environment, "script", "start", "Tests/Hello.cs", "--json");
 

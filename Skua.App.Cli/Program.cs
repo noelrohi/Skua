@@ -60,7 +60,33 @@ scriptsNew.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async opt
     return await connection.ScriptsNewAsync(parse.GetValue(scriptsSince), ct);
 }, Output.ScriptsNew));
 
-Command scripts = new("scripts", "Find, browse and sync Scripts from the Script Source.") { scriptsSearch, scriptsList, scriptsUpdate, scriptsNew };
+Argument<string?> scriptsSourceValue = new("source")
+{
+    Description = "owner/repo@branch to fetch Scripts from, e.g. noelrohi/Scripts@Skua; without one, show the Script Source.",
+    Arity = ArgumentArity.ZeroOrOne,
+};
+Option<bool> scriptsSourceDefault = new("--default") { Description = "Reset the Script Source to the default." };
+Command scriptsSource = new("source", "Show or set the Script Source; a new one takes effect at once, but not while a Script runs.")
+{
+    scriptsSourceValue, scriptsSourceDefault,
+};
+scriptsSource.Validators.Add(result =>
+{
+    if (result.GetValue(scriptsSourceValue) is not null && result.GetValue(scriptsSourceDefault))
+        result.AddError("Give a Script Source or --default, not both.");
+});
+scriptsSource.SetAction((parse, ct) =>
+{
+    string? source = parse.GetValue(scriptsSourceValue);
+    bool change = source is not null || parse.GetValue(scriptsSourceDefault);
+    return Cli.RunAsync(parse.GetValue(json), async options =>
+    {
+        using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
+        return change ? await connection.ScriptsSourceSetAsync(source, ct) : await connection.ScriptsSourceAsync(ct);
+    }, change ? Output.ScriptSourceChanged : Output.ScriptSource);
+});
+
+Command scripts = new("scripts", "Find, browse and sync Scripts from the Script Source.") { scriptsSearch, scriptsList, scriptsUpdate, scriptsNew, scriptsSource };
 
 Argument<LogKind[]> logKinds = new("kind")
 {

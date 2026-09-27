@@ -242,7 +242,7 @@ Once playing, `skua join <map> [cell] [pad]` and `skua jump <cell> [pad]` (MCP `
 
 #### Script Source
 
-`skua scripts update` (MCP `scripts_update`) syncs Scripts into `<SkuaDIR>/Scripts` from the Script Source, `auqw/Scripts@Skua` by default. The first sync from a Script Source downloads every Script; later ones check the head commit once and download only the Scripts changed since the last synced commit, ending with a summary such as "3 new, 12 changed". `skua script start` runs the same update first, unless given `--no-update`; when GitHub can't be reached it warns and starts the Scripts on disk.
+`skua scripts update` (MCP `scripts_update`) syncs Scripts into `<SkuaDIR>/Scripts` from the Script Source, `noelrohi/Scripts@Skua` by default on macOS (see below). The first sync from a Script Source downloads every Script; later ones check the head commit once and download only the Scripts changed since the last synced commit, ending with a summary such as "3 new, 12 changed". `skua script start` runs the same update first, unless given `--no-update`; when GitHub can't be reached it warns and starts the Scripts on disk.
 
 Finding Scripts, and what's new:
 
@@ -256,15 +256,17 @@ Each update that downloads Scripts is recorded in `<SkuaDIR>/scripts-history.jso
 
 `--since` takes a date or a time, read as local time: `--since 2026-09-01` starts at midnight on the Mac's clock, not UTC. Add an offset to give another zone, e.g. `2026-09-01T00:00Z`. The Engine reads the date in the time zone it started with, which it takes from the CLI that starts it: the Mac's own, or `TZ` if set. After changing the zone, run `skua engine stop` so the next command starts an Engine in the new one.
 
-To use a fork, set `ScriptSource` under `shared` in `<SkuaDIR>/Skua.settings.json`, then run `skua engine stop`, since the Engine reads settings when it starts:
+On macOS the default Script Source is `noelrohi/Scripts@Skua`, not upstream's `auqw/Scripts@Skua`, which the Windows app keeps. Upstream's `CoreBots.cs` uses Windows Forms, so every Script that includes it, `Farm/Leveling.cs` among them, fails to compile on macOS. The fork is upstream plus two `skua-macos` patches that put the Windows Forms code behind `#if !MACOS`; a workflow in the fork merges upstream into it daily, and opens an issue there when a merge conflicts instead of forcing it.
 
-```json
-{
-  "shared": {
-    "ScriptSource": { "Owner": "noelrohi", "Repo": "Scripts", "Branch": "Skua" }
-  }
-}
+`skua scripts source` shows the Script Source and whether it is the default, and changes it:
+
+```sh
+skua scripts source                         # MCP scripts_source; e.g. "noelrohi/Scripts@Skua (the default)"
+skua scripts source auqw/Scripts@Skua       # owner/repo@branch
+skua scripts source --default               # back to the default
 ```
+
+It writes `ScriptSource` under `shared` in `<SkuaDIR>/Skua.settings.json`, or removes it for the default, under Core's settings lock, leaving the rest of the file alone; a `ScriptSource` set there by hand wins over the default too. It takes effect at once, without restarting the Engine, which reads the setting every time it reaches the Script Source. It is refused while a Script runs or an update is in flight, and MCP can only read it. The Scripts on disk stay until the next `skua scripts update` (or `script start`), which downloads every Script from the new Script Source, since `<SkuaDIR>/scripts-source.txt` names another; later updates are incremental again.
 
 Script files always come from the Script Source itself, not from the `downloadUrl`s in `scripts.json`, which a fork keeps pointing at upstream.
 
@@ -287,7 +289,7 @@ skua dialogs answer 3 Yes                             # the first answer wins
 
 On a terminal, `--follow` and `skua watch` keep a status line under the log, refreshed every second: level, XP toward the next level as a percentage, gold with the change since the follow began, map, and the run's elapsed time. `--follow` also asks the run's Questions there. Without a terminal, `--follow` prints only the log, and `skua watch [--interval <s>]` prints one status line per interval (a `ProgressDto` per line with `--json`). `status` (MCP `status`) reports the same: the player's `xp`, `requiredXp` and `xpPercent`, and the run's `elapsedSec`.
 
-The MCP tools are `script_options`, `script_start`, `script_stop`, `script_status`, `script_wait`, `dialogs`, `dialog_answer` and `eval`. A compile failure is `CompileFailed` with the compiler's diagnostics. While a Script runs, `login`, `logout`, `join`, `jump`, `scripts update` and `script options` are refused with `ScriptRunning`; queries, logs, screenshots and `eval` still work. Each run has a number, which its log entries carry as `run`, and `script.started`, `script.error` and `script.stopped` events. A restart by Core's auto-relogin is the same run, counted in its `relogins`. Core's options window, which it opens at a Script's first start, does nothing headless: the Script runs with its stored values. `eval` runs off the Script Thread with a 30 s limit, and returns the value as JSON, the log lines it wrote, and what it threw.
+The MCP tools are `script_options`, `script_start`, `script_stop`, `script_status`, `script_wait`, `dialogs`, `dialog_answer` and `eval`. A compile failure is `CompileFailed` with the compiler's diagnostics. While a Script runs, `login`, `logout`, `join`, `jump`, `scripts update`, `scripts source <source>` and `script options` are refused with `ScriptRunning`; queries, logs, screenshots and `eval` still work. Each run has a number, which its log entries carry as `run`, and `script.started`, `script.error` and `script.stopped` events. A restart by Core's auto-relogin is the same run, counted in its `relogins`. Core's options window, which it opens at a Script's first start, does nothing headless: the Script runs with its stored values. `eval` runs off the Script Thread with a 30 s limit, and returns the value as JSON, the log lines it wrote, and what it threw.
 
 A Script's message boxes are Script Dialogs. An OK-only one is a Notice: it never waits, returns null at once, and arrives as a `notice.shown` event with its full text (up to 64 KB). A yes/no or buttons one is a Question, and only the thread that raised it waits. With `--dialogs ask` (the default) it stays pending for `--dialog-timeout` seconds (120 by default), listed by `skua dialogs` (MCP `dialogs`) and `status`, and `script wait` returns as soon as one is pending; `skua dialogs answer <id> <choice>` (MCP `dialog_answer`) answers it, and a later answer fails with `DialogNotPending`. Unanswered, or with `--dialogs cancel`, it gets the fallback: null or `DialogResult.Cancelled`, never the first button. `script stop` gives pending Questions the fallback first. `question.raised` and `question.answered` events record each one, with `answeredBy` `agent`, `timeout` or `fallback`. Other dialogs (`ShowDialog` and the file dialogs) are never shown; they return null and are logged.
 

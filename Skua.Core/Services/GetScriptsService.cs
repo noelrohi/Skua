@@ -22,13 +22,22 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
     [ObservableProperty]
     private RangedObservableCollection<ScriptInfo> _scripts = new();
 
+    private readonly ScriptSource _defaultSource;
+
     public GetScriptsService(IDialogService dialogService, ISettingsService settingsService)
+        : this(dialogService, settingsService, new ScriptSource())
+    {
+    }
+
+    /// <param name="defaultSource">The Script Source used while the setting is unset.</param>
+    public GetScriptsService(IDialogService dialogService, ISettingsService settingsService, ScriptSource defaultSource)
     {
         _dialogService = dialogService;
         _settingsService = settingsService;
+        _defaultSource = defaultSource;
     }
 
-    public ScriptSource Source => _settingsService.GetShared().ScriptSource;
+    public ScriptSource Source => _settingsService.GetShared().ScriptSource ?? _defaultSource;
 
     public async ValueTask<List<ScriptInfo>> GetScriptsAsync(IProgress<string>? progress, CancellationToken token)
     {

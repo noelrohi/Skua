@@ -36,13 +36,18 @@ public sealed class GameFixture : IAsyncDisposable
 
     public EngineConnection Connection { get; }
 
-    public static async Task<GameFixture> StartAsync(EngineSandbox sandbox, Func<FakeGameHost, FakeGameHost>? configure = null)
+    /// <param name="environment">More of the Engine's environment, e.g. a <see cref="FakeGitHub"/>'s.</param>
+    public static async Task<GameFixture> StartAsync(
+        EngineSandbox sandbox, Func<FakeGameHost, FakeGameHost>? configure = null, IDictionary<string, string>? environment = null)
     {
         FakeAqApi api = new(Servers);
         FakeKeychain keychain = new(sandbox);
         FakeGameHost gameHost = new FakeGameHost(sandbox).Game(keychain, Servers).LogCalls();
         gameHost = configure?.Invoke(gameHost) ?? gameHost;
-        (Process engine, EngineConnection connection) = await sandbox.StartEngineAsync(Environment(gameHost, api, keychain));
+        Dictionary<string, string> variables = Environment(gameHost, api, keychain);
+        foreach ((string key, string value) in environment ?? new Dictionary<string, string>())
+            variables[key] = value;
+        (Process engine, EngineConnection connection) = await sandbox.StartEngineAsync(variables);
         await connection.WaitForEventAsync(EventTypes.GameState, e => GameEvents.To(e) == "loginScreen");
         return new GameFixture(api, keychain, gameHost, engine, connection);
     }

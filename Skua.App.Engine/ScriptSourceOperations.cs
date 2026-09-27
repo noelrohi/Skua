@@ -1,13 +1,14 @@
 using Skua.App.Engine.Scripts;
 using Skua.Control;
 using Skua.Core.Interfaces;
+using Skua.Core.Models;
 using Skua.Core.Models.GitHub;
 
 namespace Skua.App.Engine;
 
 /// <summary>
-/// <c>scripts_search</c>, <c>scripts_list</c>, <c>scripts_update</c> and <c>scripts_new</c>: finding Scripts in the Script Source, syncing them to
-/// disk, and what the syncs brought.
+/// <c>scripts_search</c>, <c>scripts_list</c>, <c>scripts_update</c>, <c>scripts_new</c>, <c>scripts_source</c> and <c>scripts_source_set</c>:
+/// finding Scripts in the Script Source, syncing them to disk, what the syncs brought, and which Script Source it is.
 /// </summary>
 internal sealed class ScriptSourceOperations
 {
@@ -91,6 +92,39 @@ internal sealed class ScriptSourceOperations
                 _history.Record(ToDto(result.Source), result.Commit, result.Mode == ScriptsSyncMode.Full, Entries(result.Added), Entries(result.Changed));
             return new ScriptsUpdateResult(ToDto(result.Source), Mode(result.Mode), result.Commit, result.Downloaded, result.Failed,
                 result.Added.Select(s => s.FilePath).ToList(), result.Changed.Select(s => s.FilePath).ToList());
+        }
+        finally
+        {
+            _updating.Release();
+        }
+    }
+
+    public ScriptSourceResult Source() =>
+        new(ToDto(_scriptsService.Source), ScriptSourceSetting.Read(ClientFileSources.SkuaDIR) is null, ScriptSourceSetting.Default);
+
+    /// <param name="source"><c>owner/repo@branch</c>, or null for the default.</param>
+    /// <remarks>
+    /// Refused while a Script runs or an update is in flight, and holds the Engine's slot, so a Script never starts while the Script Source
+    /// changes. The Engine reads the setting afresh at every call, so it takes effect without a restart.
+    /// </remarks>
+    public ScriptSourceResult SetSource(string? source)
+    {
+        if (!_updating.Wait(0))
+            throw RpcErrors.Of(ErrorCode.Busy, "Can't change the Script Source while a Scripts update is running; try again when it's done.");
+
+        try
+        {
+            _runs.EnsureIdle("change the Script Source");
+            using IDisposable lease = _slot.Take("change the Script Source");
+            try
+            {
+                ScriptSourceSetting.Write(ClientFileSources.SkuaDIR, source is null ? null : ScriptSourceSetting.Parse(source));
+            }
+            catch (ControlException e)
+            {
+                throw RpcErrors.Of(e.Code, e.Message);
+            }
+            return Source();
         }
         finally
         {
