@@ -9,6 +9,7 @@ public class DisableFX extends Module {
     }
 
     override public function onToggle(game:*):void {
+        if (!game || !game.world) return; // before login
         var world:* = game.world;
         var monsters:* = world.monsters;
         var currentFrame:String = world.strFrame;

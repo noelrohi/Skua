@@ -85,6 +85,10 @@ class Host:
     def bad_logs(self):
         return [l[:200] for l in self.logs if any(k in l for k in ("panic", "lost", "Validation", "OutOfMemory"))]
 
+    def uncaught(self):
+        """Uncaught AS3 errors: the host prefixes their flash-log copy with "[uncaught]" (src/backends.rs)."""
+        return [t[:200] for t in self.traces if t.startswith("[uncaught]")]
+
     def close(self, timeout=5):
         try:
             self.p.stdin.close()
@@ -227,7 +231,8 @@ class Suite:
         self.check("events", in_order and not wrong,
                    f"{len(h.events)} events in {secs:.1f} s, in order: {in_order}, wrong names: {wrong}")
 
-    # smoke: skua.swf loads the game to the login screen; 73 callbacks register; a 958x550 screenshot.
+    # smoke: skua.swf loads the game to the login screen; 73 callbacks register; a 958x550 screenshot;
+    # no uncaught AS3 errors while it sits there (skua.swf's modules run every frame, before login too).
     def smoke(self):
         if not self.a.skua_swf or not os.path.exists(self.a.skua_swf):
             return self.check("smoke", False, f"no skua.swf at {self.a.skua_swf!r}")
@@ -253,7 +258,7 @@ class Suite:
         h.wait_for(lambda: set(h.callbacks) >= expected, timeout=10)
         time.sleep(self.base["smoke_settle_secs"])
         shot = h.ask(b"S", struct.pack("<I", 0))
-        bad = h.bad_logs()
+        bad, uncaught = h.bad_logs(), h.uncaught()
         h.close()
         got = set(h.callbacks)
         w, hh, frames = struct.unpack("<IIQ", shot[:16]) if shot and len(shot) >= 16 else (0, 0, 0)
@@ -262,9 +267,10 @@ class Suite:
         open(path, "wb").write(png)
         min_png = self.base["smoke.min_png_bytes"]
         self.check("smoke", got == expected and len(expected) == self.base["smoke.callbacks"] and (w, hh) == (958, 550)
-                   and len(png) >= min_png and png[:8] == b"\x89PNG\r\n\x1a\n" and not bad,
+                   and len(png) >= min_png and png[:8] == b"\x89PNG\r\n\x1a\n" and not bad and not uncaught,
                    f"'loaded' after {load_ms:.0f} ms; callbacks {len(got)}/{len(expected)} missing {sorted(expected - got)}; "
-                   f"screenshot {w}x{hh} frame~{frames} {len(png)} B (min {min_png}) -> {path}{'; ' + str(bad) if bad else ''}")
+                   f"screenshot {w}x{hh} frame~{frames} {len(png)} B (min {min_png}) -> {path}{'; ' + str(bad) if bad else ''}"
+                   f"{'; %d uncaught AS3 errors, first: %s' % (len(uncaught), uncaught[0]) if uncaught else ''}")
 
     # lifecycle: closing stdin ends the host within 1 s; a panic inside Ruffle aborts it.
     def lifecycle(self):

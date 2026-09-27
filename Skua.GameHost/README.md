@@ -212,7 +212,7 @@ stderr and the smoke screenshot go to `stress/out/`.
 | `sounds` | `Sounds.as`: AQW's `SoundFX`, which keeps each channel until `SOUND_COMPLETE` | the live channel count doesn't grow (the second half never exceeds the first) and stays under baseline + 20% |
 | `weakdict` | `WeakDict.as`: AQW's `Game._colorCache`, a weak-key `Dictionary` | dead keys are collected: the count falls back to a fresh cycle's and stays under baseline + 20% |
 | `events` | `Events.as`: 30,000 numbered `ExternalInterface.call`s in three interleaved streams | every event arrives, in order |
-| `smoke` | `skua.swf` | the game loads, all 73 callbacks register, and the screenshot is a 958×550 login screen |
+| `smoke` | `skua.swf` | the game loads, all 73 callbacks register, the screenshot is a 958×550 login screen, and no uncaught AS3 error reaches the flash log |
 | `lifecycle` | `Events.as` | closing stdin ends the host within 1 s; a panic inside Ruffle aborts it with SIGABRT and an `L` frame |
 
 "Flat" means the least-squares slope after warm-up is at most 10% of the baseline per minute. Without the
