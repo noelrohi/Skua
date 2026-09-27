@@ -58,6 +58,9 @@ public sealed class ScriptDialogBroker
 
     private readonly object _lock = new();
     private readonly SortedDictionary<int, Waiter> _pending = [];
+
+    /// <summary>The runs <see cref="ResolveRun"/> answered, whose later Questions get the fallback at once until <see cref="Reopen"/>.</summary>
+    private readonly HashSet<int> _closedRuns = [];
     private int _lastId;
     private TaskCompletionSource _raised = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -104,14 +107,17 @@ public sealed class ScriptDialogBroker
     public int? Ask(string caption, string text, IReadOnlyList<string> choices)
     {
         QuestionPolicy policy = Policy();
-        DateTimeOffset now = DateTimeOffset.UtcNow;
-        TimeSpan wait = policy.Ask ? (policy.Timeout > MaxWait ? MaxWait : policy.Timeout) : TimeSpan.Zero;
         Waiter waiter;
+        TimeSpan wait;
         lock (_lock)
         {
+            // The run may have been resolved since its policy was read.
+            bool ask = policy.Ask && !(policy.Run is { } run && _closedRuns.Contains(run));
+            wait = ask ? (policy.Timeout > MaxWait ? MaxWait : policy.Timeout) : TimeSpan.Zero;
+            DateTimeOffset now = DateTimeOffset.UtcNow;
             waiter = new Waiter(new Question(++_lastId, caption, text, [.. choices], now, now + wait, ThreadName(), policy.Script, policy.Run));
             QuestionRaised?.Invoke(waiter.Question);
-            if (!policy.Ask)
+            if (!ask)
             {
                 QuestionAnswered?.Invoke(waiter.Question, null, QuestionAnswerer.Fallback);
                 return null;
@@ -158,14 +164,25 @@ public sealed class ScriptDialogBroker
         }
     }
 
-    /// <summary>Answers every pending Question of the run with the fallback, so the threads waiting on them go on.</summary>
+    /// <summary>
+    /// Answers every pending Question of the run with the fallback, so the threads waiting on them go on, and every later one at once
+    /// until <see cref="Reopen"/>.
+    /// </summary>
     public void ResolveRun(int run)
     {
         lock (_lock)
         {
+            _closedRuns.Add(run);
             foreach (Waiter waiter in _pending.Values.Where(w => w.Question.Run == run).ToList())
                 Resolve(waiter.Question.Id, null, QuestionAnswerer.Fallback);
         }
+    }
+
+    /// <summary>The run goes on after <see cref="ResolveRun"/>, e.g. restarted after a relogin: its Questions wait again.</summary>
+    public void Reopen(int run)
+    {
+        lock (_lock)
+            _closedRuns.Remove(run);
     }
 
     private void Resolve(int id, int? choice, QuestionAnswerer answerer)

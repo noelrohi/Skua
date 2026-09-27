@@ -20,6 +20,7 @@ namespace Skua.App.Engine.Scripts;
 /// back in, the run goes on, and the restart counts as a relogin of the same run.
 /// It also decides how Questions are answered: by the dialog mode and timeout of the run in progress, and with the fallback once the run
 /// is stopping or has ended, so no thread of it stays blocked on one.
+/// Locks are taken in the order ScriptRuns, then the Script Dialog broker, then the logs; none of them calls back up that order.
 /// </remarks>
 internal sealed class ScriptRuns
 {
@@ -173,6 +174,7 @@ internal sealed class ScriptRuns
                 _run.ReloginPending = false;
                 _run.ThreadEnded = false;
                 _run.Relogins++;
+                _dialogs.Reopen(_run.Number);
                 _logs.Event(EventTypes.ScriptStarted, new { run = _run.Number, script = _run.Script, restart = true });
                 SetState(ScriptState.Running);
             }

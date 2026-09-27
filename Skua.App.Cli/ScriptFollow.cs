@@ -16,7 +16,7 @@ internal sealed class ScriptFollow
     private readonly int _run;
 
     /// <summary>The run's pending Questions by id, as their events described them.</summary>
-    private readonly SortedDictionary<int, Asked> _pending = [];
+    private readonly SortedDictionary<int, FollowedQuestion> _pending = [];
 
     private bool _interactive;
 
@@ -125,10 +125,10 @@ internal sealed class ScriptFollow
         switch (entry.Type)
         {
             case EventTypes.NoticeShown:
-                human = $"Notice '{Text(data, "caption")}': {Text(data, "text")}";
+                human = $"Notice '{Field(data, "caption")}': {Field(data, "text")}";
                 break;
             case EventTypes.QuestionRaised:
-                Asked asked = new(data.GetProperty("id").GetInt32(), Text(data, "caption"), Text(data, "text"),
+                FollowedQuestion asked = new(data.GetProperty("id").GetInt32(), Field(data, "caption"), Field(data, "text"),
                     data.GetProperty("choices").EnumerateArray().Select(c => c.GetString() ?? "").ToList());
                 // A Question of cancel mode is answered as it is raised; its answer follows at once.
                 _pending[asked.Id] = asked;
@@ -141,7 +141,7 @@ internal sealed class ScriptFollow
                 if (_asking == id)
                     _asking = null;
                 string? choice = data.GetProperty("choice").GetString();
-                human = $"Question {id} answered by {Text(data, "answeredBy")}: {choice ?? "the fallback"}";
+                human = $"Question {id} answered by {Field(data, "answeredBy")}: {choice ?? "the fallback"}";
                 break;
             case EventTypes.ScriptStarted:
                 // The first start was reported with the run number.
@@ -150,10 +150,10 @@ internal sealed class ScriptFollow
                 human = $"Run {_run} restarted by the auto-relogin.";
                 break;
             case EventTypes.ScriptError:
-                human = $"Script error: {Text(data, "error")}";
+                human = $"Script error: {Field(data, "error")}";
                 break;
             case EventTypes.ScriptStopped:
-                string outcome = Text(data, "outcome");
+                string outcome = Field(data, "outcome");
                 human = $"Run {_run} {outcome} after {data.GetProperty("durationSec").GetDouble():0.#} s"
                     + (data.TryGetProperty("error", out JsonElement error) ? $": {error.GetString()}." : ".");
                 exitCode = outcome is "completed" or "stopped" ? ExitCodes.Success : ExitCodes.Failure;
@@ -185,7 +185,7 @@ internal sealed class ScriptFollow
     private async Task AnswerAsync(string line, CancellationToken cancellationToken)
     {
         _promptShown = false;
-        if (_asking is not { } id || !_pending.TryGetValue(id, out Asked? asked))
+        if (_asking is not { } id || !_pending.TryGetValue(id, out FollowedQuestion? asked))
             return;
         string typed = line.Trim();
         string? choice = asked.Choices.FirstOrDefault(c => string.Equals(c, typed, StringComparison.OrdinalIgnoreCase))
@@ -228,7 +228,12 @@ internal sealed class ScriptFollow
         try
         {
             await foreach (LogPage page in _connection.SubscribeAsync([LogKind.Script, LogKind.Events], null, cancellationToken))
+            {
+                if (page.Gap)
+                    Console.Error.WriteLine($"skua: {Output.GapNotice}");
                 inbox.TryWrite(page);
+            }
+            inbox.TryWrite(new ControlException(ErrorCode.EngineUnavailable, "The Engine stopped sending the run's log."));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -247,7 +252,7 @@ internal sealed class ScriptFollow
         inbox.TryWrite(null);
     }
 
-    private static string Text(JsonElement data, string property) => data.GetProperty(property).ToString();
+    private static string Field(JsonElement data, string property) => data.GetProperty(property).ToString();
 
-    private sealed record Asked(int Id, string Caption, string Text, IReadOnlyList<string> Choices);
+    private sealed record FollowedQuestion(int Id, string Caption, string Text, IReadOnlyList<string> Choices);
 }
