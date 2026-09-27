@@ -100,6 +100,7 @@ if ($asconfigcPath) {
         if ($LASTEXITCODE -eq 0 -and (Test-Path $outputPath)) {
             Write-Host "✅ Compilation successful! Output: $outputPath" -ForegroundColor Green
             Write-Host "📁 SWF size: $((Get-Item $outputPath).Length) bytes" -ForegroundColor Green
+            Write-Host "🔑 DoABC sha256: $(Get-DoAbcSha256 (Resolve-Path $outputPath).Path)" -ForegroundColor Green
             exit 0
         } else {
             Write-Host "❌ Compilation failed with asconfigc" -ForegroundColor Red
