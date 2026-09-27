@@ -1,0 +1,41 @@
+name: Scripts compile check
+
+# Compiles every Script in the Scripts fork with the Engine's real compiler setup, so an upstream merge into the fork can't
+# silently break macOS. It never runs on pull requests or pushes, so it doesn't block Skua PRs.
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: The noelrohi/Scripts ref to check
+        default: Skua
+
+jobs:
+  compile-check:
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: noelrohi/Scripts
+          ref: ${{ inputs.ref || 'Skua' }}
+          path: Scripts
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      # The check runs against the fake Game Host, so it skips building the real one and the Game Client's SWF.
+      - name: Build
+        run: dotnet build Skua.Engine.Tests --configuration Release -p:SkuaMacBuild=false
+
+      - name: Compile every Script
+        env:
+          SKUA_SCRIPTS_CHECKOUT: ${{ github.workspace }}/Scripts
+        run: >-
+          dotnet test Skua.Engine.Tests --configuration Release --no-build
+          --filter "FullyQualifiedName~CompileCheckTests.Every_Script_in_the_Scripts_checkout_compiles"
+          --logger "console;verbosity=detailed"

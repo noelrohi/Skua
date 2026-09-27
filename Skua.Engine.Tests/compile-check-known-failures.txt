@@ -1,0 +1,12 @@
+# Scripts in noelrohi/Scripts@Skua that are broken upstream, not by macOS, so the compile check doesn't fail on them.
+# The check fails on a failure not listed here, and on a listed Script that no longer fails: take it off then.
+# One Script per line, as scripts.json names it; # starts a comment.
+
+Core/TaskExtensions.cs                                    # a static helper, not a Script: no constructor
+Seasonal/MayThe4th/MawaQuestRewards.cs                    # its CoreFarms include is commented out
+Tools/MemoryLeakAudit/MemoryLeakAudit.cs                  # its classes aren't public
+Templates/CustomAggromonTemplate.cs                       # a template, passes arrays where lists are expected
+Templates/Examples/Other/MergeExample.cs                  # a template, uses ArmorOfAwe without including it
+Templates/Examples/Quests/MultiQuestAggromonTemplate.cs   # a template, uses CoreArmyLite without including it
+Templates/Examples/Quests/QuestReward[Choose]Template.cs  # a template with placeholders
+Templates/Examples/Quests/QuestReward[Random]Template.cs  # a template with placeholders

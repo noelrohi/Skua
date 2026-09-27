@@ -245,6 +245,19 @@ The MCP tools are `script_options`, `script_start`, `script_stop`, `script_statu
 
 A Script's message boxes are Script Dialogs. An OK-only one is a Notice: it never waits, returns null at once, and arrives as a `notice.shown` event with its full text (up to 64 KB). A yes/no or buttons one is a Question, and only the thread that raised it waits. With `--dialogs ask` (the default) it stays pending for `--dialog-timeout` seconds (120 by default), listed by `skua dialogs` (MCP `dialogs`) and `status`, and `script wait` returns as soon as one is pending; `skua dialogs answer <id> <choice>` (MCP `dialog_answer`) answers it, and a later answer fails with `DialogNotPending`. Unanswered, or with `--dialogs cancel`, it gets the fallback: null or `DialogResult.Cancelled`, never the first button. `script stop` gives pending Questions the fallback first. `question.raised` and `question.answered` events record each one, with `answeredBy` `agent`, `timeout` or `fallback`. Other dialogs (`ShowDialog` and the file dialogs) are never shown; they return null and are logged.
 
+#### Compile check
+
+After each upstream merge into the Scripts fork, check that every Script still compiles on macOS. The check copies a Scripts checkout into a throwaway data folder, calls `script_options` for every Script its `scripts.json` lists, and fails with each failing Script and its diagnostics:
+
+```sh
+git clone --branch Skua https://github.com/noelrohi/Scripts.git ../Scripts
+dotnet build Skua.Engine.Tests
+SKUA_SCRIPTS_CHECKOUT="$(realpath ../Scripts)" dotnet test Skua.Engine.Tests --no-build \
+  --filter FullyQualifiedName~CompileCheckTests.Every_Script_in_the_Scripts_checkout_compiles --logger "console;verbosity=detailed"
+```
+
+Scripts broken upstream on every platform are listed in `Skua.Engine.Tests/compile-check-known-failures.txt`: the report still shows them, but only a failure missing from that list fails the check, or a listed Script that no longer fails. Without `SKUA_SCRIPTS_CHECKOUT`, the test is skipped. The `Scripts compile check` workflow runs it daily and on demand against `noelrohi/Scripts@Skua`. It never runs on pull requests, so it doesn't block them.
+
 ### Building the Installer
 
 Requires WiX CLI and MSBuild:
