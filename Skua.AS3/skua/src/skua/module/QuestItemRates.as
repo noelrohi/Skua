@@ -9,6 +9,7 @@ public class QuestItemRates extends Module {
     }
 
     override public function onFrame(game:*):void {
+        if (!game || !game.ui) return; // before login
         var modalStack:* = game.ui.ModalStack;
         if (modalStack.numChildren) {
             var cFrame:* = modalStack.getChildAt(0);

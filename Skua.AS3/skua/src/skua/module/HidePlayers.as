@@ -5,6 +5,7 @@ public class HidePlayers extends Module {
     }
 
     override public function onToggle(game:*):void {
+        if (!game || !game.world) return; // before login
         var avatars:* = game.world.avatars;
         for (var id:* in avatars) {
             var avatar:* = avatars[id];

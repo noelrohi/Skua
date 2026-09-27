@@ -8,6 +8,7 @@ public class DisableCollisions extends Module {
     }
 
     override public function onToggle(game:*):void {
+        if (!game || !game.world) return; // before login
         var world:* = game.world;
         if (enabled) {
             _old = world.arrSolid;
