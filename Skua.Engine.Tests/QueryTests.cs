@@ -19,8 +19,9 @@ public class QueryTests
         await using GameFixture session = await GameFixture.StartAsync(sandbox);
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
 
-        InventoryResult inventory = await session.Connection.InventoryAsync(cancellationToken: Ct);
+        // Straight after the login, before the game has the inventory and the bank count.
         InventoryResult bank = await session.Connection.InventoryAsync(InventoryKind.Bank, Ct);
+        InventoryResult inventory = await session.Connection.InventoryAsync(cancellationToken: Ct);
         InventoryResult bankAgain = await session.Connection.InventoryAsync(InventoryKind.Bank, Ct);
         InventoryResult temp = await session.Connection.InventoryAsync(InventoryKind.Temp, Ct);
         InventoryResult house = await session.Connection.InventoryAsync(InventoryKind.House, Ct);
@@ -40,8 +41,10 @@ public class QueryTests
         Assert.Equal([new ItemDto(20, "Slime Sample", 3, 10, "Quest Item", false, null)], temp.Items);
         Assert.Equal((1, (int?)20), (house.UsedSlots, house.TotalSlots));
         Assert.Equal([new ItemDto(30, "Wooden Chair", 1, 1, "Floor Item", false, 0)], house.Items);
-        // The bank loads from the game server once per login.
-        Assert.Single(await session.GameHost.CallsAsync(), c => c == "loadBank");
+        // The bank loads once per login, as the game loads it: over HTTP, since the game server no longer answers loadBank.
+        string[] calls = await session.GameHost.CallsAsync();
+        Assert.Single(calls, c => c == "getBank");
+        Assert.DoesNotContain("loadBank", calls);
     }
 
     [Fact]
