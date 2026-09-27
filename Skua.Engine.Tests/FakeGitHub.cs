@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Skua.Core.Models.GitHub;
 
 namespace Skua.Engine.Tests;
 
@@ -52,8 +53,8 @@ public sealed class FakeGitHub : IAsyncDisposable
     /// <summary>The environment that points an Engine (and anything it runs) at this fake.</summary>
     public IDictionary<string, string> Environment() => new Dictionary<string, string>
     {
-        ["SKUA_GITHUB_RAW_URL"] = BaseUrl + "raw/",
-        ["SKUA_GITHUB_API_URL"] = BaseUrl + "api/",
+        [ScriptSource.RawUrlEnvironmentVariable] = BaseUrl + "raw/",
+        [ScriptSource.ApiUrlEnvironmentVariable] = BaseUrl + "api/",
     };
 
     /// <summary>Adds a commit to <c>owner/repo@branch</c> whose tree is the previous one with these files added or replaced.</summary>

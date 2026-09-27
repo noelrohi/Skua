@@ -17,6 +17,7 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
     private const string _skillsSetsPath = "Skills/AdvancedSkills.json";
     private const string _questDataPath = "QuestData.json";
     private const string _junkItemsPath = "JunkItems.json";
+    private const int _compareFileLimit = 300;
 
     [ObservableProperty]
     private RangedObservableCollection<ScriptInfo> _scripts = new();
@@ -360,7 +361,10 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
         else
         {
             HashSet<string> changedFiles = await FetchChangedFilesAsync(source, storedSha, headSha, token);
-            toDownload = scripts.Where(s => changedFiles.Contains(s.FilePath)).ToList();
+            // GitHub's compare lists at most 300 files; past that, every Script that differs from scripts.json is fetched instead.
+            toDownload = changedFiles.Count >= _compareFileLimit
+                ? scripts.Where(s => !s.Downloaded || s.Outdated).ToList()
+                : scripts.Where(s => changedFiles.Contains(s.FilePath)).ToList();
         }
 
         ConcurrentBag<string> failed = new();

@@ -1,4 +1,6 @@
 using System.Text.Json;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 using Skua.App.Cli;
 using Skua.Control;
 
@@ -77,7 +79,9 @@ public class ScriptSourceTests
         github.Commit("auqw", "Scripts", "Skua", Leveling, CoreBots);
         github.Commit("noelrohi", "Scripts", "Skua", Leveling, CoreBots with { Content = "// core fork" });
         using (EngineConnection upstream = await StartEngineAsync(sandbox, github))
+        {
             await upstream.ScriptsUpdateAsync(TestContext.Current.CancellationToken);
+        }
         await EngineClient.StopAsync(sandbox.Endpoint, EngineSandbox.StopTimeout, TestContext.Current.CancellationToken);
 
         SetScriptSource(sandbox, "noelrohi", "Scripts", "Skua");
@@ -234,11 +238,11 @@ public class ScriptSourceTests
         await using EngineSandbox sandbox = new();
         await using FakeGitHub github = new();
         github.Commit("auqw", "Scripts", "Skua", Leveling, Gold);
-        await using ModelContextProtocol.Client.McpClient client = await McpTests.ConnectAsync(sandbox, github.Environment());
+        await using McpClient client = await McpTests.ConnectAsync(sandbox, github.Environment());
         CancellationToken ct = TestContext.Current.CancellationToken;
 
-        ModelContextProtocol.Protocol.CallToolResult update = await client.CallToolAsync("scripts_update", cancellationToken: ct);
-        ModelContextProtocol.Protocol.CallToolResult search = await client.CallToolAsync("scripts_search",
+        CallToolResult update = await client.CallToolAsync("scripts_update", cancellationToken: ct);
+        CallToolResult search = await client.CallToolAsync("scripts_search",
             new Dictionary<string, object?> { ["query"] = "gold" }, cancellationToken: ct);
 
         Assert.NotEqual(true, update.IsError);

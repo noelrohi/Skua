@@ -24,11 +24,11 @@ internal sealed class Engine : IEngineRpc
     private readonly ConcurrentDictionary<JsonRpc, byte> _connections = new();
     private readonly ScriptSourceOperations _scriptSource;
 
-    private Engine(EngineEndpoint endpoint, GameHostSupervisor gameHost, IGetScriptsService scripts)
+    private Engine(EngineEndpoint endpoint, GameHostSupervisor gameHost, IGetScriptsService scriptsService)
     {
         _endpoint = endpoint;
         _gameHost = gameHost;
-        _scriptSource = new ScriptSourceOperations(scripts, _shutdown.Token);
+        _scriptSource = new ScriptSourceOperations(scriptsService, _shutdown.Token);
     }
 
     public static string Build { get; } =

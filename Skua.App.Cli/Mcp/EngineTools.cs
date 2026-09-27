@@ -18,7 +18,7 @@ internal sealed class EngineTools(Func<EngineClientOptions> options)
     [McpServerTool(Name = "scripts_search", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(ScriptsSearchResult))]
     [Description("Search the Script Source's scripts.json for Scripts. Every word of the query must appear in a Script's name, description, tags or path, ignoring case; an empty query matches every Script. Returns at most 100 Scripts, plus how many matched, each with whether it is downloaded and whether the Script Source has a newer version (outdated). Identify a Script by its path.")]
     public Task<CallToolResult> ScriptsSearch(
-        [Description("Words to search for, e.g. \"leveling\" or \"farm gold\".")] string query,
+        [Description("Words to search for, e.g. \"leveling\" or \"farm gold\"; empty matches every Script.")] string query = "",
         [Description("Only Scripts with this tag, ignoring case.")] string? tag = null,
         CancellationToken cancellationToken = default) =>
         CallAsync(connection => connection.ScriptsSearchAsync(query, tag, cancellationToken), cancellationToken);
