@@ -97,11 +97,8 @@ public static class FlashXml
                 return el.Elements().Select(e => FromFlashXml(e)).ToArray();
 
             case "object":
-                // Kept as it was in the Windows FlashUtil. Skua isn't trimmed, so the trim analyzer's warning about dynamic doesn't apply.
-#pragma warning disable IL2026
-                dynamic d = new ExpandoObject();
+                IDictionary<string, object?> d = new ExpandoObject();
                 el.Elements().ForEach(e => d[e.Attribute("id")!.Value] = FromFlashXml(e.Elements().First()));
-#pragma warning restore IL2026
                 return d;
 
             default:
