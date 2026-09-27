@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using Skua.Core.AppStartup;
+using Skua.Core.Interfaces;
 using Skua.MacOS;
 
 namespace Skua.App.Engine;
@@ -11,6 +12,8 @@ internal static class EngineServices
     public static ServiceProvider Build()
     {
         IServiceCollection services = new ServiceCollection();
+
+        services.AddSingleton<ISettingsService, EngineSettingsService>();
 
         services.AddCommonServices();
 

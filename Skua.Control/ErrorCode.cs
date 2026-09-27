@@ -21,6 +21,9 @@ public enum ErrorCode
 
     /// <summary>No Engine could be reached: it failed to start, or it is starting or hung.</summary>
     EngineUnavailable = 12,
+
+    /// <summary>The Script Source couldn't be reached or returned something unusable.</summary>
+    ScriptSourceUnavailable = 13,
 }
 
 /// <summary>

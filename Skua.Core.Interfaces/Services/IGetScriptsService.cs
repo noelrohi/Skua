@@ -12,11 +12,25 @@ public interface IGetScriptsService : INotifyPropertyChanged
     int Missing => Total - Downloaded;
     RangedObservableCollection<ScriptInfo> Scripts { get; }
 
+    /// <summary>The Script Source setting that Scripts and their data files come from.</summary>
+    ScriptSource Source { get; }
+
     ValueTask<List<ScriptInfo>> GetScriptsAsync(IProgress<string>? progress, CancellationToken token);
 
     Task RefreshScriptsAsync(IProgress<string>? progress, CancellationToken token);
 
     Task<int> IncrementalUpdateScriptsAsync(IProgress<string>? progress, CancellationToken token);
+
+    /// <summary>
+    /// Fetches <c>scripts.json</c> from the Script Source. Unlike <see cref="GetScriptsAsync"/>, it throws on failure and leaves <see cref="Scripts"/> alone.
+    /// </summary>
+    Task<List<ScriptInfo>> FetchScriptsAsync(CancellationToken token);
+
+    /// <summary>
+    /// Syncs the Scripts on disk with the Script Source: the first sync from a Script Source downloads every missing or outdated Script,
+    /// later ones only the Scripts changed since the last synced commit. Throws on failure and leaves <see cref="Scripts"/> alone.
+    /// </summary>
+    Task<ScriptsSyncResult> SyncScriptsAsync(CancellationToken token);
 
     Task<long> CheckAdvanceSkillSetsUpdates();
 

@@ -22,5 +22,8 @@ public static class ClientFileSources
     public static string SkuaAdvancedSkillsFile { get; } = Path.Combine(SkuaDIR, "AdvancedSkills.json");
     public static string SkuaQuestsFile { get; } = Path.Combine(SkuaDIR, "QuestData.json");
     public static string SkuaScriptsCommitFile { get; } = Path.Combine(SkuaDIR, "scripts-commit.txt");
+
+    /// <summary>The Script Source that <see cref="SkuaScriptsCommitFile"/> belongs to; when it is missing, the default Script Source.</summary>
+    public static string SkuaScriptsSourceFile { get; } = Path.Combine(SkuaDIR, "scripts-source.txt");
     public static string SkuaJunkItemsFile { get; } = Path.Combine(SkuaScriptsDIR, "JunkItems.json");
 }

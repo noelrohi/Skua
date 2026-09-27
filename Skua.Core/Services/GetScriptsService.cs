@@ -4,6 +4,7 @@ using Skua.Core.Interfaces;
 using Skua.Core.Models;
 using Skua.Core.Models.GitHub;
 using Skua.Core.Utils;
+using System.Collections.Concurrent;
 using System.Net.Sockets;
 
 namespace Skua.Core.Services;
@@ -11,23 +12,23 @@ namespace Skua.Core.Services;
 public partial class GetScriptsService : ObservableObject, IGetScriptsService
 {
     private readonly IDialogService _dialogService;
+    private readonly ISettingsService _settingsService;
 
-    private const string _rawScriptsJsonUrl = "auqw/Scripts/refs/heads/Skua/scripts.json";
-    private const string _skillsSetsRawUrl = "auqw/Scripts/refs/heads/Skua/Skills/AdvancedSkills.json";
-    private const string _questDataRawUrl = "auqw/Scripts/refs/heads/Skua/QuestData.json";
-    private const string _junkItemsRawUrl = "auqw/Scripts/refs/heads/Skua/JunkItems.json";
-
-    private const string _repoOwner = "auqw";
-    private const string _repoName = "Scripts";
-    private const string _repoBranch = "Skua";
+    private const string _skillsSetsPath = "Skills/AdvancedSkills.json";
+    private const string _questDataPath = "QuestData.json";
+    private const string _junkItemsPath = "JunkItems.json";
+    private const int _compareFileLimit = 300;
 
     [ObservableProperty]
     private RangedObservableCollection<ScriptInfo> _scripts = new();
 
-    public GetScriptsService(IDialogService dialogService)
+    public GetScriptsService(IDialogService dialogService, ISettingsService settingsService)
     {
         _dialogService = dialogService;
+        _settingsService = settingsService;
     }
+
+    public ScriptSource Source => _settingsService.GetShared().ScriptSource;
 
     public async ValueTask<List<ScriptInfo>> GetScriptsAsync(IProgress<string>? progress, CancellationToken token)
     {
@@ -80,8 +81,16 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
         if (_scripts.Count != 0 && !refresh)
             return _scripts.ToList();
 
+        return await FetchScriptsAsync(Source, token);
+    }
+
+    public Task<List<ScriptInfo>> FetchScriptsAsync(CancellationToken token)
+        => FetchScriptsAsync(Source, token);
+
+    private static async Task<List<ScriptInfo>> FetchScriptsAsync(ScriptSource source, CancellationToken token)
+    {
         using HttpResponseMessage response =
-            await ValidatedHttpExtensions.GetAsync(HttpClients.GitHubRaw, _rawScriptsJsonUrl, token);
+            await ValidatedHttpExtensions.GetAsync(HttpClients.GitHubRaw, source.RawFileUrl("scripts.json"), token);
 
         string content = await response.Content.ReadAsStringAsync(token);
         if (string.IsNullOrWhiteSpace(content))
@@ -96,7 +105,13 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
         return scripts;
     }
 
-    public async Task DownloadScriptAsync(ScriptInfo info)
+    public Task DownloadScriptAsync(ScriptInfo info)
+        => DownloadScriptAsync(Source, info, CancellationToken.None);
+
+    /// <remarks>
+    /// The file comes from the Script Source, not from the entry's <c>downloadUrl</c>: a fork's <c>scripts.json</c> still points at upstream.
+    /// </remarks>
+    private static async Task DownloadScriptAsync(ScriptSource source, ScriptInfo info, CancellationToken token)
     {
         string? directory = Path.GetDirectoryName(info.LocalFile);
 
@@ -104,10 +119,10 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
             Directory.CreateDirectory(directory);
 
         using HttpResponseMessage response =
-            await ValidatedHttpExtensions.GetAsync(HttpClients.GitHubRaw, info.DownloadUrl);
+            await ValidatedHttpExtensions.GetAsync(HttpClients.GitHubRaw, source.RawFileUrl(info.FilePath), token);
 
-        byte[] scriptBytes = await response.Content.ReadAsByteArrayAsync();
-        await File.WriteAllBytesAsync(info.LocalFile, scriptBytes);
+        byte[] scriptBytes = await response.Content.ReadAsByteArrayAsync(token);
+        await File.WriteAllBytesAsync(info.LocalFile, scriptBytes, token);
     }
 
     public async Task<int> DownloadAllWhereAsync(Func<ScriptInfo, bool> pred)
@@ -158,7 +173,7 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
                 : 0;
 
             string content =
-                await ValidatedHttpExtensions.GetStringAsync(HttpClients.GitHubRaw, _skillsSetsRawUrl);
+                await ValidatedHttpExtensions.GetStringAsync(HttpClients.GitHubRaw, Source.RawFileUrl(_skillsSetsPath));
 
             long remoteSize = content.Length;
 
@@ -175,7 +190,7 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
         try
         {
             string content =
-                await ValidatedHttpExtensions.GetStringAsync(HttpClients.GitHubRaw, _skillsSetsRawUrl);
+                await ValidatedHttpExtensions.GetStringAsync(HttpClients.GitHubRaw, Source.RawFileUrl(_skillsSetsPath));
 
             await File.WriteAllTextAsync(ClientFileSources.SkuaAdvancedSkillsFile, content);
             return true;
@@ -191,7 +206,7 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
         try
         {
             string content =
-                await ValidatedHttpExtensions.GetStringAsync(HttpClients.GitHubRaw, _questDataRawUrl);
+                await ValidatedHttpExtensions.GetStringAsync(HttpClients.GitHubRaw, Source.RawFileUrl(_questDataPath));
 
             await File.WriteAllTextAsync(ClientFileSources.SkuaQuestsFile, content);
             return true;
@@ -211,7 +226,7 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
                 : 0;
 
             string content =
-                await ValidatedHttpExtensions.GetStringAsync(HttpClients.GitHubRaw, _junkItemsRawUrl);
+                await ValidatedHttpExtensions.GetStringAsync(HttpClients.GitHubRaw, Source.RawFileUrl(_junkItemsPath));
 
             long remoteSize = content.Length;
 
@@ -228,7 +243,7 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
         try
         {
             string content =
-                await ValidatedHttpExtensions.GetStringAsync(HttpClients.GitHubRaw, _junkItemsRawUrl);
+                await ValidatedHttpExtensions.GetStringAsync(HttpClients.GitHubRaw, Source.RawFileUrl(_junkItemsPath));
 
             await File.WriteAllTextAsync(ClientFileSources.SkuaJunkItemsFile, content);
             return true;
@@ -243,17 +258,7 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
     {
         try
         {
-            string url = $"https://api.github.com/repos/{_repoOwner}/{_repoName}/commits/{_repoBranch}";
-
-            using HttpResponseMessage response =
-                await HttpClients.MakeGitHubApiRequestAsync(url);
-
-            string content = await response.Content.ReadAsStringAsync(token);
-
-            GitHubCommit? commit =
-                JsonConvert.DeserializeObject<GitHubCommit>(content);
-
-            return commit?.Sha;
+            return await FetchHeadCommitShaAsync(Source, token);
         }
         catch
         {
@@ -261,24 +266,26 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
         }
     }
 
+    private static async Task<string> FetchHeadCommitShaAsync(ScriptSource source, CancellationToken token)
+    {
+        using HttpResponseMessage response =
+            await HttpClients.MakeGitHubApiRequestAsync(source.CommitUrl);
+
+        string content = await response.Content.ReadAsStringAsync(token);
+
+        GitHubCommit? commit =
+            JsonConvert.DeserializeObject<GitHubCommit>(content);
+
+        return string.IsNullOrEmpty(commit?.Sha)
+            ? throw new InvalidDataException($"GitHub returned no commit for {source}.")
+            : commit.Sha;
+    }
+
     private async Task<HashSet<string>> GetChangedFilesAsync(string oldSha, string newSha, CancellationToken token)
     {
         try
         {
-            string url = $"https://api.github.com/repos/{_repoOwner}/{_repoName}/compare/{oldSha}...{newSha}";
-
-            using HttpResponseMessage response =
-                await HttpClients.MakeGitHubApiRequestAsync(url);
-
-            string content = await response.Content.ReadAsStringAsync(token);
-
-            GitHubCompare? compare =
-                JsonConvert.DeserializeObject<GitHubCompare>(content);
-
-            return compare?.Files?
-                .Where(f => f.Status != "removed")
-                .Select(f => f.FileName)
-                .ToHashSet() ?? new HashSet<string>();
+            return await FetchChangedFilesAsync(Source, oldSha, newSha, token);
         }
         catch (Exception ex)
         {
@@ -287,10 +294,33 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
         }
     }
 
-    private string? GetStoredCommitSha()
+    private static async Task<HashSet<string>> FetchChangedFilesAsync(ScriptSource source, string oldSha, string newSha, CancellationToken token)
+    {
+        using HttpResponseMessage response =
+            await HttpClients.MakeGitHubApiRequestAsync(source.CompareUrl(oldSha, newSha));
+
+        string content = await response.Content.ReadAsStringAsync(token);
+
+        GitHubCompare? compare =
+            JsonConvert.DeserializeObject<GitHubCompare>(content);
+
+        return compare?.Files?
+            .Where(f => f.Status != "removed")
+            .Select(f => f.FileName)
+            .ToHashSet() ?? new HashSet<string>();
+    }
+
+    /// <summary>The last commit synced from <paramref name="source"/>, or null when the Scripts were last synced from another Script Source.</summary>
+    private static string? GetStoredCommitSha(ScriptSource source)
     {
         try
         {
+            string storedSource = File.Exists(ClientFileSources.SkuaScriptsSourceFile)
+                ? File.ReadAllText(ClientFileSources.SkuaScriptsSourceFile).Trim()
+                : new ScriptSource().ToString();
+            if (storedSource != source.ToString())
+                return null;
+
             return File.Exists(ClientFileSources.SkuaScriptsCommitFile)
                 ? File.ReadAllText(ClientFileSources.SkuaScriptsCommitFile).Trim()
                 : null;
@@ -301,16 +331,69 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
         }
     }
 
-    private Task StoreCommitShaAsync(string sha)
+    private static async Task StoreCommitShaAsync(ScriptSource source, string sha)
     {
         try
         {
-            return File.WriteAllTextAsync(ClientFileSources.SkuaScriptsCommitFile, sha);
+            await File.WriteAllTextAsync(ClientFileSources.SkuaScriptsCommitFile, sha);
+            await File.WriteAllTextAsync(ClientFileSources.SkuaScriptsSourceFile, source.ToString());
         }
         catch
         {
-            return Task.CompletedTask;
         }
+    }
+
+    public async Task<ScriptsSyncResult> SyncScriptsAsync(CancellationToken token)
+    {
+        ScriptSource source = Source;
+        string headSha = await FetchHeadCommitShaAsync(source, token);
+        string? storedSha = GetStoredCommitSha(source);
+
+        if (storedSha == headSha)
+            return new ScriptsSyncResult(source, ScriptsSyncMode.UpToDate, headSha, 0, []);
+
+        List<ScriptInfo> scripts = await FetchScriptsAsync(source, token);
+        List<ScriptInfo> toDownload;
+        if (string.IsNullOrEmpty(storedSha))
+        {
+            toDownload = scripts.Where(s => !s.Downloaded || s.Outdated).ToList();
+        }
+        else
+        {
+            HashSet<string> changedFiles = await FetchChangedFilesAsync(source, storedSha, headSha, token);
+            // GitHub's compare lists at most 300 files; past that, every Script that differs from scripts.json is fetched instead.
+            toDownload = changedFiles.Count >= _compareFileLimit
+                ? scripts.Where(s => !s.Downloaded || s.Outdated).ToList()
+                : scripts.Where(s => changedFiles.Contains(s.FilePath)).ToList();
+        }
+
+        ConcurrentBag<string> failed = new();
+        int downloaded = 0;
+        await Parallel.ForEachAsync(toDownload, new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = token }, async (script, ct) =>
+        {
+            try
+            {
+                await DownloadScriptAsync(source, script, ct);
+                Interlocked.Increment(ref downloaded);
+            }
+            catch (Exception) when (!ct.IsCancellationRequested)
+            {
+                failed.Add(script.FilePath);
+            }
+        });
+
+        if (downloaded > 0)
+            ClearCachedScriptsDirectory();
+
+        if (failed.IsEmpty)
+            await StoreCommitShaAsync(source, headSha);
+
+        return new ScriptsSyncResult(
+            source,
+            string.IsNullOrEmpty(storedSha) ? ScriptsSyncMode.Full : ScriptsSyncMode.Incremental,
+            headSha,
+            downloaded,
+            failed.Order(StringComparer.Ordinal).ToList());
     }
 
     public IEnumerable<ScriptInfo> GetOutdatedScripts()
@@ -331,13 +414,13 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
                 return 0;
             }
 
-            string? storedSha = GetStoredCommitSha();
+            string? storedSha = GetStoredCommitSha(Source);
 
             if (string.IsNullOrEmpty(storedSha))
             {
                 progress?.Report("Initial sync...");
                 await RefreshScriptsAsync(progress, token);
-                await StoreCommitShaAsync(currentSha);
+                await StoreCommitShaAsync(Source, currentSha);
                 return _scripts.Count;
             }
 
@@ -357,7 +440,7 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
             if (scriptChanges.Count == 0)
             {
                 progress?.Report("No script changes detected.");
-                await StoreCommitShaAsync(currentSha);
+                await StoreCommitShaAsync(Source, currentSha);
                 return 0;
             }
 
@@ -386,7 +469,7 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
                 }
             }
 
-            await StoreCommitShaAsync(currentSha);
+            await StoreCommitShaAsync(Source, currentSha);
 
             if (updated > 0)
                 ClearCachedScriptsDirectory();

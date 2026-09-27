@@ -38,6 +38,12 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
         throw new InvalidOperationException("A client called status after a protocol mismatch.");
     }
 
+    public Task<ScriptsSearchResult> ScriptsSearchAsync(string query, string? tag, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called scripts_search after a protocol mismatch.");
+
+    public Task<ScriptsUpdateResult> ScriptsUpdateAsync(CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called scripts_update after a protocol mismatch.");
+
     public Task ShutdownAsync(CancellationToken cancellationToken)
     {
         _stop.Cancel();

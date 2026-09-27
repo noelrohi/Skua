@@ -35,6 +35,12 @@ public sealed class EngineConnection : IDisposable
     public Task ShutdownAsync(CancellationToken cancellationToken = default) =>
         CallAsync(async rpc => { await rpc.ShutdownAsync(cancellationToken); return true; });
 
+    public Task<ScriptsSearchResult> ScriptsSearchAsync(string query, string? tag = null, CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.ScriptsSearchAsync(query, tag, cancellationToken));
+
+    public Task<ScriptsUpdateResult> ScriptsUpdateAsync(CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.ScriptsUpdateAsync(cancellationToken));
+
     /// <summary>Calls the Engine and turns its errors into <see cref="ControlException"/>.</summary>
     public async Task<T> CallAsync<T>(Func<IEngineRpc, Task<T>> call)
     {

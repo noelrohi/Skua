@@ -37,17 +37,24 @@ public class McpTests
         Assert.StartsWith("ProtocolMismatch: ", ((TextContentBlock)result.Content.Single()).Text);
     }
 
-    private static Task<McpClient> ConnectAsync(EngineSandbox sandbox) =>
-        McpClient.CreateAsync(new StdioClientTransport(new StdioClientTransportOptions
+    /// <summary>Starts <c>skua mcp</c> with this sandbox's data folder and extra environment, and connects to it.</summary>
+    internal static Task<McpClient> ConnectAsync(EngineSandbox sandbox, IDictionary<string, string>? environment = null)
+    {
+        Dictionary<string, string?> variables = new()
+        {
+            [EngineEndpoint.SkuaDirVariable] = sandbox.SkuaDir,
+            [EngineEndpoint.SocketVariable] = null,
+            [EngineClientOptions.EngineExecutableVariable] = EngineSandbox.EngineExecutable,
+        };
+        foreach ((string key, string value) in environment ?? new Dictionary<string, string>())
+            variables[key] = value;
+
+        return McpClient.CreateAsync(new StdioClientTransport(new StdioClientTransportOptions
         {
             Command = EngineSandbox.CliExecutable,
             Arguments = ["mcp"],
             ShutdownTimeout = TimeSpan.FromSeconds(1),
-            EnvironmentVariables = new Dictionary<string, string?>
-            {
-                [EngineEndpoint.SkuaDirVariable] = sandbox.SkuaDir,
-                [EngineEndpoint.SocketVariable] = null,
-                [EngineClientOptions.EngineExecutableVariable] = EngineSandbox.EngineExecutable,
-            },
+            EnvironmentVariables = variables,
         }), cancellationToken: TestContext.Current.CancellationToken);
+    }
 }

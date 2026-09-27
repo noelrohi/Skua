@@ -19,6 +19,29 @@ status.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options
     return await connection.StatusAsync(ct);
 }, Output.Status));
 
+Argument<string> scriptsQuery = new("query")
+{
+    Description = "Words that must all appear in a Script's name, description, tags or path; none matches every Script.",
+    Arity = ArgumentArity.ZeroOrOne,
+    DefaultValueFactory = _ => "",
+};
+Option<string?> scriptsTag = new("--tag") { Description = "Only Scripts with this tag." };
+Command scriptsSearch = new("search", "Search the Script Source for Scripts, with whether each is downloaded or outdated.") { scriptsQuery, scriptsTag };
+scriptsSearch.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
+{
+    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
+    return await connection.ScriptsSearchAsync(parse.GetValue(scriptsQuery)!, parse.GetValue(scriptsTag), ct);
+}, Output.ScriptsSearch));
+
+Command scriptsUpdate = new("update", "Sync the Scripts with the Script Source: a full download the first time, then only changed Scripts.");
+scriptsUpdate.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
+{
+    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
+    return await connection.ScriptsUpdateAsync(ct);
+}, Output.ScriptsUpdate));
+
+Command scripts = new("scripts", "Find and sync Scripts from the Script Source.") { scriptsSearch, scriptsUpdate };
+
 Command engineStart = new("start", "Start the Engine if it isn't running.");
 engineStart.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), options => EngineCommands.StartAsync(options, ct), Output.Engine));
 
@@ -33,5 +56,5 @@ Command engine = new("engine", "Control the Engine's lifetime.") { engineStart, 
 Command mcp = new("mcp", "Serve the Control Surface as an MCP server over stdio.");
 mcp.SetAction((_, ct) => McpServer.RunAsync(ct));
 
-RootCommand root = new("Drive a Skua Engine.") { json, status, engine, mcp };
+RootCommand root = new("Drive a Skua Engine.") { json, status, scripts, engine, mcp };
 return await root.Parse(args).InvokeAsync();

@@ -183,6 +183,23 @@ Environment overrides:
 | `SKUA_ENGINE` | The `skua-engine` that auto-start launches |
 | `SKUA_ENGINE_SOCKET` | The Engine's socket (default `<SkuaDIR>/engines/default.sock`); the path must fit in 103 bytes |
 | `SKUA_GAMEHOST`, `SKUA_SWF` | The Game Host the Engine runs, and the SWF it loads (default `skua.swf` next to the Engine) |
+| `SKUA_GITHUB_RAW_URL`, `SKUA_GITHUB_API_URL` | `https://raw.githubusercontent.com/` and `https://api.github.com/`, for tests |
+
+#### Script Source
+
+`skua scripts update` (MCP `scripts_update`) syncs Scripts into `<SkuaDIR>/Scripts` from the Script Source, `auqw/Scripts@Skua` by default. The first sync from a Script Source downloads every Script; later ones download only the Scripts changed since the last synced commit. `skua scripts search <query> [--tag <tag>]` (MCP `scripts_search`) searches its `scripts.json`.
+
+To use a fork, set `ScriptSource` under `shared` in `<SkuaDIR>/Skua.settings.json`, then run `skua engine stop`, since the Engine reads settings when it starts:
+
+```json
+{
+  "shared": {
+    "ScriptSource": { "Owner": "noelrohi", "Repo": "Scripts", "Branch": "Skua" }
+  }
+}
+```
+
+Script files always come from the Script Source itself, not from the `downloadUrl`s in `scripts.json`, which a fork keeps pointing at upstream.
 
 ### Building the Installer
 
