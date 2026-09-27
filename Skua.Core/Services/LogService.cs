@@ -24,7 +24,7 @@ public class LogService : ObservableRecipient, ILogService, IDisposable
 
     private void LogFlashError(LogService recipient, FlashErrorMessage message)
     {
-        recipient.FlashLog($"{message.Function} Args[{message.Args.Length}] {(message.Args.Length > 0 ? $"= {{{string.Join(",", message.Args.Select(a => a?.ToString()))}}}" : string.Empty)}");
+        recipient.FlashLog($"{message.Function} Args[{message.Args.Length}] {(message.Args.Length > 0 ? $"= {{{string.Join(",", message.Args.Select(a => a?.ToString()))}}} " : string.Empty)}threw {message.Exception.GetType().Name}: {message.Exception.Message}");
     }
 
     private readonly List<string> _debugLogs = new();

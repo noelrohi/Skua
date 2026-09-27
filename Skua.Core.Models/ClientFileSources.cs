@@ -5,7 +5,15 @@ namespace Skua.Core.Models;
 public static class ClientFileSources
 {
     public static string AssemblyVersion { get; } = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "0.0.0.0";
-    public static string SkuaDIR { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Skua");
+
+    /// <summary>
+    /// Environment variable that overrides the Skua data folder, so tests and headless runs never touch the real one.
+    /// </summary>
+    public const string SkuaDirEnvironmentVariable = "SKUA_DIR";
+
+    public static string SkuaDIR { get; } = Environment.GetEnvironmentVariable(SkuaDirEnvironmentVariable) is { Length: > 0 } skuaDir
+        ? Path.GetFullPath(skuaDir)
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Skua");
     public static string SkuaSettingsDIR { get; } = Path.Combine(SkuaDIR, "Skua.settings.json");
     public static string SkuaScriptsDIR { get; } = Path.Combine(SkuaDIR, "Scripts");
     public static string SkuaThemesDIR { get; } = Path.Combine(SkuaDIR, "themes");

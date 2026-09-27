@@ -14,6 +14,9 @@ using Skua.Core.Utils;
 using Skua.Core.ViewModels;
 using Skua.Core.ViewModels.Manager;
 using System.Reflection;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
+using System.Runtime.InteropServices;
 
 namespace Skua.Core.AppStartup;
 
@@ -240,31 +243,43 @@ public static class Services
             {
                 if (_cachedBaseReferences == null)
                 {
-                    string[] refPaths = {
-                        typeof(object).GetTypeInfo().Assembly.Location,
-                        typeof(Console).GetTypeInfo().Assembly.Location,
-                        typeof(object).Assembly.Location,
-                        typeof(Enumerable).Assembly.Location,
-                        typeof(ScriptManager).Assembly.Location,
-                        Path.Combine(Path.GetDirectoryName(typeof(System.Runtime.GCSettings).GetTypeInfo().Assembly.Location)!, "System.Runtime.dll")
-                    };
+                    // Load what Skua.Core references, so the default namespaces resolve however early the first compiler is created.
+                    foreach (AssemblyName name in typeof(ScriptManager).Assembly.GetReferencedAssemblies())
+                    {
+                        try
+                        {
+                            Assembly.Load(name);
+                        }
+                        catch (Exception e) when (e is IOException or BadImageFormatException)
+                        {
+                        }
+                    }
 
-                    List<PortableExecutableReference> refs = AppDomain.CurrentDomain
+                    IEnumerable<string> loadedPaths = AppDomain.CurrentDomain
                         .GetAssemblies()
                         .Where(a => !a.IsDynamic)
                         .Select(a => a.Location)
                         .Where(s => !string.IsNullOrEmpty(s))
-                        .Where(s => !s.Contains("xunit"))
-                        .Select(s => MetadataReference.CreateFromFile(s))
-                        .ToList();
+                        .Where(s => !s.Contains("xunit"));
 
-                    string? regexPath = typeof(System.Text.RegularExpressions.Regex).Assembly.Location;
-                    if (!string.IsNullOrEmpty(regexPath))
+                    // Every managed DLL in the runtime directory is referenced, so Scripts don't depend on which assemblies happen to be loaded yet.
+                    IEnumerable<string> runtimePaths = Directory
+                        .EnumerateFiles(RuntimeEnvironment.GetRuntimeDirectory(), "*.dll")
+                        .Order(StringComparer.OrdinalIgnoreCase)
+                        .Where(IsManagedAssembly);
+
+                    HashSet<string> paths = new(StringComparer.OrdinalIgnoreCase);
+                    HashSet<string> fileNames = new(StringComparer.OrdinalIgnoreCase);
+                    List<PortableExecutableReference> refs = new();
+                    foreach (string path in loadedPaths.Concat(runtimePaths))
                     {
-                        refs.Add(MetadataReference.CreateFromFile(regexPath));
+                        // A loaded assembly wins over a runtime copy with the same name, which would otherwise be a duplicate import.
+                        if (!paths.Add(Path.GetFullPath(path)) || !fileNames.Add(Path.GetFileName(path)))
+                            continue;
+
+                        refs.Add(MetadataReference.CreateFromFile(path));
                     }
 
-                    refs.AddRange(refPaths.Select(s => MetadataReference.CreateFromFile(s)));
                     _cachedBaseReferences = refs;
                 }
             }
@@ -291,7 +306,6 @@ public static class Services
             "System.Threading",
             "System.Threading.Tasks",
             "System.Timers",
-            "System.Windows.Forms",
             "Skua.Core",
             "Skua.Core.Interfaces",
             "Skua.Core.Models",
@@ -310,7 +324,23 @@ public static class Services
             "Newtonsoft.Json",
             "Newtonsoft.Json.Linq",
         });
+        if (OperatingSystem.IsWindows())
+            compiler.AddNamespaces("System.Windows.Forms");
         compiler.SaveGeneratedCode = true;
         return compiler;
+    }
+
+    private static bool IsManagedAssembly(string path)
+    {
+        try
+        {
+            using FileStream stream = File.OpenRead(path);
+            using PEReader reader = new(stream);
+            return reader.HasMetadata && reader.GetMetadataReader().IsAssembly;
+        }
+        catch (Exception e) when (e is BadImageFormatException or IOException)
+        {
+            return false;
+        }
     }
 }

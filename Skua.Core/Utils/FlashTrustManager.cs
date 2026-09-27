@@ -1,3 +1,5 @@
+using Skua.Core.Models;
+
 namespace Skua.Core.Utils;
 
 public static class FlashTrustManager
@@ -16,9 +18,7 @@ public static class FlashTrustManager
 
             string trustFilePath = Path.Combine(TrustFolderPath, TrustFileName);
             string appDirectory = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
-            string skuaDataDirectory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "Skua");
+            string skuaDataDirectory = ClientFileSources.SkuaDIR;
 
             string[] requiredPaths = { appDirectory, skuaDataDirectory };
 

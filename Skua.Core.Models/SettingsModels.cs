@@ -315,7 +315,7 @@ public class ManagerSettings
     public void InitializeDefaults()
     {
         if (string.IsNullOrEmpty(ClientDownloadPath))
-            ClientDownloadPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Skua");
+            ClientDownloadPath = ClientFileSources.SkuaDIR;
 
         ManagedAccounts ??= new(StringComparer.OrdinalIgnoreCase);
     }
