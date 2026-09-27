@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
 using Skua.Control;
+using Skua.Core.Interfaces;
 using StreamJsonRpc;
 
 namespace Skua.App.Engine;
@@ -21,11 +22,13 @@ internal sealed class Engine : IEngineRpc
     private readonly Stopwatch _uptime = Stopwatch.StartNew();
     private readonly CancellationTokenSource _shutdown = new();
     private readonly ConcurrentDictionary<JsonRpc, byte> _connections = new();
+    private readonly ScriptSourceOperations _scriptSource;
 
-    private Engine(EngineEndpoint endpoint, GameHostSupervisor gameHost)
+    private Engine(EngineEndpoint endpoint, GameHostSupervisor gameHost, IGetScriptsService scripts)
     {
         _endpoint = endpoint;
         _gameHost = gameHost;
+        _scriptSource = new ScriptSourceOperations(scripts, _shutdown.Token);
     }
 
     public static string Build { get; } =
@@ -66,7 +69,7 @@ internal sealed class Engine : IEngineRpc
         using (gameHost)
         {
             using ServiceProvider services = EngineServices.Build();
-            Engine engine = new(endpoint, gameHost);
+            Engine engine = new(endpoint, gameHost, services.GetRequiredService<IGetScriptsService>());
             await engine.ServeAsync();
         }
 
@@ -87,6 +90,12 @@ internal sealed class Engine : IEngineRpc
         _shutdown.Cancel();
         return Task.CompletedTask;
     }
+
+    public Task<ScriptsSearchResult> ScriptsSearchAsync(string query, string? tag, CancellationToken cancellationToken) =>
+        _scriptSource.SearchAsync(query, tag, cancellationToken);
+
+    public Task<ScriptsUpdateResult> ScriptsUpdateAsync(CancellationToken cancellationToken) =>
+        _scriptSource.UpdateAsync();
 
     /// <summary>
     /// Takes the lock, or returns null when another Engine holds it. A client checking the lock holds it for an instant,

@@ -23,3 +23,38 @@ public enum GameState
 
 /// <summary>The data of a JSON-RPC error raised by the Engine.</summary>
 public sealed record ErrorDataDto(ErrorCode Code);
+
+/// <summary>The repository the Engine fetches Scripts from: <c>owner/repo@branch</c>.</summary>
+public sealed record ScriptSourceDto(string Owner, string Repo, string Branch);
+
+/// <summary>A Script in the Script Source.</summary>
+/// <param name="Path">The Script's path in the Script Source, which identifies it, e.g. <c>Farm/Leveling.cs</c>.</param>
+/// <param name="Name">The Script's name from <c>scripts.json</c>, or null when it has none.</param>
+/// <param name="Downloaded">Whether the Script's file is on disk.</param>
+/// <param name="Outdated">Whether the file on disk differs from the Script Source's current version.</param>
+public sealed record ScriptDto(string Path, string? Name, string? Description, IReadOnlyList<string> Tags, bool Downloaded, bool Outdated);
+
+/// <summary>The reply to <c>scripts_search</c>.</summary>
+/// <param name="Matched">How many Scripts matched; <see cref="Scripts"/> holds at most <see cref="MaxScripts"/> of them.</param>
+public sealed record ScriptsSearchResult(ScriptSourceDto Source, int Matched, IReadOnlyList<ScriptDto> Scripts)
+{
+    public const int MaxScripts = 100;
+}
+
+public enum ScriptsUpdateMode
+{
+    /// <summary>The first sync from this Script Source: every missing or outdated Script was downloaded.</summary>
+    Full,
+
+    /// <summary>Only the Scripts changed since the last synced commit were downloaded.</summary>
+    Incremental,
+
+    /// <summary>The Script Source hasn't changed since the last sync.</summary>
+    UpToDate,
+}
+
+/// <summary>The reply to <c>scripts_update</c>.</summary>
+/// <param name="Commit">The Script Source commit the Scripts are now synced to.</param>
+/// <param name="Downloaded">How many Script files were downloaded.</param>
+/// <param name="Failed">The paths of Scripts that failed to download; the next update retries them.</param>
+public sealed record ScriptsUpdateResult(ScriptSourceDto Source, ScriptsUpdateMode Mode, string Commit, int Downloaded, IReadOnlyList<string> Failed);

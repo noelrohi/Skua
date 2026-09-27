@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Skua.Control;
 
@@ -21,6 +22,38 @@ internal static class Output
             """;
     }
 
+    public static string ScriptsSearch(ScriptsSearchResult result)
+    {
+        if (result.Matched == 0)
+            return $"No Scripts in {Source(result.Source)} match.";
+
+        StringBuilder text = new(result.Matched > result.Scripts.Count
+            ? $"{result.Matched} Scripts in {Source(result.Source)} match; showing the first {result.Scripts.Count}, so narrow the search."
+            : $"{result.Matched} Scripts in {Source(result.Source)} match.");
+        int width = result.Scripts.Max(s => s.Path.Length);
+        foreach (ScriptDto script in result.Scripts)
+        {
+            string state = script.Outdated ? "outdated" : script.Downloaded ? "downloaded" : "missing";
+            string tags = script.Tags.Count > 0 ? $" [{string.Join(", ", script.Tags)}]" : "";
+            text.AppendLine().Append($"  {script.Path.PadRight(width)}  {state,-10}  {script.Name}{tags}".TrimEnd());
+        }
+        return text.ToString();
+    }
+
+    public static string ScriptsUpdate(ScriptsUpdateResult result)
+    {
+        string commit = result.Commit.Length > 7 ? result.Commit[..7] : result.Commit;
+        string text = result.Mode switch
+        {
+            ScriptsUpdateMode.Full => $"Downloaded {result.Downloaded} Scripts from {Source(result.Source)} at {commit} (full download).",
+            ScriptsUpdateMode.Incremental => $"Downloaded {result.Downloaded} changed Scripts from {Source(result.Source)} at {commit}.",
+            _ => $"The Scripts are up to date with {Source(result.Source)} at {commit}.",
+        };
+        if (result.Failed.Count > 0)
+            text += $"\n{result.Failed.Count} failed to download; run 'skua scripts update' again: {string.Join(", ", result.Failed)}";
+        return text;
+    }
+
     public static string Engine(EngineStateDto engine) => engine.State switch
     {
         EngineState.Running when engine.Compatible == false =>
@@ -29,6 +62,8 @@ internal static class Output
         EngineState.StartingOrHung => $"Engine '{engine.Name}' is starting or hung; its socket {engine.Socket} doesn't answer.",
         _ => $"Engine '{engine.Name}' is stopped.",
     };
+
+    private static string Source(ScriptSourceDto source) => $"{source.Owner}/{source.Repo}@{source.Branch}";
 
     private static string Name(GameState state) => JsonNamingPolicy.CamelCase.ConvertName(state.ToString());
 }

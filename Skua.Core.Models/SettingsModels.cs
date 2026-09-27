@@ -1,6 +1,7 @@
 using System.Collections.Specialized;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Skua.Core.Models.GitHub;
 
 namespace Skua.Core.Models;
 
@@ -159,6 +160,9 @@ public class SharedSettings
     [JsonPropertyName("CheckBotScriptsUpdates")]
     public bool CheckBotScriptsUpdates { get; set; } = true;
 
+    [JsonPropertyName("ScriptSource")]
+    public ScriptSource ScriptSource { get; set; } = new();
+
     [JsonExtensionData]
     public Dictionary<string, object>? ExtensionData { get; set; }
 
@@ -189,6 +193,9 @@ public class SharedSettings
 
         if (string.IsNullOrEmpty(ApplicationVersion))
             ApplicationVersion = ClientFileSources.AssemblyVersion;
+
+        ScriptSource ??= new();
+        ScriptSource.InitializeDefaults();
     }
 }
 
