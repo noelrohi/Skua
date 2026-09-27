@@ -1,0 +1,18 @@
+{
+  "solution": {
+    "path": "Skua.sln",
+    "projects": [
+      "Skua.App.Cli\\Skua.App.Cli.csproj",
+      "Skua.App.Engine\\Skua.App.Engine.csproj",
+      "Skua.Control\\Skua.Control.csproj",
+      "Skua.Core.Generators\\Skua.Core.Generators.csproj",
+      "Skua.Core.Interfaces\\Skua.Core.Interfaces.csproj",
+      "Skua.Core.Models\\Skua.Core.Models.csproj",
+      "Skua.Core.Utils\\Skua.Core.Utils.csproj",
+      "Skua.Core\\Skua.Core.csproj",
+      "Skua.Engine.Tests\\Skua.Engine.Tests.csproj",
+      "Skua.FakeGameHost\\Skua.FakeGameHost.csproj",
+      "Skua.MacOS\\Skua.MacOS.csproj"
+    ]
+  }
+}

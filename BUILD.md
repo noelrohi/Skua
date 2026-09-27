@@ -17,7 +17,7 @@ This document provides instructions for building the Skua project from source, i
 1. **.NET 10.0 SDK or later**
    - Download from: [Microsoft](https://dotnet.microsoft.com/download)
    - Verify installation: `dotnet --version`
-   - Project targets: `net10.0-windows` for applications and UI libraries; `net10.0` for Skua.Core, Skua.Core.Interfaces, Skua.Core.Models and Skua.Core.Utils
+   - Project targets: `net10.0-windows` for applications and UI libraries; `net10.0` for Skua.Core, Skua.Core.Interfaces, Skua.Core.Models and Skua.Core.Utils, and for the macOS projects
 
 2. **Visual Studio 2026** (for MSBuild and WiX support)
    - Workloads required:
@@ -164,6 +164,26 @@ dotnet build Skua.App.WPF\Skua.App.WPF.csproj --configuration Release
 
 Both scripts write `Skua.AS3/skua/bin/skua.swf` and print the SHA-256 of its `DoABC` tags. Compare builds by that hash, not the file hash: `mxmlc` writes a compile timestamp into every SWF.
 
+### Building the macOS Engine and CLI
+
+`Skua.MacOS.slnf` builds the headless Engine (`skua-engine`), the CLI (`skua`, which is also the MCP server as `skua mcp`) and their tests:
+
+```bash
+dotnet build Skua.MacOS.slnf
+dotnet test Skua.MacOS.slnf
+```
+
+`skua` auto-starts the `skua-engine` next to it; the test output folder `Skua.Engine.Tests/bin/<Configuration>/net10.0/` has both. For MCP clients, the config is `{"command": "skua", "args": ["mcp"]}`. With a Homebrew .NET, set `DOTNET_ROOT` so the executables find the runtime.
+
+Environment overrides:
+
+| Variable | Overrides |
+|---|---|
+| `SKUA_DIR` | The Skua data folder (default `~/Library/Application Support/Skua`) |
+| `SKUA_ENGINE` | The `skua-engine` that auto-start launches |
+| `SKUA_ENGINE_SOCKET` | The Engine's socket (default `<SkuaDIR>/engines/default.sock`); the path must fit in 103 bytes |
+| `SKUA_GAMEHOST`, `SKUA_SWF` | The Game Host the Engine runs, and the SWF it loads (default `skua.swf` next to the Engine) |
+
 ### Building the Installer
 
 Requires WiX CLI and MSBuild:
@@ -183,6 +203,8 @@ msbuild Skua.Installer\Skua.Installer.wixproj /p:Configuration=Release /p:Platfo
 ```
 
 ## CI/CD
+
+The `macOS` workflow builds `Skua.MacOS.slnf` and runs its tests on every push to `master` and on every pull request.
 
 ### Local CI Testing
 
