@@ -130,4 +130,61 @@ public partial interface IEngineRpc
     /// </summary>
     [JsonRpcMethod("drops")]
     Task<DropsResult> DropsAsync(CancellationToken cancellationToken = default);
+    /// Compiles a Script and lists its options: key, group, name, type, the stored value (or the default), the default and an enum's choices.
+    /// Refused with <see cref="ErrorCode.ScriptRunning"/> while a Script runs.
+    /// </summary>
+    /// <param name="script">A path in the Script Source, e.g. <c>Farm/Leveling.cs</c>, or an absolute path.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    /// <remarks>Fails with <see cref="ErrorCode.ScriptNotFound"/> when the file is missing and <see cref="ErrorCode.CompileFailed"/> with diagnostics.</remarks>
+    [JsonRpcMethod("script_options")]
+    Task<ScriptOptionsResult> ScriptOptionsAsync(string script, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Stores the given option values in the Script's options storage, then compiles the Script and starts it on the Script Thread.
+    /// Returns once it has started; <c>script_wait</c> follows it.
+    /// </summary>
+    /// <param name="script">A path in the Script Source, e.g. <c>Farm/Leveling.cs</c>, or an absolute path.</param>
+    /// <param name="options">Values by option key, as <c>script_options</c> lists them; the others keep their stored values.</param>
+    /// <param name="dialogs">How the run's Questions are answered: <see cref="DialogMode.Ask"/> by default.</param>
+    /// <param name="dialogTimeoutSec">How long a Question waits in <see cref="DialogMode.Ask"/> mode: 120 s by default.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    /// <remarks>
+    /// Fails with <see cref="ErrorCode.ScriptRunning"/> while a Script runs, <see cref="ErrorCode.ScriptNotFound"/> when the file is missing,
+    /// <see cref="ErrorCode.CompileFailed"/> with diagnostics, and <see cref="ErrorCode.InvalidArgument"/> for an unknown option or a bad value.
+    /// </remarks>
+    [JsonRpcMethod("script_start")]
+    Task<ScriptStartResult> ScriptStartAsync(
+        string script, IReadOnlyDictionary<string, string>? options = null, DialogMode? dialogs = null, int? dialogTimeoutSec = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Stops the running Script cooperatively and returns once its thread has ended, or once Core gives up on it (about 10 s).
+    /// Does nothing when no Script runs.
+    /// </summary>
+    [JsonRpcMethod("script_stop")]
+    Task<ScriptStopResult> ScriptStopAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>The Script state, the run in progress and the last run's outcome.</summary>
+    [JsonRpcMethod("script_status")]
+    Task<ScriptStatusDto> ScriptStatusAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Waits until no run is in progress, a Question becomes pending, or the timeout passes. Returns at once when idle.</summary>
+    /// <param name="timeoutSec">How long to wait: 300 s by default; 0 only looks.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    [JsonRpcMethod("script_wait")]
+    Task<ScriptWaitResult> ScriptWaitAsync(int? timeoutSec = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Compiles a C# snippet against <c>IScriptInterface Bot</c>, as a Script would, and runs it on a thread of its own, also while a Script runs.
+    /// An expression returns its value; statements return what they <c>return</c>.
+    /// </summary>
+    /// <param name="code">An expression such as <c>Bot.Player.Level</c>, or statements such as <c>Bot.Log("hi"); return Bot.Map.Name;</c>.</param>
+    /// <param name="timeoutSec">How long the snippet may run once compiled: 30 s by default.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    /// <remarks>
+    /// Fails with <see cref="ErrorCode.CompileFailed"/> with diagnostics, and with <see cref="ErrorCode.Timeout"/> when it runs too long,
+    /// though it keeps running on its thread. An exception it throws is returned as <see cref="EvalResult.Error"/>.
+    /// </remarks>
+    [JsonRpcMethod("eval")]
+    Task<EvalResult> EvalAsync(string code, int? timeoutSec = null, CancellationToken cancellationToken = default);
 }

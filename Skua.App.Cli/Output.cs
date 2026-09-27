@@ -19,6 +19,7 @@ internal static class Output
         string text = $"""
             Engine  {engine.Name} (pid {engine.Pid}, up {engine.UptimeSec:0} s, build {engine.Build}, protocol {engine.Protocol})
             Game    {gameLine}
+            Script  {ScriptLine(status.Script)}
             """;
         return game.Player is { } player ? $"{text}\nPlayer  {Player(player)}" : text;
     }
@@ -43,6 +44,47 @@ internal static class Output
             string equipped = item.Equipped ? "  equipped" : "";
             string enhancement = item.EnhancementLevel > 0 ? $"  enhancement {item.EnhancementLevel}" : "";
             text.AppendLine().Append($"  {item.Id,8}  {item.Name}  {item.Qty}/{item.MaxStack}  {item.Category}{equipped}{enhancement}");
+        }
+        return text.ToString();
+    }
+
+    public static string ScriptStatus(ScriptStatusDto status)
+    {
+        string text = ScriptLine(status);
+        return status.Run is not null && status.LastRun is { } last ? $"{text}\nLast    {RunResult(last)}" : text;
+    }
+
+    public static string ScriptStart(ScriptStartResult result) =>
+        $"Started run {result.Run} ({result.Status.Run?.Script ?? result.Status.LastRun?.Script}).\n{ScriptStatus(result.Status)}";
+
+    public static string ScriptStop(ScriptStopResult result) => result switch
+    {
+        { WasRunning: false } => "No Script was running.",
+        { Ended: false } => $"The Script didn't stop in time and its thread still runs; the Engine stays stopping until it ends. {RunResult(result.Status.LastRun!)}",
+        _ => $"Stopped run {result.Status.LastRun?.Number} ({result.Status.LastRun?.Script}).",
+    };
+
+    public static string ScriptWait(ScriptWaitResult result) => result.Reason switch
+    {
+        ScriptWaitReason.Timeout => $"Still running after the timeout: {ScriptLine(result.Status)}",
+        ScriptWaitReason.Question => $"A Question is pending; see 'skua dialogs'. {ScriptLine(result.Status)}",
+        _ => ScriptLine(result.Status),
+    };
+
+    public static string ScriptOptions(ScriptOptionsResult result)
+    {
+        if (result.Options.Count == 0)
+            return $"{result.Script} has no options.";
+        StringBuilder text = new($"{result.Script} keeps its options in '{result.Storage}':");
+        int width = result.Options.Max(o => o.Key.Length);
+        foreach (ScriptOptionDto option in result.Options)
+        {
+            string value = option.Value == option.Default ? option.Value : $"{option.Value} (default {option.Default})";
+            string choices = option.Choices is { } list ? $" [{string.Join(", ", list)}]" : "";
+            string transient = option.Transient ? " (transient)" : "";
+            text.AppendLine().Append($"  {option.Key.PadRight(width)}  {option.Type,-6}  {value}{choices}{transient}");
+            if (option.Description is { } description)
+                text.AppendLine().Append($"  {"".PadRight(width)}  {description}");
         }
         return text.ToString();
     }
@@ -78,6 +120,26 @@ internal static class Output
 
     public static string Drops(DropsResult result) =>
         result.Drops.Count == 0 ? "No drops." : string.Join("\n", result.Drops.Select(d => $"{d.Id,8}  {d.Name} x{d.Qty}"));
+    /// <summary>The log lines, then the value as JSON (or the exception).</summary>
+    public static string Eval(EvalResult result)
+    {
+        StringBuilder text = new();
+        foreach (string line in result.Logs)
+            text.AppendLine($"log: {line}");
+        text.Append(result.Error is { } error ? $"threw {error}" : result.Value is { } value ? value.GetRawText() : "null");
+        return text.ToString();
+    }
+
+    private static string ScriptLine(ScriptStatusDto status) => status switch
+    {
+        { Run: { } run } => $"{Name(status.State)} {run.Script}, run {run.Number}"
+            + $"{(run.ReloggingIn ? ", waiting for the auto-relogin" : "")}{(run.Relogins > 0 ? $", {run.Relogins} relogins" : "")}",
+        { LastRun: { } last } => $"{Name(status.State)}; {RunResult(last)}",
+        _ => Name(status.State),
+    };
+
+    private static string RunResult(ScriptRunResultDto run) =>
+        $"Run {run.Number} ({run.Script}) {Name(run.Outcome)} after {run.DurationSec:0.#} s{(run.Error is { } error ? $": {error}" : "")}.";
 
     public static string Servers(ServersResult result)
     {

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Skua.Control;
 
 namespace Skua.App.Cli;
@@ -52,7 +53,7 @@ internal static class Cli
     private static int Fail(bool json, ControlException e)
     {
         if (json)
-            Console.WriteLine(JsonSerializer.Serialize(new ErrorOutput(new ErrorBody(e.Code, e.Message)), Output.JsonOptions));
+            Console.WriteLine(JsonSerializer.Serialize(new ErrorOutput(new ErrorBody(e.Code, e.Message, e.Diagnostics)), Output.JsonOptions));
         else
             Console.Error.WriteLine($"skua: {e.Message}");
         return ExitCodes.For(e.Code);
@@ -60,5 +61,6 @@ internal static class Cli
 
     private sealed record ErrorOutput(ErrorBody Error);
 
-    private sealed record ErrorBody(ErrorCode Code, string Message);
+    private sealed record ErrorBody(
+        ErrorCode Code, string Message, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Diagnostics);
 }

@@ -1,3 +1,4 @@
+using Skua.App.Engine.Scripts;
 using Skua.Control;
 using Skua.Core.Interfaces;
 using Skua.Core.Models.GitHub;
@@ -8,13 +9,17 @@ namespace Skua.App.Engine;
 internal sealed class ScriptSourceOperations
 {
     private readonly IGetScriptsService _scriptsService;
+    private readonly ScriptRuns _runs;
+    private readonly ActionSlot _slot;
     private readonly CancellationToken _shutdown;
     private readonly SemaphoreSlim _updating = new(1, 1);
 
     /// <param name="shutdown">Ends an update in flight; a client disconnecting doesn't.</param>
-    public ScriptSourceOperations(IGetScriptsService scriptsService, CancellationToken shutdown)
+    public ScriptSourceOperations(IGetScriptsService scriptsService, ScriptRuns runs, ActionSlot slot, CancellationToken shutdown)
     {
         _scriptsService = scriptsService;
+        _runs = runs;
+        _slot = slot;
         _shutdown = shutdown;
     }
 
@@ -36,6 +41,7 @@ internal sealed class ScriptSourceOperations
         return new ScriptsSearchResult(ToDto(source), matches.Count, matches.Take(ScriptsSearchResult.MaxScripts).Select(ToDto).ToList());
     }
 
+    /// <remarks>Refused while a Script runs, and holds the Engine's slot, so a Script's files never change under it.</remarks>
     public async Task<ScriptsUpdateResult> UpdateAsync()
     {
         if (!_updating.Wait(0))
@@ -43,6 +49,8 @@ internal sealed class ScriptSourceOperations
 
         try
         {
+            _runs.EnsureIdle("update the Scripts");
+            using IDisposable lease = _slot.Take("update the Scripts");
             ScriptSource source = _scriptsService.Source;
             ScriptsSyncResult result = await FromScriptSourceAsync(source, () => _scriptsService.SyncScriptsAsync(_shutdown));
             return new ScriptsUpdateResult(ToDto(result.Source), Mode(result.Mode), result.Commit, result.Downloaded, result.Failed);

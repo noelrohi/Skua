@@ -645,6 +645,8 @@ public class ScriptInterface : IScriptInterface, IScriptInterfaceManager, IDispo
 
         Log("Auto re-login triggered.");
         bool wasRunning = Manager.ScriptRunning;
+        if (wasRunning)
+            Messenger.Send<ReloginStoppingScriptMessage, int>((int)MessageChannels.GameEvents);
         await Manager.StopScript();
         bool kicked = Player.Kicked;
         _waitForLogin = true;

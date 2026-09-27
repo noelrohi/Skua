@@ -22,6 +22,7 @@ public static class ConfigureServices
         services.AddSingleton<IDialogService, HeadlessDialogService>();
         services.AddSingleton<IFileDialogService, HeadlessFileDialogService>();
         services.AddSingleton<IProcessService, HeadlessProcessService>();
+        services.AddTransient<IScriptOptionContainer, HeadlessScriptOptionContainer>();
 
         return services;
     }

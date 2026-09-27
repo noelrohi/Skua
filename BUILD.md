@@ -225,6 +225,21 @@ To use a fork, set `ScriptSource` under `shared` in `<SkuaDIR>/Skua.settings.jso
 
 Script files always come from the Script Source itself, not from the `downloadUrl`s in `scripts.json`, which a fork keeps pointing at upstream.
 
+#### Running Scripts
+
+A Script is named by its path in the Script Source (`Farm/Leveling.cs`) or by an absolute path.
+
+```sh
+skua script options Farm/Leveling.cs                  # keys, types, stored values, defaults, choices
+skua script start Farm/Leveling.cs --option key=value # stores the values, compiles, starts
+skua script wait --timeout 600                        # returns when the run ends, or on timeout
+skua script status
+skua script stop                                      # cooperative; about 10 s at most
+skua eval 'Bot.Player.Level'                          # a C# expression or statements against Bot
+```
+
+The MCP tools are `script_options`, `script_start`, `script_stop`, `script_status`, `script_wait` and `eval`. A compile failure is `CompileFailed` with the compiler's diagnostics. While a Script runs, `login`, `logout`, `join`, `jump`, `scripts update` and `script options` are refused with `ScriptRunning`; queries, logs, screenshots and `eval` still work. Each run has a number, which its log entries carry as `run`, and `script.started`, `script.error` and `script.stopped` events. A restart by Core's auto-relogin is the same run, counted in its `relogins`. Core's options window, which it opens at a Script's first start, does nothing headless: the Script runs with its stored values. `eval` runs off the Script Thread with a 30 s limit, and returns the value as JSON, the log lines it wrote, and what it threw.
+
 ### Building the Installer
 
 Requires WiX CLI and MSBuild:

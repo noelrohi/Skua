@@ -92,6 +92,48 @@ internal sealed class EngineTools(Func<EngineClientOptions> options)
     public Task<CallToolResult> ScriptsUpdate(CancellationToken cancellationToken) =>
         CallAsync(connection => connection.ScriptsUpdateAsync(cancellationToken), cancellationToken);
 
+    [McpServerTool(Name = "script_options", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(ScriptOptionsResult))]
+    [Description("Compile a Script and list its options: key (what script_start's options take), group, name, type (bool, int, number, string, enum), the stored value (or the default), the default, an enum's choices, and whether it is transient (resets every start, so can't be set). Fails with ScriptNotFound (run scripts_update), CompileFailed with diagnostics, or ScriptRunning while a Script runs.")]
+    public Task<CallToolResult> ScriptOptions(
+        [Description("A path in the Script Source, e.g. Farm/Leveling.cs (see scripts_search), or an absolute path to a Script file.")] string script,
+        CancellationToken cancellationToken = default) =>
+        CallAsync(connection => connection.ScriptOptionsAsync(script, cancellationToken), cancellationToken);
+
+    [McpServerTool(Name = "script_start", UseStructuredContent = true, OutputSchemaType = typeof(ScriptStartResult))]
+    [Description("Store option values in the Script's options storage, then compile the Script and start it; returns once it has started, with its run number. Follow it with script_wait. Fails with ScriptRunning while a Script runs, ScriptNotFound (run scripts_update), CompileFailed with diagnostics, and InvalidArgument for an unknown option or a bad value. Log entries of the run carry its number as run.")]
+    public Task<CallToolResult> ScriptStart(
+        [Description("A path in the Script Source, e.g. Farm/Leveling.cs (see scripts_search), or an absolute path to a Script file.")] string script,
+        [Description("Option values by key, as script_options lists them, e.g. {\"count\": \"7\"}; the other options keep their stored values, which later runs also use.")] Dictionary<string, string>? options = null,
+        [Description("ask (the default): the run's Questions wait for an answer until dialogTimeoutSec; cancel: they get the fallback at once.")] DialogMode? dialogs = null,
+        [Description("Seconds a Question waits in ask mode: 120 by default.")] int? dialogTimeoutSec = null,
+        CancellationToken cancellationToken = default) =>
+        CallAsync(connection => connection.ScriptStartAsync(script, options, dialogs, dialogTimeoutSec, cancellationToken), cancellationToken);
+
+    [McpServerTool(Name = "script_stop", Idempotent = true, UseStructuredContent = true, OutputSchemaType = typeof(ScriptStopResult))]
+    [Description("Stop the running Script cooperatively and return once its thread has ended (ended true, lastRun outcome stopped), or once Core gives up after about 10 s (ended false, outcome stopTimedOut, state stays stopping until the thread ends). Does nothing when no Script runs.")]
+    public Task<CallToolResult> ScriptStop(CancellationToken cancellationToken) =>
+        CallAsync(connection => connection.ScriptStopAsync(cancellationToken), cancellationToken);
+
+    [McpServerTool(Name = "script_status", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(ScriptStatusDto))]
+    [Description("The Script state (idle, compiling, running, stopping), the run in progress (number, script, startedAt, relogins, reloggingIn) and the last run (outcome completed, stopped, error or stopTimedOut, error text, duration). A restart by the auto-relogin is the same run.")]
+    public Task<CallToolResult> ScriptStatus(CancellationToken cancellationToken) =>
+        CallAsync(connection => connection.ScriptStatusAsync(cancellationToken), cancellationToken);
+
+    [McpServerTool(Name = "script_wait", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(ScriptWaitResult))]
+    [Description("Wait until the run ends (reason ended; also at once when none runs), a Question becomes pending (reason question), or the timeout passes (reason timeout), and return the Script status. Loop on it to supervise a long run.")]
+    public Task<CallToolResult> ScriptWait(
+        [Description("Seconds to wait: 300 by default; 0 only looks.")] int? timeoutSec = null,
+        CancellationToken cancellationToken = default) =>
+        CallAsync(connection => connection.ScriptWaitAsync(timeoutSec, cancellationToken), cancellationToken);
+
+    [McpServerTool(Name = "eval", UseStructuredContent = true, OutputSchemaType = typeof(EvalResult))]
+    [Description("Compile a C# snippet against IScriptInterface Bot, as a Script body, and run it on its own thread, also while a Script runs. An expression (Bot.Player.Level) returns its value; statements return what they return. Returns the value as JSON (best effort), the Script log lines it wrote, and what it threw as error. Fails with CompileFailed and diagnostics, or Timeout after timeoutSec (the snippet keeps running). Reach anything the typed tools don't cover this way.")]
+    public Task<CallToolResult> Eval(
+        [Description("An expression such as Bot.Player.Level, or statements such as Bot.Map.Join(\"yulgar\"); return Bot.Map.Name;")] string code,
+        [Description("Seconds the snippet may run once compiled: 30 by default.")] int? timeoutSec = null,
+        CancellationToken cancellationToken = default) =>
+        CallAsync(connection => connection.EvalAsync(code, timeoutSec, cancellationToken), cancellationToken);
+
     [McpServerTool(Name = "logs", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(LogPage))]
     [Description("A page of the Engine's log entries in seq order, with the cursor for the next page and whether entries after the given cursor are gone (evicted, or the Engine restarted). Each entry has seq, ts (UTC ms), kind and run, then text or type + data.")]
     public Task<CallToolResult> Logs(

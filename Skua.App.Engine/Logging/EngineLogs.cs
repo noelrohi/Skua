@@ -33,6 +33,7 @@ internal sealed class EngineLogs : IDisposable
     private readonly Dictionary<LogKind, LogRing> _rings = AllKinds.ToDictionary(kind => kind, _ => new LogRing(RingCapacity));
     private LogFile? _file;
     private long _seq;
+    private int _run;
     private TaskCompletionSource _appended = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <param name="file">This start's JSONL file, or null when it couldn't be opened.</param>
@@ -45,10 +46,20 @@ internal sealed class EngineLogs : IDisposable
     /// <summary>Identifies this Engine start in cursors, so a cursor from an earlier start reads as a gap.</summary>
     public long Epoch { get; }
 
+    /// <summary>The Script run that entries recorded from now on belong to, or null outside a run.</summary>
+    public int? Run
+    {
+        get => Volatile.Read(ref _run) is > 0 and int run ? run : null;
+        set => Volatile.Write(ref _run, value ?? 0);
+    }
+
     /// <summary>
     /// The redaction hook: every later occurrence of <paramref name="secret"/> is redacted before it is stored, published or written.
     /// </summary>
     public void AddSecret(string secret) => _scrubber.AddSecret(secret);
+
+    /// <summary>Redacts every secret and the login token in <paramref name="text"/>, for text the Engine returns rather than records.</summary>
+    public string Scrub(string text) => _scrubber.Redact(text);
 
     /// <summary>Records a text entry and returns its text as stored.</summary>
     public string Write(LogKind kind, string text)
@@ -144,7 +155,7 @@ internal sealed class EngineLogs : IDisposable
         long ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         lock (_lock)
         {
-            LogEntryDto entry = new(++_seq, ts, kind, null, text, type, data, truncated);
+            LogEntryDto entry = new(++_seq, ts, kind, Run, text, type, data, truncated);
             byte[] json = JsonSerializer.SerializeToUtf8Bytes(entry, ControlJson.Options);
             if (json.Length > MaxEntryBytes)
             {

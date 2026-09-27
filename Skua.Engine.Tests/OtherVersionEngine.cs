@@ -85,6 +85,24 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
 
     public Task<DropsResult> DropsAsync(CancellationToken cancellationToken) =>
         throw new InvalidOperationException("A client called drops after a protocol mismatch.");
+    public Task<ScriptOptionsResult> ScriptOptionsAsync(string script, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called script_options after a protocol mismatch.");
+
+    public Task<ScriptStartResult> ScriptStartAsync(
+        string script, IReadOnlyDictionary<string, string>? options, DialogMode? dialogs, int? dialogTimeoutSec, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called script_start after a protocol mismatch.");
+
+    public Task<ScriptStopResult> ScriptStopAsync(CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called script_stop after a protocol mismatch.");
+
+    public Task<ScriptStatusDto> ScriptStatusAsync(CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called script_status after a protocol mismatch.");
+
+    public Task<ScriptWaitResult> ScriptWaitAsync(int? timeoutSec, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called script_wait after a protocol mismatch.");
+
+    public Task<EvalResult> EvalAsync(string code, int? timeoutSec, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called eval after a protocol mismatch.");
 
     public async ValueTask DisposeAsync()
     {

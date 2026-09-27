@@ -1,0 +1,106 @@
+using System.Text.Json;
+
+namespace Skua.Control;
+
+/// <summary>Where the Engine's Script state machine is.</summary>
+public enum ScriptState
+{
+    /// <summary>No Script runs; a Script may start.</summary>
+    Idle,
+
+    /// <summary><c>script_start</c> is compiling the Script.</summary>
+    Compiling,
+
+    /// <summary>The Script runs, or waits for Core's auto-relogin to restart it.</summary>
+    Running,
+
+    /// <summary><c>script_stop</c> asked the Script to stop and its thread hasn't ended yet, or it never ended.</summary>
+    Stopping,
+}
+
+/// <summary>How a run ended.</summary>
+public enum ScriptOutcome
+{
+    /// <summary>The Script returned, or stopped itself.</summary>
+    Completed,
+
+    /// <summary><c>script_stop</c> stopped it.</summary>
+    Stopped,
+
+    /// <summary>It threw, or Core's auto-relogin couldn't restart it.</summary>
+    Error,
+
+    /// <summary><c>script_stop</c> asked it to stop, but its thread didn't end in time.</summary>
+    StopTimedOut,
+}
+
+/// <summary>How a run's Questions are answered.</summary>
+public enum DialogMode
+{
+    /// <summary>A Question waits for an answer until the run's dialog timeout, then gets the fallback.</summary>
+    Ask,
+
+    /// <summary>A Question gets the fallback at once.</summary>
+    Cancel,
+}
+
+/// <summary>The reply to <c>script_status</c>, also part of <c>status</c>.</summary>
+/// <param name="Run">The run in progress, or null when idle.</param>
+/// <param name="LastRun">The last run that ended since the Engine started, or null.</param>
+public sealed record ScriptStatusDto(ScriptState State, ScriptRunDto? Run, ScriptRunResultDto? LastRun);
+
+/// <summary>A run in progress. A restart by Core's auto-relogin is the same run.</summary>
+/// <param name="Number">The run number, as the <c>run</c> of log entries recorded during it.</param>
+/// <param name="Script">The Script as <c>script_start</c> named it: a Script Source path, or an absolute path.</param>
+/// <param name="Relogins">How many times Core's auto-relogin restarted it.</param>
+/// <param name="ReloggingIn">Whether its thread has ended for an auto-relogin that will restart it.</param>
+public sealed record ScriptRunDto(int Number, string Script, DateTimeOffset StartedAt, int Relogins, bool ReloggingIn, DialogMode Dialogs, int DialogTimeoutSec);
+
+/// <summary>A run that ended.</summary>
+/// <param name="Error">Why it failed, for <see cref="ScriptOutcome.Error"/>: the exception's type and message.</param>
+public sealed record ScriptRunResultDto(int Number, string Script, ScriptOutcome Outcome, string? Error, DateTimeOffset StartedAt, double DurationSec, int Relogins);
+
+/// <summary>The reply to <c>script_start</c>.</summary>
+/// <param name="Run">The new run's number; a short Script may have ended by the time this returns.</param>
+public sealed record ScriptStartResult(int Run, ScriptStatusDto Status);
+
+/// <summary>The reply to <c>script_stop</c>.</summary>
+/// <param name="WasRunning">Whether a run was in progress.</param>
+/// <param name="Ended">Whether the Script thread has ended; false means it didn't stop in time and the run ended as <see cref="ScriptOutcome.StopTimedOut"/>.</param>
+public sealed record ScriptStopResult(bool WasRunning, bool Ended, ScriptStatusDto Status);
+
+public enum ScriptWaitReason
+{
+    /// <summary>No run is in progress: it ended, or none was running.</summary>
+    Ended,
+
+    /// <summary>A Question became pending.</summary>
+    Question,
+
+    /// <summary>The run is still in progress.</summary>
+    Timeout,
+}
+
+/// <summary>The reply to <c>script_wait</c>.</summary>
+public sealed record ScriptWaitResult(ScriptWaitReason Reason, ScriptStatusDto Status);
+
+/// <summary>One option of a Script.</summary>
+/// <param name="Key">What names it in <c>script_start</c>'s options: its name, or <c>&lt;group&gt;:&lt;name&gt;</c> for an option in a group.</param>
+/// <param name="Category">The group it shows under: <c>Options</c>, or its group's name.</param>
+/// <param name="Type"><c>bool</c>, <c>int</c>, <c>number</c>, <c>string</c> or <c>enum</c>.</param>
+/// <param name="Value">The stored value, or the default when none is stored.</param>
+/// <param name="Choices">An enum's values, else null.</param>
+/// <param name="Transient">Whether its value resets on every start, so it isn't stored and can't be set.</param>
+public sealed record ScriptOptionDto(
+    string Key, string Category, string Name, string DisplayName, string? Description, string Type, string Value, string Default,
+    IReadOnlyList<string>? Choices, bool Transient);
+
+/// <summary>The reply to <c>script_options</c>.</summary>
+/// <param name="Storage">The options storage the values are kept in, shared by Scripts that name the same one.</param>
+public sealed record ScriptOptionsResult(string Script, string Storage, IReadOnlyList<ScriptOptionDto> Options);
+
+/// <summary>The reply to <c>eval</c>.</summary>
+/// <param name="Value">What the snippet returned, as JSON on a best-effort basis; null when it returned nothing or threw.</param>
+/// <param name="Logs">The Script log lines the snippet's thread wrote.</param>
+/// <param name="Error">What the snippet threw, with its stack, or null.</param>
+public sealed record EvalResult(JsonElement? Value, IReadOnlyList<string> Logs, string? Error);
