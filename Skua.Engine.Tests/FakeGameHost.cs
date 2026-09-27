@@ -1,3 +1,6 @@
+using System.Runtime.CompilerServices;
+using Skua.MacOS.GameHost;
+
 namespace Skua.Engine.Tests;
 
 /// <summary>
@@ -18,6 +21,42 @@ public sealed class FakeGameHost
 
     public string PidFile { get; }
 
+    public string CallLog { get; private set; } = "";
+
+    /// <summary>
+    /// Makes every Engine these tests start run an idle fake Game Host unless a test says otherwise, so none ever runs the real one.
+    /// Child processes inherit it, including Engines auto-started by the CLI.
+    /// </summary>
+    [ModuleInitializer]
+    internal static void UseByDefault()
+    {
+        string swf = Path.Combine(EngineSandbox.BinDir, "fake-skua.swf");
+        if (!File.Exists(swf))
+            File.WriteAllBytes(swf, []);
+        System.Environment.SetEnvironmentVariable(GameHostLaunch.ExecutableVariable, EngineSandbox.FakeGameHostExecutable);
+        System.Environment.SetEnvironmentVariable(GameHostLaunch.SwfVariable, swf);
+    }
+
+    /// <summary>Records the name of every call the Engine makes into the Game Client; read them with <see cref="CallsAsync"/>.</summary>
+    public FakeGameHost LogCalls()
+    {
+        CallLog = Path.Combine(Path.GetDirectoryName(ScenarioPath)!, "fake-gamehost.calls");
+        _lines.Add($"calllog {CallLog}");
+        return this;
+    }
+
+    public FakeGameHost Reply(string function, string xml)
+    {
+        _lines.Add($"reply {function} {xml}");
+        return this;
+    }
+
+    public FakeGameHost Delay(string function, int milliseconds)
+    {
+        _lines.Add($"delay {function} {milliseconds}");
+        return this;
+    }
+
     public FakeGameHost Send(char type, string text)
     {
         _lines.Add($"send {type} {text}");
@@ -36,9 +75,16 @@ public sealed class FakeGameHost
         return this;
     }
 
-    public IDictionary<string, string> Environment()
+    /// <summary>Writes the scenario file, for a fake started directly with it as its argument.</summary>
+    public string Write()
     {
         File.WriteAllLines(ScenarioPath, _lines);
+        return ScenarioPath;
+    }
+
+    public IDictionary<string, string> Environment()
+    {
+        Write();
         return new Dictionary<string, string>
         {
             ["SKUA_GAMEHOST"] = EngineSandbox.FakeGameHostExecutable,
@@ -53,4 +99,8 @@ public sealed class FakeGameHost
             await Task.Delay(25, TestContext.Current.CancellationToken);
         return int.Parse(await File.ReadAllTextAsync(PidFile, TestContext.Current.CancellationToken));
     }
+
+    /// <summary>The names of the calls the Engine has made so far, in order; see <see cref="LogCalls"/>.</summary>
+    public async Task<string[]> CallsAsync() =>
+        File.Exists(CallLog) ? await File.ReadAllLinesAsync(CallLog, TestContext.Current.CancellationToken) : [];
 }

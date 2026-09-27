@@ -72,7 +72,9 @@ public sealed class FakeGitHub : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        _listener.Stop();
+        // Close alone: on macOS, Stop then Close removes the prefix twice, and the second removal binds the port again, which fails
+        // with "Address already in use" once a parallel test has taken the freed port.
+        _listener.Close();
         try
         {
             await _serving;
@@ -83,7 +85,6 @@ public sealed class FakeGitHub : IAsyncDisposable
         catch (ObjectDisposedException)
         {
         }
-        _listener.Close();
     }
 
     private async Task ServeAsync()

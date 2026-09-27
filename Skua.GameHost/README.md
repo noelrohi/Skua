@@ -5,7 +5,8 @@ Ruffle, offscreen on Metal, and carries the Bridge to the Engine over its stdin/
 custom host: [ADR 0003](../docs/adr/0003-game-host-rust-embedding-ruffle.md). How Ruffle is pinned and patched:
 [ADR 0004](../docs/adr/0004-ruffle-patches-on-a-fork-branch.md).
 
-This Cargo project is not in `Skua.sln`, and Windows never builds it.
+This Cargo project is not in `Skua.sln`, and Windows never builds it. On macOS, `dotnet build` of `Skua.App.Engine` builds it
+and puts `skua-gamehost` next to `skua-engine` (see `BUILD.md`).
 
 ## Build and test
 

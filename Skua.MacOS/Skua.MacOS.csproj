@@ -13,7 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Skua.Core.Interfaces\Skua.Core.Interfaces.csproj" />
+    <ProjectReference Include="..\Skua.Core\Skua.Core.csproj" />
   </ItemGroup>
 
 </Project>

@@ -6,12 +6,7 @@ using Skua.Core.Interfaces;
 using Skua.Core.Messaging;
 using Skua.Core.Utils;
 using System;
-using System.Collections.Generic;
-using System.Dynamic;
 using System.IO;
-using System.Linq;
-using System.Security;
-using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 using System.Xml.Linq;
@@ -108,9 +103,7 @@ public class FlashUtil : IFlashUtil
 
     private void CallHandler(object sender, _IShockwaveFlashEvents_FlashCallEvent e)
     {
-        XElement el = XElement.Parse(e.request);
-        string function = el.Attribute("name")!.Value;
-        object[] args = el.Elements().Select(x => FromFlashXml(x)).ToArray();
+        (string function, object[] args) = FlashXml.ReadInvoke(e.request);
         FlashCall?.Invoke(function, args);
     }
 
@@ -138,17 +131,8 @@ public class FlashUtil : IFlashUtil
             _lazyManager.Value.ScriptCts?.Token.ThrowIfCancellationRequested();
         try
         {
-            StringBuilder req = new StringBuilder().Append($"<invoke name=\"{function}\" returntype=\"xml\">");
-            if (args.Length > 0)
-            {
-                req.Append("<arguments>");
-                args.ForEach(o => req.Append(ToFlashXml(o)));
-                req.Append("</arguments>");
-            }
-            req.Append("</invoke>");
-            string result = Flash?.CallFunction(req.ToString())!;
-            XElement el = XElement.Parse(result);
-            return el is null || el.FirstNode is null ? default : Convert.ChangeType(el.FirstNode.ToString(), type);
+            string result = Flash?.CallFunction(FlashXml.Invoke(function, args))!;
+            return FlashXml.ReadReturn(result, type);
         }
         catch (Exception e)
         {
@@ -157,69 +141,9 @@ public class FlashUtil : IFlashUtil
         }
     }
 
-    public static string ToFlashXml(object o)
-    {
-        switch (o)
-        {
-            case null:
-                return "<null/>";
+    public static string ToFlashXml(object o) => FlashXml.ToFlashXml(o);
 
-            case bool _:
-                return $"<{o.ToString()!.ToLower()}/>";
-
-            case double _:
-            case float _:
-            case long _:
-            case int _:
-                return $"<number>{o}</number>";
-
-            case ExpandoObject _:
-                StringBuilder sb = new StringBuilder().Append("<object>");
-                foreach (KeyValuePair<string, object> kvp in (o as IDictionary<string, object>)!)
-                    sb.Append($"<property id=\"{kvp.Key}\">{ToFlashXml(kvp.Value)}</property>");
-                return sb.Append("</object>").ToString();
-
-            default:
-                if (o is Array)
-                {
-                    StringBuilder _sb = new StringBuilder().Append("<array>");
-                    int k = 0;
-                    foreach (object el in (o as Array)!)
-                        _sb.Append($"<property id=\"{k++}\">{ToFlashXml(el)}</property>");
-                    return _sb.Append("</array>").ToString();
-                }
-                return $"<string>{SecurityElement.Escape(o.ToString())}</string>";
-        }
-    }
-
-    public object FromFlashXml(XElement el)
-    {
-        switch (el.Name.ToString())
-        {
-            case "number":
-                return int.TryParse(el.Value, out int i) ? i : float.TryParse(el.Value, out float f) ? f : 0;
-
-            case "true":
-                return true;
-
-            case "false":
-                return false;
-
-            case "null":
-                return null!;
-
-            case "array":
-                return el.Elements().Select(e => FromFlashXml(e)).ToArray();
-
-            case "object":
-                dynamic d = new ExpandoObject();
-                el.Elements().ForEach(e => d[e.Attribute("id")!.Value] = FromFlashXml(e.Elements().First()));
-                return d;
-
-            default:
-                return el.Value;
-        }
-    }
+    public object FromFlashXml(XElement el) => FlashXml.FromFlashXml(el);
 
     public IFlashObject<T> CreateFlashObject<T>(string path)
     {

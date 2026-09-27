@@ -1,0 +1,60 @@
+<Project>
+
+  <!--
+    On macOS, building the Engine also builds the Game Host (skua-gamehost, with cargo) and the Game Client's SWF (skua.swf, with
+    Skua.AS3/compile-as3.sh), and puts both next to skua-engine, for dotnet build and dotnet publish alike. Windows never runs these targets.
+
+    Escape hatches:
+      -p:SkuaGameHostPath=<file>   use a prebuilt skua-gamehost instead of running cargo
+      -p:SkuaSwfPath=<file>        use a prebuilt skua.swf instead of running mxmlc
+  -->
+
+  <PropertyGroup>
+    <SkuaMacBuild Condition="'$(SkuaMacBuild)' == '' and $([MSBuild]::IsOSPlatform('OSX')) and '$(DesignTimeBuild)' != 'true'">true</SkuaMacBuild>
+    <SkuaGameHostDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', 'Skua.GameHost'))</SkuaGameHostDir>
+    <!-- Cargo resolves a relative CARGO_TARGET_DIR against its working directory, the Cargo project. -->
+    <SkuaCargoTargetDir>$(SkuaGameHostDir)target</SkuaCargoTargetDir>
+    <SkuaCargoTargetDir Condition="'$(CARGO_TARGET_DIR)' != ''">$([System.IO.Path]::Combine('$(SkuaGameHostDir)', '$(CARGO_TARGET_DIR)'))</SkuaCargoTargetDir>
+    <SkuaAs3Dir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', 'Skua.AS3'))</SkuaAs3Dir>
+    <SkuaBuiltSwf>$(SkuaAs3Dir)skua/bin/skua.swf</SkuaBuiltSwf>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(SkuaMacBuild)' == 'true'">
+    <SkuaAs3Source Include="$(SkuaAs3Dir)skua/src/**/*.as;$(SkuaAs3Dir)compile-as3.sh" />
+  </ItemGroup>
+
+  <!-- Always release: a debug Game Host is too slow for the Bridge. Cargo's own incrementality makes a warm build a no-op of about a second. -->
+  <Target Name="BuildGameHost" Condition="'$(SkuaMacBuild)' == 'true' and '$(SkuaGameHostPath)' == ''">
+    <Exec Command="command -v cargo" EchoOff="true" StandardOutputImportance="low" IgnoreExitCode="true">
+      <Output TaskParameter="ExitCode" PropertyName="_SkuaCargoMissing" />
+    </Exec>
+    <Error Condition="'$(_SkuaCargoMissing)' != '0'" Text="cargo was not found. Install Rust with rustup: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh" />
+    <!-- Run from the Cargo project, so rustup picks the toolchain in its rust-toolchain.toml. -->
+    <Exec Command="cargo build --release --locked --target-dir &quot;$(SkuaCargoTargetDir)&quot;" WorkingDirectory="$(SkuaGameHostDir)" IgnoreStandardErrorWarningFormat="true" />
+  </Target>
+
+  <!-- Incremental on the AS3 sources: mxmlc runs only when one changed or the SWF is missing. -->
+  <Target Name="BuildSkuaSwf" Condition="'$(SkuaMacBuild)' == 'true' and '$(SkuaSwfPath)' == ''" Inputs="@(SkuaAs3Source)" Outputs="$(SkuaBuiltSwf)">
+    <Exec Command="java -version" EchoOff="true" StandardOutputImportance="low" StandardErrorImportance="low" IgnoreExitCode="true">
+      <Output TaskParameter="ExitCode" PropertyName="_SkuaJavaMissing" />
+    </Exec>
+    <Error Condition="'$(_SkuaJavaMissing)' != '0'" Text="Java was not found. Install a JDK (17 is known to work): brew install --cask zulu@17" />
+    <Exec Command="/bin/bash &quot;$(SkuaAs3Dir)compile-as3.sh&quot;" IgnoreStandardErrorWarningFormat="true" />
+  </Target>
+
+  <Target Name="AddGameHostToOutput" Condition="'$(SkuaMacBuild)' == 'true'" BeforeTargets="AssignTargetPaths" DependsOnTargets="BuildGameHost;BuildSkuaSwf">
+    <PropertyGroup>
+      <_SkuaGameHost>$(SkuaGameHostPath)</_SkuaGameHost>
+      <_SkuaGameHost Condition="'$(_SkuaGameHost)' == ''">$(SkuaCargoTargetDir)/release/skua-gamehost</_SkuaGameHost>
+      <_SkuaSwf>$(SkuaSwfPath)</_SkuaSwf>
+      <_SkuaSwf Condition="'$(_SkuaSwf)' == ''">$(SkuaBuiltSwf)</_SkuaSwf>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(_SkuaGameHost)')" Text="The Game Host '$(_SkuaGameHost)' doesn't exist." />
+    <Error Condition="!Exists('$(_SkuaSwf)')" Text="The Game Client's SWF '$(_SkuaSwf)' doesn't exist." />
+    <ItemGroup>
+      <None Include="$(_SkuaGameHost)" Link="skua-gamehost" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+      <None Include="$(_SkuaSwf)" Link="skua.swf" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+
+</Project>
