@@ -27,6 +27,9 @@ public class Compiler : CSharpScriptExecution
         concurrentBuild: false,
         deterministic: true,
         reportSuppressedDiagnostics: false);
+    private static readonly CSharpParseOptions _parseOptions = OperatingSystem.IsMacOS()
+        ? CSharpParseOptions.Default.WithPreprocessorSymbols("MACOS")
+        : CSharpParseOptions.Default;
     private readonly object _namespaceCacheLock = new();
     private string? _cachedNamespacePrefix = null;
     private int _lastNamespaceHash = 0;
@@ -182,7 +185,7 @@ public class Compiler : CSharpScriptExecution
         ClearErrors();
         string sourceWithNamespaces = PrependNamespaces(source);
 
-        SyntaxTree tree = CSharpSyntaxTree.ParseText(sourceWithNamespaces.Trim());
+        SyntaxTree tree = CSharpSyntaxTree.ParseText(sourceWithNamespaces.Trim(), _parseOptions);
 
         CSharpCompilation compilation = CSharpCompilation.Create(GeneratedClassName + ".cs")
             .WithOptions(_compilationOptions)
@@ -466,7 +469,7 @@ public class Compiler : CSharpScriptExecution
     {
         ClearErrors();
 
-        SyntaxTree tree = CSharpSyntaxTree.ParseText(source.Trim());
+        SyntaxTree tree = CSharpSyntaxTree.ParseText(source.Trim(), _parseOptions);
 
         string fileName = Path.GetFileNameWithoutExtension(outputPath);
         int lastDash = fileName.LastIndexOf('-');
