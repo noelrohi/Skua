@@ -44,6 +44,10 @@ internal static class Output
             string equipped = item.Equipped ? "  equipped" : "";
             string enhancement = item.EnhancementLevel > 0 ? $"  enhancement {item.EnhancementLevel}" : "";
             text.AppendLine().Append($"  {item.Id,8}  {item.Name}  {item.Qty}/{item.MaxStack}  {item.Category}{equipped}{enhancement}");
+        }
+        return text.ToString();
+    }
+
     public static string ScriptStatus(ScriptStatusDto status)
     {
         string text = ScriptLine(status);

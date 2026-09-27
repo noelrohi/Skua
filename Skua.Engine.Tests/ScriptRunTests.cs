@@ -100,6 +100,8 @@ public class ScriptRunTests
             await CodeOf(() => game.Connection.ScriptStartAsync("Tests/Loop.cs", cancellationToken: Ct)),
             await CodeOf(() => game.Connection.LoginAsync("Galanoth", cancellationToken: Ct)),
             await CodeOf(() => game.Connection.LogoutAsync(Ct)),
+            await CodeOf(() => game.Connection.JoinAsync("yulgar", cancellationToken: Ct)),
+            await CodeOf(() => game.Connection.JumpAsync("Enter", cancellationToken: Ct)),
             await CodeOf(() => game.Connection.ScriptsUpdateAsync(Ct)),
             await CodeOf(() => game.Connection.ScriptOptionsAsync("Tests/Loop.cs", Ct)),
         ];
