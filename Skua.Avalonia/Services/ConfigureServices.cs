@@ -29,8 +29,7 @@ public static class ConfigureServices
         services.AddSingleton<IProcessService, MacProcessService>();
         services.AddSingleton<IThemeService, AvaloniaThemeService>();
         services.AddSingleton<GameOptionEdits>();
-        // Core's main menu makes every panel's view model, so the hotkeys, whose ticket comes later, need this stand-in.
-        services.AddSingleton<IHotKeyService, NoHotKeyService>();
+        services.AddSingleton<IHotKeyService, AvaloniaHotKeyService>();
 
         services.AddSkuaMainAppViewModels();
         // The Scripts panel starts and stops Scripts as script_start and script_stop do, so the Engine's runs say who stopped one.

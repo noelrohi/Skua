@@ -1,0 +1,22 @@
+<!-- Ported from Skua.WPF/Views/HotKeysView.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.HotKeysView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:HotKeysViewModel">
+    <DockPanel Margin="3">
+        <TextBlock
+            Margin="3,3,3,6"
+            DockPanel.Dock="Top"
+            Opacity="0.8"
+            Text="Click a hotkey to change it. With ⌘ or ⌥ it leaves plain keys to the game; while you type in the game, such as in chat, every key goes to the game."
+            TextWrapping="Wrap" />
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <ItemsControl
+                x:Name="Items"
+                Grid.IsSharedSizeScope="True"
+                ItemsSource="{Binding HotKeys}" />
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

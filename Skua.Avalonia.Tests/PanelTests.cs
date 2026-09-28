@@ -25,9 +25,10 @@ public sealed class PanelTests(AppEngine app)
             [
                 nameof(ApplicationOptionsViewModel), nameof(ApplicationThemesViewModel), nameof(AutoViewModel), nameof(CBOLoadoutViewModel),
                 nameof(CBOOtherOptionsViewModel), nameof(CBOptionsViewModel), nameof(CoreBotsViewModel), nameof(CurrentDropsViewModel),
-                nameof(FastTravelViewModel), nameof(GameOptionsViewModel), nameof(GoalsViewModel), nameof(JumpViewModel), nameof(LogTabViewModel),
-                nameof(LogsViewModel), nameof(ManagerAccountsViewModel), nameof(ManagerMainViewModel), nameof(NotifyDropViewModel), nameof(RunningViewModel),
-                nameof(RuntimeHelpersViewModel), nameof(ScriptLoaderViewModel), nameof(ScriptRepoViewModel), nameof(UpdatesViewModel),
+                nameof(FastTravelViewModel), nameof(GameOptionsViewModel), nameof(GoalsViewModel), nameof(HotKeyItemViewModel), nameof(HotKeysViewModel),
+                nameof(JumpViewModel), nameof(LogTabViewModel), nameof(LogsViewModel), nameof(ManagerAccountsViewModel), nameof(ManagerMainViewModel),
+                nameof(NotifyDropViewModel), nameof(RunningViewModel), nameof(RuntimeHelpersViewModel), nameof(ScriptLoaderViewModel),
+                nameof(ScriptRepoViewModel), nameof(UpdatesViewModel),
             ],
             ViewLocator.ViewModelTypes.Select(t => t.Name).Order(StringComparer.Ordinal));
     }
@@ -65,14 +66,14 @@ public sealed class PanelTests(AppEngine app)
 
         List<MenuItem> leaves = Leaves(menu.Items.OfType<MenuItem>()).ToList();
         Assert.Equal(
-            ["Application", "Application Themes", "CoreBots", "Current Drops", "Fast Travel", "Game", "Logs", "Runtime", "Scripts"],
+            ["Application", "Application Themes", "CoreBots", "Current Drops", "Fast Travel", "Game", "HotKeys", "Logs", "Runtime", "Scripts"],
             leaves.Where(i => i.IsEnabled).Select(i => (string)i.Header!).Order());
         Assert.Contains(leaves, i => (string)i.Header! == "Grabber" && !i.IsEnabled);
         Assert.Contains(leaves, i => (string)i.Header! == "Bank" && !i.IsEnabled);
         Assert.Contains(leaves, i => (string)i.Header! == "View Plugins" && !i.IsEnabled);
         List<NativeMenuItem> nativeLeaves = native.Items.OfType<NativeMenuItem>().SelectMany(i => i.Menu!.Items.OfType<NativeMenuItem>()).ToList();
         Assert.Equal(
-            ["Application", "Application Themes", "CoreBots", "Current Drops", "Fast Travel", "Game", "Runtime", "Show Logs", "Show Scripts"],
+            ["Application", "Application Themes", "CoreBots", "Current Drops", "Fast Travel", "Game", "HotKeys", "Runtime", "Show Logs", "Show Scripts"],
             nativeLeaves.Where(i => i.IsEnabled).Select(i => i.Header!).Order());
         Assert.Equal(menu.Items.OfType<MenuItem>().Select(i => (string)i.Header!), native.Items.OfType<NativeMenuItem>().Select(i => i.Header));
     }
@@ -132,9 +133,10 @@ public sealed class PanelTests(AppEngine app)
         await Ui.PumpUntilAsync(() => lines.ItemsSource is null, "the closed window's list to let go of the log");
     }
 
-    /// <remarks>A log tab and CoreBots' tabs come from their panel's view model rather than the container.</remarks>
+    /// <remarks>A log tab, a hotkey and CoreBots' tabs come from their panel's view model rather than the container.</remarks>
     private object Resolve(Type type) =>
         type == typeof(LogTabViewModel) ? app.Get<IEnumerable<LogTabViewModel>>().First()
+        : type == typeof(HotKeyItemViewModel) ? app.Get<HotKeysViewModel>().HotKeys.First()
         : app.Get<CoreBotsViewModel>().CoreBotsTabs.Select(t => t.Content).FirstOrDefault(c => c.GetType() == type)
             ?? app.Engine.Services.GetService(type)
             // The Skua Manager's come from its own container, in its own process.

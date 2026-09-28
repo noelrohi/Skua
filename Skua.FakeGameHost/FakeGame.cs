@@ -45,6 +45,8 @@ internal sealed class FakeGame
     private int _inventoryDelay = 500;
     private readonly HashSet<string> _lockedMaps = new(StringComparer.OrdinalIgnoreCase);
     private bool _brokenLogin;
+    /// <summary>The type of the text field the stage's focus is on (<c>input</c> for chat's), or null when it isn't on one.</summary>
+    private string? _focus;
 
     private const int MaxHp = 1000;
     private const int RequiredXp = 4000;
@@ -178,6 +180,12 @@ internal sealed class FakeGame
                 case ["pickup", string id]:
                     Pext(new JsonObject { ["cmd"] = "getDrop", ["ItemID"] = int.Parse(id), ["bSuccess"] = 1, ["iQty"] = 1, ["iQtyNow"] = 1, ["bBank"] = false });
                     return true;
+                case ["focus", "none"]:
+                    _focus = null;
+                    return true;
+                case ["focus", string type]:
+                    _focus = type;
+                    return true;
                 case ["cell", string cell]:
                     _cell = cell;
                     Packet($"%xt%zm%moveToCell%{_roomId}%{cell}%Spawn%");
@@ -237,6 +245,8 @@ internal sealed class FakeGame
         "world.myAvatar.houseitems.length" => _world ? HouseItems().Count : null,
         "world.myAvatar.objData.iHouseSlots" => _world ? 20 : null,
         "world.questTree" => _world ? QuestTree() : null,
+        "stage.focus.text" => _focus is null ? null : "",
+        "stage.focus.type" => _focus,
         _ => null,
     };
 

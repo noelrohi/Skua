@@ -3,6 +3,8 @@ using Skua.Core.Flash;
 using Skua.Core.Interfaces;
 using Skua.Core.Messaging;
 using Skua.Core.Utils;
+using System.Text;
+using System.Xml;
 using System.Xml.Linq;
 
 namespace Skua.MacOS.GameHost;
@@ -110,6 +112,34 @@ public sealed class BridgeFlashUtil : IFlashUtil
 
     /// <summary>Sends an input event to the Game Client; dropped when no Game Host runs.</summary>
     public void SendInput(GameInput input) => TrySend('U', input.Encode());
+
+    /// <summary>
+    /// Whether the player is typing in the Game Client: its focus is on an input text field, such as chat or the login's. The game's own
+    /// shortcuts ask the same (<c>'text' in stage.focus</c>, Main.as <c>key_StageGame</c>). False when no Game Host runs; null when the
+    /// Game Client didn't answer within <paramref name="timeout"/>, so a caller on the UI thread never waits on a busy one.
+    /// </summary>
+    public bool? IsTyping(TimeSpan timeout)
+    {
+        if (_gameHost is not { IsRunning: true } gameHost)
+            return false;
+        try
+        {
+            // isNull catches the error a focus without a text property raises; only a text field's type is read.
+            if (Ask(gameHost, timeout, "isNull", "stage.focus.text") != "false")
+                return false;
+            return Ask(gameHost, timeout, "getGameObject", "stage.focus.type") == "\"input\"";
+        }
+        catch (Exception e) when (e is IOException or TimeoutException or InvalidOperationException or XmlException)
+        {
+            return null;
+        }
+    }
+
+    private static string? Ask(GameHostProcess gameHost, TimeSpan timeout, string function, params object[] args)
+    {
+        byte[] reply = gameHost.Request('C', Encoding.UTF8.GetBytes(FlashXml.Invoke(function, args)), timeout);
+        return FlashXml.ReadReturn(Encoding.UTF8.GetString(reply), typeof(string)) as string;
+    }
 
     private void TrySend(char type, byte[] payload)
     {
