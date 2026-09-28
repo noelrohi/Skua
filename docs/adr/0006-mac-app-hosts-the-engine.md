@@ -45,7 +45,7 @@ The Game Host writes each rendered frame into a shared-memory Frame Buffer that 
   - The app sends live while the Game View is on screen, and headless when the window is minimised, hidden or fully occluded, or when the app quits.
 - **Input: a new Engine → Game Host frame, `U` (user input), fire-and-forget.**
   - Format: `u32 id` (0, no reply) + `u8 kind` + fields.
-  - Kinds: mouse move, down, up and leave (x, y as `f32` in Game Host viewport pixels; button), wheel (lines or pixels), key down and up (physical key, logical key, location, as Ruffle's `KeyDescriptor`), text (a code point), and focus gained and lost.
+  - Kinds: mouse move, down, up and leave (x, y as `f32` in Game Host viewport pixels; button), wheel (lines or pixels), key down and up (physical key, logical key, location, as Ruffle's `KeyDescriptor`), text (a code point), text control (Ruffle's `TextControlCode`, such as Backspace: Ruffle edits text fields only through these), and focus gained and lost.
   - The Game Host turns each into a `PlayerEvent`, calls `Player::handle_event` (Ruffle `core/src/player.rs:1060`), and ticks without waiting for the next frame.
   - The app maps pointer positions from the scaled, letterboxed image back to viewport pixels. Ruffle maps viewport pixels to stage coordinates itself.
   - Input stays inside the app process's Engine. It isn't on the Control Surface: agents keep `eval` and the typed operations.

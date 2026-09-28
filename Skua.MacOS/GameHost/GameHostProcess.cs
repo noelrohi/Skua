@@ -132,6 +132,30 @@ public sealed class GameHostProcess : IDisposable
         return width == 0 || height == 0 ? null : new GameHostScreenshot((int)width, (int)height, (long)frame, reply[16..]);
     }
 
+    /// <summary>Sends a frame that gets no reply (id 0), such as <c>U</c> input or a <c>W</c> view change.</summary>
+    /// <exception cref="IOException">The Game Host is gone.</exception>
+    public void Send(char type, ReadOnlySpan<byte> payload)
+    {
+        if (_stdin is null)
+            throw new InvalidOperationException("The Game Host hasn't started.");
+        if (_closed)
+            throw new IOException("The Game Host has exited.");
+
+        byte[] frame = BridgeFrames.EncodeRequest(type, 0, payload);
+        try
+        {
+            lock (_writeLock)
+            {
+                _stdin.Write(frame);
+                _stdin.Flush();
+            }
+        }
+        catch (Exception e) when (e is IOException or ObjectDisposedException)
+        {
+            throw new IOException("The Game Host has exited.", e);
+        }
+    }
+
     /// <summary>Sends a request frame and waits for the reply with the same id; returns the reply's payload after the id.</summary>
     /// <exception cref="IOException">The Game Host is gone.</exception>
     /// <exception cref="TimeoutException">No reply came within <paramref name="timeout"/>.</exception>

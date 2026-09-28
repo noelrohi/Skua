@@ -28,6 +28,13 @@
 // Like skua-gamehost, it answers C calls with R, P pings with P and Q stats with Q, and exits when its stdin closes.
 // It answers S screenshots with I: a solid PNG of the 958x550 stage, scaled down to max_width like the real one, and a frame
 // number that rises with each capture. The call log records each S as `screenshot <max_width>`.
+//
+// With `--frame-buffer=<name>` (the Mac App's Engine passes it) it maps that Frame Buffer before reading stdin, as skua-gamehost does,
+// and speaks the Game View's frames:
+//   W   the call log records `view live` or `view headless`; while live it writes a synthetic 958x550 frame every 33 ms, a solid colour
+//       whose red, green and blue bytes are the frame number's low, middle and high bytes
+//   U   the call log records each input event as `input <kind> <fields>`, e.g. `input mouseDown 479 275 left` or `input keyDown KeyA a`
+//   Q   its stats gain "live", "framesWritten" and "inputEvents"
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;
@@ -45,6 +52,10 @@ int statsRequests = 0;
 long frames = 0;
 string? controlFile = null;
 FakeGame? game = null;
+FakeFrameBuffer? frameBuffer = args.FirstOrDefault(a => a.StartsWith("--frame-buffer=", StringComparison.Ordinal)) is { } fbArg
+    ? FakeFrameBuffer.Open(fbArg["--frame-buffer=".Length..])
+    : null;
+long inputEvents = 0;
 
 void Send(char type, ReadOnlySpan<byte> payload)
 {
@@ -142,7 +153,24 @@ Thread reader = new(() =>
                 SendReply('P', id, "");
                 break;
             case 'Q':
-                SendReply('Q', id, stats.Replace("{n}", (++statsRequests).ToString()));
+                string json = stats.Replace("{n}", (++statsRequests).ToString());
+                if (frameBuffer is not null)
+                {
+                    string fields = $"\"live\":{(frameBuffer.Live ? "true" : "false")},\"framesWritten\":{frameBuffer.Written},\"inputEvents\":{Interlocked.Read(ref inputEvents)}";
+                    json = json.Trim() == "{}" ? $"{{{fields}}}" : json.TrimEnd()[..^1] + "," + fields + "}";
+                }
+                SendReply('Q', id, json);
+                break;
+            case 'W' when body.Length >= 6:
+                bool live = body[5] != 0;
+                if (callLog is not null)
+                    File.AppendAllLines(callLog, [live ? "view live" : "view headless"]);
+                frameBuffer?.SetLive(live);
+                break;
+            case 'U':
+                Interlocked.Increment(ref inputEvents);
+                if (callLog is not null)
+                    File.AppendAllLines(callLog, ["input " + FakeInput.Describe(body.AsSpan(5))]);
                 break;
             case 'S':
                 uint maxWidth = BinaryPrimitives.ReadUInt32LittleEndian(body.AsSpan(5));

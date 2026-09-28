@@ -182,7 +182,7 @@ To update, `git pull` and run it again. A build is the version and the commit, p
 
 ### Building the macOS Engine and CLI
 
-`Skua.MacOS.slnf` builds the headless Engine (`skua-engine`), the CLI (`skua`, which is also the MCP server as `skua mcp`) and their tests:
+`Skua.MacOS.slnf` builds the headless Engine (`skua-engine`), the CLI (`skua`, which is also the MCP server as `skua mcp`), the Mac App (`Skua`) and their tests. The Engine itself is the `Skua.Engine` library, which both `skua-engine` and the Mac App host:
 
 ```bash
 dotnet build Skua.MacOS.slnf
@@ -197,6 +197,20 @@ On macOS, building `Skua.App.Engine` also builds the Game Host and `skua.swf`, s
 
 The output is flat: `skua`, `skua-engine`, `skua-gamehost` and `skua.swf` sit side by side in `Skua.App.Engine/bin/<Configuration>/net10.0/` (and in `dotnet publish` output). `skua` auto-starts the `skua-engine` next to it, and the Engine starts the `skua-gamehost` and `skua.swf` next to itself. For MCP clients, the config is `{"command": "skua", "args": ["mcp"]}`. These builds need an installed .NET runtime: with a Homebrew .NET, set `DOTNET_ROOT=/opt/homebrew/opt/dotnet/libexec` so the executables find it. A dev build's `skua` replaces an Engine from another build as an installed one does, but its build is only the version and the commit: after rebuilding uncommitted changes, run `skua engine stop`.
 
+### Running the Mac App
+
+The Mac App (`Skua.App.Mac`, ADR 0006) is the Game View with its own Engine inside it. Building it also puts `skua-gamehost` and `skua.swf` next to it:
+
+```bash
+dotnet build Skua.App.Mac
+Skua.App.Mac/bin/Debug/net10.0/Skua [--name <engine-name>]
+```
+
+- It starts its Engine, and binds the Engine's socket, before its window opens, so `skua status` in a terminal talks to it.
+- If another Engine already holds the name, it says so and quits: stop that one with `skua engine stop` first, or give the app another `--name`.
+- Click the game and type in it. The Game View is live (the Game Host renders every 33 ms) only while the window is on screen; minimised, hidden or fully covered, the Game Host goes back to the headless defaults.
+- Every 60 s (`SKUA_GAMEHOST_STATS_SEC`) the `debug` log gets a `[gameview] stats` line (frames shown, frame age p50/p95) next to `[gamehost] stats`.
+
 The tests never run the real Game Host, read the real Keychain or reach AQW: they point `SKUA_GAMEHOST` at a fake that speaks the Bridge frames and simulates the game, `SKUA_SECURITY_TOOL` at a fake `security`, and `SKUA_AQ_SERVERS_URL` at a fake servers API.
 
 Environment overrides:
@@ -210,7 +224,7 @@ Environment overrides:
 | `SKUA_GITHUB_RAW_URL`, `SKUA_GITHUB_API_URL` | `https://raw.githubusercontent.com/` and `https://api.github.com/`, for tests |
 | `SKUA_AQ_SERVERS_URL` | The game's servers API, `http://content.aq.com/game/api/data/servers`, for tests |
 | `SKUA_SECURITY_TOOL` | The `security` tool that `skua account` and the Engine's login use for Keychain (default `/usr/bin/security`), for tests |
-| `SKUA_GAMEHOST_STATS_SEC` | Seconds between the Game Host's stats lines (ticks, frame rate, largest tick gap) in the `debug` log: 60 by default, 0 for none |
+| `SKUA_GAMEHOST_STATS_SEC` | Seconds between the Game Host's stats lines (ticks, frame rate, largest tick gap) in the `debug` log, and the Mac App's Game View stats lines: 60 by default, 0 for none |
 
 #### Accounts and the Test Account
 

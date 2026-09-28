@@ -2966,6 +2966,7 @@ dependencies = [
  "async-task",
  "futures",
  "image",
+ "libc",
  "minifb",
  "objc2",
  "roxmltree",

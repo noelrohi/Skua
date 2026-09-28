@@ -7,6 +7,7 @@ pub const USAGE: &str = "\
 usage: skua-gamehost [options] <skua.swf>
 
   --show-game                  show the game in a debug window (renders every 33 ms, no render budget)
+  --frame-buffer=NAME          write frames to this Frame Buffer (POSIX shared memory) while the Game View is live
   --render-interval-ms=N       keep-alive render interval (default 1000; 0 = never render unasked)
   --render-budget-pct=N        render at most N% of wall time (default 10; 0 = off)
   --render-max-interval-ms=N   never stretch the render interval beyond this (default 5000)
@@ -43,6 +44,8 @@ impl RenderPolicy {
 pub struct Opts {
     pub swf: PathBuf,
     pub show_game: bool,
+    /// The Frame Buffer's shared-memory name.
+    pub frame_buffer: Option<String>,
     pub render: RenderPolicy,
     pub render_thread: bool,
     pub pass_budget: u32,
@@ -55,12 +58,20 @@ pub struct Opts {
 /// The debug window's frame interval.
 pub const SHOW_GAME_INTERVAL: Duration = Duration::from_millis(33);
 
+/// The render policy of a live Game View, as `--show-game`: every 33 ms, with no render budget.
+pub const LIVE: RenderPolicy = RenderPolicy {
+    interval: Some(SHOW_GAME_INTERVAL),
+    budget_pct: 0,
+    max_interval: SHOW_GAME_INTERVAL,
+};
+
 impl Opts {
     pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Opts, String> {
         let mut swf = None;
         let mut opts = Opts {
             swf: PathBuf::new(),
             show_game: false,
+            frame_buffer: None,
             render: RenderPolicy {
                 interval: Some(Duration::from_millis(1000)),
                 budget_pct: 10,
@@ -85,6 +96,14 @@ impl Opts {
             match flag {
                 "--show-game" if value.is_none() => opts.show_game = true,
                 "--no-render-thread" if value.is_none() => opts.render_thread = false,
+                "--frame-buffer" => {
+                    opts.frame_buffer = Some(
+                        value
+                            .filter(|v| !v.is_empty())
+                            .ok_or("--frame-buffer needs a name")?
+                            .to_string(),
+                    )
+                }
                 "--render-interval-ms" => opts.render.interval = Some(ms()?).filter(|d| !d.is_zero()),
                 "--render-budget-pct" => opts.render.budget_pct = n()?,
                 "--render-max-interval-ms" => opts.render.max_interval = ms()?,
@@ -123,6 +142,7 @@ mod tests {
         let o = parse(&["skua.swf"]).unwrap();
         assert_eq!(o.swf, PathBuf::from("skua.swf"));
         assert!(!o.show_game);
+        assert_eq!(o.frame_buffer, None);
         assert!(o.render_thread);
         assert_eq!(
             o.render,
@@ -166,6 +186,21 @@ mod tests {
             (o.pass_budget, o.max_in_flight, o.layer_flush, o.trim_ticks),
             (256, 0, 0, 0)
         );
+    }
+
+    #[test]
+    fn frame_buffer_names_the_shared_memory_object() {
+        let o = parse(&["--frame-buffer=/skua-fb-42-1", "x.swf"]).unwrap();
+        assert_eq!(o.frame_buffer.as_deref(), Some("/skua-fb-42-1"));
+        // The Game View switches to live with 'W'; until then the headless defaults hold.
+        assert_eq!(o.render.interval, Some(ms(1000)));
+        assert!(parse(&["--frame-buffer", "x.swf"]).is_err());
+        assert!(parse(&["--frame-buffer=", "x.swf"]).is_err());
+    }
+
+    #[test]
+    fn live_renders_every_33_ms_without_a_budget() {
+        assert_eq!(LIVE.gap(ms(900)), Some(ms(33)));
     }
 
     #[test]
