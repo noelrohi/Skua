@@ -30,6 +30,13 @@ public class ChangeLogsViewModel : BotControlViewModelBase
 
     private async Task GetChangeLogsContent()
     {
+        // The Mac App shows its own change log first, then upstream's; Windows shows upstream's alone.
+        if (OperatingSystem.IsMacOS())
+        {
+            MarkdownDoc = await MacChangeLogs.GetAsync(HttpClients.GitHubRaw).ConfigureAwait(false);
+            return;
+        }
+
         try
         {
             MarkdownDoc = await ValidatedHttpExtensions.GetStringAsync(HttpClients.GitHubRaw, "auqw/Skua/refs/heads/master/changelogs.md").ConfigureAwait(false);
@@ -44,6 +51,13 @@ public class ChangeLogsViewModel : BotControlViewModelBase
     {
         if (string.IsNullOrEmpty(url))
             return;
+
+        // On macOS links open through the app's process service, which opens them as Finder would.
+        if (OperatingSystem.IsMacOS())
+        {
+            Ioc.Default.GetRequiredService<IProcessService>().OpenLink(url.StartsWith("./") ? $"https://github.com/auqw/Skua/blob/master/{url.Substring(2)}" : url);
+            return;
+        }
 
         try
         {

@@ -52,6 +52,11 @@
     <Content Include="..\Skua.Avalonia\**\*.axaml" Exclude="..\Skua.Avalonia\bin\**;..\Skua.Avalonia\obj\**" Link="ViewSources\Avalonia\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 
+  <!-- The Mac App's change log, as the fork serves it to Change Logs, so a test checks the page it makes. -->
+  <ItemGroup>
+    <Content Include="..\changelogs-mac.md" Link="changelogs-mac.md" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Skua.Avalonia\Skua.Avalonia.csproj" />
     <ProjectReference Include="..\Skua.Control\Skua.Control.csproj" />

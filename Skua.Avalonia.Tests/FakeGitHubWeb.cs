@@ -8,7 +8,7 @@ using WebClient = Skua.Core.Utils.WebClient;
 namespace Skua.Avalonia.Tests;
 
 /// <summary>
-/// Stands in for github.com's device flow and for the pages About and Change Logs fetch from raw.githubusercontent.com, which Core requests
+/// Stands in for github.com's device flow and for the pages About and Change Logs fetch from raw.githubusercontent.com (Change Logs from upstream and from this fork), which Core requests
 /// through its own static clients at fixed URLs. From the start of the test process Core's clients answer those requests here, so no test
 /// ever reaches GitHub's sign-in or those pages; any other request goes on as before.
 /// </summary>
@@ -42,7 +42,16 @@ public static class FakeGitHubWeb
 
         ## 1.2.3
 
-        - Fixed the fake bug.
+        - Fixed the fake bug. See [Usage](./usage.md).
+        """;
+
+    /// <summary>The Mac App's own change log, which the Mac App's Change Logs shows before <see cref="ChangeLogs"/>.</summary>
+    public const string MacChangeLogs = """
+        # Skua for Mac
+
+        ## 9.8.7
+
+        - The fake Mac fix. See [Build Guide](./BUILD.md#install-on-macos).
         """;
 
     private static readonly ConcurrentQueue<string> s_requests = new();
@@ -105,6 +114,7 @@ public static class FakeGitHubWeb
                 {
                     "/auqw/Skua/refs/heads/master/readme.md" => Readme,
                     "/auqw/Skua/refs/heads/master/changelogs.md" => ChangeLogs,
+                    "/noelrohi/Skua/refs/heads/master/changelogs-mac.md" => MacChangeLogs,
                     _ => null,
                 }
                 : null;

@@ -47,8 +47,23 @@ public sealed class AppMenuTests(AppEngine app)
             HostWindow changeLogs = await OpenedAsync(AppMenu.ChangeLogsKey);
             Assert.Equal("Change Logs", changeLogs.Title);
             ChangeLogsView view = Ui.Find<ChangeLogsView>(changeLogs)!;
-            await Ui.PumpUntilAsync(() => view.FindControl<MarkdownView>("Page")!.Children.OfType<TextBlock>().Any(t => t.Inlines!.Text == "1.2.3"), "the change logs");
+            MarkdownView changes = view.FindControl<MarkdownView>("Page")!;
+            await Ui.PumpUntilAsync(() => changes.Children.OfType<TextBlock>().Any(t => t.Inlines!.Text == "1.2.3"), "the change logs");
+            // The Mac App's own change log comes first, then upstream's under its own heading.
+            string[] headings = [.. changes.Children.OfType<TextBlock>().Select(t => t.Inlines!.Text).Where(t => t is "Skua for Mac" or "9.8.7" or "Skua for Windows" or "1.2.3")!];
+            Assert.Equal(["Skua for Mac", "9.8.7", "Skua for Windows", "1.2.3"], headings);
+            // A link in the Mac section opens on this fork; one in upstream's opens on upstream, as on Windows.
+            Assert.Equal([MacChangeLogs.MacBlob + "BUILD.md#install-on-macos", "./usage.md"], changes.Links.Select(l => l.CommandParameter));
+            Assert.All(changes.Links, l => Assert.Same(((ChangeLogsViewModel)changeLogs.DataContext!).NavigateCommand, l.Command));
             int launches = Launches.Runs().Count;
+            Ui.Click(changes.Links[0]);
+            await Ui.PumpUntilAsync(() => Launches.Runs().Count > launches, "the Mac link to open");
+            Assert.Equal(("/usr/bin/open", "https://github.com/noelrohi/Skua/blob/master/BUILD.md#install-on-macos"), (Launches.Runs()[launches].Program, Assert.Single(Launches.Runs()[launches].Arguments)));
+            launches = Launches.Runs().Count;
+            Ui.Click(changes.Links[1]);
+            await Ui.PumpUntilAsync(() => Launches.Runs().Count > launches, "the upstream link to open");
+            Assert.Equal(("/usr/bin/open", "https://github.com/auqw/Skua/blob/master/usage.md"), (Launches.Runs()[launches].Program, Assert.Single(Launches.Runs()[launches].Arguments)));
+            launches = Launches.Runs().Count;
             Ui.Click(view.FindControl<Button>("Donate")!);
             await Ui.PumpUntilAsync(() => Launches.Runs().Count > launches, "the donation link to open");
             Assert.Equal(("/usr/bin/open", "https://ko-fi.com/sharpthenightmare"), (Launches.Runs()[launches].Program, Assert.Single(Launches.Runs()[launches].Arguments)));
@@ -61,6 +76,7 @@ public sealed class AppMenuTests(AppEngine app)
         }
         Assert.Contains("GET raw/auqw/Skua/refs/heads/master/readme.md", FakeGitHubWeb.Requests);
         Assert.Contains("GET raw/auqw/Skua/refs/heads/master/changelogs.md", FakeGitHubWeb.Requests);
+        Assert.Contains("GET raw/noelrohi/Skua/refs/heads/master/changelogs-mac.md", FakeGitHubWeb.Requests);
     }
 
     [AvaloniaFact]
