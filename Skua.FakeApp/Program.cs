@@ -1,5 +1,7 @@
 using System.Runtime.InteropServices;
+using Microsoft.Extensions.DependencyInjection;
 using Skua.Control;
+using Skua.Core.Interfaces;
 using Skua.Engine;
 
 // Stands in for the Mac App: it parses the app's command line, hosts an Engine as the app does, with the account the Skua Manager launched it
@@ -8,6 +10,7 @@ using Skua.Engine;
 //   engines/<name>.shown   a line per show signal (SIGUSR1), which the Manager's "Bring to front" sends
 //   engines/<name>.login   the login's outcome: "ok <username> <server>" or "failed <message>"
 // SKUA_FAKE_APP_SCENARIO, when set, is the fake Game Host's scenario for this app, so it never shares the test process's.
+// SKUA_FAKE_APP_PLUGINS=1 loads the plugins in the data folder, as the app does once its window is up, before the login.
 
 AppArguments arguments;
 EngineEndpoint endpoint;
@@ -54,6 +57,9 @@ catch (EngineStartException e)
     Console.Error.WriteLine(e.Message);
     return e.ExitCode;
 }
+
+if (Environment.GetEnvironmentVariable("SKUA_FAKE_APP_PLUGINS") == "1")
+    engine.Services.GetRequiredService<IPluginManager>().Initialize();
 
 if (arguments.Account is not null)
 {

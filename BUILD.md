@@ -378,6 +378,12 @@ SKUA_SCRIPTS_CHECKOUT="$(realpath ../Scripts)" dotnet test Skua.Engine.Tests --n
 
 Scripts broken upstream on every platform are listed in `Skua.Engine.Tests/compile-check-known-failures.txt`: the report still shows them, but only a failure missing from that list fails the check, or a listed Script that no longer fails. Without `SKUA_SCRIPTS_CHECKOUT`, the test is skipped. The `Scripts compile check` workflow runs it daily and on demand against `noelrohi/Scripts@Skua`. It never runs on pull requests, so it doesn't block them.
 
+The same checkout runs `Butlerv4Tests` in `Skua.Avalonia.Tests` (#136): the Scripts' Butlerv4 and its plugin, `LeaderButlerSyncv2.dll`, between two app-hosted Engines on the fake game, and `DownloadDLL.cs` installing the plugin. Without `SKUA_SCRIPTS_CHECKOUT`, they are skipped too:
+
+```sh
+SKUA_SCRIPTS_CHECKOUT="$(realpath ../Scripts)" dotnet test Skua.Avalonia.Tests --filter FullyQualifiedName~Butlerv4Tests
+```
+
 #### Live-game tests
 
 `LiveGameTests` prove the Engine against the real game: a real `skua-engine` with the real Game Host and the Test Account, driven through the Control Surface. They never run in CI, and each logs in once, so run one at a time, on a quiet Mac (1-minute load average under 3, with no other tests, builds or Game Hosts running; the test refuses to start otherwise). Each needs a `noelrohi/Scripts@Skua` checkout, which it copies into a throwaway data folder with the one-time Script Dialog files (`OneTimeMessages.txt`, `DataCollectionSettings.txt`) pre-seeded:
