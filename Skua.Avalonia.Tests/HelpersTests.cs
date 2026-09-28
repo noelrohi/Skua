@@ -22,6 +22,7 @@ public sealed class HelpersTests(AppEngine app)
     public async Task Picking_a_cell_in_Jump_moves_the_player_there()
     {
         await LogInAsync();
+        await InBattleonAsync();
         (Window window, HelpersBar bar) = ShowBar();
         JumpView jump = Opened<JumpView>(bar.JumpButton);
         ComboBox cells = jump.FindControl<ComboBox>("Cells")!;
@@ -232,6 +233,22 @@ public sealed class HelpersTests(AppEngine app)
     {
         window.KeyPress(key, RawInputModifiers.None, physical, null!);
         window.KeyRelease(key, RawInputModifiers.None, physical, null!);
+    }
+
+    /// <summary>
+    /// Puts the player in battleon through the Engine's own join, wherever a test before left it: xUnit orders tests by a hash that
+    /// includes the assembly's path, so Fast Travel's test, which ends in yulgar, runs first on some machines.
+    /// </summary>
+    private async Task InBattleonAsync()
+    {
+        IScriptMap map = app.Get<IScriptMap>();
+        if (map.Name != "battleon")
+        {
+            Task join = Task.Run(() => map.Join("battleon"), Ct);
+            await Ui.PumpUntilAsync(() => join.IsCompleted, "the join to battleon");
+            await join;
+        }
+        await Ui.PumpUntilAsync(() => map.Name == "battleon" && !map.Loading, "the player in battleon");
     }
 
     private (Window, HelpersBar) ShowBar()
