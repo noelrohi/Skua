@@ -1,0 +1,29 @@
+<!-- Ported from Skua.WPF/UserControls/Dialogs/CustomMessageBoxDialog.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.CustomDialogView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:CustomDialogViewModel">
+    <StackPanel Margin="6">
+        <ScrollViewer MaxHeight="700" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <SelectableTextBlock
+                x:Name="Message"
+                Margin="6,6,6,3"
+                Text="{Binding Message}"
+                TextWrapping="Wrap" />
+        </ScrollViewer>
+        <ItemsControl x:Name="Choices" Margin="3,0" ItemsSource="{Binding Buttons}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <WrapPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                    <Button Margin="3" Content="{Binding}" ToolTip.Tip="{Binding}" />
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </StackPanel>
+</UserControl>

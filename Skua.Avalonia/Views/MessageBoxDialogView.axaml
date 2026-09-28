@@ -1,0 +1,44 @@
+<!-- Ported from Skua.WPF/UserControls/Dialogs/MessageBoxDialog.xaml; only the buttons shown answer Return and Escape. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.MessageBoxDialogView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:MessageBoxDialogViewModel">
+    <StackPanel Margin="6">
+        <ScrollViewer MaxHeight="700" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <SelectableTextBlock
+                x:Name="Message"
+                Margin="6"
+                Text="{Binding Message}"
+                TextWrapping="Wrap" />
+        </ScrollViewer>
+        <Button
+            x:Name="Ok"
+            Margin="6"
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Center"
+            Content="OK"
+            IsCancel="{Binding !YesAndNo}"
+            IsDefault="{Binding !YesAndNo}"
+            IsVisible="{Binding !YesAndNo}" />
+        <Grid ColumnDefinitions="*,*" IsVisible="{Binding YesAndNo}">
+            <Button
+                x:Name="Yes"
+                Grid.Column="0"
+                Margin="6"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Content="Yes"
+                IsDefault="{Binding YesAndNo}" />
+            <Button
+                x:Name="No"
+                Grid.Column="1"
+                Margin="6"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Content="No"
+                IsCancel="{Binding YesAndNo}" />
+        </Grid>
+    </StackPanel>
+</UserControl>

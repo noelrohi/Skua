@@ -12,7 +12,7 @@ public static class ConfigureServices
     /// <summary>
     /// Registers the Avalonia implementations of Core's platform services and the main app's view models; the counterpart of
     /// <c>AddWindowsServices</c> plus <c>AddSkuaMainAppViewModels</c>. The Mac App adds them through the Engine's host hook, after the
-    /// Engine's own services, so they win.
+    /// Engine's own services, so they win; the Engine's settings service must be registered already, as the app's wraps it.
     /// </summary>
     public static IServiceCollection AddAvaloniaServices(this IServiceCollection services)
     {
@@ -36,10 +36,26 @@ public static class ConfigureServices
         services.AddSingleton<IPluginManager, AppPluginManager>();
         services.AddSingleton<IPluginHelper, AppPluginHelper>();
 
+        // The GitHub token goes to Keychain, not Skua.settings.json, and the app keeps its own settings beside Core's (#92).
+        ServiceDescriptor engineSettings = services.Last(d => d.ServiceType == typeof(ISettingsService));
+        services.AddSingleton<GitHubToken>();
+        services.AddSingleton<ISettingsService>(s => new AppSettingsService((ISettingsService)Create(s, engineSettings), s.GetRequiredService<GitHubToken>()));
+        services.AddSingleton<TopMost>();
+
         services.AddSkuaMainAppViewModels();
+        // The app menu's windows, which on Windows are the Manager's.
+        services.AddSingleton<AboutViewModel>();
+        services.AddSingleton<ChangeLogsViewModel>();
+        services.AddSingleton<GitHubAuthViewModel>();
         // The Scripts panel starts and stops Scripts as script_start and script_stop do, so the Engine's runs say who stopped one.
         services.AddSingleton(s => ActivatorUtilities.CreateInstance<ScriptLoaderViewModel>(s, s.GetRequiredService<EngineScripts>().ScriptManager));
 
         return services;
     }
+
+    /// <summary>The service <paramref name="descriptor"/> registers, made as the container would have.</summary>
+    private static object Create(IServiceProvider services, ServiceDescriptor descriptor) =>
+        descriptor.ImplementationInstance
+        ?? descriptor.ImplementationFactory?.Invoke(services)
+        ?? ActivatorUtilities.CreateInstance(services, descriptor.ImplementationType!);
 }

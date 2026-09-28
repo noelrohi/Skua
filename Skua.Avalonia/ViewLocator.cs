@@ -51,6 +51,10 @@ public sealed class ViewLocator : IDataTemplate
         [typeof(HotKeysViewModel)] = () => new HotKeysView(),
         [typeof(HotKeyItemViewModel)] = () => new HotKeyItemView(),
         [typeof(AdvancedSkillsViewModel)] = () => new AdvancedSkillsView(),
+        // The app menu's.
+        [typeof(AboutViewModel)] = () => new AboutView(),
+        [typeof(ChangeLogsViewModel)] = () => new ChangeLogsView(),
+        [typeof(GitHubAuthViewModel)] = () => new GitHubAuthView(),
     };
 
     /// <summary>
@@ -64,6 +68,8 @@ public sealed class ViewLocator : IDataTemplate
         [typeof(FastTravelEditorDialogViewModel)] = () => new FastTravelEditorDialogView(),
         [typeof(AssignHotKeyDialogViewModel)] = () => new AssignHotKeyDialogView(),
         [typeof(SkillRuleEditorDialogViewModel)] = () => new SkillRuleEditorDialogView(),
+        [typeof(MessageBoxDialogViewModel)] = () => new MessageBoxDialogView(),
+        [typeof(CustomDialogViewModel)] = () => new CustomDialogView(),
     };
 
     /// <summary>The view models that have a view, other than the dialogs'.</summary>
