@@ -171,14 +171,13 @@ internal sealed class App : Application
         // Core's main menu registers the managed windows as it is made.
         MainMenuViewModel mainMenu = engine.Services.GetRequiredService<MainMenuViewModel>();
         AvaloniaWindowService windows = engine.Services.GetRequiredService<AvaloniaWindowService>();
-        // Every window carries the menu bar with the Manager item, since macOS shows the key window's; the main window and each panel's
-        // also carry their Top Most.
+        // Every window carries the menu bar with the Manager item and the Window menu's Bot Window, since macOS shows the key window's;
+        // the main window and each panel's also carry their Top Most there.
         TopMost topMost = engine.Services.GetRequiredService<TopMost>();
         NativeMenu MenuBar(Window? window = null, string? name = null)
         {
             NativeMenu bar = MainMenus.Native(mainMenu, windows, OpenManager);
-            if (window is not null && name is not null)
-                bar.Items.Add(topMost.Menu(window, name));
+            bar.Items.Add(MainMenus.WindowMenu(mainMenu, window is not null && name is not null ? topMost.Menu(window, name) : null));
             return bar;
         }
         windows.WindowCreated = w => NativeMenu.SetMenu(w, w.DataContext is { } shown ? MenuBar(w, TopMost.NameOf(shown)) : MenuBar());

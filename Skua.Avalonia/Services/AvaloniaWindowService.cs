@@ -66,20 +66,21 @@ public sealed class AvaloniaWindowService : IWindowService
             window.Closed += (_, _) =>
             {
                 _open.Remove(key);
-                // As on Windows, where closing hides it: the view model stops its work, and CoreBots saves its options.
+                // As on Windows, where closing hides it: the view model stops its work, and CoreBots saves its options, unless the Bot
+                // Window shows it too.
                 if (viewModel is ObservableRecipient closed)
-                    closed.IsActive = false;
+                    PanelActivity.Hidden(closed);
             };
             window.Show();
+            // As on Windows: a view model starts its work (the Script Source's list, for one) once its window first shows.
+            if (viewModel is ObservableRecipient shown)
+                PanelActivity.Shown(shown);
         }
         else if (window.WindowState == WindowState.Minimized)
         {
             window.WindowState = WindowState.Normal;
         }
         window.Activate();
-        // As on Windows: a view model starts its work (the Script Source's list, for one) once its window first shows.
-        if (viewModel is ObservableRecipient recipient)
-            recipient.IsActive = true;
     });
 
     public void ShowWindow<TViewModel>() where TViewModel : class => Show(_services.GetService<TViewModel>(), null);

@@ -24,6 +24,7 @@ public sealed class PanelTests(AppEngine app)
         Assert.Equal(
             [
                 nameof(AboutViewModel), nameof(AdvancedSkillsViewModel), nameof(ApplicationOptionsViewModel), nameof(ApplicationThemesViewModel), nameof(AutoViewModel),
+                nameof(BotWindowViewModel),
                 nameof(CBOLoadoutViewModel), nameof(CBOOtherOptionsViewModel), nameof(CBOptionsViewModel), nameof(ChangeLogsViewModel), nameof(ConsoleViewModel),
                 nameof(CoreBotsViewModel), nameof(CurrentDropsViewModel), nameof(FastTravelViewModel), nameof(GameOptionsViewModel), nameof(GitHubAuthViewModel),
                 nameof(GoalsViewModel), nameof(GrabberViewModel), nameof(HotKeyItemViewModel),

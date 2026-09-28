@@ -1,5 +1,7 @@
 using Avalonia.Controls;
+using Avalonia.Data;
 using Skua.Core.Interfaces;
+using Skua.Core.ViewModels;
 
 namespace Skua.Avalonia;
 
@@ -22,6 +24,13 @@ public sealed class HostWindow : Window
                 Height = managed.Height;
             SizeToContent = (managed.Width > 0 ? SizeToContent.Manual : SizeToContent.Width) | (managed.Height > 0 ? SizeToContent.Manual : SizeToContent.Height);
             CanResize = managed.CanResize;
+        }
+        else if (viewModel is BotWindowViewModel)
+        {
+            // As Skua.WPF's BotWindow: its size, and the title of the panel it shows.
+            Width = 800;
+            Height = 450;
+            this[!TitleProperty] = new Binding($"{nameof(BotWindowViewModel.SelectedItem)}.{nameof(BotControlViewModelBase.Title)}");
         }
         else
         {

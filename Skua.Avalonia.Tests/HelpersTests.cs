@@ -217,7 +217,7 @@ public sealed class HelpersTests(AppEngine app)
     }
 
     /// <summary>Logs the app's Engine in to the simulated game, if a test before hasn't, and waits for the inventory, before which the game refuses transfers.</summary>
-    private async Task LogInAsync()
+    internal async Task LogInAsync()
     {
         IScriptPlayer player = app.Get<IScriptPlayer>();
         if (!player.Playing)
@@ -239,7 +239,7 @@ public sealed class HelpersTests(AppEngine app)
     /// Puts the player in battleon through the Engine's own join, wherever a test before left it: xUnit orders tests by a hash that
     /// includes the assembly's path, so Fast Travel's test, which ends in yulgar, runs first on some machines.
     /// </summary>
-    private async Task InBattleonAsync()
+    internal async Task InBattleonAsync()
     {
         IScriptMap map = app.Get<IScriptMap>();
         if (map.Name != "battleon")
