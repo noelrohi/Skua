@@ -17,7 +17,7 @@ namespace Skua.Avalonia;
 /// It is live (the Game Host renders every 33 ms and writes each frame) while its window is on screen, and not while the window is
 /// minimised, hidden or fully covered, or once the view leaves the window.
 /// </remarks>
-public sealed class GameView : Control
+public sealed class GameView : global::Avalonia.Controls.Control
 {
     private static readonly TimeSpan OcclusionPoll = TimeSpan.FromMilliseconds(500);
 

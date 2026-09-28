@@ -80,7 +80,13 @@ internal sealed class EngineLogs : IDisposable
         JsonNode? node = JsonSerializer.SerializeToNode(data, ControlJson.Options);
         _scrubber.Data(node, ref truncated);
         Append(LogKind.Events, null, type, JsonSerializer.SerializeToElement(node, ControlJson.Options), truncated);
+        EventRecorded?.Invoke();
     }
+
+    /// <summary>
+    /// Raised after each event is recorded, on the thread that recorded it, which may hold a lock of its own: handlers only schedule work.
+    /// </summary>
+    public event Action? EventRecorded;
 
     /// <summary>The texts of the held entries of one kind, oldest first.</summary>
     public List<string> Texts(LogKind kind)

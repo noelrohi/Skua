@@ -155,11 +155,14 @@ internal sealed class FakeGame
                     _state = 2;
                     return true;
                 case ["gain", string rest] when rest.Split(' ') is [string xp, string gold]:
-                    // Reaching the required XP levels up, and the next level's XP starts from what is left over.
+                    // Reaching the required XP levels up, as the game says with levelUp, and the next level's XP starts from what is left over.
                     _xp += int.Parse(xp);
                     _gold += int.Parse(gold);
+                    int before = _level;
                     for (; _xp >= RequiredXp; _xp -= RequiredXp)
                         _level++;
+                    if (_level > before)
+                        Pext(new JsonObject { ["cmd"] = "levelUp", ["intLevel"] = _level, ["intExpToLevel"] = RequiredXp });
                     return true;
                 case ["join", string map]:
                     Join(map, "Enter", "Spawn");

@@ -10,9 +10,11 @@
 
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.1.3" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Skua.Control\Skua.Control.csproj" />
     <ProjectReference Include="..\Skua.MacOS\Skua.MacOS.csproj" />
   </ItemGroup>
 

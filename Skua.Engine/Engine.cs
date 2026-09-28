@@ -117,6 +117,7 @@ internal sealed class Engine : IEngineRpc
 
             // Like the Windows app, the Engine never disposes Core's singletons: they stop with the process, and their Dispose paths throw.
             ServiceProvider services = EngineServices.Build(launch, logs, options.ConfigureServices);
+            StatusChanges statusChanges = StatusChanges.Start(logs, services.GetRequiredService<IFlashUtil>());
             GameHostSupervisor gameHost = GameHostSupervisor.Start(services, logs, endpoint.Name, keepLagKillerOn: options.IsHeadless);
             Engine engine;
             Socket listener;
@@ -131,7 +132,7 @@ internal sealed class Engine : IEngineRpc
                 throw;
             }
             Task<int> completion = engine.ServeAsync(listener, engineLock, logs);
-            return new HostedEngine(endpoint, services, completion, engine._shutdown.Cancel);
+            return new HostedEngine(endpoint, services, engine, statusChanges, completion, engine._shutdown.Cancel);
         }
         catch
         {
