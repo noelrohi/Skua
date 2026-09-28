@@ -1,0 +1,28 @@
+<!-- Ported from Skua.WPF/Views/LogsView.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.LogsView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:LogsViewModel">
+    <DockPanel Margin="6">
+        <ListBox
+            x:Name="Tabs"
+            Margin="0,0,0,6"
+            DockPanel.Dock="Top"
+            ItemsSource="{Binding LogTabs}"
+            SelectedItem="{Binding SelectedTab}">
+            <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vms:LogTabViewModel">
+                    <TextBlock Width="60" Text="{Binding Title}" TextAlignment="Center" />
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+        <ContentControl Content="{Binding SelectedTab}" />
+    </DockPanel>
+</UserControl>

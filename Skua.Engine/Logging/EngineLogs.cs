@@ -64,12 +64,19 @@ internal sealed class EngineLogs : IDisposable
     /// <summary>A Script Dialog's message as the Engine returns it: redacted and cut to 64 KB, as its events record it.</summary>
     public string ScrubDialogText(string text) => _scrubber.DialogText(text);
 
+    /// <summary>
+    /// Raised with each text entry as stored (redacted), after it is recorded and outside the lock; on the writer's thread, so a handler
+    /// must never block.
+    /// </summary>
+    public event Action<LogKind, string>? TextWritten;
+
     /// <summary>Records a text entry and returns its text as stored.</summary>
     public string Write(LogKind kind, string text)
     {
         bool truncated = false;
         string stored = _scrubber.Text(text, ref truncated);
         Append(kind, stored, null, null, truncated);
+        TextWritten?.Invoke(kind, stored);
         return stored;
     }
 

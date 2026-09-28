@@ -1,0 +1,150 @@
+<!-- Ported from Skua.WPF/Views/ScriptRepoView.xaml; the search is ScriptRepoSearch, and Update is skua scripts update's operation. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.ScriptRepoView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:ScriptRepoViewModel">
+    <Grid Margin="8">
+        <Grid RowDefinitions="Auto,*,Auto">
+            <!--  Top bar  -->
+            <Border Grid.Row="0" Margin="0,0,0,8" Padding="10" Background="#1E1E1E" CornerRadius="6">
+                <DockPanel>
+                    <Button
+                        x:Name="UpdateScripts"
+                        Margin="0,0,6,0"
+                        Click="OnUpdateClick"
+                        Content="Update"
+                        DockPanel.Dock="Left"
+                        ToolTip.Tip="Download the Scripts that are new or changed in the Script Source, as skua scripts update does." />
+                    <Button
+                        x:Name="RefreshScripts"
+                        Margin="6,0,0,0"
+                        Command="{Binding RefreshScriptsCommand}"
+                        Content="Refresh"
+                        DockPanel.Dock="Right" />
+                    <ComboBox
+                        x:Name="SearchScope"
+                        Width="80"
+                        Margin="4,0,6,0"
+                        DockPanel.Dock="Left"
+                        SelectedIndex="0">
+                        <ComboBoxItem Content="All" />
+                        <ComboBoxItem Content="Name" />
+                        <ComboBoxItem Content="Tag" />
+                        <ComboBoxItem Content="Desc" />
+                        <ComboBoxItem Content="File" />
+                    </ComboBox>
+                    <TextBox x:Name="SearchBox" PlaceholderText="Search scripts..." />
+                </DockPanel>
+            </Border>
+
+            <!--  Scripts  -->
+            <Border Grid.Row="1" Padding="4" Background="#303030" CornerRadius="6">
+                <ListBox
+                    x:Name="ScriptsList"
+                    Background="Transparent"
+                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                    SelectedItem="{Binding SelectedItem}"
+                    SelectionMode="Single">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="vms:ScriptInfoViewModel">
+                            <Border
+                                Margin="0,2"
+                                Padding="10"
+                                Background="#1E1E1E"
+                                BorderBrush="#2A2A2A"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                ToolTip.Tip="{Binding Info.Description}">
+                                <Border.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Click="OnDownloadClick" Header="Download" IsEnabled="{Binding !Downloaded}" />
+                                        <MenuItem Click="OnDeleteClick" Header="Delete" IsEnabled="{Binding Downloaded}" />
+                                        <MenuItem Command="{Binding LoadScriptCommand}" CommandParameter="{Binding}" Header="Load" IsEnabled="{Binding Downloaded}" />
+                                        <MenuItem Command="{Binding StartScriptCommand}" CommandParameter="{Binding}" Header="Start" IsEnabled="{Binding Downloaded}" />
+                                    </ContextMenu>
+                                </Border.ContextMenu>
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <StackPanel>
+                                        <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="White" Text="{Binding Info.Name}" />
+                                        <TextBlock Margin="0,4,0,0" Foreground="#AAA" Text="{Binding Info.Description}" TextWrapping="Wrap" />
+                                        <TextBlock Margin="0,2,0,0" FontSize="10" Foreground="#888" Text="{Binding FilePath}" />
+                                        <ItemsControl Margin="0,6,0,0" ItemsSource="{Binding InfoTags}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <WrapPanel Orientation="Horizontal" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="x:String">
+                                                    <Border Margin="0,0,6,4" Padding="6,2" Background="#2A2A2A" CornerRadius="4">
+                                                        <TextBlock FontSize="11" Foreground="#97D2DE" Text="{Binding}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Orientation="Horizontal">
+                                        <Button
+                                            Width="70"
+                                            Margin="0,0,6,0"
+                                            HorizontalContentAlignment="Center"
+                                            Command="{Binding StartScriptCommand}"
+                                            CommandParameter="{Binding}"
+                                            Content="Start"
+                                            IsEnabled="{Binding Downloaded}" />
+                                        <Button
+                                            Width="70"
+                                            HorizontalContentAlignment="Center"
+                                            Command="{Binding LoadScriptCommand}"
+                                            CommandParameter="{Binding}"
+                                            Content="Load"
+                                            IsEnabled="{Binding Downloaded}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+
+            <!--  Status bar  -->
+            <Border Grid.Row="2" Margin="0,8,0,0" Padding="10" Background="#1E1E1E" CornerRadius="6">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="6">
+                        <TextBlock Foreground="#888" Text="Scripts:" />
+                        <TextBlock Margin="0,0,12,0" Foreground="White" Text="{Binding BotScriptQuantity}" />
+                        <TextBlock Foreground="#888" Text="Downloaded:" />
+                        <TextBlock Foreground="White" Text="{Binding DownloadedQuantity}" />
+                        <TextBlock Foreground="#888" Text="/" />
+                        <TextBlock Margin="0,0,12,0" Foreground="White" Text="{Binding ScriptQuantity}" />
+                        <TextBlock Foreground="#888" Text="Outdated:" />
+                        <TextBlock Foreground="#FFD166" Text="{Binding OutdatedQuantity}" />
+                    </StackPanel>
+                    <TextBlock
+                        x:Name="UpdateResult"
+                        Margin="12,0,0,0"
+                        HorizontalAlignment="Right"
+                        Foreground="#AAA"
+                        TextTrimming="CharacterEllipsis" />
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <!--  The WPF view's snackbar: progress, with a cancel button  -->
+        <Border
+            Margin="12,0,12,56"
+            Padding="10,6"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Bottom"
+            Background="#424242"
+            CornerRadius="4"
+            IsVisible="{Binding ProgressReportMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <TextBlock VerticalAlignment="Center" Foreground="White" Text="{Binding ProgressReportMessage}" />
+                <Button Command="{Binding CancelTaskCommand}" Content="Cancel" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

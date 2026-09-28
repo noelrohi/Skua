@@ -52,7 +52,7 @@ string? failure = null;
 int exitCode = EngineExitCodes.Success;
 try
 {
-    engine = HostedEngine.StartAsync(endpoint, new EngineHostOptions { Mode = EngineHostMode.App }).GetAwaiter().GetResult();
+    engine = HostedEngine.StartAsync(endpoint, App.EngineOptions).GetAwaiter().GetResult();
 }
 catch (EngineStartException e) when (e.ExitCode == EngineExitCodes.AlreadyRunning)
 {

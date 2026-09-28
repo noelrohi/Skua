@@ -1,0 +1,34 @@
+using Microsoft.Extensions.DependencyInjection;
+using Skua.Core.AppStartup;
+using Skua.Core.Interfaces;
+using Skua.Core.ViewModels;
+using Skua.Engine;
+
+namespace Skua.Avalonia.Services;
+
+public static class ConfigureServices
+{
+    /// <summary>
+    /// Registers the Avalonia implementations of Core's platform services and the main app's view models; the counterpart of
+    /// <c>AddWindowsServices</c> plus <c>AddSkuaMainAppViewModels</c>. The Mac App adds them through the Engine's host hook, after the
+    /// Engine's own services, so they win.
+    /// </summary>
+    public static IServiceCollection AddAvaloniaServices(this IServiceCollection services)
+    {
+        services.AddSingleton<IDispatcherService, AvaloniaDispatcherService>();
+        services.AddSingleton<AvaloniaWindowService>();
+        services.AddSingleton<IWindowService>(s => s.GetRequiredService<AvaloniaWindowService>());
+        services.AddSingleton<IClipboardService, AvaloniaClipboardService>();
+        services.AddSingleton<IFileDialogService, AvaloniaFileDialogService>();
+        services.AddSingleton<ISoundService, MacSoundService>();
+        // Core's main menu makes every panel's view model, so the ones whose tickets come later need these stand-ins.
+        services.AddSingleton<IThemeService, FixedThemeService>();
+        services.AddSingleton<IHotKeyService, NoHotKeyService>();
+
+        services.AddSkuaMainAppViewModels();
+        // The Scripts panel starts and stops Scripts as script_start and script_stop do, so the Engine's runs say who stopped one.
+        services.AddSingleton(s => ActivatorUtilities.CreateInstance<ScriptLoaderViewModel>(s, s.GetRequiredService<EngineScripts>().ScriptManager));
+
+        return services;
+    }
+}
