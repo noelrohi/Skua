@@ -237,14 +237,17 @@ public sealed class GameView : Control
     }
 
     /// <summary>Sends the key, then the text-editing command it stands for; typed text arrives separately, as text input.</summary>
-    /// <remarks>Handled, so Tab and the arrows move focus in the game, not between Avalonia controls.</remarks>
+    /// <remarks>
+    /// A key that types text is left unhandled: on macOS, Avalonia raises no text input for a key down that was handled. Every other
+    /// key is handled, so Tab and the arrows move focus in the game, not between Avalonia controls.
+    /// </remarks>
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
         _flash.SendInput(new GameInput.KeyDown(GameKeys.Map(e.PhysicalKey, e.Key, e.KeySymbol)));
         if (GameKeys.TextControl(e.Key, e.KeyModifiers) is { } code)
             _flash.SendInput(new GameInput.TextControl(code));
-        e.Handled = true;
+        e.Handled = !GameKeys.TypesText(e.Key, e.KeyModifiers, e.KeySymbol);
     }
 
     protected override void OnKeyUp(KeyEventArgs e)

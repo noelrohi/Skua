@@ -114,6 +114,36 @@ public sealed class GameViewTests(AppEngine app)
         window.Close();
     }
 
+    /// <summary>
+    /// On macOS, Avalonia raises no text input for a key down that was handled (Avalonia.Native's <c>AvnView keyDown</c>), so a key that
+    /// types text must stay unhandled or nothing can be typed in the game. The headless platform doesn't model that, so this checks the
+    /// contract itself.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData(Key.A, PhysicalKey.A, "a", KeyModifiers.None, false)]
+    [InlineData(Key.A, PhysicalKey.A, "A", KeyModifiers.Shift, false)]
+    [InlineData(Key.D7, PhysicalKey.Digit7, "7", KeyModifiers.None, false)]
+    [InlineData(Key.Space, PhysicalKey.Space, " ", KeyModifiers.None, false)]
+    [InlineData(Key.E, PhysicalKey.E, "é", KeyModifiers.Alt, false)]
+    [InlineData(Key.Tab, PhysicalKey.Tab, "\t", KeyModifiers.None, true)]
+    [InlineData(Key.Back, PhysicalKey.Backspace, "\b", KeyModifiers.None, true)]
+    [InlineData(Key.Enter, PhysicalKey.Enter, "\r", KeyModifiers.None, true)]
+    [InlineData(Key.Left, PhysicalKey.ArrowLeft, "\uF702", KeyModifiers.None, true)]
+    [InlineData(Key.V, PhysicalKey.V, "v", KeyModifiers.Meta, true)]
+    [InlineData(Key.LeftShift, PhysicalKey.ShiftLeft, null, KeyModifiers.Shift, true)]
+    public async Task A_key_that_types_text_leaves_its_key_down_unhandled_so_macOS_raises_the_text(
+        Key key, PhysicalKey physical, string? symbol, KeyModifiers modifiers, bool handled)
+    {
+        (Window window, GameView view) = await ShowAsync(958, 550);
+        view.Focus();
+        KeyEventArgs e = new() { RoutedEvent = InputElement.KeyDownEvent, Key = key, PhysicalKey = physical, KeySymbol = symbol, KeyModifiers = modifiers };
+
+        view.RaiseEvent(e);
+
+        Assert.Equal(handled, e.Handled);
+        window.Close();
+    }
+
     [AvaloniaFact]
     public async Task Minimising_the_window_goes_headless_and_restoring_it_goes_live()
     {

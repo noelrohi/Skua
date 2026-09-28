@@ -110,6 +110,23 @@ public static class GameKeys
     private static string Move(string side, string withCommand, bool command, bool shift, string without = "") =>
         (shift ? "Select" : "Move") + side + (command ? withCommand : without);
 
+    /// <summary>
+    /// Whether a key down types text: it has a printable symbol, isn't a named key such as Tab, and isn't a Command or Control shortcut
+    /// (those go to the game as text-editing commands).
+    /// </summary>
+    public static bool TypesText(Key key, KeyModifiers modifiers, string? symbol)
+    {
+        if (string.IsNullOrEmpty(symbol) || Named(key) is not null || TextControl(key, modifiers) is not null
+            || modifiers.HasFlag(KeyModifiers.Control) || modifiers.HasFlag(KeyModifiers.Meta))
+            return false;
+        for (int i = 0; i < symbol.Length; i += char.IsSurrogatePair(symbol, i) ? 2 : 1)
+        {
+            if (!IsTyped(char.ConvertToUtf32(symbol, i)))
+                return false;
+        }
+        return true;
+    }
+
     /// <summary>Whether a character from text input is typed text: not a control character or one of macOS's function-key characters.</summary>
     public static bool IsTyped(int codePoint) =>
         codePoint >= 0x20 && codePoint != 0x7F && codePoint is not (>= 0xF700 and <= 0xF8FF);
