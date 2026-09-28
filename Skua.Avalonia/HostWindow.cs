@@ -15,8 +15,12 @@ public sealed class HostWindow : Window
         if (viewModel is IManagedWindow managed)
         {
             Title = managed.Title;
-            Width = managed.Width;
-            Height = managed.Height;
+            // As Skua.WPF's HostWindow: a size of 0 sizes the window to its content that way, as HotKeys' height does.
+            if (managed.Width > 0)
+                Width = managed.Width;
+            if (managed.Height > 0)
+                Height = managed.Height;
+            SizeToContent = (managed.Width > 0 ? SizeToContent.Manual : SizeToContent.Width) | (managed.Height > 0 ? SizeToContent.Manual : SizeToContent.Height);
             CanResize = managed.CanResize;
         }
         else

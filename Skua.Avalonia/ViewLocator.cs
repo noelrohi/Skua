@@ -41,6 +41,8 @@ public sealed class ViewLocator : IDataTemplate
         [typeof(GameOptionsViewModel)] = () => new GameOptionsView(),
         [typeof(ApplicationOptionsViewModel)] = () => new ApplicationOptionsView(),
         [typeof(ApplicationThemesViewModel)] = () => new ApplicationThemesView(),
+        [typeof(HotKeysViewModel)] = () => new HotKeysView(),
+        [typeof(HotKeyItemViewModel)] = () => new HotKeyItemView(),
     };
 
     /// <summary>
@@ -52,6 +54,7 @@ public sealed class ViewLocator : IDataTemplate
         [typeof(InputDialogViewModel)] = () => new InputDialogView(),
         [typeof(OptionContainerViewModel)] = () => new OptionContainerView(),
         [typeof(FastTravelEditorDialogViewModel)] = () => new FastTravelEditorDialogView(),
+        [typeof(AssignHotKeyDialogViewModel)] = () => new AssignHotKeyDialogView(),
     };
 
     /// <summary>The view models that have a view, other than the dialogs'.</summary>

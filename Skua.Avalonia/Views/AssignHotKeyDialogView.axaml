@@ -1,0 +1,60 @@
+<!-- Ported from Skua.WPF/UserControls/Dialogs/AssignHotKeyDialog.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.AssignHotKeyDialogView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Skua.Avalonia.Views"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:AssignHotKeyDialogViewModel">
+    <StackPanel Margin="6">
+        <Button
+            x:Name="Capture"
+            Margin="6"
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Center"
+            Content="{Binding KeyInput, Converter={x:Static local:AssignHotKeyDialogView.KeyShown}}" />
+        <TextBlock
+            x:Name="Hint"
+            Margin="6,0,6,6"
+            Foreground="OrangeRed"
+            Text="{Binding InputHint}"
+            TextWrapping="Wrap" />
+        <Grid ColumnDefinitions="*,*,*">
+            <CheckBox
+                x:Name="CommandCheck"
+                Grid.Column="0"
+                Margin="6,0"
+                Content="⌘ Command"
+                IsChecked="{Binding CtrlCheck}" />
+            <CheckBox
+                x:Name="OptionCheck"
+                Grid.Column="1"
+                Margin="6,0"
+                Content="⌥ Option"
+                IsChecked="{Binding AltCheck}" />
+            <CheckBox
+                x:Name="ShiftCheck"
+                Grid.Column="2"
+                Margin="6,0"
+                Content="⇧ Shift"
+                IsChecked="{Binding ShiftCheck}" />
+        </Grid>
+        <Grid ColumnDefinitions="*,*">
+            <Button
+                x:Name="Save"
+                Grid.Column="0"
+                Margin="6"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Content="Save" />
+            <Button
+                x:Name="Cancel"
+                Grid.Column="1"
+                Margin="6"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Content="Cancel"
+                IsCancel="True" />
+        </Grid>
+    </StackPanel>
+</UserControl>
