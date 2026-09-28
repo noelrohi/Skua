@@ -202,42 +202,53 @@ public static class ValidatedHttpExtensions
     /// <summary>
     /// Gets string content with validation and retries that throws on failure
     /// </summary>
+    /// <remarks>
+    /// A network error, a timeout, 408, 429 and 5xx are retried, after 1 s then 2 s; any other failed status (a 404) fails at once, since
+    /// asking again won't change it. The attempts and waits share the client's <see cref="HttpClient.Timeout"/>, so the request takes no
+    /// longer than that overall; running out of it throws a <see cref="TaskCanceledException"/> with a <see cref="TimeoutException"/>
+    /// inside, as the client's own timeout does.
+    /// </remarks>
     public static async Task<HttpResponseMessage> GetAsyncWithRetry(HttpClient client, string requestUri, CancellationToken cancellationToken)
     {
-        int delayMs = InitialDelayMs;
-        Exception? lastException = null;
+        using CancellationTokenSource budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (client.Timeout != Timeout.InfiniteTimeSpan)
+            budget.CancelAfter(client.Timeout);
 
-        for (int attempt = 0; attempt < MaxRetries; attempt++)
+        try
         {
-            try
+            for (int attempt = 1, delayMs = InitialDelayMs; ; attempt++, delayMs *= 2)
             {
-                HttpResponseMessage response = await client.GetAsync(requestUri, cancellationToken);
-                response.EnsureSuccessStatusCode();
-                return response;
-            }
-            catch (HttpRequestException ex) when (attempt < MaxRetries - 1 && !cancellationToken.IsCancellationRequested)
-            {
-                lastException = ex;
-                await Task.Delay(delayMs, cancellationToken);
-                delayMs *= 2;
-            }
-            catch (TaskCanceledException ex) when (attempt < MaxRetries - 1 && !ex.CancellationToken.IsCancellationRequested)
-            {
-                lastException = ex;
-                await Task.Delay(delayMs, cancellationToken);
-                delayMs *= 2;
-            }
-            catch (Exception ex)
-            {
-                lastException = ex;
-                if (attempt >= MaxRetries - 1)
-                    break;
+                HttpResponseMessage response;
+                try
+                {
+                    response = await client.GetAsync(requestUri, budget.Token);
+                }
+                catch (Exception ex) when (attempt < MaxRetries
+                    && (ex is HttpRequestException || (ex is TaskCanceledException && !budget.IsCancellationRequested)))
+                {
+                    await Task.Delay(delayMs, budget.Token);
+                    continue;
+                }
 
-                await Task.Delay(delayMs, cancellationToken);
-                delayMs *= 2;
+                if (response.IsSuccessStatusCode)
+                    return response;
+
+                using (response)
+                {
+                    if (attempt == MaxRetries || !IsTransient(response.StatusCode))
+                        response.EnsureSuccessStatusCode();
+                }
+                await Task.Delay(delayMs, budget.Token);
             }
         }
-
-        throw lastException ?? new HttpRequestException($"Failed to fetch {requestUri} after {MaxRetries} attempts");
+        catch (OperationCanceledException ex) when (budget.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new TaskCanceledException(
+                $"The request to {requestUri} was canceled due to the configured HttpClient.Timeout of {client.Timeout.TotalSeconds:0} seconds elapsing, retries included.",
+                new TimeoutException(ex.Message, ex));
+        }
     }
+
+    private static bool IsTransient(HttpStatusCode status) =>
+        status is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests || (int)status >= 500;
 }

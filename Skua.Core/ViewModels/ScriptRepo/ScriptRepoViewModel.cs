@@ -14,6 +14,8 @@ public partial class ScriptRepoViewModel : BotControlViewModelBase
     private readonly IGetScriptsService _getScriptsService;
     private readonly IProcessService _processService;
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
+    private readonly SemaphoreSlim _fetchGate = new(1, 1);
+    private int _refreshRequests;
 
     public ScriptRepoViewModel(IGetScriptsService getScripts, IProcessService processService)
         : base("Search Scripts", 969, 500)
@@ -27,7 +29,7 @@ public partial class ScriptRepoViewModel : BotControlViewModelBase
     {
         _getScriptsService.PropertyChanged += GetScriptsService_PropertyChanged;
         if (_scripts.Count == 0 || _getScriptsService.Scripts.Count == 0)
-            _ = RefreshScripts(CancellationToken.None);
+            RefreshScriptsCommand.Execute(null);
         else
             _ = RefreshScriptsList();
     }
@@ -92,18 +94,36 @@ public partial class ScriptRepoViewModel : BotControlViewModelBase
         StrongReferenceMessenger.Default.Send<EditScriptMessage, int>(new(SelectedItem.LocalFile), (int)MessageChannels.ScriptStatus);
     }
 
-    [RelayCommand]
+    /// <summary>
+    /// Fetches the Scripts again. A refresh asked for while one runs restarts it: the command cancels the running one, and the new one
+    /// fetches once that has stopped, so two refreshes never change the Scripts at once and only the newest ends the busy state.
+    /// </summary>
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task RefreshScripts(CancellationToken token)
     {
+        int request = Interlocked.Increment(ref _refreshRequests);
         IsBusy = true;
+        await _fetchGate.WaitAsync();
         try
         {
-            Progress<string> progress = new(ProgressHandler);
-            await _getScriptsService.RefreshScriptsAsync(progress, token);
-        }
-        catch { }
+            try
+            {
+                if (!token.IsCancellationRequested)
+                {
+                    Progress<string> progress = new(ProgressHandler);
+                    await _getScriptsService.RefreshScriptsAsync(progress, token);
+                }
+            }
+            catch { }
 
-        await RefreshScriptsList();
+            // A newer refresh is waiting to fetch; it lists the Scripts instead.
+            if (request == Volatile.Read(ref _refreshRequests))
+                await RefreshScriptsList();
+        }
+        finally
+        {
+            _fetchGate.Release();
+        }
     }
 
     [RelayCommand]
