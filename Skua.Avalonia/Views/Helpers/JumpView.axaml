@@ -1,0 +1,48 @@
+<!-- Ported from Skua.WPF/UserControls/JumpUserControl.xaml: picking a cell jumps to it. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.Helpers.JumpView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:JumpViewModel">
+    <Grid Margin="6" ColumnDefinitions="1.5*,*" RowDefinitions="Auto,Auto">
+        <ComboBox
+            x:Name="Cells"
+            Grid.Row="0"
+            Grid.Column="0"
+            MinWidth="120"
+            Margin="0,0,3,3"
+            HorizontalAlignment="Stretch"
+            ItemsSource="{Binding Cells}"
+            PlaceholderText="Cell"
+            SelectedItem="{Binding SelectedCell}" />
+        <ComboBox
+            x:Name="Pads"
+            Grid.Row="0"
+            Grid.Column="1"
+            MinWidth="120"
+            Margin="3,0,0,3"
+            HorizontalAlignment="Stretch"
+            ItemsSource="{Binding Pads}"
+            PlaceholderText="Pad"
+            SelectedItem="{Binding SelectedPad}" />
+        <Button
+            x:Name="Current"
+            Grid.Row="1"
+            Grid.Column="0"
+            Margin="0,3,3,0"
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Center"
+            Command="{Binding GetCurrentCommand}"
+            Content="Current" />
+        <Button
+            x:Name="Jump"
+            Grid.Row="1"
+            Grid.Column="1"
+            Margin="3,3,0,0"
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Center"
+            Command="{Binding JumpToCommand}"
+            Content="Jump" />
+    </Grid>
+</UserControl>

@@ -1,0 +1,81 @@
+<!-- Ported from Skua.WPF/UserControls/ToPickupDropsUserControl.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.Helpers.ToPickupDropsView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:ToPickupDropsViewModel">
+    <Grid ColumnDefinitions="*,Auto" RowDefinitions="*,Auto,Auto,Auto">
+        <ListBox
+            x:Name="ToPickupList"
+            Grid.Row="0"
+            Grid.ColumnSpan="2"
+            Margin="0,0,0,3"
+            ItemsSource="{Binding ToPickup}"
+            SelectionMode="Multiple"
+            ToolTip.Tip="The drops the bot picks up. ⌫ removes the selected drops; ⌥⌫ removes them all.">
+            <ListBox.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Command="{Binding RemoveAllDropsCommand}" Header="Remove All" />
+                </ContextMenu>
+            </ListBox.ContextMenu>
+        </ListBox>
+        <TextBox
+            x:Name="AddDropInput"
+            Grid.Row="1"
+            Grid.Column="0"
+            Margin="0,3,3,3"
+            PlaceholderText="Drop Name"
+            Text="{Binding AddDropInput}"
+            ToolTip.Tip="A drop's name or ID; separate several with |.">
+            <TextBox.KeyBindings>
+                <KeyBinding Command="{Binding AddDropCommand}" Gesture="Enter" />
+            </TextBox.KeyBindings>
+        </TextBox>
+        <Button
+            x:Name="AddDrop"
+            Grid.Row="1"
+            Grid.Column="1"
+            Margin="3,3,0,3"
+            Command="{Binding AddDropCommand}"
+            Content="Add" />
+        <Grid Grid.Row="2" Grid.ColumnSpan="2" Margin="0,3" ColumnDefinitions="*,Auto,Auto">
+            <TextBox
+                x:Name="Interval"
+                Grid.Column="0"
+                Margin="0,0,6,0"
+                PlaceholderText="Interval"
+                Text="{Binding Drops.Interval}"
+                ToolTip.Tip="Milliseconds added to the base interval of 1000 ms between pickups." />
+            <CheckBox
+                Grid.Column="1"
+                Margin="0,0,6,0"
+                Content="Reject Else"
+                IsChecked="{Binding Drops.RejectElse}"
+                ToolTip.Tip="Whether to reject drops not included in the list." />
+            <CheckBox
+                Grid.Column="2"
+                Content="Accept AC Drops"
+                IsChecked="{Binding Options.AcceptACDrops}"
+                ToolTip.Tip="When enabled will pickup any AC item that drops, even when the drop should be rejected." />
+        </Grid>
+        <ToggleButton
+            x:Name="PickDrops"
+            Grid.Row="3"
+            Grid.Column="0"
+            Margin="0,3,3,0"
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Center"
+            Command="{Binding ToggleDropsCommand}"
+            Content="Pick Drops"
+            IsChecked="{Binding Drops.Enabled, Mode=OneWay}"
+            ToolTip.Tip="Start/Stop the Drop grabber." />
+        <Button
+            Grid.Row="3"
+            Grid.Column="1"
+            Margin="3,3,0,0"
+            Command="{Binding OpenNotifyDropCommand}"
+            Content="Notify…"
+            ToolTip.Tip="Add items to be notified when they are dropped with a beep sound." />
+    </Grid>
+</UserControl>

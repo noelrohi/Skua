@@ -1,0 +1,65 @@
+<!-- Ported from Skua.WPF/UserControls/NotifyDropUserControl.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.Helpers.NotifyDropView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:NotifyDropViewModel">
+    <Grid Margin="6" ColumnDefinitions="*,Auto" RowDefinitions="*,Auto,Auto">
+        <ListBox
+            x:Name="DropList"
+            Grid.Row="0"
+            Grid.ColumnSpan="2"
+            Margin="0,0,0,3"
+            ItemsSource="{Binding NotifyDropList}"
+            SelectionMode="Multiple"
+            ToolTip.Tip="The items that beep when they drop. ⌫ removes the selected items; ⌥⌫ removes them all.">
+            <ListBox.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Command="{Binding RemoveAllDropsCommand}" Header="Remove All" />
+                </ContextMenu>
+            </ListBox.ContextMenu>
+        </ListBox>
+        <TextBox
+            x:Name="AddDropInput"
+            Grid.Row="1"
+            Grid.Column="0"
+            Margin="0,3,3,3"
+            PlaceholderText="Drop Name"
+            Text="{Binding AddDropInput}"
+            ToolTip.Tip="An item's name; separate several with |.">
+            <TextBox.KeyBindings>
+                <KeyBinding Command="{Binding AddDropCommand}" Gesture="Enter" />
+            </TextBox.KeyBindings>
+        </TextBox>
+        <Button
+            x:Name="AddDrop"
+            Grid.Row="1"
+            Grid.Column="1"
+            Margin="3,3,0,3"
+            Command="{Binding AddDropCommand}"
+            Content="Add" />
+        <Grid Grid.Row="2" Grid.ColumnSpan="2" ColumnDefinitions="*,*,Auto">
+            <TextBox
+                x:Name="SoundCount"
+                Grid.Column="0"
+                Margin="0,3,3,0"
+                PlaceholderText="Beep Count"
+                Text="{Binding SoundCount}"
+                ToolTip.Tip="Amount of times to beep." />
+            <TextBox
+                x:Name="SoundDelay"
+                Grid.Column="1"
+                Margin="3,3,3,0"
+                InnerRightContent="ms"
+                PlaceholderText="Beep Delay"
+                Text="{Binding SoundDelay}"
+                ToolTip.Tip="Delay between beeps in milliseconds." />
+            <Button
+                Grid.Column="2"
+                Margin="3,3,0,0"
+                Command="{Binding TestBeepCommand}"
+                Content="Test Beep" />
+        </Grid>
+    </Grid>
+</UserControl>

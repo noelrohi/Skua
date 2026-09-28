@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using Skua.Avalonia.Manager;
 using Skua.Avalonia.Views;
+using Skua.Avalonia.Views.Helpers;
 using Skua.Avalonia.Views.Manager;
 using Skua.Core.ViewModels;
 using Skua.Core.ViewModels.Manager;
@@ -24,6 +25,13 @@ public sealed class ViewLocator : IDataTemplate
         [typeof(CBOLoadoutViewModel)] = () => new CBOLoadoutView(),
         [typeof(CBOptionsViewModel)] = () => new CBOptionsView(),
         [typeof(CBOOtherOptionsViewModel)] = () => new CBOOtherOptionsView(),
+        [typeof(RuntimeHelpersViewModel)] = () => new RuntimeHelpersView(),
+        [typeof(NotifyDropViewModel)] = () => new NotifyDropView(),
+        [typeof(FastTravelViewModel)] = () => new FastTravelView(),
+        [typeof(CurrentDropsViewModel)] = () => new CurrentDropsView(),
+        // The main menu's Auto and Jump, which the window shows below their buttons.
+        [typeof(AutoViewModel)] = () => new AutoView(),
+        [typeof(JumpViewModel)] = () => new JumpView(),
         // The Skua Manager's, which runs as its own process (ADR 0006).
         [typeof(ManagerMainViewModel)] = () => new ManagerView(),
         [typeof(ManagerAccountsViewModel)] = () => new AccountsView(),
@@ -43,6 +51,7 @@ public sealed class ViewLocator : IDataTemplate
     {
         [typeof(InputDialogViewModel)] = () => new InputDialogView(),
         [typeof(OptionContainerViewModel)] = () => new OptionContainerView(),
+        [typeof(FastTravelEditorDialogViewModel)] = () => new FastTravelEditorDialogView(),
     };
 
     /// <summary>The view models that have a view, other than the dialogs'.</summary>

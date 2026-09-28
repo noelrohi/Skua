@@ -1,0 +1,44 @@
+<!-- Ported from Skua.WPF/UserControls/CurrentDropsUserControl.xaml; the list shows the drops that match the search. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.Helpers.CurrentDropsView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:CurrentDropsViewModel">
+    <Grid Margin="6" RowDefinitions="Auto,*,Auto">
+        <TextBox
+            x:Name="SearchBox"
+            Grid.Row="0"
+            Margin="0,0,0,6"
+            PlaceholderText="Search" />
+        <ListBox
+            x:Name="CurrentDropsList"
+            Grid.Row="1"
+            SelectedItem="{Binding SelectedDrop}"
+            SelectionMode="Multiple" />
+        <Grid Grid.Row="2" Margin="0,6,0,0" ColumnDefinitions="*,*,*">
+            <Button
+                x:Name="PickupSelected"
+                Grid.Column="0"
+                Margin="0,0,3,0"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Content="Pickup Selected" />
+            <Button
+                x:Name="PickupAll"
+                Grid.Column="1"
+                Margin="3,0"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Command="{Binding PickupAllCommand}"
+                Content="Pickup All" />
+            <Button
+                Grid.Column="2"
+                Margin="3,0,0,0"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Command="{Binding PickupACCommand}"
+                Content="Pickup AC" />
+        </Grid>
+    </Grid>
+</UserControl>

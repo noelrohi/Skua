@@ -1,0 +1,26 @@
+<!-- Ported from Skua.WPF/Views/RuntimeHelpersView.xaml: the drops to pick up, the registered quests and the boosts. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.Helpers.RuntimeHelpersView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Skua.Avalonia.Views.Helpers"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:RuntimeHelpersViewModel">
+    <Grid ColumnDefinitions="*,*" RowDefinitions="*,Auto">
+        <local:ToPickupDropsView
+            Grid.RowSpan="2"
+            Grid.Column="0"
+            Margin="6,6,3,6"
+            DataContext="{Binding ToPickupDropsViewModel}" />
+        <local:RegisteredQuestsView
+            Grid.Row="0"
+            Grid.Column="1"
+            Margin="3,6,6,3"
+            DataContext="{Binding RegisteredQuestsViewModel}" />
+        <local:BoostsView
+            Grid.Row="1"
+            Grid.Column="1"
+            Margin="3,3,6,6"
+            DataContext="{Binding BoostsViewModel}" />
+    </Grid>
+</UserControl>
