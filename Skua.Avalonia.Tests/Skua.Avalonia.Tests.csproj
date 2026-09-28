@@ -38,6 +38,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The Engine tests' waits on the Engine's logs. -->
+    <Compile Include="..\Skua.Engine.Tests\LogWaits.cs" Link="Fakes\LogWaits.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Skua.Avalonia\Skua.Avalonia.csproj" />
     <ProjectReference Include="..\Skua.Control\Skua.Control.csproj" />
     <ProjectReference Include="..\Skua.Engine\Skua.Engine.csproj" />

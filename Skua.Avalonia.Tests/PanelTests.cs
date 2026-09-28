@@ -23,8 +23,9 @@ public sealed class PanelTests(AppEngine app)
             Assert.True(ViewLocator.HasView(Resolve(type)), $"{type.Name} has no view");
         Assert.Equal(
             [
-                nameof(GoalsViewModel), nameof(LogTabViewModel), nameof(LogsViewModel), nameof(ManagerAccountsViewModel), nameof(ManagerMainViewModel),
-                nameof(RunningViewModel), nameof(ScriptLoaderViewModel), nameof(ScriptRepoViewModel), nameof(UpdatesViewModel),
+                nameof(CBOLoadoutViewModel), nameof(CBOOtherOptionsViewModel), nameof(CBOptionsViewModel), nameof(CoreBotsViewModel), nameof(GoalsViewModel),
+                nameof(LogTabViewModel), nameof(LogsViewModel), nameof(ManagerAccountsViewModel), nameof(ManagerMainViewModel), nameof(RunningViewModel),
+                nameof(ScriptLoaderViewModel), nameof(ScriptRepoViewModel), nameof(UpdatesViewModel),
             ],
             ViewLocator.ViewModelTypes.Select(t => t.Name).Order(StringComparer.Ordinal));
     }
@@ -52,7 +53,7 @@ public sealed class PanelTests(AppEngine app)
     }
 
     [AvaloniaFact]
-    public void The_main_menu_enables_Scripts_and_Logs_and_shows_the_rest_disabled()
+    public void The_main_menu_enables_Scripts_Logs_and_CoreBots_and_shows_the_rest_disabled()
     {
         MainMenuViewModel viewModel = app.Get<MainMenuViewModel>();
         AvaloniaWindowService windows = app.Get<AvaloniaWindowService>();
@@ -61,12 +62,12 @@ public sealed class PanelTests(AppEngine app)
         NativeMenu native = MainMenus.Native(viewModel, windows);
 
         List<MenuItem> leaves = Leaves(menu.Items.OfType<MenuItem>()).ToList();
-        Assert.Equal(["Logs", "Scripts"], leaves.Where(i => i.IsEnabled).Select(i => (string)i.Header!).Order());
+        Assert.Equal(["CoreBots", "Logs", "Scripts"], leaves.Where(i => i.IsEnabled).Select(i => (string)i.Header!).Order());
         Assert.Contains(leaves, i => (string)i.Header! == "Grabber" && !i.IsEnabled);
         Assert.Contains(leaves, i => (string)i.Header! == "Bank" && !i.IsEnabled);
         Assert.Contains(leaves, i => (string)i.Header! == "View Plugins" && !i.IsEnabled);
         List<NativeMenuItem> nativeLeaves = native.Items.OfType<NativeMenuItem>().SelectMany(i => i.Menu!.Items.OfType<NativeMenuItem>()).ToList();
-        Assert.Equal(["Show Logs", "Show Scripts"], nativeLeaves.Where(i => i.IsEnabled).Select(i => i.Header!).Order());
+        Assert.Equal(["CoreBots", "Show Logs", "Show Scripts"], nativeLeaves.Where(i => i.IsEnabled).Select(i => i.Header!).Order());
         Assert.Equal(menu.Items.OfType<MenuItem>().Select(i => (string)i.Header!), native.Items.OfType<NativeMenuItem>().Select(i => i.Header));
     }
 
@@ -125,10 +126,13 @@ public sealed class PanelTests(AppEngine app)
         await Ui.PumpUntilAsync(() => lines.ItemsSource is null, "the closed window's list to let go of the log");
     }
 
+    /// <remarks>A log tab and CoreBots' tabs come from their panel's view model rather than the container.</remarks>
     private object Resolve(Type type) =>
         type == typeof(LogTabViewModel) ? app.Get<IEnumerable<LogTabViewModel>>().First()
-        // The Skua Manager's come from its own container, in its own process.
-        : app.Engine.Services.GetService(type) ?? _manager.Value.GetRequiredService(type);
+        : app.Get<CoreBotsViewModel>().CoreBotsTabs.Select(t => t.Content).FirstOrDefault(c => c.GetType() == type)
+            ?? app.Engine.Services.GetService(type)
+            // The Skua Manager's come from its own container, in its own process.
+            ?? _manager.Value.GetRequiredService(type);
 
     private readonly Lazy<ServiceProvider> _manager = new(() =>
         new ServiceCollection().AddManagerServices(Directory.CreateTempSubdirectory("skua-manager-").FullName).BuildServiceProvider());

@@ -25,6 +25,7 @@ public static class ConfigureServices
         services.AddSingleton<IDialogService>(s => s.GetRequiredService<AvaloniaDialogService>());
         services.AddSingleton<ScriptDialogsViewModel>();
         services.AddSingleton<ISoundService, MacSoundService>();
+        services.AddTransient<IScriptOptionContainer, AvaloniaScriptOptionContainer>();
         // Core's main menu makes every panel's view model, so the ones whose tickets come later need these stand-ins.
         services.AddSingleton<IThemeService, FixedThemeService>();
         services.AddSingleton<IHotKeyService, NoHotKeyService>();

@@ -56,7 +56,13 @@ public sealed class AvaloniaWindowService : IWindowService
         {
             window = Create(viewModel);
             _open[key] = window;
-            window.Closed += (_, _) => _open.Remove(key);
+            window.Closed += (_, _) =>
+            {
+                _open.Remove(key);
+                // As on Windows, where closing hides it: the view model stops its work, and CoreBots saves its options.
+                if (viewModel is ObservableRecipient closed)
+                    closed.IsActive = false;
+            };
             window.Show();
         }
         else if (window.WindowState == WindowState.Minimized)

@@ -1,0 +1,20 @@
+<!-- Ported from Skua.WPF/UserControls/CoreBotsOptions/CBOOtherOptionsUserControl.xaml; the rows are CoreBotsOptionRows'. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.CBOOtherOptionsView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Skua.Avalonia.Views"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:CBOOtherOptionsViewModel">
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <ItemsControl x:Name="Groups" Grid.IsSharedSizeScope="True" ItemsSource="{Binding Options}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vms:CBOOptionItemContainerViewModel">
+                    <Expander Margin="3" HorizontalAlignment="Stretch" Header="{Binding Category}">
+                        <ItemsControl ItemTemplate="{x:Static local:CoreBotsOptionRows.Template}" ItemsSource="{Binding Items}" />
+                    </Expander>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </ScrollViewer>
+</UserControl>
