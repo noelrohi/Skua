@@ -9,6 +9,18 @@ namespace Skua.Avalonia.Services;
 public sealed class AvaloniaClipboardService : IClipboardService
 {
     private readonly Dictionary<string, object> _data = [];
+    private readonly Func<IClipboard?> _clipboard;
+
+    public AvaloniaClipboardService()
+        : this(() => Windows.Active()?.Clipboard)
+    {
+    }
+
+    /// <summary>Uses the clipboard <paramref name="clipboard"/> gives, such as a headless window's in a test.</summary>
+    public AvaloniaClipboardService(Func<IClipboard?> clipboard)
+    {
+        _clipboard = clipboard;
+    }
 
     public void SetText(string text) => UiThread.Post(async () =>
     {
@@ -37,5 +49,5 @@ public sealed class AvaloniaClipboardService : IClipboardService
             return _data.GetValueOrDefault(format)!;
     }
 
-    private static IClipboard? Clipboard() => Windows.Active()?.Clipboard;
+    private IClipboard? Clipboard() => _clipboard();
 }

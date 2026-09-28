@@ -1,0 +1,30 @@
+<!-- Ported from Skua.WPF/UserControls/Dialogs/SkillRuleEditorDialog.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.Skills.SkillRuleEditorDialogView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Skua.Avalonia.Views.Skills"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:SkillRuleEditorDialogViewModel">
+    <StackPanel>
+        <local:SkillRulesView Margin="6,6,6,3" DataContext="{Binding UseRules}" />
+        <Grid ColumnDefinitions="*,*">
+            <Button
+                x:Name="Confirm"
+                Grid.Column="0"
+                Margin="6,3,3,6"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Content="Confirm"
+                IsDefault="True" />
+            <Button
+                x:Name="Cancel"
+                Grid.Column="1"
+                Margin="3,3,6,6"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Content="Cancel"
+                IsCancel="True" />
+        </Grid>
+    </StackPanel>
+</UserControl>
