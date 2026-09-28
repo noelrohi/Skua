@@ -4,6 +4,7 @@ using Skua.Avalonia.Manager;
 using Skua.Avalonia.Views;
 using Skua.Avalonia.Views.Helpers;
 using Skua.Avalonia.Views.Manager;
+using Skua.Avalonia.Views.Skills;
 using Skua.Core.ViewModels;
 using Skua.Core.ViewModels.Manager;
 
@@ -49,6 +50,7 @@ public sealed class ViewLocator : IDataTemplate
         [typeof(ApplicationThemesViewModel)] = () => new ApplicationThemesView(),
         [typeof(HotKeysViewModel)] = () => new HotKeysView(),
         [typeof(HotKeyItemViewModel)] = () => new HotKeyItemView(),
+        [typeof(AdvancedSkillsViewModel)] = () => new AdvancedSkillsView(),
     };
 
     /// <summary>
@@ -61,6 +63,7 @@ public sealed class ViewLocator : IDataTemplate
         [typeof(OptionContainerViewModel)] = () => new OptionContainerView(),
         [typeof(FastTravelEditorDialogViewModel)] = () => new FastTravelEditorDialogView(),
         [typeof(AssignHotKeyDialogViewModel)] = () => new AssignHotKeyDialogView(),
+        [typeof(SkillRuleEditorDialogViewModel)] = () => new SkillRuleEditorDialogView(),
     };
 
     /// <summary>The view models that have a view, other than the dialogs'.</summary>

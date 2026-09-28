@@ -1,0 +1,153 @@
+<!-- Ported from Skua.WPF/UserControls/AdvancedSkillEditorUserControl.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.Skills.AdvancedSkillEditorView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Skua.Avalonia.Views.Skills"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:AdvancedSkillEditorViewModel">
+    <UserControl.Styles>
+        <Style Selector="Border.group">
+            <Setter Property="BorderBrush" Value="#44FFFFFF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="6" />
+        </Style>
+        <Style Selector="TextBlock.header">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,3" />
+        </Style>
+        <Style Selector="StackPanel.skills > Button">
+            <Setter Property="MinWidth" Value="36" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
+    </UserControl.Styles>
+    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,350,Auto">
+        <Border Grid.Row="0" Grid.Column="0" Margin="6,6,3,3" Classes="group">
+            <StackPanel>
+                <TextBlock Classes="header" Text="Set SkillTimeout" />
+                <TextBox
+                    x:Name="SkillTimeout"
+                    Text="{Binding CurrentSkillTimeout}"
+                    ToolTip.Tip="The maximum time it will wait for a skill in multiples of the SkillTimer (default 100ms). Default SkillTimeout is 100 (10000 ms). Note that the skill timeout is only used when Wait for Cooldown is enabled." />
+            </StackPanel>
+        </Border>
+        <Border Grid.Row="0" Grid.Column="1" Margin="3,6,6,3" Classes="group">
+            <StackPanel>
+                <TextBlock Classes="header" Text="Use Mode" />
+                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
+                    <CheckBox
+                        x:Name="WaitForCooldown"
+                        Grid.Column="0"
+                        Content="Wait for Cooldown"
+                        IsChecked="{Binding UseWaitModeBool}"
+                        ToolTip.Tip="Will wait for either the skill to fully cooldown or the defined skill timeout (default is 25 seconds). It is important that you use the &quot;Skip if not available&quot; use rule for better control of the skill combo." />
+                    <CheckBox
+                        x:Name="UseIfAvailable"
+                        Grid.Column="1"
+                        Content="Use if Available"
+                        IsChecked="{Binding !UseWaitModeBool, Mode=OneWay}"
+                        ToolTip.Tip="Whenever a skill is available it will be used, if it is not then it will be skipped." />
+                    <CheckBox
+                        x:Name="ResetOnTargetChange"
+                        Grid.Row="1"
+                        Grid.Column="0"
+                        Content="Reset on Target Change"
+                        IsChecked="{Binding ResetComboOnTargetChange}"
+                        ToolTip.Tip="Restarts the advanced skill combo from the beginning when the current target dies, disappears, or changes. Useful for classes whose combo depends on autoattack timing." />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="1" Grid.Column="0" Margin="6,3,3,3" Classes="group">
+            <DockPanel>
+                <TextBlock Classes="header" DockPanel.Dock="Top" Text="Skills" />
+                <DockPanel Margin="0,3,0,0" DockPanel.Dock="Bottom" LastChildFill="False">
+                    <Button Command="{Binding SelectSkillUpCommand}" Content="↑" ToolTip.Tip="Select the skill above (↑)" />
+                    <Button Margin="2,0,0,0" Command="{Binding MoveSkillUpCommand}" Content="⇑" ToolTip.Tip="Move the selected skill up (⌘↑)" />
+                    <Button Margin="6,0,0,0" Command="{Binding SelectSkillDownCommand}" Content="↓" ToolTip.Tip="Select the skill below (↓)" />
+                    <Button Margin="2,0,0,0" Command="{Binding MoveSkillDownCommand}" Content="⇓" ToolTip.Tip="Move the selected skill down (⌘↓)" />
+                    <Button
+                        x:Name="RemoveSkill"
+                        Margin="2,0,0,0"
+                        Command="{Binding RemoveSkillCommand}"
+                        Content="✕"
+                        DockPanel.Dock="Right"
+                        ToolTip.Tip="Remove the selected skill (⌫)" />
+                    <Button
+                        x:Name="EditSkill"
+                        Command="{Binding EditSkillCommand}"
+                        Content="Edit…"
+                        DockPanel.Dock="Right"
+                        ToolTip.Tip="Edit the selected skill's use rules (Return)" />
+                </DockPanel>
+                <ListBox
+                    x:Name="SkillsList"
+                    ItemsSource="{Binding CurrentSkillsList}"
+                    ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                    SelectedIndex="{Binding SelectedSkillIndex}"
+                    SelectedItem="{Binding SelectedSkill}"
+                    ToolTip.Tip="↑/↓ select a skill; ⌘↑/⌘↓ move it. ⌫ removes the selected skill; ⌥⌫ removes them all. Return edits its use rules.">
+                    <ListBox.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Command="{Binding EditSkillCommand}" Header="Edit" />
+                            <MenuItem Command="{Binding RemoveSkillCommand}" Header="Remove" />
+                        </ContextMenu>
+                    </ListBox.ContextMenu>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="vms:SkillItemViewModel">
+                            <TextBlock Text="{Binding DisplayString}" />
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+        </Border>
+
+        <Border Grid.Row="1" Grid.Column="1" Margin="3,3,6,3" Classes="group">
+            <DockPanel>
+                <TextBlock Classes="header" DockPanel.Dock="Top" Text="Use Rules" />
+                <StackPanel
+                    x:Name="AddSkillButtons"
+                    Margin="0,6,0,0"
+                    HorizontalAlignment="Center"
+                    Classes="skills"
+                    DockPanel.Dock="Bottom"
+                    Orientation="Horizontal"
+                    Spacing="3"
+                    ToolTip.Tip="Adds the skill index with the use rules above. The numbers count skills only, not the auto attack, so 1 is your in-game skill 2; the last is the potion.">
+                    <Button Command="{Binding AddSkillToCurrentCommand}" CommandParameter="0" Content="0" />
+                    <Button Command="{Binding AddSkillToCurrentCommand}" CommandParameter="1" Content="1" />
+                    <Button Command="{Binding AddSkillToCurrentCommand}" CommandParameter="2" Content="2" />
+                    <Button Command="{Binding AddSkillToCurrentCommand}" CommandParameter="3" Content="3" />
+                    <Button Command="{Binding AddSkillToCurrentCommand}" CommandParameter="4" Content="4" />
+                    <Button Command="{Binding AddSkillToCurrentCommand}" CommandParameter="5" Content="Potion" />
+                </StackPanel>
+                <local:SkillRulesView DataContext="{Binding UseRules}" />
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Row="2" Grid.ColumnSpan="2" Margin="6,3,6,6" ColumnDefinitions="2*,*,Auto">
+            <TextBox
+                x:Name="ClassName"
+                Grid.Column="0"
+                Margin="0,0,3,0"
+                PlaceholderText="Class Name"
+                Text="{Binding CurrentClassName}" />
+            <ComboBox
+                x:Name="ClassUseMode"
+                Grid.Column="1"
+                Margin="3,0"
+                HorizontalAlignment="Stretch"
+                ItemsSource="{Binding ClassUseModes}"
+                PlaceholderText="Class Use Mode"
+                SelectedIndex="{Binding SelectedClassUseMode}" />
+            <Button
+                x:Name="SaveSkills"
+                Grid.Column="2"
+                Margin="3,0,0,0"
+                Command="{Binding SaveSkillsCommand}"
+                Content="Save"
+                ToolTip.Tip="Note: it will override existing skills with the same class name and use mode." />
+        </Grid>
+    </Grid>
+</UserControl>

@@ -1,0 +1,28 @@
+<!-- Ported from Skua.WPF/Views/AdvancedSkillsView.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.Skills.AdvancedSkillsView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Skua.Avalonia.Views.Skills"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:AdvancedSkillsViewModel">
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+            <Expander
+                x:Name="EditExpander"
+                Margin="6,6,6,3"
+                HorizontalAlignment="Stretch"
+                Header="Create/Edit Skill"
+                IsExpanded="{Binding EditExpanded}">
+                <local:AdvancedSkillEditorView DataContext="{Binding EditViewModel}" />
+            </Expander>
+            <Expander
+                Margin="6,3,6,6"
+                HorizontalAlignment="Stretch"
+                Header="Saved Skills"
+                IsExpanded="True">
+                <local:SavedAdvancedSkillsView DataContext="{Binding SavedViewModel}" />
+            </Expander>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

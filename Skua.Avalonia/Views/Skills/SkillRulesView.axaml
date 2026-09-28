@@ -1,0 +1,163 @@
+<!--
+    Ported from Skua.WPF/UserControls/SkillRuleUserControl.xaml. Each field has a label, where WPF's floating hints named them: the values
+    are numbers that start at 0, so a placeholder would never show.
+-->
+<UserControl
+    x:Class="Skua.Avalonia.Views.Skills.SkillRulesView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Skua.Avalonia.Views.Skills"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:SkillRulesViewModel">
+    <UserControl.Styles>
+        <!-- WPF's GreaterThanOrEqual/LessThanOrEqual and %/# toggles, whose content its style triggers switched. -->
+        <Style Selector="ToggleButton.compare">
+            <Setter Property="Content" Value="≤" />
+            <Setter Property="MinWidth" Value="32" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="ToolTip.Tip" Value="Less than or equal; click for greater than or equal." />
+        </Style>
+        <Style Selector="ToggleButton.compare:checked">
+            <Setter Property="Content" Value="≥" />
+            <Setter Property="ToolTip.Tip" Value="Greater than or equal; click for less than or equal." />
+        </Style>
+        <Style Selector="ToggleButton.unit">
+            <Setter Property="Content" Value="#" />
+            <Setter Property="MinWidth" Value="32" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="ToolTip.Tip" Value="An amount; click for a percentage." />
+        </Style>
+        <Style Selector="ToggleButton.unit:checked">
+            <Setter Property="Content" Value="%" />
+            <Setter Property="ToolTip.Tip" Value="A percentage; click for an amount." />
+        </Style>
+        <Style Selector="TextBlock.label">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+        </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+        </Style>
+    </UserControl.Styles>
+    <DockPanel>
+        <Grid Margin="0,6,0,0" ColumnDefinitions="Auto,*,Auto,Auto" DockPanel.Dock="Bottom">
+            <CheckBox
+                x:Name="Skip"
+                Grid.Column="0"
+                Content="Skip if not available."
+                IsChecked="{Binding SkipUseBool}"
+                ToolTip.Tip="Will skip skill if it is not available. Note: if the skill has a Wait use rule, it will wait for the specified time and then check if it should be skipped." />
+            <TextBlock Grid.Column="2" Classes="label" Text="Wait (ms)" />
+            <TextBox
+                x:Name="Wait"
+                Grid.Column="3"
+                Width="80"
+                Text="{Binding WaitUseValue}" />
+        </Grid>
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="3">
+                <DockPanel>
+                    <Button
+                        Command="{Binding ResetUseRulesCommand}"
+                        Content="Reset"
+                        DockPanel.Dock="Right" />
+                    <StackPanel Orientation="Horizontal" Spacing="15">
+                        <CheckBox
+                            x:Name="UseRule"
+                            Content="Use Rule?"
+                            IsChecked="{Binding UseRuleBool}"
+                            ToolTip.Tip="Whether to use the specified rule values when adding a skill." />
+                        <CheckBox
+                            x:Name="MultiAura"
+                            Content="Multi Aura"
+                            IsChecked="{Binding MultiAuraBool}"
+                            ToolTip.Tip="Use multiple aura checks instead of single aura rule." />
+                    </StackPanel>
+                </DockPanel>
+                <Grid ColumnDefinitions="Auto,Auto,*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="3">
+                    <TextBlock Grid.Row="0" Classes="label" Text="Health" />
+                    <ToggleButton Grid.Row="0" Grid.Column="1" Margin="0,0,3,0" Classes="compare" IsChecked="{Binding HealthGreaterThanBool}" />
+                    <TextBox x:Name="Health" Grid.Row="0" Grid.Column="2" Text="{Binding HealthUseValue}" />
+                    <ToggleButton Grid.Row="0" Grid.Column="3" Margin="3,0,0,0" Classes="unit" IsChecked="{Binding HealthIsPercentage}" />
+
+                    <TextBlock Grid.Row="1" Classes="label" Text="Mana" />
+                    <ToggleButton x:Name="ManaCompare" Grid.Row="1" Grid.Column="1" Margin="0,0,3,0" Classes="compare" IsChecked="{Binding ManaGreaterThanBool}" />
+                    <TextBox x:Name="Mana" Grid.Row="1" Grid.Column="2" Text="{Binding ManaUseValue}" />
+                    <ToggleButton Grid.Row="1" Grid.Column="3" Margin="3,0,0,0" Classes="unit" IsChecked="{Binding ManaIsPercentage}" />
+
+                    <TextBlock Grid.Row="2" Classes="label" Text="Party HP" ToolTip.Tip="Any party member's health." />
+                    <ToggleButton Grid.Row="2" Grid.Column="1" Margin="0,0,3,0" Classes="compare" IsChecked="{Binding PartyMemberHealthGreaterThanBool}" />
+                    <TextBox x:Name="PartyHealth" Grid.Row="2" Grid.Column="2" Text="{Binding PartyMemberHealthUseValue}" />
+                    <ToggleButton Grid.Row="2" Grid.Column="3" Margin="3,0,0,0" Classes="unit" IsChecked="{Binding PartyMemberHealthIsPercentage}" />
+                </Grid>
+                <Grid
+                    x:Name="SingleAura"
+                    ColumnDefinitions="Auto,Auto,*,60,Auto"
+                    IsVisible="{Binding !MultiAuraBool}">
+                    <TextBlock Grid.Column="0" Classes="label" Text="Aura" />
+                    <ToggleButton Grid.Column="1" Margin="0,0,3,0" Classes="compare" IsChecked="{Binding AuraGreaterThanBool}" />
+                    <TextBox
+                        x:Name="AuraName"
+                        Grid.Column="2"
+                        PlaceholderText="Aura Name"
+                        Text="{Binding AuraName}" />
+                    <TextBox
+                        x:Name="AuraStacks"
+                        Grid.Column="3"
+                        Margin="3,0"
+                        Text="{Binding AuraUseValue, UpdateSourceTrigger=LostFocus}"
+                        ToolTip.Tip="Stacks" />
+                    <ComboBox Grid.Column="4" MinWidth="90" SelectedIndex="{Binding AuraTargetIndex}">
+                        <ComboBoxItem Content="Self" />
+                        <ComboBoxItem Content="Target" />
+                    </ComboBox>
+                </Grid>
+                <StackPanel IsVisible="{Binding MultiAuraBool}" Spacing="3">
+                    <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                        <TextBlock Grid.Column="0" Classes="label" Text="Operator" />
+                        <ComboBox
+                            x:Name="Operator"
+                            Grid.Column="1"
+                            MinWidth="80"
+                            SelectedIndex="{Binding MultiAuraOperatorIndex}">
+                            <ComboBoxItem Content="AND" />
+                            <ComboBoxItem Content="OR" />
+                        </ComboBox>
+                        <Button
+                            x:Name="AddAura"
+                            Grid.Column="3"
+                            Command="{Binding AddAuraCheckCommand}"
+                            Content="+ Add Aura" />
+                    </Grid>
+                    <ItemsControl x:Name="AuraChecks" ItemsSource="{Binding MultiAuraChecks}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vms:AuraCheckViewModel">
+                                <Grid Margin="0,1" ColumnDefinitions="Auto,*,60,Auto,Auto">
+                                    <ToggleButton Grid.Column="0" Margin="0,0,3,0" Classes="compare" IsChecked="{Binding IsGreater}" />
+                                    <TextBox Grid.Column="1" PlaceholderText="Aura Name" Text="{Binding AuraName}" />
+                                    <TextBox
+                                        Grid.Column="2"
+                                        Margin="3,0"
+                                        Classes="stacks"
+                                        Text="{Binding StackCount, UpdateSourceTrigger=LostFocus}"
+                                        ToolTip.Tip="Stacks" />
+                                    <ComboBox Grid.Column="3" MinWidth="90" SelectedIndex="{Binding AuraTargetIndex}">
+                                        <ComboBoxItem Content="Self" />
+                                        <ComboBoxItem Content="Target" />
+                                    </ComboBox>
+                                    <Button
+                                        Grid.Column="4"
+                                        Margin="3,0,0,0"
+                                        Command="{Binding $parent[local:SkillRulesView].((vms:SkillRulesViewModel)DataContext).RemoveAuraCheckCommand}"
+                                        CommandParameter="{Binding}"
+                                        Content="✕"
+                                        ToolTip.Tip="Remove" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

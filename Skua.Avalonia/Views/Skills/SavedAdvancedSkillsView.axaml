@@ -1,0 +1,43 @@
+<!-- Ported from Skua.WPF/UserControls/SavedAdvancedSkillsUserControl.xaml; the list shows the sets whose class matches the search. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.Skills.SavedAdvancedSkillsView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:SavedAdvancedSkillsViewModel">
+    <Grid RowDefinitions="Auto,335">
+        <DockPanel Grid.Row="0" Margin="6,6,6,3">
+            <Button
+                Margin="3,0,0,0"
+                Command="{Binding ResetSkillsSetCommand}"
+                Content="Reset Skills"
+                DockPanel.Dock="Right"
+                ToolTip.Tip="Replaces your skill sets with the default ones." />
+            <Button
+                Margin="3,0,0,0"
+                Command="{Binding RefreshSkillsCommand}"
+                Content="↻"
+                DockPanel.Dock="Right"
+                ToolTip.Tip="Reload the skill sets from the file." />
+            <TextBox x:Name="SearchBox" PlaceholderText="Search" />
+        </DockPanel>
+        <ListBox
+            x:Name="SkillsList"
+            Grid.Row="1"
+            Margin="6,3,6,6"
+            Focusable="True"
+            SelectedItem="{Binding SelectedSkill}"
+            SelectionMode="Multiple"
+            ToolTip.Tip="Double-click a set to edit it. ⌘C copies the selected sets; ⌘V pastes sets, replacing any with the same class and mode.">
+            <ListBox.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Command="{Binding EditSelectedCommand}" Header="Edit" />
+                    <MenuItem x:Name="CopyItem" Header="Copy" InputGesture="Cmd+C" />
+                    <MenuItem x:Name="PasteItem" Header="Paste" InputGesture="Cmd+V" />
+                    <Separator />
+                    <MenuItem Command="{Binding RemoveSelectedCommand}" Header="Remove Selected" />
+                </ContextMenu>
+            </ListBox.ContextMenu>
+        </ListBox>
+    </Grid>
+</UserControl>
