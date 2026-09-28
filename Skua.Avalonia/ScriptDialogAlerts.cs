@@ -41,7 +41,8 @@ public sealed class ScriptDialogAlerts
             _notify(notice.Script is { } script ? $"Skua: {script}" : "Skua", Body(notice.Caption, notice.Text));
     }
 
-    private static string Body(string caption, string text)
+    /// <summary>A notification's body: the caption before the text, cut to what a banner shows.</summary>
+    internal static string Body(string caption, string text)
     {
         string body = caption.Length > 0 ? $"{caption}: {text}" : text;
         return body.Length > 240 ? body[..239] + "…" : body;
