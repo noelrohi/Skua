@@ -23,14 +23,16 @@ public sealed class GameViewTests(AppEngine app)
 
         await PumpUntilAsync(() => view.FrameNumber > 0, "a first frame");
         long first = view.FrameNumber;
+        long drawn = view.Stats.Total;
         await PumpUntilAsync(() => view.FrameNumber >= first + 3, "the frame number to advance");
+        // A frame counts in the stats once drawn, and renders may skip frames the view copied, so wait for a draw rather than count.
+        await PumpUntilAsync(() => view.Stats.Total > drawn, "a newer frame to be drawn");
 
         // The fake's frame n is a solid colour whose red, green and blue are n's low, middle and high bytes.
         using WriteableBitmap? frame = window.CaptureRenderedFrame() as WriteableBitmap;
         Assert.NotNull(frame);
         long shown = view.FrameNumber;
         Assert.Equal(((byte)shown, (byte)(shown >> 8), (byte)(shown >> 16)), Pixel(frame!, 479, 275));
-        Assert.True(view.Stats.Total >= 4);
         window.Close();
     }
 
@@ -38,14 +40,15 @@ public sealed class GameViewTests(AppEngine app)
     public async Task Keeps_showing_frames_after_the_Game_Host_restarts()
     {
         (Window window, GameView view) = await ShowAsync(958, 550);
-        await PumpUntilAsync(() => view.FrameNumber >= 30, "frames from the first Game Host");
+        await PumpUntilAsync(() => view.FrameNumber >= 60, "frames from the first Game Host");
         long before = view.FrameNumber;
 
-        // A new Game Host has a new Frame Buffer, whose frame numbers start again at 1.
+        // A new Game Host has a new Frame Buffer, whose frame numbers start again at 1: the first of its frames the view shows is
+        // numbered below the old count, unless the view ignores them until the new count passes the old one.
         app.Flash.InitializeFlash();
 
-        await PumpUntilAsync(() => view.FrameNumber is > 0 and < 10, "the restarted Game Host's first frames");
-        Assert.True(view.FrameNumber < before);
+        await PumpUntilAsync(() => view.FrameNumber != before, "a frame from the restarted Game Host");
+        Assert.True(view.FrameNumber < before, $"showed frame {view.FrameNumber} after {before}");
         window.Close();
     }
 

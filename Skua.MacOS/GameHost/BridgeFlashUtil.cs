@@ -80,17 +80,20 @@ public sealed class BridgeFlashUtil : IFlashUtil
         gameHost.LogLine += line => GameHostLog?.Invoke(line);
         gameHost.BridgeFailed += error => BridgeFailed?.Invoke(error);
         gameHost.Exited += code => GameHostExited?.Invoke(code);
+        // Set before Start: the Game Client's first calls (loaded, requestLoadGame) reach handlers that call back into it before Start returns.
+        _gameHost = gameHost;
+        _frameBuffer = frameBuffer;
         try
         {
             gameHost.Start();
         }
         catch
         {
+            _gameHost = null;
+            _frameBuffer = null;
             frameBuffer?.Dispose();
             throw;
         }
-        _gameHost = gameHost;
-        _frameBuffer = frameBuffer;
         if (frameBuffer is not null)
             new Thread(() => HandOver(gameHost, frameBuffer)) { IsBackground = true, Name = "Frame Buffer hand-over" }.Start();
     }
