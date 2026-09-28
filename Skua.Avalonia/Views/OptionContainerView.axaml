@@ -1,0 +1,35 @@
+<!-- Ported from Skua.WPF/UserControls/OptionContainerUserControl.xaml: a Script's options by category, and the selected one's description. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.OptionContainerView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:OptionContainerViewModel">
+    <Grid Width="520" RowDefinitions="*,Auto,Auto">
+        <Border Grid.Row="0" Margin="6,6,6,3" BorderBrush="#44FFFFFF" BorderThickness="1">
+            <ScrollViewer MaxHeight="520" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <StackPanel x:Name="Groups" Margin="6" Spacing="6" />
+            </ScrollViewer>
+        </Border>
+        <Border Grid.Row="1" Margin="6,3,6,3" MinHeight="60" BorderBrush="#44FFFFFF" BorderThickness="1">
+            <StackPanel>
+                <TextBlock
+                    x:Name="SelectedName"
+                    Margin="6,3"
+                    FontSize="14"
+                    FontWeight="Bold" />
+                <TextBlock
+                    x:Name="SelectedDescription"
+                    Margin="6,3"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+        <Button
+            x:Name="Done"
+            Grid.Row="2"
+            Margin="6,3,6,6"
+            HorizontalAlignment="Right"
+            Content="Done"
+            IsDefault="True" />
+    </Grid>
+</UserControl>

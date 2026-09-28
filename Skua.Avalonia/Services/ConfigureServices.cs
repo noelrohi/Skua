@@ -20,6 +20,10 @@ public static class ConfigureServices
         services.AddSingleton<IWindowService>(s => s.GetRequiredService<AvaloniaWindowService>());
         services.AddSingleton<IClipboardService, AvaloniaClipboardService>();
         services.AddSingleton<IFileDialogService, AvaloniaFileDialogService>();
+        // Message boxes stay Script Dialogs of the Engine's one broker, which the window shows and answers (ADR 0006).
+        services.AddSingleton<AvaloniaDialogService>();
+        services.AddSingleton<IDialogService>(s => s.GetRequiredService<AvaloniaDialogService>());
+        services.AddSingleton<ScriptDialogsViewModel>();
         services.AddSingleton<ISoundService, MacSoundService>();
         // Core's main menu makes every panel's view model, so the ones whose tickets come later need these stand-ins.
         services.AddSingleton<IThemeService, FixedThemeService>();

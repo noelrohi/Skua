@@ -46,6 +46,9 @@ void OnSignal(PosixSignalContext context)
 using PosixSignalRegistration sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, OnSignal);
 using PosixSignalRegistration sigint = PosixSignalRegistration.Create(PosixSignal.SIGINT, OnSignal);
 
+// Questions name the thread that raised them: this one runs the window.
+Thread.CurrentThread.Name ??= "UI Thread";
+
 // The Engine binds its socket before Avalonia starts any thread: the umask around bind is process-wide (ADR 0006).
 HostedEngine? engine = null;
 string? failure = null;

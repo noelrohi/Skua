@@ -151,12 +151,12 @@ internal sealed class EngineTools(Func<EngineClientOptions> options)
         CallAsync(connection => connection.ScriptWaitAsync(timeoutSec, cancellationToken), cancellationToken);
 
     [McpServerTool(Name = "dialogs", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(DialogsResult))]
-    [Description("The pending Questions: Script Dialogs that wait for an answer, such as a Script confirming an AC purchase. Each has id, caption, text, choices, raisedAt, expiresAt (when it gets the fallback: null / DialogResult.Cancelled, never the first button), the thread waiting on it and the Script. Answer with dialog_answer. Notices never wait; they arrive as notice.shown events in logs.")]
+    [Description("The pending Questions: Script Dialogs that wait for an answer, such as a Script confirming an AC purchase. Each has id, caption, text, choices, raisedAt, expiresAt (when it gets the fallback: null / DialogResult.Cancelled, never the first button), the thread waiting on it and the Script (null for one the Skua app's own window raised). Answer with dialog_answer; in the Skua app the developer may answer it in the window first. Notices never wait; they arrive as notice.shown events in logs.")]
     public Task<CallToolResult> Dialogs(CancellationToken cancellationToken) =>
         CallAsync(connection => connection.DialogsAsync(cancellationToken), cancellationToken);
 
     [McpServerTool(Name = "dialog_answer", UseStructuredContent = true, OutputSchemaType = typeof(DialogAnswerResult))]
-    [Description("Answer a pending Question with one of its choices; the first answer wins and the Script goes on with it. Fails with DialogNotPending when it was already answered, timed out or never existed, and with InvalidArgument for a choice it doesn't offer, which leaves it pending.")]
+    [Description("Answer a pending Question with one of its choices; the first answer wins and the Script goes on with it. Fails with DialogNotPending when it was already answered (question.answered says by whom: agent, user in the Skua app's window, timeout or fallback), timed out or never existed, and with InvalidArgument for a choice it doesn't offer, which leaves it pending.")]
     public Task<CallToolResult> DialogAnswer(
         [Description("The Question's id, from dialogs, status or the question.raised event.")] int id,
         [Description("One of the Question's choices, ignoring case, e.g. \"Yes\".")] string choice,

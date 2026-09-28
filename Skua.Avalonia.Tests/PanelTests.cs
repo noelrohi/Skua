@@ -128,7 +128,7 @@ public sealed class PanelTests(AppEngine app)
         items.SelectMany(i => i.Items.Count > 0 ? Leaves(i.Items.OfType<MenuItem>()) : [i]);
 
     /// <summary>Collects Avalonia's binding warnings and errors while it lives.</summary>
-    private sealed class BindingErrors : ILogSink, IDisposable
+    internal sealed class BindingErrors : ILogSink, IDisposable
     {
         private readonly ILogSink? _previous = Logger.Sink;
 

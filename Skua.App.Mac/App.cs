@@ -148,7 +148,12 @@ internal sealed class App : Application
         AvaloniaWindowService windows = engine.Services.GetRequiredService<AvaloniaWindowService>();
         // Each window carries the menu bar, since macOS shows the key window's.
         windows.WindowCreated = w => NativeMenu.SetMenu(w, MainMenus.Native(mainMenu, windows));
-        MainWindow window = new(flash, engine.Services.GetRequiredService<ILogService>(), status, MainMenus.InWindow(mainMenu, windows));
+        // Made here, on the UI thread, where its collections change.
+        ScriptDialogsViewModel dialogs = engine.Services.GetRequiredService<ScriptDialogsViewModel>();
+        MainWindow window = new(flash, engine.Services.GetRequiredService<ILogService>(), status, MainMenus.InWindow(mainMenu, windows), dialogs);
+        window.Notices.WindowOpened = w => NativeMenu.SetMenu(w, MainMenus.Native(mainMenu, windows));
+        engine.Services.GetRequiredService<AvaloniaDialogService>().WindowCreated = w => NativeMenu.SetMenu(w, MainMenus.Native(mainMenu, windows));
+        _ = new ScriptDialogAlerts(dialogs, window, () => _desktop?.Windows.Any(w => w.IsActive) == true, MacNotifications.Post);
         NativeMenu.SetMenu(window, MainMenus.Native(mainMenu, windows));
         _closeAndQuit = new CloseAndQuit(window, engine.Rpc, engine.Endpoint.Name, () =>
         {

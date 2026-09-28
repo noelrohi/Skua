@@ -7,7 +7,10 @@ using Skua.MacOS.GameHost;
 
 namespace Skua.App.Mac;
 
-/// <summary>The main window: the main menu and the login controls, the Game View and the status strip.</summary>
+/// <summary>
+/// The main window: the main menu and the login controls, the Game View, the status strip with the Notices beside it, and the sheet of a
+/// pending Question over them.
+/// </summary>
 internal sealed class MainWindow : Window
 {
     /// <summary>Seconds between the Game View stats lines in the debug log, as for the Game Host's: 60 unless set; 0 turns them off.</summary>
@@ -22,7 +25,7 @@ internal sealed class MainWindow : Window
     /// </summary>
     private const int BarsHeight = 96;
 
-    public MainWindow(BridgeFlashUtil flash, ILogService log, StatusViewModel status, Menu menu)
+    public MainWindow(BridgeFlashUtil flash, ILogService log, StatusViewModel status, Menu menu, ScriptDialogsViewModel dialogs)
     {
         Title = "Skua";
         Width = GameHostLaunch.StageWidth;
@@ -34,10 +37,14 @@ internal sealed class MainWindow : Window
         view.LiveChanged += reason => log.DebugLog($"[gameview] {reason}");
         LoginBar login = new(status);
         StatusStrip strip = new(status);
+        Notices = new NoticesButton(dialogs);
+        Sheet = new QuestionSheet(dialogs);
+        DockPanel bottom = new() { Background = strip.Background, Children = { Notices, strip } };
+        DockPanel.SetDock(Notices, Dock.Right);
         DockPanel.SetDock(menu, Dock.Top);
         DockPanel.SetDock(login, Dock.Top);
-        DockPanel.SetDock(strip, Dock.Bottom);
-        Content = new DockPanel { Children = { menu, login, strip, view } };
+        DockPanel.SetDock(bottom, Dock.Bottom);
+        Content = new Panel { Children = { new DockPanel { Children = { menu, login, bottom, view } }, Sheet } };
         Opened += (_, _) => view.Focus();
 
         TimeSpan interval = TimeSpan.FromSeconds(
@@ -50,4 +57,9 @@ internal sealed class MainWindow : Window
             Closed += (_, _) => stats.Stop();
         }
     }
+
+    public NoticesButton Notices { get; }
+
+    /// <summary>The oldest pending Question, over the window's content.</summary>
+    public QuestionSheet Sheet { get; }
 }
