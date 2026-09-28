@@ -1,0 +1,59 @@
+<!-- Ported from Skua.WPF/UserControls/ScriptStatsUserControl.xaml, without its icons. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.ScriptStatsView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:ScriptStatsViewModel">
+    <UserControl.Styles>
+        <Style Selector="TextBlock.label">
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="3" />
+        </Style>
+        <Style Selector="TextBlock.value">
+            <Setter Property="Margin" Value="3" />
+        </Style>
+    </UserControl.Styles>
+    <Grid Margin="6" ColumnDefinitions="Auto,*,Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+        <TextBlock Grid.Row="0" Grid.Column="0" Classes="label" Text="Kills:" />
+        <TextBlock x:Name="Kills" Grid.Row="0" Grid.Column="1" Classes="value" Text="{Binding ScriptStats.Kills}" />
+        <TextBlock Grid.Row="1" Grid.Column="0" Classes="label" Text="Deaths:" />
+        <TextBlock Grid.Row="1" Grid.Column="1" Classes="value" Text="{Binding ScriptStats.Deaths}" />
+        <TextBlock Grid.Row="2" Grid.Column="0" Classes="label" Text="Accepted:" />
+        <TextBlock Grid.Row="2" Grid.Column="1" Classes="value" Text="{Binding ScriptStats.QuestsAccepted}" />
+        <TextBlock Grid.Row="3" Grid.Column="0" Classes="label" Text="Completed:" />
+        <TextBlock Grid.Row="3" Grid.Column="1" Classes="value" Text="{Binding ScriptStats.QuestsCompleted}" />
+        <TextBlock Grid.Row="4" Grid.Column="0" Classes="label" Text="Pickups:" />
+        <TextBlock Grid.Row="4" Grid.Column="1" Classes="value" Text="{Binding ScriptStats.Drops}" />
+        <TextBlock Grid.Row="5" Grid.Column="0" Classes="label" Text="Re-logins:" />
+        <TextBlock Grid.Row="5" Grid.Column="1" Classes="value" Text="{Binding ScriptStats.Relogins}" />
+        <TextBlock Grid.Row="6" Grid.Column="0" Classes="label" Text="Time:" />
+        <!-- Time is ScriptBotStats' own, not IScriptBotStats'. -->
+        <TextBlock x:Name="Time" Grid.Row="6" Grid.Column="1" Classes="value" Text="{ReflectionBinding ScriptStats.Time, StringFormat='{}{0:hh\\:mm\\:ss}'}" />
+
+        <TextBlock Grid.Row="0" Grid.Column="2" Classes="label" Text="Inventory Free" />
+        <TextBlock Grid.Row="0" Grid.Column="3" Classes="value" Text="{Binding ScriptStats.InventoryFreeSpace}" />
+        <TextBlock Grid.Row="1" Grid.Column="2" Classes="label" Text="Inventory Used" />
+        <TextBlock Grid.Row="1" Grid.Column="3" Classes="value" Text="{Binding ScriptStats.InventoryFilledSpace}" />
+        <TextBlock Grid.Row="2" Grid.Column="2" Classes="label" Text="Inventory Max" />
+        <TextBlock Grid.Row="2" Grid.Column="3" Classes="value" Text="{Binding ScriptStats.InventorySpace}" />
+        <TextBlock Grid.Row="4" Grid.Column="2" Classes="label" Text="Bank Free" />
+        <TextBlock Grid.Row="4" Grid.Column="3" Classes="value" Text="{Binding ScriptStats.BankFreeSpace}" />
+        <TextBlock Grid.Row="5" Grid.Column="2" Classes="label" Text="Bank Used" />
+        <TextBlock Grid.Row="5" Grid.Column="3" Classes="value" Text="{Binding ScriptStats.BankFilledSpace}" />
+        <TextBlock Grid.Row="6" Grid.Column="2" Classes="label" Text="Bank Max" />
+        <TextBlock Grid.Row="6" Grid.Column="3" Classes="value" Text="{Binding ScriptStats.BankSpace}" />
+
+        <Button Grid.Row="7" Grid.ColumnSpan="2" Margin="1,3,2,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Command="{Binding ResetStatsCommand}" Content="Reset" />
+        <Button
+            x:Name="GetSpace"
+            Grid.Row="7"
+            Grid.Column="2"
+            Grid.ColumnSpan="2"
+            Margin="2,3,1,0"
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Center"
+            Command="{Binding GetSpaceCommand}"
+            Content="Get Space" />
+    </Grid>
+</UserControl>

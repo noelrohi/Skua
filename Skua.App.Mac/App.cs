@@ -178,6 +178,8 @@ internal sealed class App : Application
         window.Notices.WindowOpened = w => NativeMenu.SetMenu(w, MenuBar());
         engine.Services.GetRequiredService<AvaloniaDialogService>().WindowCreated = w => NativeMenu.SetMenu(w, MenuBar());
         _ = new ScriptDialogAlerts(dialogs, window, () => _desktop?.Windows.Any(w => w.IsActive) == true, MacNotifications.Post);
+        // As on Windows, the plugins in the data folder load once the main menu can take their items; one that fails is only logged.
+        engine.Services.GetRequiredService<IPluginManager>().Initialize();
         NativeMenu.SetMenu(window, MenuBar());
         if (NativeDock.GetMenu(this) is null)
             NativeDock.SetMenu(this, new NativeMenu { Items = { MainMenus.ManagerItem(OpenManager) } });

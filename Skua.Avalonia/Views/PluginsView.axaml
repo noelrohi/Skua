@@ -1,0 +1,40 @@
+<!-- Ported from Skua.WPF/Views/PluginsView.xaml and Skua.WPF/UserControls/PluginItemUserControl.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.PluginsView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:PluginsViewModel">
+    <DockPanel>
+        <DockPanel Margin="6,6,6,0" DockPanel.Dock="Top">
+            <Button
+                Margin="3,0,0,0"
+                Command="{Binding UnloadAllPluginsCommand}"
+                Content="Unload All"
+                DockPanel.Dock="Right"
+                ToolTip.Tip="Unloads every loaded plugin." />
+            <Button
+                x:Name="Load"
+                Margin="3,0"
+                Command="{Binding LoadPluginCommand}"
+                Content="Load"
+                DockPanel.Dock="Right"
+                ToolTip.Tip="Load a plugin .dll file." />
+            <TextBox x:Name="SearchBox" Margin="0,0,3,0" Watermark="Search" />
+        </DockPanel>
+        <ScrollViewer Margin="0,6" HorizontalScrollBarVisibility="Disabled">
+            <ItemsControl x:Name="Plugins" Grid.IsSharedSizeScope="True">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vms:PluginItemViewModel">
+                        <Grid Margin="6,3" ColumnDefinitions="Auto,*,Auto,Auto" ToolTip.Tip="{Binding Container.Plugin.Description}">
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" FontSize="14" FontWeight="Bold" Text="{Binding Container.Plugin.Author}" />
+                            <TextBlock Grid.Column="1" Margin="10,0,3,0" VerticalAlignment="Center" FontSize="14" Text="{Binding Container.Plugin.Name}" />
+                            <Button Grid.Column="2" Margin="3,0" Command="{Binding EditPluginOptionsCommand}" Content="Options" IsEnabled="{Binding HasOptions}" />
+                            <Button Grid.Column="3" Command="{Binding UnloadCommand}" Content="✕" ToolTip.Tip="Unload" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

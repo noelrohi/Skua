@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Skua.Core.AppStartup;
 using Skua.Core.Interfaces;
+using Skua.Core.Plugins;
 using Skua.Core.ViewModels;
 using Skua.Engine;
 
@@ -30,6 +31,10 @@ public static class ConfigureServices
         services.AddSingleton<IThemeService, AvaloniaThemeService>();
         services.AddSingleton<GameOptionEdits>();
         services.AddSingleton<IHotKeyService, AvaloniaHotKeyService>();
+        // Plugins load into the Engine's container as on Windows; one that fails, such as one that needs WPF, logs why instead.
+        services.AddSingleton<PluginManager>();
+        services.AddSingleton<IPluginManager, AppPluginManager>();
+        services.AddSingleton<IPluginHelper, AppPluginHelper>();
 
         services.AddSkuaMainAppViewModels();
         // The Scripts panel starts and stops Scripts as script_start and script_stop do, so the Engine's runs say who stopped one.

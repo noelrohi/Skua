@@ -1,0 +1,34 @@
+<!-- Ported from Skua.WPF/UserControls/JunkItemsUserControl.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.JunkItemsView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:JunkItemsViewModel">
+    <Grid Margin="6" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,*,Auto">
+        <TextBlock Grid.Row="0" Grid.Column="0" FontSize="14" FontWeight="Bold" Text="Junk Items" />
+        <StackPanel Grid.Row="0" Grid.Column="1" HorizontalAlignment="Right" Orientation="Horizontal">
+            <CheckBox Margin="0,0,8,0" VerticalAlignment="Center" Content="Skip warning" IsChecked="{Binding SkipSellWarning}" />
+            <TextBlock x:Name="Total" VerticalAlignment="Center" Text="{Binding TotalJunk, StringFormat='Total Junk: {0}'}" />
+        </StackPanel>
+        <TextBox x:Name="SearchBox" Grid.Row="1" Grid.ColumnSpan="2" Margin="0,4" Watermark="Search (ID or name)" />
+        <ListBox x:Name="Items" Grid.Row="2" Grid.ColumnSpan="2" Margin="0,4">
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vms:JunkItemEntry">
+                    <StackPanel Orientation="Horizontal">
+                        <CheckBox Margin="0,0,4,0" IsChecked="{Binding IsSelected}" />
+                        <TextBlock VerticalAlignment="Center" Text="{Binding Display}" />
+                        <TextBlock Margin="6,0,0,0" VerticalAlignment="Center" Foreground="OrangeRed" IsVisible="{Binding IsJunk}" Text="[Junk]" />
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+        <StackPanel Grid.Row="3" Grid.ColumnSpan="2" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="4">
+            <Button Command="{Binding RefreshCommand}" Content="Refresh" />
+            <Button Command="{Binding MarkAsJunkCommand}" Content="Mark as Junk" />
+            <Button Command="{Binding UnmarkAsJunkCommand}" Content="Unmark Junk" />
+            <Button Command="{Binding UnmarkAllJunkCommand}" Content="Unmark All" />
+            <Button Command="{Binding SellAllJunkCommand}" Content="Sell All Junk" />
+        </StackPanel>
+    </Grid>
+</UserControl>

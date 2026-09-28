@@ -1,0 +1,100 @@
+<!-- Ported from Skua.WPF/UserControls/GrabberListUserControl.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.GrabberListView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:skua="using:Skua.Avalonia"
+    xmlns:sys="using:System"
+    xmlns:views="using:Skua.Avalonia.Views"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:GrabberListViewModel">
+    <Panel>
+        <Grid Margin="6" ColumnDefinitions="*,5,*" RowDefinitions="Auto,*,Auto,Auto">
+            <DockPanel Grid.Row="0" Grid.ColumnSpan="3">
+                <CheckBox
+                    x:Name="SelectMultiple"
+                    Margin="6,0,0,3"
+                    VerticalAlignment="Center"
+                    Content="Select Multiple"
+                    DockPanel.Dock="Right"
+                    IsVisible="{Binding SelectMultiple}" />
+                <TextBox
+                    x:Name="SearchBox"
+                    Margin="0,0,0,3"
+                    Text="{Binding SearchText}"
+                    Watermark="Search" />
+            </DockPanel>
+            <ListBox
+                x:Name="Items"
+                Grid.Row="1"
+                Grid.Column="0"
+                Margin="0,3"
+                SelectedItem="{Binding SelectedItem}">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="sys:Object">
+                        <TextBlock Text="{Binding Converter={x:Static views:GrabberListView.ItemText}}" />
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+                <ListBox.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem x:Name="UnselectAllItem" Header="Unselect All" />
+                    </ContextMenu>
+                </ListBox.ContextMenu>
+            </ListBox>
+            <GridSplitter Grid.Row="1" Grid.Column="1" ResizeDirection="Columns" />
+            <skua:PropertyGrid
+                x:Name="Properties"
+                Grid.Row="1"
+                Grid.Column="2"
+                Margin="3"
+                SelectedObject="{Binding SelectedItem}" />
+            <StackPanel Grid.Row="2" Grid.ColumnSpan="3" Orientation="Horizontal">
+                <Button
+                    x:Name="UnselectAll"
+                    Margin="0,3,3,3"
+                    Content="Unselect All"
+                    IsEnabled="{Binding !IsBusy}" />
+                <ItemsControl x:Name="Tasks" IsEnabled="{Binding !IsBusy}" ItemsSource="{Binding GrabberCommands}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vms:GrabberTaskViewModel">
+                            <Button
+                                Margin="3"
+                                Command="{Binding GrabberTaskCommand}"
+                                CommandParameter="{Binding $parent[views:GrabberListView].SelectedItems}"
+                                Content="{Binding Content}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+            <Button
+                x:Name="Grab"
+                Grid.Row="3"
+                Grid.ColumnSpan="3"
+                Margin="0,3,0,0"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Command="{Binding GrabCommand}"
+                Content="Grab" />
+        </Grid>
+        <!-- The WPF view's snackbar: a task's progress, and a way to cancel it. -->
+        <Border
+            x:Name="Progress"
+            Margin="12"
+            Padding="12,6"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Bottom"
+            Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
+            CornerRadius="4"
+            IsVisible="{Binding ShowMessage}">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <TextBlock VerticalAlignment="Center" Text="{Binding ProgressReportMessage}" />
+                <Button Command="{Binding CancelTaskCommand}" Content="Cancel" />
+            </StackPanel>
+        </Border>
+    </Panel>
+</UserControl>

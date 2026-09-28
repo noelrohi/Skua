@@ -23,7 +23,8 @@
 // `login-response` (the last login's response again), `lock-map <map>` (transfers to it are ignored), `drop <id> <qty> <name>`,
 // `pickup <id>` and `focus <input|dynamic|none>` (the text field the stage's focus is on, e.g. chat's input) act in it.
 // The call log adds ` lag-killed` to a screenshot taken while the game's lag killer hides the world, and records what the game did:
-// `tfer <map> <cell> <pad>` for each map transfer, `jump <cell> <pad>`, `getBank` and `loadBank` (which the game server ignores).
+// `tfer <map> <cell> <pad>` for each map transfer, `jump <cell> <pad>`, `getBank` and `loadBank` (which the game server ignores),
+// `toggleBank open` or `toggleBank closed` for the bank panel, `loadShop <id>` and `showQuests <ids>`.
 //
 // Like skua-gamehost, it answers C calls with R, P pings with P and Q stats with Q, and exits when its stdin closes.
 // It answers S screenshots with I: a solid PNG of the 958x550 stage, scaled down to max_width like the real one, and a frame

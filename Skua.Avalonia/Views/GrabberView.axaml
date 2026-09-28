@@ -1,0 +1,29 @@
+<!-- Ported from Skua.WPF/Views/GrabberView.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.GrabberView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:views="using:Skua.Avalonia.Views"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:GrabberViewModel">
+    <DockPanel>
+        <ListBox
+            x:Name="Tabs"
+            Margin="6,6,6,0"
+            DockPanel.Dock="Top"
+            ItemsSource="{Binding GrabberTabs}"
+            SelectedItem="{Binding SelectedTab}">
+            <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <WrapPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vms:GrabberListViewModel">
+                    <TextBlock Text="{Binding Title}" TextAlignment="Center" />
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+        <views:GrabberListView x:Name="List" DataContext="{Binding SelectedTab}" />
+    </DockPanel>
+</UserControl>

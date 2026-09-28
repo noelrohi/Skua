@@ -32,6 +32,12 @@ public sealed class ViewLocator : IDataTemplate
         // The main menu's Auto and Jump, which the window shows below their buttons.
         [typeof(AutoViewModel)] = () => new AutoView(),
         [typeof(JumpViewModel)] = () => new JumpView(),
+        [typeof(LoaderViewModel)] = () => new LoaderView(),
+        [typeof(GrabberViewModel)] = () => new GrabberView(),
+        [typeof(JunkItemsViewModel)] = () => new JunkItemsView(),
+        [typeof(ScriptStatsViewModel)] = () => new ScriptStatsView(),
+        [typeof(ConsoleViewModel)] = () => new ConsoleView(),
+        [typeof(PluginsViewModel)] = () => new PluginsView(),
         // The Skua Manager's, which runs as its own process (ADR 0006).
         [typeof(ManagerMainViewModel)] = () => new ManagerView(),
         [typeof(ManagerAccountsViewModel)] = () => new AccountsView(),

@@ -1,0 +1,27 @@
+<!-- Ported from Skua.WPF/Views/ConsoleView.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.ConsoleView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:ConsoleViewModel">
+    <Grid Margin="6" RowDefinitions="*,Auto">
+        <TextBox
+            x:Name="Snippet"
+            Grid.Row="0"
+            VerticalContentAlignment="Top"
+            AcceptsReturn="True"
+            AcceptsTab="True"
+            FontFamily="Menlo, Monaco, monospace"
+            Text="{Binding SnippetText}"
+            TextWrapping="NoWrap" />
+        <Button
+            x:Name="Run"
+            Grid.Row="1"
+            Margin="0,6,0,0"
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Center"
+            Command="{Binding RunCommand}"
+            Content="Run" />
+    </Grid>
+</UserControl>
