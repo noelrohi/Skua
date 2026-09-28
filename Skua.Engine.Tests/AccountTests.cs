@@ -48,7 +48,7 @@ public class AccountTests
         Assert.Equal("Added account mainuser (MainUser) to Keychain as 'skua-account-mainuser'; 'skua login' now uses it.", add.Stdout.Trim());
         Assert.Contains("Username: ", add.Stderr);
         Assert.Contains("Password: ", add.Stderr);
-        Assert.Equal((0, "Logged in on Galanoth."), (login.ExitCode, login.Stdout.Trim()));
+        Assert.Equal((0, "Logged in as MainUser on Galanoth."), (login.ExitCode, login.Stdout.Trim()));
         using JsonDocument statusJson = JsonDocument.Parse(status.Stdout);
         Assert.Equal(pid, statusJson.RootElement.GetProperty("engine").GetProperty("pid").GetInt32());
         Assert.Equal(MainUser, statusJson.RootElement.GetProperty("game").GetProperty("player").GetProperty("name").GetString());
@@ -173,23 +173,26 @@ public class AccountTests
         string player = (await client.CallToolAsync("status", cancellationToken: Ct)).StructuredContent!.Value
             .GetProperty("game").GetProperty("player").GetProperty("name").GetString()!;
 
-        Assert.Equal("SkuaTester", agentWhileMain);
+        Assert.Equal("Logged in as SkuaTester (the Test Account) on Galanoth.", agentWhileMain);
         Assert.Equal(MainUser, JsonDocument.Parse(cliWhileMain.Stdout).RootElement.GetProperty("username").GetString());
         Assert.True(allowed.ExitCode == 0, allowed.Stderr);
         Assert.Contains("and so may agents' while it is active", allowed.Stdout);
         Assert.Contains("Account alt (active, agents allowed): AltUser", show.Stdout);
-        Assert.Equal("AltUser", agentWhileAlt);
+        Assert.Equal("Logged in as AltUser on Galanoth.", agentWhileAlt);
         // Allowed only while it is the active one.
-        Assert.Equal("SkuaTester", agentBackOnMain);
+        Assert.Equal("Logged in as SkuaTester (the Test Account) on Galanoth.", agentBackOnMain);
         Assert.Equal("SkuaTester", player);
         Assert.Equal(AccountSetting.AllowAgentsComment, keychain.Comment("skua-account-alt"));
     }
 
+    /// <returns>The reply's sentence, which names the account.</returns>
     private static async Task<string> McpLoginAsync(McpClient client)
     {
         CallToolResult login = await client.CallToolAsync("login", new Dictionary<string, object?> { ["server"] = "Galanoth" }, cancellationToken: Ct);
         Assert.NotEqual(true, login.IsError);
-        return login.StructuredContent!.Value.GetProperty("username").GetString()!;
+        string text = ((TextContentBlock)login.Content[1]).Text;
+        Assert.Contains(login.StructuredContent!.Value.GetProperty("username").GetString()!, text);
+        return text;
     }
 
     [Fact]
@@ -277,8 +280,8 @@ public class AccountTests
         string after = (await session.Connection.StatusAsync(Ct)).Game.Player!.Name;
 
         Assert.Equal("SkuaTester", before);
-        Assert.Equal(new LoginResult("Galanoth", AlreadyLoggedIn: false, MainUser), switched);
-        Assert.Equal(new LoginResult("Galanoth", AlreadyLoggedIn: true, MainUser), again);
+        Assert.Equal(new LoginResult("Galanoth", AlreadyLoggedIn: false, MainUser, IsTestAccount: false), switched);
+        Assert.Equal(new LoginResult("Galanoth", AlreadyLoggedIn: true, MainUser, IsTestAccount: false), again);
         Assert.Equal(MainUser, after);
     }
 

@@ -60,7 +60,11 @@ public sealed record ServersResult(IReadOnlyList<ServerDto> Servers);
 /// <param name="Server">The server the account is playing on.</param>
 /// <param name="AlreadyLoggedIn">Whether it was already playing there, so nothing was done.</param>
 /// <param name="Username">The username of the account that logged in, from Keychain.</param>
-public sealed record LoginResult(string Server, bool AlreadyLoggedIn, string Username);
+/// <param name="IsTestAccount">
+/// Whether that account is the Test Account: the active one by default, and the one an agent's login falls back to unless the active account
+/// allows agents.
+/// </param>
+public sealed record LoginResult(string Server, bool AlreadyLoggedIn, string Username, bool IsTestAccount);
 
 /// <summary>The reply to <c>logout</c>.</summary>
 /// <param name="WasLoggedIn">Whether the Test Account was logged in; a logout at the login screen does nothing.</param>
@@ -132,25 +136,33 @@ public sealed record ScriptsListResult(ScriptSourceDto Source, string Folder, IR
 
 public enum ScriptChange
 {
-    /// <summary>The update downloaded a Script that wasn't on disk.</summary>
+    /// <summary>The update downloaded a Script that wasn't on disk, or the Script Source commit added it.</summary>
     Added,
 
-    /// <summary>The update replaced a Script on disk with a newer version.</summary>
+    /// <summary>The update replaced a Script on disk with a newer version, or the Script Source commit changed it.</summary>
     Changed,
 }
 
-/// <summary>A Script that a Script Source update added or changed.</summary>
+/// <summary>A Script that a Script Source update, or a commit from the Script Source's history, added or changed.</summary>
 /// <param name="Name">Its name from <c>scripts.json</c> at the time, or null when it had none.</param>
-/// <param name="Change">Added if any update in the window added it, else changed.</param>
-/// <param name="At">When the last update in the window that touched it ran.</param>
-/// <param name="Commit">The Script Source commit that update synced to.</param>
+/// <param name="Change">Added if any update or commit in the window added it, else changed.</param>
+/// <param name="At">When the last update in the window that touched it ran, or when the last such commit was made.</param>
+/// <param name="Commit">The Script Source commit that update synced to, or that commit.</param>
 public sealed record NewScriptDto(string Path, string? Name, ScriptChange Change, DateTimeOffset At, string Commit);
 
 /// <summary>The reply to <c>scripts_new</c>.</summary>
 /// <param name="Since">Where the window starts: updates after this time count.</param>
 /// <param name="Updates">How many updates in the window added or changed Scripts.</param>
 /// <param name="Scripts">The Scripts they added or changed, the latest first.</param>
-public sealed record ScriptsNewResult(ScriptSourceDto Source, DateTimeOffset Since, int Updates, IReadOnlyList<NewScriptDto> Scripts);
+/// <param name="Commits">
+/// How many commits in the window, from the Script Source's history that the first full download read from GitHub, added or changed Scripts.
+/// </param>
+/// <param name="HistoryFrom">
+/// When the Engine's record of the Script Source starts, or null when it has none yet. A window that starts earlier can't show what changed
+/// before it; it is the first full download's time when that couldn't read the Script Source's history.
+/// </param>
+public sealed record ScriptsNewResult(
+    ScriptSourceDto Source, DateTimeOffset Since, int Updates, IReadOnlyList<NewScriptDto> Scripts, int Commits, DateTimeOffset? HistoryFrom);
 
 /// <summary>The reply to <c>join</c> and <c>jump</c>: where the player ended up.</summary>
 /// <param name="Map">The map's name, without a room number.</param>

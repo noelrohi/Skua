@@ -185,7 +185,7 @@ internal static class Output
     }
 
     public static string Login(LoginResult result) =>
-        result.AlreadyLoggedIn ? $"Already playing on {result.Server}." : $"Logged in on {result.Server}.";
+        $"{(result.AlreadyLoggedIn ? "Already playing" : "Logged in")} as {result.Username}{(result.IsTestAccount ? " (the Test Account)" : "")} on {result.Server}.";
 
     public static string AccountAdded(AccountDto account) =>
         $"Added account {account.Name} ({account.Username}) to Keychain as '{account.Service}'"
@@ -271,20 +271,31 @@ internal static class Output
 
     public static string ScriptsNew(ScriptsNewResult result)
     {
-        string since = $"since {result.Since.ToLocalTime():yyyy-MM-dd HH:mm}";
+        string since = $"since {Time(result.Since)}";
+        // A window reaching back before the record starts can't claim that nothing changed.
+        string? unknown = result.HistoryFrom is not { } from ? $"No history of {Source(result.Source)} yet; 'skua scripts update' starts it."
+            : from > result.Since ? $"No history of {Source(result.Source)} yet from before {Time(from)}" : null;
         if (result.Scripts.Count == 0)
-            return $"No Scripts were added or changed by updates from {Source(result.Source)} {since}.";
+            return unknown is null ? $"No Scripts were added or changed by updates from {Source(result.Source)} {since}."
+                : result.HistoryFrom is null ? unknown : $"{unknown}; no Scripts were added or changed after.";
 
-        StringBuilder text = new($"{Count(result.Scripts.Count, "Script")} added or changed by {Count(result.Updates, "update")} from {Source(result.Source)} {since}:");
+        int added = result.Scripts.Count(s => s.Change == ScriptChange.Added);
+        string[] by = [.. result.Updates > 0 ? [Count(result.Updates, "update")] : Array.Empty<string>(),
+            .. result.Commits > 0 ? [$"{Count(result.Commits, "commit")} from its history"] : Array.Empty<string>()];
+        StringBuilder text = new($"{added} new, {result.Scripts.Count - added} changed from {Source(result.Source)} {since}, by {string.Join(" and ", by)}:");
         int width = result.Scripts.Max(s => s.Path.Length);
         foreach (NewScriptDto script in result.Scripts)
         {
             string change = script.Change == ScriptChange.Added ? "new" : "changed";
             string commit = script.Commit.Length > 7 ? script.Commit[..7] : script.Commit;
-            text.AppendLine().Append($"  {script.Path.PadRight(width)}  {change,-7}  {script.At.ToLocalTime():yyyy-MM-dd HH:mm}  {commit}  {script.Name}".TrimEnd());
+            text.AppendLine().Append($"  {script.Path.PadRight(width)}  {change,-7}  {Time(script.At)}  {commit}  {script.Name}".TrimEnd());
         }
+        if (unknown is not null)
+            text.AppendLine().Append($"{unknown}.");
         return text.ToString();
     }
+
+    private static string Time(DateTimeOffset time) => $"{time.ToLocalTime():yyyy-MM-dd HH:mm}";
 
     private static string Leaf(string path) => path[(path.LastIndexOf('/') + 1)..];
 
