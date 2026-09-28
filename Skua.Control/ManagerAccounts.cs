@@ -27,7 +27,7 @@ public sealed record AccountFailure(string Username, string Message);
 /// </summary>
 /// <remarks>
 /// One Manager runs per data folder, so this process is the file's only writer; its saves are serialized even across stores on the same
-/// folder, such as a view model's and a test's.
+/// folder, such as a view model's and a test's, and each store changes the file as it was last saved, so it never undoes another's change.
 /// </remarks>
 public sealed class ManagerAccounts
 {
@@ -100,7 +100,7 @@ public sealed class ManagerAccounts
     {
         List<AccountFailure> failures = [];
         List<ManagedAccount> accounts = [];
-        IReadOnlyList<ManagedAccount> before = Accounts;
+        IReadOnlyList<ManagedAccount> before = Reload().Accounts;
         foreach (AccountEntry entry in entries)
         {
             if (accounts.Any(a => SameUser(a.Username, entry.Username)))
@@ -193,11 +193,22 @@ public sealed class ManagerAccounts
     private static List<ManagedGroup> Prune(IReadOnlyList<ManagedGroup> groups, IReadOnlyList<ManagedAccount> accounts) =>
         [.. groups.Select(g => g with { Usernames = [.. g.Usernames.Where(u => accounts.Any(a => SameUser(a.Username, u))).Distinct(StringComparer.OrdinalIgnoreCase)] })];
 
+    private Lock FileLock => SaveLocks.GetOrAdd(FilePath, _ => new Lock());
+
+    /// <summary>Reads the file again, which another store on the folder may have saved since this one read it.</summary>
+    private Contents Reload()
+    {
+        lock (_lock)
+        lock (FileLock)
+            return _contents = Load(FilePath);
+    }
+
     private void Change(Func<Contents, Contents> change)
     {
         lock (_lock)
+        lock (FileLock)
         {
-            _contents = change(_contents);
+            _contents = change(Load(FilePath));
             Save(_contents);
         }
     }
@@ -226,24 +237,21 @@ public sealed class ManagerAccounts
         }
     }
 
-    /// <summary>Written whole to a temporary file of its own and moved into place, owner-only.</summary>
+    /// <summary>Written whole to a temporary file of its own and moved into place, owner-only; under <see cref="FileLock"/>.</summary>
     private void Save(Contents contents)
     {
         Directory.CreateDirectory(SkuaDir);
         string temporary = $"{FilePath}.{Guid.NewGuid():N}.tmp";
-        lock (SaveLocks.GetOrAdd(FilePath, _ => new Lock()))
+        try
         {
-            try
-            {
-                File.WriteAllText(temporary, JsonSerializer.Serialize(contents, JsonOptions));
-                File.SetUnixFileMode(temporary, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-                File.Move(temporary, FilePath, overwrite: true);
-            }
-            catch
-            {
-                File.Delete(temporary);
-                throw;
-            }
+            File.WriteAllText(temporary, JsonSerializer.Serialize(contents, JsonOptions));
+            File.SetUnixFileMode(temporary, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            File.Move(temporary, FilePath, overwrite: true);
+        }
+        catch
+        {
+            File.Delete(temporary);
+            throw;
         }
     }
 

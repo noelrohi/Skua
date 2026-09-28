@@ -4,6 +4,9 @@ using Avalonia.Styling;
 using Avalonia.Themes.Fluent;
 
 [assembly: AvaloniaTestApplication(typeof(Skua.Avalonia.Tests.TestApp))]
+// One app and dispatcher for the whole run, as the Mac App has one UI thread for its life: the tests share one Engine and Core's view models,
+// whose async work started in one test (a Script list refresh, say) would otherwise be lost with that test's dispatcher, and hang.
+[assembly: AvaloniaTestIsolation(AvaloniaTestIsolationLevel.PerAssembly)]
 
 namespace Skua.Avalonia.Tests;
 

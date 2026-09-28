@@ -171,12 +171,20 @@ public sealed class PacketsTests(AppEngine app)
                 Button connect = view.FindControl<Button>("Connect")!;
                 Assert.Equal("Connect", Ui.Text(connect));
 
+                // Connect logs out and reconnects: so the game first settles from its login, with no map load or Script stop still going.
+                IScriptPlayer player = app.Get<IScriptPlayer>();
+                IScriptMap map = app.Get<IScriptMap>();
+                IScriptManager scripts = app.Get<IScriptManager>();
+                await Ui.PumpUntilAsync(() => player.Playing && player.Loaded && map.Loaded && !scripts.ShouldExit, "the game to settle");
+
                 // The game reconnects to the proxy on 127.0.0.1, which relays it to the server; it logs in there and enters the world.
+                server.ReleaseProxyPort();
                 Ui.Click(connect);
                 await Ui.PumpUntilAsync(() => server.Received().Any(m => m.Contains("action='login'", StringComparison.Ordinal)), "the game's login through the proxy");
                 await Ui.PumpUntilAsync(() => connect.IsEffectivelyEnabled && Ui.Text(connect) == "Disconnect", "Connect to finish");
                 Assert.True(proxy.Running);
-                Assert.True(app.Get<IScriptPlayer>().Playing);
+                // Connect waits for the world only a few seconds, and ends with the game still entering it on a slow Mac.
+                await Ui.PumpUntilAsync(() => player.Playing, "the game to enter the world through the proxy");
                 Assert.Contains($"connectTo 127.0.0.1 {server.Port}", GameCalls());
                 await Ui.PumpUntilAsync(
                     () => Has(view, "action='verChk'", true) && Has(view, "action='apiOK'", false) && Has(view, "%xt%loginResponse%", false),

@@ -264,6 +264,9 @@ public sealed class SkillsTests(AppEngine app)
             ListBox list = saved.FindControl<ListBox>("SkillsList")!;
             list.SelectedItems!.Add(saved.Shown.Single(s => s.ClassUseMode == ClassUseMode.Farm));
             list.SelectedItems!.Add(saved.Shown.Single(s => s.ClassUseMode == ClassUseMode.Base));
+            // The list refills, as it does when Core reloads the sets in the background, and keeps each selected once.
+            saved.FindControl<TextBox>("SearchBox")!.Text = $"Copied Class {id}";
+            Assert.Equal(2, list.SelectedItems!.Count);
             await FocusRowAsync(list, 0);
             Press(window, Key.C, PhysicalKey.C, RawInputModifiers.Meta, held);
             string copied = await ClipboardTextAsync(window, t => t.Contains(id), "the sets on the clipboard");

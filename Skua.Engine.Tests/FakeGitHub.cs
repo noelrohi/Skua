@@ -3,7 +3,6 @@ using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Globalization;
 using System.Net;
-using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -20,7 +19,7 @@ namespace Skua.Engine.Tests;
 /// </remarks>
 public sealed class FakeGitHub : IAsyncDisposable
 {
-    private readonly HttpListener _listener = new();
+    private readonly HttpListener _listener;
     private readonly Dictionary<string, FakeRepo> _repos = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _dataFiles = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentQueue<string> _requests = new();
@@ -28,10 +27,7 @@ public sealed class FakeGitHub : IAsyncDisposable
 
     public FakeGitHub()
     {
-        int port = FreePort();
-        BaseUrl = $"http://127.0.0.1:{port}/";
-        _listener.Prefixes.Add(BaseUrl);
-        _listener.Start();
+        (_listener, BaseUrl) = LoopbackHttp.Start();
         _serving = ServeAsync();
     }
 
@@ -236,13 +232,6 @@ public sealed class FakeGitHub : IAsyncDisposable
     private static (int, byte[]) Json(object value) => (200, JsonSerializer.SerializeToUtf8Bytes(value));
 
     private static string RepoKey(string owner, string repo, string branch) => $"{owner}/{repo}@{branch}";
-
-    private static int FreePort()
-    {
-        using TcpListener probe = new(IPAddress.Loopback, 0);
-        probe.Start();
-        return ((IPEndPoint)probe.LocalEndpoint).Port;
-    }
 
     private sealed class FakeRepo
     {

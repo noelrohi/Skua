@@ -97,8 +97,8 @@ internal sealed class FakeGame
         {
             return (name, args) switch
             {
-                ("isLoggedIn", _) => Str(ReadConnected()),
-                ("isKicked", _) => Str(_kicked),
+                ("isLoggedIn", _) => Str(_connected && !_blip),
+                ("isKicked", _) => Str(ReadKicked()),
                 ("isNull", [string path]) => Str(Get(path) is null),
                 ("getGameObject", [string path]) => Json(Get(path)),
                 ("getGameObjectS", [string path]) => Json(GetStatic(path)),
@@ -132,7 +132,7 @@ internal sealed class FakeGame
                     _connDetail = message;
                     return true;
                 case ["blip"]:
-                    // The connection flag drops for one reading, as a slow poll can read it.
+                    // The connection flag drops for one of the Engine's game state readings, as a slow poll can read it.
                     _blip = true;
                     return true;
                 case ["broken-login"]:
@@ -205,14 +205,19 @@ internal sealed class FakeGame
         }
     }
 
-    /// <summary>The connection flag, which reads as dropped once after a <c>blip</c>; the call log records <c>blip read &lt;n&gt;</c> when it has.</summary>
-    private bool ReadConnected()
+    /// <summary>
+    /// The kick flag, which the Engine's game state tracker reads only once it has read the connection flag as dropped, so it ends a
+    /// <c>blip</c> there: Core's timer reads the connection flag too, and must not take the tracker's reading. The call log records
+    /// <c>blip read &lt;n&gt;</c> when it has.
+    /// </summary>
+    private bool ReadKicked()
     {
-        if (!_blip)
-            return _connected;
-        _blip = false;
-        _note($"blip read {++_blipsRead}");
-        return false;
+        if (_blip)
+        {
+            _blip = false;
+            _note($"blip read {++_blipsRead}");
+        }
+        return _kicked;
     }
 
     private object? Get(string path) => path switch

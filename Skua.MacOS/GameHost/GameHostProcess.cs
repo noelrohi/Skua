@@ -15,6 +15,7 @@ public sealed record GameHostScreenshot(int Width, int Height, long Frame, byte[
 /// <remarks>
 /// One reader thread takes every frame: replies complete their request by id, and the Game Client's calls queue for one dispatch thread,
 /// which raises <see cref="Invoked"/> in order. A handler may call back into the Bridge, because replies never wait for the dispatch thread.
+/// A handler's exception, or an unexpected one reading the Bridge, never ends the process: the reader thread is the Engine's.
 /// Subscribe to the events before calling <see cref="Start"/>, so no frame or exit is missed.
 /// </remarks>
 public sealed class GameHostProcess : IDisposable
@@ -238,11 +239,17 @@ public sealed class GameHostProcess : IDisposable
         }
         catch (InvalidDataException e)
         {
-            BridgeFailed?.Invoke(e.Message);
+            Raise(BridgeFailed, e.Message);
         }
         catch (Exception e) when (e is IOException or ObjectDisposedException)
         {
-            LogLine?.Invoke($"Bridge read stopped: {e.Message}");
+            Raise(LogLine, $"Bridge read stopped: {e.Message}");
+        }
+        catch (Exception e)
+        {
+            // Anything else, even from the runtime, ends the Bridge as a corrupt frame does rather than the Engine: unhandled on this
+            // thread, it would abort the process.
+            Raise(BridgeFailed, $"The Bridge read failed: {e}");
         }
         finally
         {
@@ -269,24 +276,37 @@ public sealed class GameHostProcess : IDisposable
                 _invocations.Add(Encoding.UTF8.GetString(frame.Payload));
                 break;
             case 'F':
-                FlashLog?.Invoke(Encoding.UTF8.GetString(frame.Payload));
+                Raise(FlashLog, Encoding.UTF8.GetString(frame.Payload));
                 break;
             case 'L' when frame.Payload.Length >= 1:
-                LogLine?.Invoke(Encoding.UTF8.GetString(frame.Payload, 1, frame.Payload.Length - 1));
+                Raise(LogLine, Encoding.UTF8.GetString(frame.Payload, 1, frame.Payload.Length - 1));
                 break;
             case 'X':
                 lock (_callbacks)
                     _callbacks.Add(Encoding.UTF8.GetString(frame.Payload));
                 break;
             case 'O' when GameCursorState.Decode(frame.Payload) is { } cursor:
-                CursorChanged?.Invoke(cursor);
+                Raise(CursorChanged, cursor);
                 break;
             case 'K':
-                ClipboardCopied?.Invoke(Encoding.UTF8.GetString(frame.Payload));
+                Raise(ClipboardCopied, Encoding.UTF8.GetString(frame.Payload));
                 break;
             default:
-                LogLine?.Invoke($"Skipped a Bridge frame of type '{frame.Type}' ({frame.Payload.Length} bytes).");
+                Raise(LogLine, $"Skipped a Bridge frame of type '{frame.Type}' ({frame.Payload.Length} bytes).");
                 break;
+        }
+    }
+
+    /// <summary>Raises an event on the reader thread, where a handler's exception would abort the process; it goes to stderr instead.</summary>
+    private static void Raise<T>(Action<T>? handler, T value)
+    {
+        try
+        {
+            handler?.Invoke(value);
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"A Game Host event handler failed: {e}");
         }
     }
 

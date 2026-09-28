@@ -87,20 +87,19 @@ public partial class CoreBotsViewModel : BotControlViewModelBase
         }
 
         CurrentPlayer = _player.Username;
-        if (_readValues.ContainsKey(_player.Username))
+        // The file each time: a Script's CoreBots, or the developer, may have changed it since, and closing the window saves what it shows.
+        if (!File.Exists(StorageFile))
         {
-            SetValues(_readValues[_player.Username]);
+            if (_readValues.TryGetValue(_player.Username, out Dictionary<string, string>? read))
+                SetValues(read);
             return;
         }
-
-        if (!File.Exists(StorageFile))
-            return;
 
         Dictionary<string, string> optionsDict = ReadValues(File.ReadAllLines(StorageFile));
 
         SetValues(optionsDict);
 
-        _readValues.Add(_player.Username, optionsDict);
+        _readValues[_player.Username] = optionsDict;
     }
 
     private Dictionary<string, string> ReadValues(IEnumerable<string> lines)

@@ -140,16 +140,15 @@ public class GameStateTests
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
         int before = (await GameEvents.AllAsync(session.Connection)).Count;
 
-        // Each blip lasts one reading, and the next blip waits for a reading without one, so no two polls in a row see one.
-        for (int i = 0; i < 4; i++)
-        {
-            await session.GameHost.DoAsync("blip");
-            await session.GameHost.WaitForCallAsync($"blip read {i + 1}");
-            await session.GameHost.WaitForCallAsync("isLoggedIn", after: $"blip read {i + 1}");
-        }
+        // The blip lasts for one of the tracker's readings (Core's timer reads the flag too, and doesn't end it).
+        await session.GameHost.DoAsync("blip");
+        await session.GameHost.WaitForCallAsync("blip read 1");
+        // The tracker's next change is then the real loss, which applies at once.
+        await session.GameHost.DoAsync("connection-message Your connection to the server has been lost.");
+        await session.Connection.WaitForEventAsync(EventTypes.GameState, e => GameEvents.To(e) == "disconnected");
 
-        Assert.Equal(before, (await GameEvents.AllAsync(session.Connection)).Count);
-        Assert.Equal(GameState.Playing, (await session.Connection.StatusAsync(Ct)).Game.State);
+        Assert.Equal(["game.disconnected connectionLost", "playing→disconnected"],
+            (await GameEvents.AllAsync(session.Connection)).Skip(before).Take(2).Select(GameEvents.Describe));
     }
 
     [Fact]
