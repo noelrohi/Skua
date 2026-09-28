@@ -4,6 +4,7 @@ using Avalonia.Styling;
 using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
+using Skua.Avalonia;
 using Skua.Core.Interfaces;
 using Skua.Engine;
 using Skua.MacOS.GameHost;
@@ -30,7 +31,9 @@ internal sealed class App(HostedEngine? engine, string? failure) : Application
             else
             {
                 BridgeFlashUtil flash = engine.Services.GetRequiredService<BridgeFlashUtil>();
-                MainWindow window = new(flash, engine.Services.GetRequiredService<ILogService>());
+                StatusViewModel status = new(engine.Rpc, engine.Endpoint.Name, host: "app");
+                engine.StatusChanged += status.Changed;
+                MainWindow window = new(flash, engine.Services.GetRequiredService<ILogService>(), status);
                 desktop.MainWindow = window;
                 // The app goes headless as it quits, before the Engine stops.
                 desktop.ShutdownRequested += (_, _) => flash.SetLive(false);

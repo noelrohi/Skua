@@ -24,6 +24,12 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- The Engine tests' fake servers API and fake security tool. -->
+  <ItemGroup>
+    <Compile Include="..\Skua.Engine.Tests\FakeAqApi.cs" Link="Fakes\FakeAqApi.cs" />
+    <Compile Include="..\Skua.Engine.Tests\FakeKeychain.cs" Link="Fakes\FakeKeychain.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Skua.Avalonia\Skua.Avalonia.csproj" />
     <ProjectReference Include="..\Skua.Control\Skua.Control.csproj" />

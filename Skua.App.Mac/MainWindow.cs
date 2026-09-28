@@ -7,7 +7,7 @@ using Skua.MacOS.GameHost;
 
 namespace Skua.App.Mac;
 
-/// <summary>The main window: for now only the Game View.</summary>
+/// <summary>The main window: the login controls, the Game View and the status strip.</summary>
 internal sealed class MainWindow : Window
 {
     /// <summary>Seconds between the Game View stats lines in the debug log, as for the Game Host's: 60 unless set; 0 turns them off.</summary>
@@ -16,17 +16,24 @@ internal sealed class MainWindow : Window
     /// <summary>Starts each debug line with the Game View's stats JSON, next to the Game Host's <c>[gamehost] stats</c>.</summary>
     public const string StatsPrefix = "[gameview] stats ";
 
-    public MainWindow(BridgeFlashUtil flash, ILogService log)
+    /// <summary>Room for the login controls above the Game View and the status strip below it, so the stage opens at its native size.</summary>
+    private const int BarsHeight = 64;
+
+    public MainWindow(BridgeFlashUtil flash, ILogService log, StatusViewModel status)
     {
         Title = "Skua";
         Width = GameHostLaunch.StageWidth;
-        Height = GameHostLaunch.StageHeight;
+        Height = GameHostLaunch.StageHeight + BarsHeight;
         MinWidth = 320;
         MinHeight = 200;
         Background = Brushes.Black;
         GameView view = new(flash);
         view.LiveChanged += reason => log.DebugLog($"[gameview] {reason}");
-        Content = view;
+        LoginBar login = new(status);
+        StatusStrip strip = new(status);
+        DockPanel.SetDock(login, Dock.Top);
+        DockPanel.SetDock(strip, Dock.Bottom);
+        Content = new DockPanel { Children = { login, strip, view } };
         Opened += (_, _) => view.Focus();
 
         TimeSpan interval = TimeSpan.FromSeconds(

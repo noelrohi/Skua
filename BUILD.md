@@ -208,6 +208,9 @@ Skua.App.Mac/bin/Debug/net10.0/Skua [--name <engine-name>]
 
 - It starts its Engine, and binds the Engine's socket, before its window opens, so `skua status` in a terminal talks to it.
 - If another Engine already holds the name, it says so and quits: stop that one with `skua engine stop` first, or give the app another `--name`.
+- **Log in** above the Game View logs the Active Account in on the server picked beside it (or on one it picks, as `skua login` does), and says whom it logged in as; **Log out** returns to the login screen. When a login fails (no Active Account, Keychain access denied, a full or offline server), it says why there. Typing into the game's own login screen works too.
+- The status strip below the Game View shows the Engine Name, the game state, and while logged in the account, server, map and cell, level and running Script. It follows logins from anywhere, `skua login` in a terminal included.
+- The app is a new binary to Keychain, so its first login makes macOS ask whether `security` may read the account: choose "Always Allow". An unsigned rebuild may ask again.
 - Click the game and type in it. The Game View is live (the Game Host renders every 33 ms) only while the window is on screen; minimised, hidden or fully covered, the Game Host goes back to the headless defaults.
 - Every 60 s (`SKUA_GAMEHOST_STATS_SEC`) the `debug` log gets a `[gameview] stats` line (frames shown, frame age p50/p95) next to `[gamehost] stats`.
 
