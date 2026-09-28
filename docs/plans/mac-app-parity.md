@@ -14,9 +14,7 @@ Tests are in `Skua.Avalonia.Tests` and named `Class.Method`. `ViewCoverageTests`
 
 ## Gaps
 
-| Issue | What |
-|---|---|
-| [#112](https://github.com/noelrohi/Skua/issues/112) | Notifications when a Script stops, errors or relogs while the window isn't in front |
+None open: every gap the audit found is closed.
 
 ## Main window (`Skua.App.WPF/MainWindow.xaml`)
 
@@ -29,7 +27,7 @@ Tests are in `Skua.Avalonia.Tests` and named `Class.Method`. `ViewCoverageTests`
 | Closing the window exits the app | Closing hides the window, and the Engine keeps playing. The Dock icon reopens it, and ⌘Q quits. | deliberate | ADR 0006: the app owns its Engine. `CloseAndQuitTests.Closing_the_window_hides_it_the_Game_View_goes_headless_and_skua_status_keeps_working_until_it_reopens` |
 | Tray icon: double-click, Toggle Bot | The Dock icon reopens the window | works | `CloseAndQuitTests.Closing_the_window_hides_it_the_Game_View_goes_headless_and_skua_status_keeps_working_until_it_reopens` |
 | Tray icon: Exit | ⌘Q, or Quit in the Dock menu, asking first while a Script runs | works | `CloseAndQuitTests.Quitting_while_a_Script_runs_asks_first_and_Cancel_keeps_playing`, `CloseAndQuitTests.Quitting_with_no_Script_running_quits_without_asking` |
-| Tray balloons: Script Stopped, Script Error, Relogin | None; only Script Dialogs post macOS notifications | gap [#112](https://github.com/noelrohi/Skua/issues/112) | |
+| Tray balloons: Script Stopped, Script Error, Relogin | macOS notifications with the same titles, while the main window is closed or minimised or the app isn't frontmost | works | `ScriptStatusAlertsTests.With_the_main_window_closed_a_stop_an_error_and_a_relogin_each_post_a_notification`, `ScriptStatusAlertsTests.While_the_main_window_is_in_front_nothing_is_posted_but_minimised_or_behind_another_app_it_is`. The error's notification carries the Script's error message, and the stop that follows an error isn't posted again. |
 | Top Most (the window's system menu) | Window › Top Most, per window | works | `AppMenuTests.Top_Most_toggles_from_each_windows_Window_menu_and_persists`. Top Most is saved on macOS (deliberate); Windows only toggles it. |
 
 The Mac App's main window also has a login bar, a status strip, the Question sheet and the Notices list, which Windows lacks (#77, #80).
@@ -90,7 +88,7 @@ Every item above that opens a window also opens it through the window service in
 | `HostWindow` (managed windows) | any | works | `ViewCoverageTests.Every_window_the_Windows_app_registers_opens_in_the_Mac_App_with_its_view`, `PanelTests.The_Scripts_menu_item_opens_the_Scripts_window_once` |
 | `CustomWindow`: title bar, minimise, maximise, close | The native macOS title bar | deliberate | macOS draws its own window frame. |
 | `PropertyGrid` | Read-only `PropertyGrid` | deliberate | Editing a grabbed item's snapshot on Windows changes nothing in the game (#84). |
-| `BalloonTipUserControl` | macOS notifications | gap [#112](https://github.com/noelrohi/Skua/issues/112) | Posted only for Script Dialogs today. |
+| `BalloonTipUserControl` | macOS notifications | works | For Script Dialogs, and for a Script's stop and error and a relogin. `ScriptStatusAlertsTests.With_the_main_window_closed_a_stop_an_error_and_a_relogin_each_post_a_notification` |
 
 ## Dialogs
 

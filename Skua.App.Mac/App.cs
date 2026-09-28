@@ -192,7 +192,11 @@ internal sealed class App : Application
         MainWindowTitle.Follow(window, engine.Services, engine.Endpoint.Name);
         window.Notices.WindowOpened = w => NativeMenu.SetMenu(w, MenuBar());
         engine.Services.GetRequiredService<AvaloniaDialogService>().WindowCreated = w => NativeMenu.SetMenu(w, MenuBar());
-        _ = new ScriptDialogAlerts(dialogs, window, () => _desktop?.Windows.Any(w => w.IsActive) == true, MacNotifications.Post);
+        bool Frontmost() => _desktop?.Windows.Any(w => w.IsActive) == true;
+        _ = new ScriptDialogAlerts(dialogs, window, Frontmost, MacNotifications.Post);
+        // As the Windows tray's balloons: a Script's stop or error, and a relogin, while the window isn't in front.
+        IScriptPlayer player = engine.Services.GetRequiredService<IScriptPlayer>();
+        _ = new ScriptStatusAlerts(window, Frontmost, () => player.Username, MacNotifications.Post);
         // As on Windows, the plugins in the data folder load once the main menu can take their items; one that fails is only logged.
         engine.Services.GetRequiredService<IPluginManager>().Initialize();
         NativeMenu.SetMenu(window, MenuBar(window, TopMost.MainWindow));
