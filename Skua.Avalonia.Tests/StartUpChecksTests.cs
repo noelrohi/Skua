@@ -1,10 +1,14 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using CommunityToolkit.Mvvm.Messaging;
+using CommunityToolkit.Mvvm.Messaging.Messages;
 using Skua.Avalonia.Services;
 using Skua.Control;
 using Skua.Core.Interfaces;
 using Skua.Core.Models;
+using Skua.Core.Models.Skills;
 using Skua.Engine;
 using Skua.Engine.Tests;
 using Skua.MacOS.Services;
@@ -151,6 +155,9 @@ public sealed class StartUpChecksTests(AppEngine app)
     {
         IAdvancedSkillContainer skills = app.Get<IAdvancedSkillContainer>();
         string userFile = Path.Combine(ClientFileSources.SkuaDIR, "UserAdvancedSkills.json");
+        using SkillLoads loads = new();
+        // A save another test made reloads the sets on another thread; the files are kept once it is done.
+        await loads.SettledAsync();
         using Settings settings = new(app, ("CheckAdvanceSkillSetsUpdates", true), ("AutoUpdateAdvanceSkillSetsUpdates", false));
         KeptFiles kept = new(ClientFileSources.SkuaAdvancedSkillsFile, userFile);
         try
@@ -161,10 +168,13 @@ public sealed class StartUpChecksTests(AppEngine app)
                 "AdvanceSkill Sets Update", "Would you like to update your AdvanceSkill Sets?", "AdvanceSkill Sets has been updated.",
                 "AdvanceSkill Sets updates",
                 marker => $$"""{"{{marker}}": {"Base": {"skillUseMode": "UseIfAvailable", "skillTimeout": 100, "skills": []} } }""",
-                marker => skills.LoadedSkills.Any(s => s.ClassName == marker));
+                // The sync runs on another thread and has finished once Core says the sets changed.
+                loads.Finished);
         }
         finally
         {
+            // No sync may still be reloading the sets when they are put back, in the file and in Core's list, as the next test finds them.
+            await loads.SettledAsync();
             kept.Restore();
             skills.LoadSkills();
         }
@@ -392,6 +402,64 @@ public sealed class StartUpChecksTests(AppEngine app)
                     File.WriteAllBytes(file, content);
             }
         }
+    }
+
+    /// <summary>
+    /// The classes in Core's skill sets at the end of each reload while this lives: <see cref="IAdvancedSkillContainer.LoadSkills"/> broadcasts
+    /// the change last, and a sync or a save reloads them on another thread.
+    /// </summary>
+    private sealed class SkillLoads : IDisposable
+    {
+        private readonly List<HashSet<string>> _loads = [];
+
+        public SkillLoads() =>
+            WeakReferenceMessenger.Default.Register<SkillLoads, PropertyChangedMessage<List<AdvancedSkill>>>(this, static (r, m) => r.OnLoaded(m));
+
+        /// <summary>Whether a reload has finished with the class <paramref name="className"/> in the sets.</summary>
+        public bool Finished(string className)
+        {
+            lock (_loads)
+                return _loads.Any(l => l.Contains(className));
+        }
+
+        /// <summary>Waits until no reload has finished for a while, so none is still running.</summary>
+        public async Task SettledAsync()
+        {
+            int count = -1;
+            Stopwatch quiet = Stopwatch.StartNew();
+            await Ui.PumpUntilAsync(() =>
+            {
+                int now;
+                lock (_loads)
+                    now = _loads.Count;
+                if (now != count)
+                {
+                    count = now;
+                    quiet.Restart();
+                }
+                return quiet.Elapsed > TimeSpan.FromMilliseconds(500);
+            }, "the skill sets to stop reloading");
+        }
+
+        private void OnLoaded(PropertyChangedMessage<List<AdvancedSkill>> message)
+        {
+            if (message.PropertyName != nameof(IAdvancedSkillContainer.LoadedSkills))
+                return;
+            HashSet<string> classes;
+            try
+            {
+                classes = message.NewValue.Select(s => s.ClassName).ToHashSet();
+            }
+            catch (InvalidOperationException)
+            {
+                // Another reload changed the list meanwhile; its own message follows.
+                classes = [];
+            }
+            lock (_loads)
+                _loads.Add(classes);
+        }
+
+        public void Dispose() => WeakReferenceMessenger.Default.Unregister<PropertyChangedMessage<List<AdvancedSkill>>>(this);
     }
 
     /// <summary>The Questions the broker raises and the Notices it shows while this lives, in order.</summary>
