@@ -133,20 +133,26 @@ public class LiveRunTests
     public void Seeding_a_data_folder_answers_CoreBots_one_time_Questions_and_copies_the_Scripts_but_not_git()
     {
         DirectoryInfo dir = Directory.CreateTempSubdirectory("skua-live-");
-        string checkout = Directory.CreateDirectory(Path.Combine(dir.FullName, "checkout")).FullName;
-        Directory.CreateDirectory(Path.Combine(checkout, ".git"));
-        File.WriteAllText(Path.Combine(checkout, ".git", "HEAD"), "ref");
-        Directory.CreateDirectory(Path.Combine(checkout, "Farm"));
-        File.WriteAllText(Path.Combine(checkout, "Farm", "Leveling.cs"), "// leveling");
-        string skuaDir = Directory.CreateDirectory(Path.Combine(dir.FullName, "skua")).FullName;
+        try
+        {
+            string checkout = Directory.CreateDirectory(Path.Combine(dir.FullName, "checkout")).FullName;
+            Directory.CreateDirectory(Path.Combine(checkout, ".git"));
+            File.WriteAllText(Path.Combine(checkout, ".git", "HEAD"), "ref");
+            Directory.CreateDirectory(Path.Combine(checkout, "Farm"));
+            File.WriteAllText(Path.Combine(checkout, "Farm", "Leveling.cs"), "// leveling");
+            string skuaDir = Directory.CreateDirectory(Path.Combine(dir.FullName, "skua")).FullName;
 
-        LiveRun.SeedDataFolder(skuaDir, checkout);
+            LiveRun.SeedDataFolder(skuaDir, checkout);
 
-        Assert.Contains("genericDataConsent: False", File.ReadAllLines(Path.Combine(skuaDir, "DataCollectionSettings.txt")));
-        Assert.Contains("discordV11", File.ReadAllLines(Path.Combine(skuaDir, "OneTimeMessages.txt")));
-        Assert.Equal("// leveling", File.ReadAllText(Path.Combine(skuaDir, "Scripts", "Farm", "Leveling.cs")));
-        Assert.False(Directory.Exists(Path.Combine(skuaDir, "Scripts", ".git")));
-        dir.Delete(recursive: true);
+            Assert.Contains("genericDataConsent: False", File.ReadAllLines(Path.Combine(skuaDir, "DataCollectionSettings.txt")));
+            Assert.Contains("discordV11", File.ReadAllLines(Path.Combine(skuaDir, "OneTimeMessages.txt")));
+            Assert.Equal("// leveling", File.ReadAllText(Path.Combine(skuaDir, "Scripts", "Farm", "Leveling.cs")));
+            Assert.False(Directory.Exists(Path.Combine(skuaDir, "Scripts", ".git")));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
     }
 
     [Fact]
@@ -335,8 +341,14 @@ public class LiveRunTests
 
         public async ValueTask DisposeAsync()
         {
-            await _api.DisposeAsync();
-            await _files.DisposeAsync();
+            try
+            {
+                await _api.DisposeAsync();
+            }
+            finally
+            {
+                await _files.DisposeAsync();
+            }
         }
     }
 }

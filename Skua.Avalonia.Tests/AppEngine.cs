@@ -58,6 +58,8 @@ public sealed class AppEngine : IAsyncLifetime
     internal static void UseTheSandbox()
     {
         Directory.CreateDirectory(SkuaDir);
+        // A process that loads this assembly without running the tests (listing or discovering them) never disposes the fixture.
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => DeleteSandbox();
         string swf = Path.Combine(SkuaDir, "fake-skua.swf");
         File.WriteAllBytes(swf, []);
         Api = new FakeAqApi(Servers);
@@ -122,13 +124,24 @@ public sealed class AppEngine : IAsyncLifetime
 
     public async ValueTask DisposeAsync()
     {
-        if (_engine is not null)
-            await _engine.StopAsync();
-        await Api.DisposeAsync();
-        await GitHub.DisposeAsync();
         try
         {
-            Directory.Delete(SkuaDir, recursive: true);
+            if (_engine is not null)
+                await _engine.StopAsync();
+            await Api.DisposeAsync();
+            await GitHub.DisposeAsync();
+        }
+        finally
+        {
+            DeleteSandbox();
+        }
+    }
+
+    private static void DeleteSandbox()
+    {
+        try
+        {
+            EngineSandbox.DeleteFolder(SkuaDir);
         }
         catch (IOException)
         {
