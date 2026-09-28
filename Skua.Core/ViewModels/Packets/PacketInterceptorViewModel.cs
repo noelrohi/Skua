@@ -7,6 +7,7 @@ using Skua.Core.Interfaces;
 using Skua.Core.Models;
 using Skua.Core.Models.Servers;
 using Skua.Core.Utils;
+using System.Diagnostics;
 using System.Net;
 
 namespace Skua.Core.ViewModels;
@@ -14,11 +15,13 @@ namespace Skua.Core.ViewModels;
 public partial class PacketInterceptorViewModel : BotControlViewModelBase
 {
 
-    public PacketInterceptorViewModel(IEnumerable<PacketLogFilterViewModel> filters, ICaptureProxy gameProxy, IScriptServers server)
+    public PacketInterceptorViewModel(IEnumerable<PacketLogFilterViewModel> filters, ICaptureProxy gameProxy, IScriptServers server, IScriptPlayer player, IFlashUtil flash)
         : base("Packet Interceptor")
     {
         _gameProxy = gameProxy;
         _server = server;
+        _player = player;
+        _flash = flash;
         _packetFilters = filters.ToList();
         ClearPacketsCommand = new RelayCommand(Packets.Clear);
         SynchronizationContext? context = SynchronizationContext.Current;
@@ -35,10 +38,16 @@ public partial class PacketInterceptorViewModel : BotControlViewModelBase
 
     private readonly ICaptureProxy _gameProxy;
     private readonly IScriptServers _server;
+    private readonly IScriptPlayer _player;
+    private readonly IFlashUtil _flash;
     private readonly InterceptorLogger _logger;
 
     [ObservableProperty]
     private Server? _selectedServer;
+
+    /// <summary>Why the last Connect didn't get the game into the world through the proxy; null if it did, or while one is going.</summary>
+    [ObservableProperty]
+    private string? _connectFailure;
 
     [ObservableProperty]
     private RangedObservableCollection<InterceptedPacketViewModel> _packets = new();
@@ -79,8 +88,9 @@ public partial class PacketInterceptorViewModel : BotControlViewModelBase
     }
 
     [RelayCommand]
-    private void ConnectInterceptor()
+    private async Task ConnectInterceptor()
     {
+        ConnectFailure = null;
         if (_gameProxy.Running)
         {
             _gameProxy.Stop();
@@ -94,15 +104,43 @@ public partial class PacketInterceptorViewModel : BotControlViewModelBase
         IScriptOption options = Ioc.Default.GetRequiredService<IScriptOption>();
         bool relogin = options.AutoRelogin;
         options.AutoRelogin = false;
-        IPAddress ip = IPAddress.TryParse(SelectedServer.IP, out IPAddress? addr) ? addr : Dns.GetHostEntry(SelectedServer.IP).AddressList[0];
-        int port = SelectedServer.Port != 0 ? SelectedServer.Port : 5588;
-        _gameProxy.Destination = new IPEndPoint(ip, port);
-        _gameProxy.Start();
-        _server.Logout();
-        _server.Login();
-        _server.ConnectIP("127.0.0.1", port);
-        OnPropertyChanged(nameof(Running));
-        options.AutoRelogin = relogin;
+        try
+        {
+            IPAddress ip = IPAddress.TryParse(SelectedServer.IP, out IPAddress? addr) ? addr : Dns.GetHostEntry(SelectedServer.IP).AddressList[0];
+            int port = SelectedServer.Port != 0 ? SelectedServer.Port : 5588;
+            _gameProxy.Destination = new IPEndPoint(ip, port);
+            _gameProxy.Start();
+            _server.Logout();
+            _server.Login();
+            _server.ConnectIP("127.0.0.1", port);
+            OnPropertyChanged(nameof(Running));
+
+            // ConnectIP waits for the world only a few seconds, and not at all while any Script is stopping, so Connect waits for it here, up
+            // to the Login Timeout. It awaits between checks, so a UI thread that runs this keeps listing the packets the proxy relays.
+            TimeSpan timeout = TimeSpan.FromMilliseconds(Math.Max(options.LoginTimeout, 1000));
+            if (!await WaitForWorldAsync(timeout))
+            {
+                _gameProxy.Stop();
+                OnPropertyChanged(nameof(Running));
+                ConnectFailure = $"The game didn't enter the world through the interceptor within {timeout.TotalSeconds:0} s, so the interceptor stopped.";
+            }
+        }
+        finally
+        {
+            options.AutoRelogin = relogin;
+        }
+    }
+
+    private async Task<bool> WaitForWorldAsync(TimeSpan timeout)
+    {
+        Stopwatch waited = Stopwatch.StartNew();
+        while (!(_player.Playing && _flash.IsWorldLoaded))
+        {
+            if (waited.Elapsed >= timeout)
+                return false;
+            await Task.Delay(250);
+        }
+        return true;
     }
 
     private void RunningChanged(PacketInterceptorViewModel recipient, PropertyChangedMessage<bool> message)
