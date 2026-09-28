@@ -169,9 +169,21 @@ internal sealed class App : Application
         // Core's main menu registers the managed windows as it is made.
         MainMenuViewModel mainMenu = engine.Services.GetRequiredService<MainMenuViewModel>();
         AvaloniaWindowService windows = engine.Services.GetRequiredService<AvaloniaWindowService>();
-        // Every window carries the menu bar with the Manager item, since macOS shows the key window's.
-        NativeMenu MenuBar() => MainMenus.Native(mainMenu, windows, OpenManager);
-        windows.WindowCreated = w => NativeMenu.SetMenu(w, MenuBar());
+        // Every window carries the menu bar with the Manager item, since macOS shows the key window's; the main window and each panel's
+        // also carry their Top Most.
+        TopMost topMost = engine.Services.GetRequiredService<TopMost>();
+        NativeMenu MenuBar(Window? window = null, string? name = null)
+        {
+            NativeMenu bar = MainMenus.Native(mainMenu, windows, OpenManager);
+            if (window is not null && name is not null)
+                bar.Items.Add(topMost.Menu(window, name));
+            return bar;
+        }
+        windows.WindowCreated = w => NativeMenu.SetMenu(w, w.DataContext is { } shown ? MenuBar(w, TopMost.NameOf(shown)) : MenuBar());
+        // About, Change Logs and the GitHub sign-in sit in the app menu, where macOS puts About.
+        NativeMenu.SetMenu(this, AppMenu.Create(engine.Services, windows));
+        // The GitHub token signed in with before, from Keychain, as the Windows client reads its saved one at its start.
+        _ = Task.Run(() => engine.Services.GetRequiredService<GitHubToken>().LoadAsync(CancellationToken.None));
         // Made here, on the UI thread, where its collections change.
         ScriptDialogsViewModel dialogs = engine.Services.GetRequiredService<ScriptDialogsViewModel>();
         MainWindow window = new(flash, engine.Services.GetRequiredService<ILogService>(), status, MainMenus.InWindow(mainMenu, windows, OpenManager), new HelpersBar(mainMenu), dialogs);
@@ -180,7 +192,7 @@ internal sealed class App : Application
         _ = new ScriptDialogAlerts(dialogs, window, () => _desktop?.Windows.Any(w => w.IsActive) == true, MacNotifications.Post);
         // As on Windows, the plugins in the data folder load once the main menu can take their items; one that fails is only logged.
         engine.Services.GetRequiredService<IPluginManager>().Initialize();
-        NativeMenu.SetMenu(window, MenuBar());
+        NativeMenu.SetMenu(window, MenuBar(window, TopMost.MainWindow));
         if (NativeDock.GetMenu(this) is null)
             NativeDock.SetMenu(this, new NativeMenu { Items = { MainMenus.ManagerItem(OpenManager) } });
         _closeAndQuit = new CloseAndQuit(window, engine.Rpc, engine.Endpoint.Name, () =>

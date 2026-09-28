@@ -23,9 +23,10 @@ public sealed class PanelTests(AppEngine app)
             Assert.True(ViewLocator.HasView(Resolve(type)), $"{type.Name} has no view");
         Assert.Equal(
             [
-                nameof(AdvancedSkillsViewModel), nameof(ApplicationOptionsViewModel), nameof(ApplicationThemesViewModel), nameof(AutoViewModel), nameof(CBOLoadoutViewModel),
-                nameof(CBOOtherOptionsViewModel), nameof(CBOptionsViewModel), nameof(ConsoleViewModel), nameof(CoreBotsViewModel), nameof(CurrentDropsViewModel),
-                nameof(FastTravelViewModel), nameof(GameOptionsViewModel), nameof(GoalsViewModel), nameof(GrabberViewModel), nameof(HotKeyItemViewModel),
+                nameof(AboutViewModel), nameof(AdvancedSkillsViewModel), nameof(ApplicationOptionsViewModel), nameof(ApplicationThemesViewModel), nameof(AutoViewModel),
+                nameof(CBOLoadoutViewModel), nameof(CBOOtherOptionsViewModel), nameof(CBOptionsViewModel), nameof(ChangeLogsViewModel), nameof(ConsoleViewModel),
+                nameof(CoreBotsViewModel), nameof(CurrentDropsViewModel), nameof(FastTravelViewModel), nameof(GameOptionsViewModel), nameof(GitHubAuthViewModel),
+                nameof(GoalsViewModel), nameof(GrabberViewModel), nameof(HotKeyItemViewModel),
                 nameof(HotKeysViewModel), nameof(JumpViewModel), nameof(JunkItemsViewModel), nameof(LoaderViewModel), nameof(LogTabViewModel), nameof(LogsViewModel),
                 nameof(ManagerAccountsViewModel), nameof(ManagerMainViewModel), nameof(NotifyDropViewModel), nameof(PacketInterceptorViewModel),
                 nameof(PacketLoggerViewModel), nameof(PacketSpammerViewModel), nameof(PluginsViewModel), nameof(RunningViewModel),

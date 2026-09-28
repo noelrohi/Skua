@@ -1,0 +1,32 @@
+<!-- Ported from Skua.WPF/Views/ChangeLogsView.xaml: Skua's change logs, fetched by the view model, and the donation link. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.ChangeLogsView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Skua.Avalonia.Views"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:ChangeLogsViewModel">
+    <DockPanel>
+        <StackPanel Margin="6" DockPanel.Dock="Bottom">
+            <TextBlock
+                Margin="6,0"
+                FontSize="16"
+                Text="Donations can be made via Kofi you can click the button below."
+                TextWrapping="Wrap" />
+            <Button
+                x:Name="Donate"
+                Margin="6"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Command="{Binding OpenDonationLink}"
+                Content="SharpTheNightmare Kofi" />
+        </StackPanel>
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <local:MarkdownView
+                x:Name="Page"
+                Margin="20,10,20,20"
+                LinkCommand="{Binding NavigateCommand}"
+                Markdown="{Binding MarkdownDoc}" />
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

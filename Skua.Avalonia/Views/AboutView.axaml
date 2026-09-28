@@ -1,0 +1,16 @@
+<!-- Ported from Skua.WPF/Views/AboutView.xaml: Skua's readme, fetched by the view model. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.AboutView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Skua.Avalonia.Views"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:AboutViewModel">
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <local:MarkdownView
+            x:Name="Page"
+            Margin="20,10,20,20"
+            LinkCommand="{Binding NavigateCommand}"
+            Markdown="{Binding MarkdownDoc}" />
+    </ScrollViewer>
+</UserControl>

@@ -1,0 +1,96 @@
+<!-- Ported from Skua.WPF/Views/GitHubAuthView.xaml: GitHub's device-flow sign-in, whose token raises the Script Source's rate limits. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.GitHubAuthView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:GitHubAuthViewModel">
+    <Grid Margin="6" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+        <Expander
+            Grid.Row="0"
+            Margin="0,0,0,6"
+            HorizontalAlignment="Stretch"
+            Header="What is this about?">
+            <ScrollViewer MaxHeight="400" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <TextBlock Margin="6,0,6,6" TextAlignment="Justify" TextWrapping="Wrap">
+                    <Run Text="The scripts that &quot;come with&quot; the client are actually downloaded via GitHub using, at first, the application authentity, which do calls to the GitHub API so you can get updates of the scripts." />
+                    <LineBreak /><LineBreak />
+                    <Run FontWeight="Bold" Text="But there is a catch:" />
+                    <Run Text="everyone that uses the app will then be making use of the same &quot;account&quot; to access the information, and to prevent spam, the GitHub API is limited at 5000 requests per hour for account. It might look like its enough requests, but in busy hours it certainly is not." />
+                    <LineBreak /><LineBreak />
+                    <Run FontWeight="Bold" Text="What can you do to prevent that possibility?" />
+                    <LineBreak />
+                    <Run Text="By doing the GitHub authentication steps, it will give the Skua app a token which can be used to do those API requests in your behalf, giving to you the 5000 requests per hour, however those are not shared between all users, making it totally enough even in busy hours. On a Mac, Skua keeps the token in your Keychain." />
+                </TextBlock>
+            </ScrollViewer>
+        </Expander>
+        <Expander
+            Grid.Row="1"
+            Margin="0,0,0,6"
+            HorizontalAlignment="Stretch"
+            Header="How to authenticate">
+            <ScrollViewer MaxHeight="400" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <TextBlock Margin="6,0,6,6" TextAlignment="Justify" TextWrapping="Wrap">
+                    <Run FontWeight="Bold" Text="Step 1:" />
+                    <LineBreak />
+                    <Run Text="Click &quot;Get User Code&quot;. It will generate a unique code that you will use in the next step of the authentication." />
+                    <LineBreak /><LineBreak />
+                    <Run FontWeight="Bold" Text="Step 2:" />
+                    <LineBreak />
+                    <Run Text="After the code appearing in your screen, it will be automatically copied to your clipboard, click &quot;Open Browser&quot; and you will be redirected to &quot;https://github.com/login/device&quot; there you can paste the device code from the previous step, click &quot;Continue&quot;, then &quot;Authorize Skua Scripts&quot;, you will reach the &quot;Congratulations, you're all set!&quot; page." />
+                    <LineBreak /><LineBreak />
+                    <Run FontWeight="Bold" Text="Step 3:" />
+                    <LineBreak />
+                    <Run Text="Only after seeing the &quot;Congratulations, you're all set!&quot; page, you can go back to the GitHub Authentication window and click &quot;Authorize&quot;. After that it will generate a unique token which Skua will use to make calls to download and update scripts." />
+                </TextBlock>
+            </ScrollViewer>
+        </Expander>
+        <TextBox
+            x:Name="UserCode"
+            Grid.Row="2"
+            Margin="0,0,0,3"
+            IsReadOnly="True"
+            PlaceholderText="User Code"
+            Text="{Binding UserCode, Mode=OneWay}" />
+        <TextBlock
+            x:Name="Hint"
+            Grid.Row="3"
+            MinHeight="100"
+            Margin="0,3"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            FontSize="20"
+            Text="{Binding HintStatus}"
+            TextAlignment="Center"
+            TextWrapping="Wrap" />
+        <StackPanel Grid.Row="4">
+            <Button
+                x:Name="GetUserCode"
+                Margin="0,3"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Command="{Binding GetUserCodeCommand}"
+                Content="Get User Code" />
+            <Button
+                x:Name="OpenBrowser"
+                Margin="0,3"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Command="{Binding OpenBrowserCommand}"
+                Content="Open Browser" />
+            <Button
+                x:Name="Authorize"
+                Margin="0,3"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Command="{Binding AuthorizeGHCommand}"
+                Content="Authorize" />
+            <Button
+                x:Name="Close"
+                Margin="0,3,0,0"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Content="Close" />
+        </StackPanel>
+    </Grid>
+</UserControl>
