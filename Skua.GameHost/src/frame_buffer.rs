@@ -26,6 +26,11 @@ pub const HEADER_BYTES: usize = 256;
 #[cfg_attr(not(test), allow(dead_code))]
 pub const NO_SLOT: u32 = u32::MAX;
 
+// Header offsets.
+const MAGIC_AT: usize = 0;
+const VERSION_AT: usize = 4;
+const FORMAT_AT: usize = 8;
+const SLOTS_AT: usize = 12;
 const MAX_WIDTH: usize = 16;
 const MAX_HEIGHT: usize = 20;
 const SLOT_BYTES: usize = 24;
@@ -34,6 +39,13 @@ const READING: usize = 32;
 const PUBLISHED: usize = 40;
 const SLOT_DESCS: usize = 64;
 const SLOT_DESC_BYTES: usize = 48;
+// Within a slot descriptor.
+const SEQ: usize = 0;
+const NUMBER: usize = 8;
+const STAMP: usize = 16;
+const WIDTH: usize = 24;
+const HEIGHT: usize = 28;
+const STRIDE: usize = 32;
 
 /// A mapped Frame Buffer. The Engine owns the object; this end only writes frames.
 pub struct FrameBuffer {
@@ -101,10 +113,10 @@ impl FrameBuffer {
             mapped: false,
         };
         let (magic, version, format, slots) = (
-            fb.u32(0).load(Ordering::Acquire),
-            fb.u32(4).load(Ordering::Relaxed),
-            fb.u32(8).load(Ordering::Relaxed),
-            fb.u32(12).load(Ordering::Relaxed),
+            fb.u32(MAGIC_AT).load(Ordering::Acquire),
+            fb.u32(VERSION_AT).load(Ordering::Relaxed),
+            fb.u32(FORMAT_AT).load(Ordering::Relaxed),
+            fb.u32(SLOTS_AT).load(Ordering::Relaxed),
         );
         if magic != MAGIC || version != VERSION || format != FORMAT_RGBA8 || slots != SLOTS {
             return Err(format!(
@@ -154,7 +166,7 @@ impl FrameBuffer {
         let reading = self.u32(READING).load(Ordering::Acquire);
         let slot = free_slot(latest, reading);
         let desc = SLOT_DESCS + SLOT_DESC_BYTES * slot as usize;
-        let seq = self.u64(desc);
+        let seq = self.u64(desc + SEQ);
         let s = seq.load(Ordering::Relaxed);
         seq.store(s | 1, Ordering::Relaxed);
         fence(Ordering::Release);
@@ -171,11 +183,11 @@ impl FrameBuffer {
             out.copy_from_slice(&rgba[y * src_stride..y * src_stride + row]);
         }
         let number = self.u64(PUBLISHED).load(Ordering::Relaxed) + 1;
-        self.u64(desc + 8).store(number, Ordering::Relaxed);
-        self.u64(desc + 16).store(stamp_ns, Ordering::Relaxed);
-        self.u32(desc + 24).store(width, Ordering::Relaxed);
-        self.u32(desc + 28).store(height, Ordering::Relaxed);
-        self.u32(desc + 32).store(row as u32, Ordering::Relaxed);
+        self.u64(desc + NUMBER).store(number, Ordering::Relaxed);
+        self.u64(desc + STAMP).store(stamp_ns, Ordering::Relaxed);
+        self.u32(desc + WIDTH).store(width, Ordering::Relaxed);
+        self.u32(desc + HEIGHT).store(height, Ordering::Relaxed);
+        self.u32(desc + STRIDE).store(row as u32, Ordering::Relaxed);
         seq.store((s | 1) + 1, Ordering::Release);
         self.u32(LATEST).store(slot, Ordering::Release);
         self.u64(PUBLISHED).store(number, Ordering::Release);

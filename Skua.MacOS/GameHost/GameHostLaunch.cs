@@ -14,11 +14,11 @@ public sealed record GameHostLaunch(string Executable, string Swf)
     public const int StageHeight = 550;
 
     /// <summary>Whether the Game Host gets a Frame Buffer for the Game View: in the Mac App, never in <c>skua-engine</c>.</summary>
-    public bool FrameBuffer { get; init; }
+    public bool WantsFrameBuffer { get; init; }
 
     /// <summary>The Game Host's arguments, with the Frame Buffer's name when it has one.</summary>
-    public IReadOnlyList<string> Arguments(string? frameBuffer = null) =>
-        frameBuffer is null ? [Swf] : [$"--frame-buffer={frameBuffer}", Swf];
+    public IReadOnlyList<string> Arguments(string? frameBufferName = null) =>
+        frameBufferName is null ? [Swf] : [$"--frame-buffer={frameBufferName}", Swf];
 
     /// <summary>
     /// Resolves both files next to <paramref name="baseDirectory"/> (the flat output layout), unless <c>SKUA_GAMEHOST</c>

@@ -113,15 +113,16 @@ internal sealed class Engine : IEngineRpc
             }
             // Only the Mac App shows the game, so only its Game Host gets a Frame Buffer.
             if (!options.IsHeadless)
-                launch = launch with { FrameBuffer = true };
+                launch = launch with { WantsFrameBuffer = true };
 
             // Like the Windows app, the Engine never disposes Core's singletons: they stop with the process, and their Dispose paths throw.
             ServiceProvider services = EngineServices.Build(launch, logs, options.ConfigureServices);
             GameHostSupervisor gameHost = GameHostSupervisor.Start(services, logs, endpoint.Name, keepLagKillerOn: options.IsHeadless);
-            Engine engine = new(endpoint, gameHost, logs, services, options);
+            Engine engine;
             Socket listener;
             try
             {
+                engine = new(endpoint, gameHost, logs, services, options);
                 listener = engine.Bind();
             }
             catch

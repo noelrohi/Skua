@@ -44,6 +44,11 @@ internal sealed unsafe partial class FakeFrameBuffer
         long length = HeaderBytes + (3 * slotBytes);
         byte* mapped = (byte*)mmap(null, (nuint)length, 3, 1, fd, 0);
         close(fd);
+        if (mapped == (byte*)-1)
+        {
+            Console.Error.WriteLine($"fake-gamehost: --frame-buffer: mmap {name}: errno {Marshal.GetLastPInvokeError()}");
+            Environment.Exit(1);
+        }
         return new FakeFrameBuffer(mapped, slotBytes);
     }
 

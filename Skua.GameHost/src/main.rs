@@ -166,6 +166,7 @@ fn main() {
         frame_buffer,
         frames_written: Arc::new(AtomicU64::new(0)),
         live: false,
+        input_pending: false,
         window,
         trim_ticks: opts.trim_ticks,
         ticks_since_trim: 0,
@@ -230,6 +231,8 @@ struct Host {
     frames_written: Arc<AtomicU64>,
     /// The Game View is live: render every 33 ms and write each frame to the Frame Buffer.
     live: bool,
+    /// Input arrived since the last tick: the next one doesn't wait out `MIN_TICK_GAP`.
+    input_pending: bool,
     window: Option<minifb::Window>,
     /// 0 = off.
     trim_ticks: u32,
@@ -315,10 +318,9 @@ impl Host {
                 self.live = live;
                 self.policy = if live { opts::LIVE } else { self.headless_policy };
             }
-            // The loop ticks right after this (unless it ticked in the last 4 ms), so the Game Client
-            // reacts without waiting for its next frame.
             Request::Input(input) => {
                 self.stats.input_events += 1;
+                self.input_pending = true;
                 let mut p = self.player();
                 match input {
                     input::Input::MouseMove { .. } if !p.mouse_in_stage() => p.set_mouse_in_stage(true),
@@ -336,9 +338,12 @@ impl Host {
         let now = Instant::now();
         let dt = now - self.last_tick;
         self.stats.max_tick_gap = self.stats.max_tick_gap.max(dt);
-        if dt < MIN_TICK_GAP {
+        // Input ticks at once, so the Game Client reacts to it without waiting for its next frame.
+        if dt < MIN_TICK_GAP && !std::mem::take(&mut self.input_pending) {
             return;
         }
+        // Any tick serves pending input.
+        self.input_pending = false;
         let threaded = self.render.threaded.load(Ordering::Relaxed);
         let trim = self.trim_ticks > 0 && {
             self.ticks_since_trim += 1;

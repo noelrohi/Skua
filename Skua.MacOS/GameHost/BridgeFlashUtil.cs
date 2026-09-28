@@ -18,7 +18,7 @@ public sealed class BridgeFlashUtil : IFlashUtil
     private readonly Lazy<IScriptManager> _lazyManager;
     private readonly GameHostLaunch _launch;
     private GameHostProcess? _gameHost;
-    private FrameBuffer? _frameBuffer;
+    private volatile FrameBuffer? _frameBuffer;
     private volatile bool _live;
 
     public BridgeFlashUtil(IMessenger messenger, Lazy<IScriptManager> manager, GameHostLaunch launch)
@@ -51,7 +51,7 @@ public sealed class BridgeFlashUtil : IFlashUtil
     public IReadOnlyList<string> Callbacks => _gameHost?.Callbacks ?? [];
 
     /// <summary>
-    /// The current Game Host's Frame Buffer, when <see cref="GameHostLaunch.FrameBuffer"/> asks for one; a restart replaces it, so read it
+    /// The current Game Host's Frame Buffer, when <see cref="GameHostLaunch.WantsFrameBuffer"/> asks for one; a restart replaces it, so read it
     /// afresh for each frame.
     /// </summary>
     public FrameBuffer? FrameBuffer => _frameBuffer;
@@ -70,7 +70,7 @@ public sealed class BridgeFlashUtil : IFlashUtil
         _frameBuffer?.Dispose();
         _frameBuffer = null;
 
-        FrameBuffer? frameBuffer = _launch.FrameBuffer
+        FrameBuffer? frameBuffer = _launch.WantsFrameBuffer
             ? FrameBuffer.Create(FrameBuffer.NewName(), GameHostLaunch.StageWidth, GameHostLaunch.StageHeight)
             : null;
         GameHostProcess gameHost = new(_launch.Executable, _launch.Arguments(frameBuffer?.Name));

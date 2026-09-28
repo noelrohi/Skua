@@ -6,6 +6,8 @@ using Skua.Control;
 namespace Skua.Avalonia.Tests;
 
 /// <summary>The Engine the Mac App hosts serves the normal socket, and takes the host's services.</summary>
+/// <remarks>In the Game View tests' collection, as one of those restarts the Game Host.</remarks>
+[Collection(nameof(GameViewTests))]
 public sealed class AppEngineTests(AppEngine app)
 {
     [Fact]

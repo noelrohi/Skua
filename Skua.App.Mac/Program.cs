@@ -46,6 +46,12 @@ catch (EngineStartException e)
         : e.Message;
     exitCode = e.ExitCode;
 }
+catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Net.Sockets.SocketException)
+{
+    // E.g. the Frame Buffer or the socket couldn't be made: say so in a window, as there is no terminal to read.
+    failure = $"Skua's Engine didn't start: {e.Message}";
+    exitCode = 1;
+}
 
 AppBuilder.Configure(() => new App(engine, failure)).UsePlatformDetect().LogToTrace().StartWithClassicDesktopLifetime([]);
 

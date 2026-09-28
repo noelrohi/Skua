@@ -34,6 +34,21 @@ public sealed class GameViewTests(AppEngine app)
         window.Close();
     }
 
+    [AvaloniaFact]
+    public async Task Keeps_showing_frames_after_the_Game_Host_restarts()
+    {
+        (Window window, GameView view) = await ShowAsync(958, 550);
+        await PumpUntilAsync(() => view.FrameNumber >= 30, "frames from the first Game Host");
+        long before = view.FrameNumber;
+
+        // A new Game Host has a new Frame Buffer, whose frame numbers start again at 1.
+        app.Flash.InitializeFlash();
+
+        await PumpUntilAsync(() => view.FrameNumber is > 0 and < 10, "the restarted Game Host's first frames");
+        Assert.True(view.FrameNumber < before);
+        window.Close();
+    }
+
     [AvaloniaTheory]
     [InlineData(958, 550, 479, 275)]
     // Letterboxed: twice the stage's width, with bars of 250 above and below.

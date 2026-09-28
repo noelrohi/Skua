@@ -88,7 +88,7 @@ a header, then three slots of RGBA8 rows at the render size, latest frame wins, 
 - **`U`** kinds are mouse move, down, up and leave (viewport pixels), wheel (lines or pixels), key down and up
   (Ruffle's `KeyDescriptor`, by variant name), text (a code point), text control (a `TextControlCode` name, e.g.
   `Backspace`: Ruffle edits text fields only through these) and focus gained and lost. The loop ticks right after
-  each one (unless it ticked in the last 4 ms).
+  each one, even within 4 ms of the last tick.
 - The `Q` stats gain `live`, `framesWritten` and `inputEvents` (both counts since start).
 
 ## Lifecycle

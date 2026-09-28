@@ -23,7 +23,11 @@ public sealed class GameView : Control
 
     private readonly BridgeFlashUtil _flash;
     private readonly DispatcherTimer _occlusionTimer;
+    /// <summary>The frame on screen; the next one is read into <see cref="_back"/>, so a frame dropped mid-copy is never shown.</summary>
     private WriteableBitmap? _bitmap;
+    private WriteableBitmap? _back;
+    /// <summary>The Frame Buffer read last: a restarted Game Host has a new one, whose frame numbers start again.</summary>
+    private FrameBuffer? _source;
     private PixelSize _frameSize = new(GameHostLaunch.StageWidth, GameHostLaunch.StageHeight);
     private long _lastNumber;
     private bool _live;
@@ -32,6 +36,8 @@ public sealed class GameView : Control
     private Window? _window;
     private bool _pointerInside;
     private bool _gameFocused;
+    /// <summary>The write stamp of a frame copied but not yet drawn; its age is measured when it is.</summary>
+    private long? _undrawnStamp;
 
     public GameView(BridgeFlashUtil flash)
     {
@@ -82,6 +88,11 @@ public sealed class GameView : Control
         context.FillRectangle(Brushes.Black, new Rect(Bounds.Size));
         if (_bitmap is not null && _lastNumber > 0)
             context.DrawImage(_bitmap, new Rect(0, 0, _frameSize.Width, _frameSize.Height), ImageRect);
+        if (_undrawnStamp is { } stamp)
+        {
+            Stats.Shown(FrameBuffer.Now() - stamp);
+            _undrawnStamp = null;
+        }
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -155,22 +166,28 @@ public sealed class GameView : Control
     {
         if (_flash.FrameBuffer is not { } frameBuffer)
             return false;
-        PixelSize size = new(frameBuffer.MaxWidth, frameBuffer.MaxHeight);
-        if (_bitmap is null || _bitmap.PixelSize != size)
+        if (!ReferenceEquals(frameBuffer, _source))
         {
-            _bitmap?.Dispose();
-            _bitmap = new WriteableBitmap(size, new Vector(96, 96), PixelFormats.Rgba8888, AlphaFormat.Opaque);
+            _source = frameBuffer;
+            _lastNumber = 0;
+        }
+        PixelSize size = new(frameBuffer.MaxWidth, frameBuffer.MaxHeight);
+        if (_back is null || _back.PixelSize != size)
+        {
+            _back?.Dispose();
+            _back = new WriteableBitmap(size, new Vector(96, 96), PixelFormats.Rgba8888, AlphaFormat.Opaque);
         }
 
         FrameInfo? frame;
-        using (ILockedFramebuffer locked = _bitmap.Lock())
+        using (ILockedFramebuffer locked = _back.Lock())
             frame = frameBuffer.TryRead(_lastNumber, (byte*)locked.Address, locked.RowBytes, locked.Size.Height);
         if (frame is not { } shown)
             return false;
 
+        (_bitmap, _back) = (_back, _bitmap);
         _lastNumber = shown.Number;
         _frameSize = new PixelSize(shown.Width, shown.Height);
-        Stats.Shown(FrameBuffer.Now() - shown.Stamp);
+        _undrawnStamp = shown.Stamp;
         InvalidateVisual();
         return true;
     }
@@ -272,7 +289,7 @@ public sealed class GameView : Control
 
     private void OnWindowDeactivated(object? sender, EventArgs e) => UpdateGameFocus();
 
-    /// <summary>The game has focus while this view has it in the active window, as a Flash player's stage has it while its window does.</summary>
+    /// <summary>The game has focus while this view has it in the active window, as a movie in Flash has it while its window does.</summary>
     private void UpdateGameFocus()
     {
         bool focused = IsFocused && _window is { IsActive: true };
