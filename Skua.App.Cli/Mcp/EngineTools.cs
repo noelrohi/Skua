@@ -14,7 +14,7 @@ namespace Skua.App.Cli.Mcp;
 internal sealed class EngineTools(Func<EngineClientOptions> options)
 {
     [McpServerTool(Name = "status", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(StatusDto))]
-    [Description("Liveness and a summary of the Skua Engine and its game, with the player (name, level, class, hp/mp, gold, map/cell/pad, alive, inCombat, xp, requiredXp and xpPercent toward the next level) while playing, the running Script with its elapsedSec, and the pending Questions (pendingDialogs). Never fails; fields that don't apply are null. Starts the Engine if it isn't running, but never logs in.")]
+    [Description("Liveness and a summary of the Skua Engine, with its host (engine for skua-engine, app for the Skua Mac App, which only quitting the app stops), and its game, with the player (name, level, class, hp/mp, gold, map/cell/pad, alive, inCombat, xp, requiredXp and xpPercent toward the next level) while playing, the running Script with its elapsedSec, and the pending Questions (pendingDialogs). Never fails; fields that don't apply are null. Starts the Engine if it isn't running, but never logs in.")]
     public Task<CallToolResult> Status(CancellationToken cancellationToken) =>
         CallAsync(connection => connection.StatusAsync(cancellationToken), cancellationToken);
 

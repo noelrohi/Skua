@@ -13,7 +13,7 @@ namespace Skua.Control;
 [JsonRpcContract]
 public partial interface IEngineRpc
 {
-    /// <summary>The first call on every connection. Frozen across protocol versions.</summary>
+    /// <summary>The first call on every connection, which also says who hosts the Engine. Frozen across protocol versions.</summary>
     [JsonRpcMethod("hello")]
     Task<HelloResult> HelloAsync(int protocol, CancellationToken cancellationToken = default);
 
@@ -21,13 +21,17 @@ public partial interface IEngineRpc
     [JsonRpcMethod("status")]
     Task<StatusDto> StatusAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Starts a cooperative shutdown and returns before it finishes. Frozen across protocol versions.</summary>
+    /// <summary>
+    /// Starts a cooperative shutdown and returns before it finishes. Refused with <see cref="ErrorCode.EngineOwnedByApp"/> when the Mac App
+    /// hosts the Engine. Frozen across protocol versions.
+    /// </summary>
     [JsonRpcMethod("shutdown")]
     Task ShutdownAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Like <c>shutdown</c>, but refuses with <see cref="ErrorCode.ScriptRunning"/> while a Script runs, or <see cref="ErrorCode.Busy"/>
-    /// while a command holds the Engine, and keeps any from starting once it has accepted. Frozen across protocol versions.
+    /// while a command holds the Engine, and keeps any from starting once it has accepted. Refused with <see cref="ErrorCode.EngineOwnedByApp"/>
+    /// when the Mac App hosts the Engine. Frozen across protocol versions.
     /// </summary>
     [JsonRpcMethod("shutdown_if_idle")]
     Task ShutdownIfIdleAsync(CancellationToken cancellationToken = default);

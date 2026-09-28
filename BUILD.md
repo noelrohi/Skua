@@ -177,6 +177,7 @@ To update, `git pull` and run it again. A build is the version and the commit, p
 
 - If that Engine speaks the same protocol version, the command still runs against it, with a notice on stderr, and a later command replaces it once the Script ends.
 - If it speaks another protocol version, the command fails with `ScriptRunning` (exit 12). Wait for the Script to end, or run `skua engine stop`, which stops the Script too.
+- The Mac App's Engine is never replaced: a `skua` from another build says so (same protocol) or fails with `ProtocolMismatch` and a hint to quit the app (another protocol).
 
 `skua mcp` never replaces an Engine, because an MCP server outlives an update and would replace the newer Engine with its own; restart the MCP client after an update.
 
@@ -207,7 +208,9 @@ Skua.App.Mac/bin/Debug/net10.0/Skua [--name <engine-name>]
 ```
 
 - It starts its Engine, and binds the Engine's socket, before its window opens, so `skua status` in a terminal talks to it.
-- If another Engine already holds the name, it says so and quits: stop that one with `skua engine stop` first, or give the app another `--name`.
+- If a `skua-engine` already holds the name, the app shows what it is doing (account, map, Script) and offers **Take over** or **Quit**. Take over stops it (its game closes and any Script stops) and starts the app's own Engine; if a Script is running, it asks a second time first. It never takes over silently, and it can't take over another Skua app's Engine: use that app, or give this one another `--name`.
+- The app owns its Engine: `skua engine stop` refuses with `EngineOwnedByApp` (exit 27), "The Skua app owns Engine '<name>'; quit the app to stop it.", and the game keeps running. `skua status` shows `host: "app"`.
+- Closing the window keeps the app and its Engine running, headless: `skua` and MCP keep working, and clicking the Dock icon shows the window again. Quitting (Cmd-Q) stops the Engine (its Script, Game Host, connections, socket and lock) and asks first if a Script is running; SIGTERM quits the same way without asking. After that, the next `skua` command auto-starts a headless Engine as usual.
 - **Log in** above the Game View logs the Active Account in on the server picked beside it (or on one it picks, as `skua login` does), and says whom it logged in as; **Log out** returns to the login screen. When a login fails (no Active Account, Keychain access denied, a full or offline server), it says why there. Typing into the game's own login screen works too.
 - The status strip below the Game View shows the Engine Name, the game state, and while logged in the account, server, map and cell, level and running Script. It follows logins from anywhere, `skua login` in a terminal included.
 - The app is a new binary to Keychain, so its first login makes macOS ask whether `security` may read the account: choose "Always Allow". An unsigned rebuild may ask again.

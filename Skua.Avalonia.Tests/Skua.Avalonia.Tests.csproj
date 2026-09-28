@@ -24,18 +24,21 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
-  <!-- The Engine tests' fake servers API and fake security tool. -->
+  <!-- The Engine tests' fake servers API and fake security tool, and for the take-over tests their sandbox and stand-in Engine. -->
   <ItemGroup>
     <Compile Include="..\Skua.Engine.Tests\FakeAqApi.cs" Link="Fakes\FakeAqApi.cs" />
     <Compile Include="..\Skua.Engine.Tests\FakeKeychain.cs" Link="Fakes\FakeKeychain.cs" />
+    <Compile Include="..\Skua.Engine.Tests\EngineSandbox.cs" Link="Fakes\EngineSandbox.cs" />
+    <Compile Include="..\Skua.Engine.Tests\OtherVersionEngine.cs" Link="Fakes\OtherVersionEngine.cs" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Skua.Avalonia\Skua.Avalonia.csproj" />
     <ProjectReference Include="..\Skua.Control\Skua.Control.csproj" />
     <ProjectReference Include="..\Skua.Engine\Skua.Engine.csproj" />
-    <!-- The executables the tests run land next to them: skua and fake-gamehost. -->
+    <!-- The executables the tests run land next to them: skua, skua-engine (for the take-over tests) and fake-gamehost. -->
     <ProjectReference Include="..\Skua.App.Cli\Skua.App.Cli.csproj" />
+    <ProjectReference Include="..\Skua.App.Engine\Skua.App.Engine.csproj" />
     <ProjectReference Include="..\Skua.FakeGameHost\Skua.FakeGameHost.csproj" />
   </ItemGroup>
 

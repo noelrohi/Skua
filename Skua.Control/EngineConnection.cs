@@ -28,17 +28,22 @@ public sealed class EngineConnection : IDisposable
     {
         if (!IsCompatible)
             throw new ControlException(ErrorCode.ProtocolMismatch,
-                $"The running Engine '{Hello.EngineName}' (build {Hello.Build}) speaks protocol {Hello.Protocol}, but this skua speaks {ControlProtocol.Version}. Run 'skua engine stop', then try again.");
+                $"The running Engine '{Hello.EngineName}' (build {Hello.Build}) speaks protocol {Hello.Protocol}, but this skua speaks {ControlProtocol.Version}. "
+                + (Hello.Host == EngineHost.App ? "The Skua app hosts it: quit the app, then try again." : "Run 'skua engine stop', then try again."));
     }
 
     public Task<StatusDto> StatusAsync(CancellationToken cancellationToken = default) =>
         CallAsync(rpc => rpc.StatusAsync(cancellationToken));
 
+    /// <exception cref="ControlException"><see cref="ErrorCode.EngineOwnedByApp"/> when the Mac App hosts the Engine.</exception>
     public Task ShutdownAsync(CancellationToken cancellationToken = default) =>
         CallAsync(async rpc => { await rpc.ShutdownAsync(cancellationToken); return true; });
 
     /// <summary>Shuts the Engine down unless it is busy. Returns false for an Engine from before <c>shutdown_if_idle</c>, which it leaves running.</summary>
-    /// <exception cref="ControlException"><see cref="ErrorCode.ScriptRunning"/> or <see cref="ErrorCode.Busy"/> when the Engine is busy.</exception>
+    /// <exception cref="ControlException">
+    /// <see cref="ErrorCode.ScriptRunning"/> or <see cref="ErrorCode.Busy"/> when the Engine is busy; <see cref="ErrorCode.EngineOwnedByApp"/> when the
+    /// Mac App hosts it.
+    /// </exception>
     public async Task<bool> ShutdownIfIdleAsync(CancellationToken cancellationToken = default)
     {
         try

@@ -155,17 +155,20 @@ internal sealed class Engine : IEngineRpc
         }
     }
 
+    private EngineHost Host => _options.IsHeadless ? EngineHost.Engine : EngineHost.App;
+
     public Task<HelloResult> HelloAsync(int protocol, CancellationToken cancellationToken) =>
-        Task.FromResult(new HelloResult(ControlProtocol.Version, Build, _endpoint.Name, Environment.ProcessId));
+        Task.FromResult(new HelloResult(ControlProtocol.Version, Build, _endpoint.Name, Environment.ProcessId, Host));
 
     public async Task<StatusDto> StatusAsync(CancellationToken cancellationToken)
     {
-        EngineInfoDto engine = new(_endpoint.Name, Build, ControlProtocol.Version, Math.Round(_uptime.Elapsed.TotalSeconds, 1), Environment.ProcessId);
+        EngineInfoDto engine = new(_endpoint.Name, Build, ControlProtocol.Version, Math.Round(_uptime.Elapsed.TotalSeconds, 1), Environment.ProcessId, Host);
         return new StatusDto(engine, _gameHost.Status() with { Player = await _queries.PlayerAsync() }, _scripts.Status(), _dialogs.Pending());
     }
 
     public Task ShutdownAsync(CancellationToken cancellationToken)
     {
+        EnsureHeadless("Shutdown");
         EngineLog.Write("Shutdown requested over the Control Surface.");
         _shutdown.Cancel();
         return Task.CompletedTask;
@@ -173,6 +176,7 @@ internal sealed class Engine : IEngineRpc
 
     public Task ShutdownIfIdleAsync(CancellationToken cancellationToken)
     {
+        EnsureHeadless("A replacement by another build");
         const string action = "replace the Engine";
         // The lease is never returned, so no command starts a Script while the Engine shuts down.
         IDisposable lease = _slot.Take(action);
@@ -188,6 +192,15 @@ internal sealed class Engine : IEngineRpc
         EngineLog.Write("Shutdown requested over the Control Surface, to replace this Engine with another build.");
         _shutdown.Cancel();
         return Task.CompletedTask;
+    }
+
+    /// <summary>The Mac App owns its Engine: only quitting the app stops it, so the CLI never takes the window's game away (ADR 0006).</summary>
+    private void EnsureHeadless(string request)
+    {
+        if (_options.IsHeadless)
+            return;
+        EngineLog.Write($"{request} requested over the Control Surface; refused, as the Skua app owns this Engine.");
+        throw RpcErrors.Of(ErrorCode.EngineOwnedByApp, $"The Skua app owns Engine '{_endpoint.Name}'; quit the app to stop it.");
     }
 
     public Task<ScriptsSearchResult> ScriptsSearchAsync(string query, string? tag, CancellationToken cancellationToken) =>

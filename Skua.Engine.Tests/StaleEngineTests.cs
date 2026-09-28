@@ -67,6 +67,41 @@ public class StaleEngineTests
     }
 
     [Fact]
+    public async Task The_CLI_keeps_using_the_Skua_apps_Engine_from_another_build_and_never_asks_it_to_stop()
+    {
+        await using EngineSandbox sandbox = new();
+        await using OtherVersionEngine app = new(sandbox, ControlProtocol.Version, host: EngineHost.App);
+
+        ProcessResult start = await sandbox.RunCliAsync("engine", "start", "--json");
+
+        Assert.Equal(0, start.ExitCode);
+        Assert.False(app.ShutdownCalled);
+        string notice = Assert.Single(start.Stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+        Assert.Equal($"skua: Engine 'default' from another build ({OtherVersionEngine.OtherBuild}, protocol {ControlProtocol.Version}) wasn't replaced: the Skua app hosts it; quit the app to replace it.", notice);
+        using JsonDocument json = JsonDocument.Parse(start.Stdout);
+        Assert.Equal(Environment.ProcessId, json.RootElement.GetProperty("pid").GetInt32());
+        Assert.Equal("app", json.RootElement.GetProperty("host").GetString());
+    }
+
+    [Fact]
+    public async Task The_CLI_refuses_the_Skua_apps_Engine_on_another_protocol_with_a_quit_hint_and_never_asks_it_to_stop()
+    {
+        await using EngineSandbox sandbox = new();
+        await using OtherVersionEngine app = new(sandbox, host: EngineHost.App);
+
+        ProcessResult status = await sandbox.RunCliAsync("status");
+        ProcessResult engine = await sandbox.RunCliAsync("engine", "status");
+
+        Assert.Equal(ExitCodes.For(ErrorCode.ProtocolMismatch), status.ExitCode);
+        Assert.Contains("The Skua app hosts it: quit the app, then try again.", status.Stderr);
+        Assert.Equal(0, engine.ExitCode);
+        Assert.Contains($"is running in the Skua app (pid {Environment.ProcessId}, build {OtherVersionEngine.OtherBuild}) on protocol {OtherVersionEngine.OtherProtocol}", engine.Stdout);
+        Assert.Contains("; quit the app.", engine.Stdout);
+        Assert.False(app.ShutdownCalled);
+        Assert.False(app.StatusCalled);
+    }
+
+    [Fact]
     public async Task An_idle_Engine_from_another_build_is_stopped_and_a_new_one_started()
     {
         await using EngineSandbox sandbox = new();

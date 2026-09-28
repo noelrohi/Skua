@@ -20,6 +20,7 @@ public class CliTests
         JsonElement engine = json.RootElement.GetProperty("engine");
         Assert.Equal("default", engine.GetProperty("name").GetString());
         Assert.Equal(ControlProtocol.Version, engine.GetProperty("protocol").GetInt32());
+        Assert.Equal("engine", engine.GetProperty("host").GetString());
         Assert.True(json.RootElement.GetProperty("game").GetProperty("gameHostUp").GetBoolean());
         Assert.Equal("notStarted", json.RootElement.GetProperty("game").GetProperty("state").GetString());
     }
@@ -32,7 +33,7 @@ public class CliTests
         ProcessResult result = await sandbox.RunCliAsync("status");
 
         Assert.Equal(0, result.ExitCode);
-        Assert.Contains("Engine  default", result.Stdout);
+        Assert.Contains("Engine  default (pid ", result.Stdout);
         Assert.Contains("Game Host up", result.Stdout);
     }
 
@@ -51,6 +52,8 @@ public class CliTests
         Assert.Equal(0, start.ExitCode);
         Assert.Contains("is running", start.Stdout);
         Assert.Equal("running", State(running));
+        using (JsonDocument json = JsonDocument.Parse(running.Stdout))
+            Assert.Equal("engine", json.RootElement.GetProperty("host").GetString());
         Assert.Equal(0, stop.ExitCode);
         Assert.False(File.Exists(sandbox.Endpoint.SocketPath));
         Assert.False(EngineLock.IsHeld(sandbox.Endpoint.LockPath));
@@ -137,6 +140,25 @@ public class CliTests
         using JsonDocument error = JsonDocument.Parse(json.Stdout);
         Assert.Equal("protocolMismatch", error.RootElement.GetProperty("error").GetProperty("code").GetString());
         Assert.False(other.ShutdownRequested);
+    }
+
+    [Fact]
+    public async Task Engine_stop_against_the_Skua_apps_Engine_exits_with_the_EngineOwnedByApp_code_and_leaves_it_running()
+    {
+        await using EngineSandbox sandbox = new();
+        await using OtherVersionEngine app = new(sandbox, ControlProtocol.Version, host: EngineHost.App);
+
+        ProcessResult human = await sandbox.RunCliAsync("engine", "stop");
+        ProcessResult json = await sandbox.RunCliAsync("engine", "stop", "--json");
+
+        Assert.Equal(ExitCodes.For(ErrorCode.EngineOwnedByApp), human.ExitCode);
+        Assert.Equal("skua: The Skua app owns Engine 'default'; quit the app to stop it.", human.Stderr.Trim());
+        Assert.Equal(ExitCodes.For(ErrorCode.EngineOwnedByApp), json.ExitCode);
+        using JsonDocument error = JsonDocument.Parse(json.Stdout);
+        Assert.Equal("engineOwnedByApp", error.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.True(app.ShutdownCalled);
+        Assert.False(app.ShutdownRequested);
+        Assert.True(EngineLock.IsHeld(sandbox.Endpoint.LockPath));
     }
 
     [Fact]
