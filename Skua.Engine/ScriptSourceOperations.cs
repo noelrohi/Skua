@@ -8,7 +8,7 @@ namespace Skua.Engine;
 
 /// <summary>
 /// <c>scripts_search</c>, <c>scripts_list</c>, <c>scripts_update</c>, <c>scripts_new</c>, <c>scripts_source</c> and <c>scripts_source_set</c>:
-/// finding Scripts in the Script Source, syncing them to disk, what the syncs brought, and which Script Source it is.
+/// finding Scripts in the Script Source, syncing them to disk, what the syncs brought, and which Script Source it is; and the Mac App's reset.
 /// </summary>
 internal sealed class ScriptSourceOperations
 {
@@ -81,7 +81,15 @@ internal sealed class ScriptSourceOperations
     /// Refused while a Script runs, and holds the Engine's Scripts slot, so a Script's files never change under it and no Script compiles
     /// until the update ends; a login or another game action goes ahead meanwhile.
     /// </remarks>
-    public async Task<ScriptsUpdateResult> UpdateAsync()
+    public Task<ScriptsUpdateResult> UpdateAsync() => SyncAsync("update the Scripts", reset: false);
+
+    /// <summary>
+    /// Deletes the Scripts folder's contents, the junk items list aside, then downloads every Script from the Script Source again, as the
+    /// Windows Manager's Reset Scripts does; a Script edited or added on disk is gone. Refused as <see cref="UpdateAsync"/> is.
+    /// </summary>
+    public Task<ScriptsUpdateResult> ResetAsync() => SyncAsync("reset the Scripts", reset: true);
+
+    private async Task<ScriptsUpdateResult> SyncAsync(string action, bool reset)
     {
         if (!_updating.Wait(0))
             throw RpcErrors.Of(ErrorCode.Busy, "A Scripts update is already running.");
@@ -89,8 +97,10 @@ internal sealed class ScriptSourceOperations
         try
         {
             // The slot first: a Script's start holds it until its run has begun, so no start slips in after the check.
-            using IDisposable lease = _scriptsSlot.Take("update the Scripts");
-            _runs.EnsureIdle("update the Scripts");
+            using IDisposable lease = _scriptsSlot.Take(action);
+            _runs.EnsureIdle(action);
+            if (reset)
+                DeleteLocalScripts();
             ScriptSource source = _scriptsService.Source;
             ScriptsSyncResult result = await FromScriptSourceAsync(source, () => _scriptsService.SyncScriptsAsync(_shutdown));
             if (result.Mode == ScriptsSyncMode.Full)
@@ -103,6 +113,35 @@ internal sealed class ScriptSourceOperations
         finally
         {
             _updating.Release();
+        }
+    }
+
+    /// <summary>
+    /// Forgets the last synced commit, so the next sync is a full download, and deletes everything in the Scripts folder but the junk items
+    /// list, which is the Junk panel's own.
+    /// </summary>
+    /// <exception cref="IOException">A file couldn't be deleted; the next update is a full download all the same.</exception>
+    private static void DeleteLocalScripts()
+    {
+        try
+        {
+            File.Delete(ClientFileSources.SkuaScriptsCommitFile);
+            DirectoryInfo scripts = new(ClientFileSources.SkuaScriptsDIR);
+            if (!scripts.Exists)
+                return;
+            foreach (FileSystemInfo entry in scripts.EnumerateFileSystemInfos())
+            {
+                if (entry.FullName == Path.GetFullPath(ClientFileSources.SkuaJunkItemsFile))
+                    continue;
+                if (entry is DirectoryInfo folder)
+                    folder.Delete(recursive: true);
+                else
+                    entry.Delete();
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            throw new IOException($"Couldn't delete the Scripts in {ClientFileSources.SkuaScriptsDIR}: {e.Message}", e);
         }
     }
 

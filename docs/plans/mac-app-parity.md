@@ -17,7 +17,6 @@ Tests are in `Skua.Avalonia.Tests` and named `Class.Method`. `ViewCoverageTests`
 | Issue | What |
 |---|---|
 | [#112](https://github.com/noelrohi/Skua/issues/112) | Notifications when a Script stops, errors or relogs while the window isn't in front |
-| [#113](https://github.com/noelrohi/Skua/issues/113) | Reset Scripts, and Open in VSCode for one Script |
 | [#114](https://github.com/noelrohi/Skua/issues/114) | Hide the Application Options that do nothing on macOS |
 
 ## Main window (`Skua.App.WPF/MainWindow.xaml`)
@@ -72,7 +71,7 @@ Every item above that opens a window also opens it through the window service in
 
 | Windows | View model | Status | Evidence or reason |
 |---|---|---|---|
-| Script Repo (Scripts › Search Scripts) | `ScriptRepoViewModel` | works | `ScriptsPanelTests.A_Script_picked_from_the_Script_Source_starts_logs_live_and_stops_from_the_panel`. Update runs the Engine's `scripts_update`, which covers Update All and Download All. Open in VSCode for one Script is a gap ([#113](https://github.com/noelrohi/Skua/issues/113)). |
+| Script Repo (Scripts › Search Scripts) | `ScriptRepoViewModel` | works | `ScriptsPanelTests.A_Script_picked_from_the_Script_Source_starts_logs_live_and_stops_from_the_panel`. Update runs the Engine's `scripts_update`, which covers Update All and Download All. Open in VSCode for one Script goes through `MacProcessService`: `ScriptsPanelTests.Open_in_VSCode_on_a_Scripts_context_menu_goes_through_the_apps_process_service`. |
 | Notify Drop (Runtime › Notify…) | `NotifyDropViewModel` | works | `HelpersTests.Runtime_adds_drops_and_quests_removes_them_by_key_and_opens_Notify_Drop` |
 | Registered quests and pickup drops (Runtime's parts) | `RegisteredQuestsViewModel`, `ToPickupDropsViewModel` | works | `HelpersTests.Runtime_adds_drops_and_quests_removes_them_by_key_and_opens_Notify_Drop` |
 | Boosts (Runtime's part) | `BoostsViewModel` | present | `PanelTests.Each_view_binds_to_its_view_model_with_no_binding_errors`. Using a boost needs boost items in the inventory, which no test sets up. |
@@ -148,7 +147,7 @@ Every item above that opens a window also opens it through the window service in
 | Tray: Show Manager, single instance | The Skua Manager… item in every app's menu bar and Dock menu, which brings the running Manager to the front | present | `ManagerTests.The_app_menu_bar_and_window_menu_open_the_Manager` checks the items. The single instance (`manager.lock`) and bringing it to the front were checked by hand in #93's smoke run; no test starts a second Manager process. |
 | Tray: Skua Bot AQW (start a new client) | Accounts › Launch | deliberate | Running and Accounts replace the Launcher (ADR 0006). A blank app starts from `Skua.app` ([#88](https://github.com/noelrohi/Skua/issues/88), in progress). |
 | Tray: Update Scripts | An app's Script Repo › Update, or `skua scripts update` | works | `ScriptsPanelTests.A_Script_picked_from_the_Script_Source_starts_logs_live_and_stops_from_the_panel` |
-| Tray: Reset Scripts | None | gap [#113](https://github.com/noelrohi/Skua/issues/113) | |
+| Tray: Reset Scripts | An app's Script Repo › Reset…, which asks first; the Engine refuses it while a Script runs or an update is in flight, as `scripts_update`. It keeps the junk items list, which Windows deletes. | works | `ScriptsPanelTests.Reset_asks_first_then_leaves_the_Scripts_folder_matching_the_Script_Source_with_a_local_edit_gone`, `ScriptsPanelTests.Reset_is_refused_with_a_message_while_a_Script_runs_and_deletes_nothing`, `ScriptsPanelTests.Reset_is_refused_as_busy_while_a_Scripts_update_is_in_flight`. Only the Mac App resets; no Control Surface can, so the protocol is unchanged. |
 | Tray: Check Client Update | Updates tab | deliberate | As for the Updates tab. |
 | Tray: Exit, which kills every Skua client | Quitting the Manager leaves its apps playing. Stop each app from Running. | deliberate | Each app owns its Engine, and the apps outlive the Manager (ADR 0006). |
 

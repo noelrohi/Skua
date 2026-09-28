@@ -3,11 +3,16 @@ using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.Interactivity;
 using Skua.Avalonia.Services;
 using Skua.Avalonia.Views;
 using Skua.Control;
+using Skua.Core.Interfaces;
+using Skua.Core.Models;
 using Skua.Core.ViewModels;
+using Skua.Engine;
 using Skua.Engine.Tests;
+using StreamJsonRpc;
 
 namespace Skua.Avalonia.Tests;
 
@@ -125,7 +130,7 @@ public sealed class ScriptsPanelTests(AppEngine app)
         (Window scriptsWindow, ScriptLoaderView loader) = await OpenAsync<ScriptLoaderView>("Scripts");
         ScriptLoaderViewModel scripts = (ScriptLoaderViewModel)loader.DataContext!;
         string status = scripts.ScriptStatus;
-        ScriptRepoViewModel repoModel = new(app.Get<Skua.Core.Interfaces.IGetScriptsService>(), app.Get<Skua.Core.Interfaces.IProcessService>());
+        ScriptRepoViewModel repoModel = new(app.Get<IGetScriptsService>(), app.Get<IProcessService>());
         HostWindow repoWindow = new(repoModel);
         repoWindow.Show();
         ScriptRepoView repo = await FoundAsync<ScriptRepoView>(repoWindow);
@@ -147,6 +152,167 @@ public sealed class ScriptsPanelTests(AppEngine app)
         scripts.ToggleScriptEnabled = true;
         repoWindow.Close();
         scriptsWindow.Close();
+    }
+
+    [AvaloniaFact]
+    public async Task Reset_asks_first_then_leaves_the_Scripts_folder_matching_the_Script_Source_with_a_local_edit_gone()
+    {
+        // Reset deletes files: only ever in the test's own data folder.
+        Assert.StartsWith(AppEngine.SkuaDir + "/", ClientFileSources.SkuaScriptsDIR);
+        string path = $"Tests/Reset{Guid.NewGuid():N}.cs";
+        AppEngine.GitHub.Commit("noelrohi", "Scripts", "Skua", new FakeScript(path, "// from the Script Source", "Reset Me"));
+        await app.Get<EngineScripts>().UpdateAsync();
+        string edited = Path.Combine(ClientFileSources.SkuaScriptsDIR, path);
+        File.WriteAllText(edited, "// edited on this Mac");
+        string localOnly = AppEngine.WriteScript("Tests/ResetLocalOnly.cs", "// only on this Mac");
+        string junk = ClientFileSources.SkuaJunkItemsFile;
+        string? junkBefore = File.Exists(junk) ? File.ReadAllText(junk) : null;
+        File.WriteAllText(junk, """["Reset Junk"]""");
+        (Window scriptsWindow, ScriptLoaderView loader) = await OpenAsync<ScriptLoaderView>("Scripts");
+        Window? repoWindow = null;
+        try
+        {
+            Ui.Click(loader.FindControl<Button>("SearchScripts")!);
+            (repoWindow, ScriptRepoView repo) = await ShownAsync<ScriptRepoView>("Script Repo");
+            Button reset = repo.FindControl<Button>("ResetScripts")!;
+            TextBlock result = repo.FindControl<TextBlock>("UpdateResult")!;
+
+            Ui.Click(reset);
+            await Ui.PumpUntilAsync(() => repo.PendingReset is not null, "the question");
+            Assert.Equal("Reset deletes everything in the Scripts folder, including Scripts you added or edited, then downloads every Script from noelrohi/Scripts@Skua again. Your junk items list is kept.",
+                QuestionText(repo.PendingReset!));
+            Ui.Click(repo.PendingReset!.CancelButton);
+            await Ui.PumpUntilAsync(() => repo.PendingReset is null, "the question to go");
+            Assert.True(File.Exists(localOnly));
+            Assert.Equal("// edited on this Mac", File.ReadAllText(edited));
+
+            result.Text = null;
+            Ui.Click(reset);
+            await Ui.PumpUntilAsync(() => repo.PendingReset is not null, "the question again");
+            Ui.Click(repo.PendingReset!.ConfirmButton);
+            await Ui.PumpUntilAsync(() => reset.IsEffectivelyEnabled && result.Text is { Length: > 0 } text && text != "Resetting the Scripts…", "the reset to finish");
+
+            Assert.Matches(@"^Downloaded \d+ Scripts \(full download\)\.$", result.Text);
+            List<string> inSource = [.. (await app.Get<IGetScriptsService>().FetchScriptsAsync(Ct)).Select(s => s.FilePath).Order(StringComparer.Ordinal)];
+            Assert.Equal(inSource, ScriptsOnDisk());
+            Assert.Equal("// from the Script Source", File.ReadAllText(edited));
+            Assert.False(File.Exists(localOnly));
+            Assert.Equal("""["Reset Junk"]""", File.ReadAllText(junk));
+        }
+        finally
+        {
+            if (junkBefore is null)
+                File.Delete(junk);
+            else
+                File.WriteAllText(junk, junkBefore);
+            repoWindow?.Close();
+            scriptsWindow.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Reset_is_refused_with_a_message_while_a_Script_runs_and_deletes_nothing()
+    {
+        AppEngine.WriteScript("Tests/ResetLoop.cs", Script("""
+            while (!bot.ShouldExit)
+                Thread.Sleep(50);
+            """));
+        string localOnly = AppEngine.WriteScript("Tests/ResetKeptWhileRunning.cs", "// only on this Mac");
+        (Window scriptsWindow, ScriptLoaderView loader) = await OpenAsync<ScriptLoaderView>("Scripts");
+        using EngineConnection connection = await ConnectAsync();
+        Window? repoWindow = null;
+        try
+        {
+            Ui.Click(loader.FindControl<Button>("SearchScripts")!);
+            (repoWindow, ScriptRepoView repo) = await ShownAsync<ScriptRepoView>("Script Repo");
+            await connection.ScriptStartAsync("Tests/ResetLoop.cs", cancellationToken: Ct);
+            TextBlock result = repo.FindControl<TextBlock>("UpdateResult")!;
+            result.Text = null;
+
+            Ui.Click(repo.FindControl<Button>("ResetScripts")!);
+            await Ui.PumpUntilAsync(() => repo.PendingReset is not null, "the question");
+            Ui.Click(repo.PendingReset!.ConfirmButton);
+            await Ui.PumpUntilAsync(() => result.Text is { Length: > 0 } text && text != "Resetting the Scripts…", "the refusal");
+
+            Assert.Equal("Can't reset the Scripts while Tests/ResetLoop.cs is running; stop it first with 'skua script stop'.", result.Text);
+            Assert.Equal("// only on this Mac", File.ReadAllText(localOnly));
+            Assert.Equal(ScriptState.Running, (await connection.ScriptStatusAsync(Ct)).State);
+        }
+        finally
+        {
+            await connection.ScriptStopAsync(Ct);
+            repoWindow?.Close();
+            scriptsWindow.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Reset_is_refused_as_busy_while_a_Scripts_update_is_in_flight()
+    {
+        string localOnly = AppEngine.WriteScript("Tests/ResetKeptWhileUpdating.cs", "// only on this Mac");
+        AppEngine.GitHub.Commit("noelrohi", "Scripts", "Skua", new FakeScript($"Tests/Held{Guid.NewGuid():N}.cs", "// held"));
+        EngineScripts scripts = app.Get<EngineScripts>();
+        TaskCompletionSource held = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        AppEngine.GitHub.ClearRequests();
+        AppEngine.GitHub.RawHeld = held.Task;
+        Task<ScriptsUpdateResult> update = Task.Run(scripts.UpdateAsync, Ct);
+        try
+        {
+            await AppEngine.GitHub.WaitForRawRequestAsync();
+            LocalRpcException refused = await Assert.ThrowsAsync<LocalRpcException>(scripts.ResetAsync);
+
+            Assert.Equal(ErrorCodes.ToWire(ErrorCode.Busy), refused.ErrorCode);
+            Assert.False(update.IsCompleted);
+            Assert.True(File.Exists(localOnly));
+        }
+        finally
+        {
+            AppEngine.GitHub.RawHeld = Task.CompletedTask;
+            held.SetResult();
+            await update;
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Open_in_VSCode_on_a_Scripts_context_menu_goes_through_the_apps_process_service()
+    {
+        string path = $"Tests/OpenMe{Guid.NewGuid():N}.cs";
+        AppEngine.GitHub.Commit("noelrohi", "Scripts", "Skua", new FakeScript(path, "// open me", "Open Me"));
+        await app.Get<EngineScripts>().UpdateAsync();
+        (Window scriptsWindow, ScriptLoaderView loader) = await OpenAsync<ScriptLoaderView>("Scripts");
+        Window? repoWindow = null;
+        ContextMenu? menu = null;
+        try
+        {
+            Ui.Click(loader.FindControl<Button>("SearchScripts")!);
+            (repoWindow, ScriptRepoView repo) = await ShownAsync<ScriptRepoView>("Script Repo");
+            ((ScriptRepoViewModel)repo.DataContext!).RefreshScriptsCommand.Execute(null);
+            repo.FindControl<TextBox>("SearchBox")!.Text = path;
+            await Ui.PumpUntilAsync(() => repo.Shown is [{ Downloaded: true } script] && script.FilePath == path, "the downloaded Script alone in the list");
+            await Ui.PumpUntilAsync(() => ScriptCard(repo, path) is not null, "the Script's card");
+            Border card = ScriptCard(repo, path)!;
+            menu = card.ContextMenu!;
+            menu.Open(card);
+            await Ui.PumpUntilAsync(() => menu.IsOpen, "the context menu");
+            MenuItem open = menu.Items.OfType<MenuItem>().Single(i => (string)i.Header! == "Open in VSCode");
+            Assert.Equal(["Download", "Delete", "Open in VSCode", "Load", "Start"], menu.Items.OfType<MenuItem>().Select(i => (string)i.Header!));
+            Assert.True(open.IsEffectivelyEnabled);
+            int before = Launches.Runs().Count;
+
+            open.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+
+            await Ui.PumpUntilAsync(() => Launches.Runs().Count > before, "the launch");
+            // The tests' app has no code command, so VS Code opens by its bundle id; the runner records it and opens nothing.
+            (string program, string[] arguments) = Assert.Single(Launches.Runs().Skip(before));
+            Assert.Equal("/usr/bin/open", program);
+            Assert.Equal(["-b", "com.microsoft.VSCode", ClientFileSources.SkuaScriptsDIR, Path.Combine(ClientFileSources.SkuaScriptsDIR, path)], arguments);
+        }
+        finally
+        {
+            menu?.Close();
+            repoWindow?.Close();
+            scriptsWindow.Close();
+        }
     }
 
     internal static ScriptInfoViewModel Info(string path, string name, string description = "", params string[] tags) =>
@@ -192,6 +358,22 @@ public sealed class ScriptsPanelTests(AppEngine app)
 
     private static Button? StartButton(ScriptRepoView repo) =>
         Ui.Find<Button>(repo, b => b.Content as string == "Start" && b.DataContext is ScriptInfoViewModel { FilePath: "Tests/PanelHello.cs" });
+
+    private static Border? ScriptCard(ScriptRepoView repo, string path) =>
+        Ui.Find<Border>(repo, b => b.ContextMenu is not null && b.DataContext is ScriptInfoViewModel script && script.FilePath == path);
+
+    private static string? QuestionText(ConfirmDialog question) => ((SelectableTextBlock)((StackPanel)question.Content!).Children[0]).Text;
+
+    /// <summary>The Scripts folder's files, relative to it, but for the junk items list and the compile cache.</summary>
+    private static List<string> ScriptsOnDisk()
+    {
+        string folder = ClientFileSources.SkuaScriptsDIR;
+        return [.. Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
+            .Where(f => f != ClientFileSources.SkuaJunkItemsFile)
+            .Select(f => Path.GetRelativePath(folder, f))
+            .Where(f => !f.StartsWith("Cached-Scripts/", StringComparison.Ordinal))
+            .Order(StringComparer.Ordinal)];
+    }
 
     private static IEnumerable<string> Lines(LogTabView log) => log.FindControl<ListBox>("Lines")!.Items.OfType<string>();
 
