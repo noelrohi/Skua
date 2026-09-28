@@ -1,0 +1,162 @@
+<!-- Ported from Skua.WPF/Views/LoaderView.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.LoaderView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:sys="using:System"
+    xmlns:views="using:Skua.Avalonia.Views"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:LoaderViewModel">
+    <Panel>
+        <Grid Margin="6" ColumnDefinitions="2*,*,*" RowDefinitions="Auto,*">
+            <TextBox
+                x:Name="InputIDs"
+                Grid.Column="0"
+                Margin="0,0,3,3"
+                Text="{Binding InputIDs}"
+                ToolTip.Tip="Loads a shop/quest with the specified ID. Multiple quests can be loaded by separating them with commas or spaces."
+                Watermark="Shop/Quest ID" />
+            <ComboBox
+                x:Name="Kind"
+                Grid.Column="1"
+                Margin="3,0,3,3"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                SelectedIndex="{Binding SelectedIndex}">
+                <ComboBoxItem Content="Shop" ToolTip.Tip="Load the specified shop." />
+                <ComboBoxItem Content="Quest" ToolTip.Tip="Load the specified quests." />
+            </ComboBox>
+            <Button
+                x:Name="Load"
+                Grid.Column="2"
+                Margin="3,0,0,3"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Command="{Binding LoadCommand}"
+                Content="Load"
+                ToolTip.Tip="Loads a shop/quest with the specified ID. Multiple quests can be loaded by separating them with commas or spaces." />
+            <Grid Grid.Row="1" Grid.ColumnSpan="3" RowDefinitions="Auto,*,Auto">
+                <TextBox
+                    x:Name="SearchBox"
+                    Grid.Row="0"
+                    Margin="0,3"
+                    IsEnabled="{Binding !IsLoading}"
+                    Watermark="Search" />
+                <ListBox
+                    x:Name="Quests"
+                    Grid.Row="1"
+                    Margin="0,3"
+                    IsEnabled="{Binding !IsLoading}"
+                    SelectionMode="Multiple,Toggle" />
+                <Grid Grid.Row="2" ColumnDefinitions="*,*,*,*,*" RowDefinitions="Auto,Auto">
+                    <Grid Grid.Column="0" Margin="0,3,3,0" ColumnDefinitions="*,Auto">
+                        <Button
+                            x:Name="UpdateQuests"
+                            Grid.Column="0"
+                            Margin="0,0,1,0"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            Command="{Binding UpdateQuestsCommand}"
+                            Content="Update"
+                            IsEnabled="{Binding !IsLoading}"
+                            ToolTip.Tip="Preserves the quests present in the QuestData.json file and add new ones.">
+                            <Button.CommandParameter>
+                                <sys:Boolean>False</sys:Boolean>
+                            </Button.CommandParameter>
+                        </Button>
+                        <Button
+                            Grid.Column="1"
+                            Command="{Binding UpdateQuestsCommand}"
+                            Content="All"
+                            IsEnabled="{Binding !IsLoading}"
+                            ToolTip.Tip="Overrides all quests in the QuestData.json file.">
+                            <Button.CommandParameter>
+                                <sys:Boolean>True</sys:Boolean>
+                            </Button.CommandParameter>
+                        </Button>
+                    </Grid>
+                    <Button
+                        Grid.Column="1"
+                        Margin="3,3,3,0"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
+                        Command="{Binding CopyQuestsIDsCommand}"
+                        CommandParameter="{Binding $parent[views:LoaderView].SelectedQuests}"
+                        Content="Copy IDs"
+                        IsEnabled="{Binding !IsLoading}"
+                        ToolTip.Tip="(⌘C) Copy the IDs of the selected quests separated by comma." />
+                    <Button
+                        Grid.Column="2"
+                        Margin="3,3,3,0"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
+                        Command="{Binding CopyQuestsNamesCommand}"
+                        CommandParameter="{Binding $parent[views:LoaderView].SelectedQuests}"
+                        Content="Copy Names"
+                        IsEnabled="{Binding !IsLoading}"
+                        ToolTip.Tip="(⇧⌘C) Copy the names of the selected quests separated by comma." />
+                    <Button
+                        x:Name="FakeComplete"
+                        Grid.Column="3"
+                        Margin="3,3,3,0"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
+                        Command="{Binding UpdateSelectedQuestCommand}"
+                        CommandParameter="{Binding #Quests.SelectedItem}"
+                        Content="Fake Complete"
+                        IsEnabled="{Binding $parent[views:LoaderView].OneQuestSelected}"
+                        ToolTip.Tip="Sends quest complete packet to the client." />
+                    <Button
+                        x:Name="LoadQuests"
+                        Grid.Column="4"
+                        Margin="3,3,0,0"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
+                        Command="{Binding LoadQuestsCommand}"
+                        CommandParameter="{Binding $parent[views:LoaderView].SelectedQuests}"
+                        Content="Load"
+                        IsEnabled="{Binding !IsLoading}"
+                        ToolTip.Tip="(⌘L) Load all the selected quests." />
+                    <DockPanel Grid.Row="1" Grid.ColumnSpan="5" Margin="0,3,0,0">
+                        <Button
+                            Margin="3,0,0,0"
+                            Command="{Binding CopyQuestsNamesAndIDsCommand}"
+                            CommandParameter="{Binding $parent[views:LoaderView].SelectedQuests}"
+                            Content="Copy Names+IDs"
+                            DockPanel.Dock="Right"
+                            IsEnabled="{Binding !IsLoading}"
+                            ToolTip.Tip="Copy selected quests as '// Name | ID' lines" />
+                        <Button
+                            Margin="0,0,3,0"
+                            Command="{Binding UpdateQuestsRangeCommand}"
+                            Content="Update Range"
+                            DockPanel.Dock="Right"
+                            IsEnabled="{Binding !IsLoading}"
+                            ToolTip.Tip="Update quests within the specified ID range" />
+                        <TextBox
+                            Margin="0,0,3,0"
+                            IsEnabled="{Binding !IsLoading}"
+                            Text="{Binding QuestRange}"
+                            ToolTip.Tip="Enter quest ID range in format: startID, endID"
+                            Watermark="Quest Range (e.g., 2566, 2599)" />
+                    </DockPanel>
+                </Grid>
+            </Grid>
+        </Grid>
+        <!-- The WPF view's snackbar: the quest update's progress, and a way to cancel it. -->
+        <Border
+            x:Name="Progress"
+            Margin="12"
+            Padding="12,6"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Bottom"
+            Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
+            CornerRadius="4"
+            IsVisible="{Binding IsLoading}">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <TextBlock VerticalAlignment="Center" Text="{Binding ProgressReport}" />
+                <Button Command="{Binding CancelQuestLoadCommand}" Content="Cancel" />
+            </StackPanel>
+        </Border>
+    </Panel>
+</UserControl>

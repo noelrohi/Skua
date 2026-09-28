@@ -32,6 +32,13 @@ public sealed class AvaloniaWindowService : IWindowService
             return _managed.TryGetValue(key, out IManagedWindow? viewModel) && ViewLocator.HasView(viewModel);
     }
 
+    /// <summary>Whether <paramref name="key"/> is a managed window's; a menu item that isn't one has its own command, such as Bank.</summary>
+    public bool IsManaged(string key)
+    {
+        lock (_managed)
+            return _managed.ContainsKey(key);
+    }
+
     /// <summary>The open window for <paramref name="key"/>, if any.</summary>
     public HostWindow? OpenWindow(string key) => _open.GetValueOrDefault(key);
 

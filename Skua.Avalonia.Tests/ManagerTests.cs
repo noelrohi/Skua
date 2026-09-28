@@ -94,7 +94,8 @@ public sealed class ManagerTests : IDisposable
 
         alice.RemoveCommand.Execute(null);
         await Ui.PumpUntilAsync(() => AppEngine.Keychain.Find(service) is null, "the account to leave Keychain");
-        Assert.Empty(list.Accounts);
+        // By username, so a failure says which accounts are left.
+        Assert.Empty(list.Accounts.Select(a => $"{a.Username} ({a.DisplayName})"));
         Assert.Empty(new ManagerAccounts(_dir).Accounts);
         Assert.Equal(0, MatchesOutsideKeychain("second-Sekrit-e9b0"));
     }

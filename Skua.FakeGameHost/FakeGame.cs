@@ -41,6 +41,7 @@ internal sealed class FakeGame
     private int _xp = 1500;
     private int _gold = 5000;
     private bool _bankLoaded;
+    private bool _bankOpen;
     private DateTime _inventoryAt;
     private int _inventoryDelay = 500;
     private readonly HashSet<string> _lockedMaps = new(StringComparer.OrdinalIgnoreCase);
@@ -247,6 +248,7 @@ internal sealed class FakeGame
         "world.questTree" => _world ? QuestTree() : null,
         "stage.focus.text" => _focus is null ? null : "",
         "stage.focus.type" => _focus,
+        "ui.mcPopup.currentLabel" => _world && _bankOpen ? "Bank" : null,
         _ => null,
     };
 
@@ -280,6 +282,7 @@ internal sealed class FakeGame
                 _connected = false;
                 _world = false;
                 _server = null;
+                _bankOpen = false;
                 break;
             case "gotoAndPlay" when args is ["Login"]:
                 ToLoginScreen();
@@ -293,6 +296,17 @@ internal sealed class FakeGame
                         lock (_lock)
                             _bankLoaded = _world;
                     });
+                break;
+            case "world.toggleBank":
+                // The game's bank panel opens, or closes if it was open.
+                _bankOpen = _world && !_bankOpen;
+                _note($"toggleBank {(_bankOpen ? "open" : "closed")}");
+                break;
+            case "world.sendLoadShopRequest" when args is [string shop]:
+                _note($"loadShop {shop}");
+                break;
+            case "world.showQuests" when args is [string quests, ..]:
+                _note($"showQuests {quests}");
                 break;
             case "world.myAvatar.pMC.artLoaded":
                 return Str("true");
@@ -354,6 +368,7 @@ internal sealed class FakeGame
         _account = false;
         _connDetail = null;
         _bankLoaded = false;
+        _bankOpen = false;
         _hp = MaxHp;
         _state = 1;
     }
