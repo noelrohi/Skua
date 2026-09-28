@@ -27,7 +27,8 @@ public sealed class PanelTests(AppEngine app)
                 nameof(CBOOtherOptionsViewModel), nameof(CBOptionsViewModel), nameof(ConsoleViewModel), nameof(CoreBotsViewModel), nameof(CurrentDropsViewModel),
                 nameof(FastTravelViewModel), nameof(GameOptionsViewModel), nameof(GoalsViewModel), nameof(GrabberViewModel), nameof(HotKeyItemViewModel),
                 nameof(HotKeysViewModel), nameof(JumpViewModel), nameof(JunkItemsViewModel), nameof(LoaderViewModel), nameof(LogTabViewModel), nameof(LogsViewModel),
-                nameof(ManagerAccountsViewModel), nameof(ManagerMainViewModel), nameof(NotifyDropViewModel), nameof(PluginsViewModel), nameof(RunningViewModel),
+                nameof(ManagerAccountsViewModel), nameof(ManagerMainViewModel), nameof(NotifyDropViewModel), nameof(PacketInterceptorViewModel),
+                nameof(PacketLoggerViewModel), nameof(PacketSpammerViewModel), nameof(PluginsViewModel), nameof(RunningViewModel),
                 nameof(RuntimeHelpersViewModel), nameof(ScriptLoaderViewModel), nameof(ScriptRepoViewModel), nameof(ScriptStatsViewModel), nameof(UpdatesViewModel),
             ],
             ViewLocator.ViewModelTypes.Select(t => t.Name).Order(StringComparer.Ordinal));
@@ -67,16 +68,15 @@ public sealed class PanelTests(AppEngine app)
         List<MenuItem> leaves = Leaves(menu.Items.OfType<MenuItem>()).ToList();
         Assert.Equal(
             [
-                "Application", "Application Themes", "Bank", "Console", "CoreBots", "Current Drops", "Fast Travel", "Game", "Grabber", "HotKeys", "Junk Items",
-                "Loader", "Logs", "Runtime", "Scripts", "Skills", "Stats", "View Plugins",
+                "Application", "Application Themes", "Bank", "Console", "CoreBots", "Current Drops", "Fast Travel", "Game", "Grabber", "HotKeys", "Interceptor",
+                "Junk Items", "Loader", "Logger", "Logs", "Runtime", "Scripts", "Skills", "Spammer", "Stats", "View Plugins",
             ],
             leaves.Where(i => i.IsEnabled).Select(i => (string)i.Header!).Order(StringComparer.Ordinal));
-        Assert.Contains(leaves, i => (string)i.Header! == "Spammer" && !i.IsEnabled);
         List<NativeMenuItem> nativeLeaves = native.Items.OfType<NativeMenuItem>().SelectMany(i => i.Menu!.Items.OfType<NativeMenuItem>()).ToList();
         Assert.Equal(
             [
-                "Application", "Application Themes", "Console", "CoreBots", "Current Drops", "Fast Travel", "Game", "Grabber", "HotKeys", "Junk Items", "Loader",
-                "Runtime", "Show Bank", "Show Logs", "Show Scripts", "Show Skills", "Stats", "View Plugins",
+                "Application", "Application Themes", "Console", "CoreBots", "Current Drops", "Fast Travel", "Game", "Grabber", "HotKeys", "Interceptor",
+                "Junk Items", "Loader", "Logger", "Runtime", "Show Bank", "Show Logs", "Show Scripts", "Show Skills", "Spammer", "Stats", "View Plugins",
             ],
             nativeLeaves.Where(i => i.IsEnabled).Select(i => i.Header!).Order(StringComparer.Ordinal));
         Assert.Equal(menu.Items.OfType<MenuItem>().Select(i => (string)i.Header!), native.Items.OfType<NativeMenuItem>().Select(i => i.Header));

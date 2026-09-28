@@ -1,0 +1,96 @@
+<!-- Ported from Skua.WPF/Views/PacketSpammerView.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.PacketSpammerView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:PacketSpammerViewModel">
+    <UserControl.Styles>
+        <Style Selector="StackPanel#Actions > :is(ContentControl)">
+            <Setter Property="Margin" Value="3" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="StackPanel#Actions > TextBox">
+            <Setter Property="Margin" Value="3" />
+        </Style>
+    </UserControl.Styles>
+    <Grid Margin="6" ColumnDefinitions="3*,*" RowDefinitions="*,Auto">
+        <ListBox
+            x:Name="Packets"
+            Grid.Row="0"
+            Grid.Column="0"
+            Margin="0,0,3,3"
+            ItemsSource="{Binding Packets}"
+            SelectedIndex="{Binding SelectedIndex}" />
+        <ScrollViewer
+            Grid.Row="0"
+            Grid.Column="1"
+            HorizontalScrollBarVisibility="Disabled"
+            VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="Actions">
+                <Button
+                    x:Name="Add"
+                    Command="{Binding AddPacketCommand}"
+                    Content="Add"
+                    IsEnabled="{Binding !SpammerCommand.IsRunning}" />
+                <Button
+                    x:Name="Remove"
+                    Command="{Binding RemovePacketCommand}"
+                    Content="Remove"
+                    IsEnabled="{Binding !SpammerCommand.IsRunning}" />
+                <Button
+                    x:Name="ClearPackets"
+                    Command="{Binding ClearPacketsCommand}"
+                    Content="Clear"
+                    IsEnabled="{Binding !SpammerCommand.IsRunning}" />
+                <Button
+                    Command="{Binding LoadSpammerCommand}"
+                    Content="Load"
+                    IsEnabled="{Binding !SpammerCommand.IsRunning}" />
+                <Button
+                    Command="{Binding SaveSpammerCommand}"
+                    Content="Save"
+                    IsEnabled="{Binding !SpammerCommand.IsRunning}" />
+                <TextBox
+                    x:Name="Delay"
+                    InnerRightContent="ms"
+                    IsEnabled="{Binding !SpammerCommand.IsRunning}"
+                    PlaceholderText="Delay"
+                    Text="{Binding SpamDelay}"
+                    ToolTip.Tip="The delay between packets, in milliseconds." />
+                <Button
+                    x:Name="Start"
+                    Command="{Binding ToggleSpammerCommand}"
+                    ToolTip.Tip="Sends the list's packets in turn, over and over, until stopped.">
+                    <Panel>
+                        <TextBlock IsVisible="{Binding !SpammerCommand.IsRunning}" Text="Start" />
+                        <TextBlock IsVisible="{Binding SpammerCommand.IsRunning}" Text="Stop" />
+                    </Panel>
+                </Button>
+                <CheckBox
+                    x:Name="SendToClient"
+                    Content="Send to Client"
+                    IsChecked="{Binding SendToClient}"
+                    ToolTip.Tip="Sends the packets to the game, as if the server had sent them, instead of to the server." />
+            </StackPanel>
+        </ScrollViewer>
+        <TextBox
+            x:Name="PacketText"
+            Grid.Row="1"
+            Grid.Column="0"
+            Margin="0,3,3,0"
+            PlaceholderText="Packet"
+            Text="{Binding PacketText}" />
+        <Button
+            x:Name="Send"
+            Grid.Row="1"
+            Grid.Column="1"
+            Margin="3,3,0,0"
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Center"
+            Command="{Binding SendPacketCommand}"
+            Content="Send"
+            IsEnabled="{Binding !SpammerCommand.IsRunning}" />
+    </Grid>
+</UserControl>

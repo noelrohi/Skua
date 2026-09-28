@@ -1,0 +1,132 @@
+<!-- Ported from Skua.WPF/Views/PacketInterceptorView.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.PacketInterceptorView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:views="using:Skua.Avalonia.Views"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:PacketInterceptorViewModel">
+    <UserControl.Styles>
+        <Style Selector="Border.legend">
+            <Setter Property="Height" Value="30" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlHighlightAccentBrush}" />
+        </Style>
+        <Style Selector="Border.legend > TextBlock">
+            <Setter Property="Width" Value="70" />
+            <Setter Property="Margin" Value="3,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextAlignment" Value="Center" />
+        </Style>
+        <!-- Each packet's row is coloured by its direction, as the legend shows. -->
+        <Style x:DataType="vms:InterceptedPacketViewModel" Selector="ListBox#Packets > ListBoxItem">
+            <Setter Property="Background" Value="{Binding Outbound, Converter={x:Static views:PacketInterceptorView.DirectionBrushes}}" />
+        </Style>
+    </UserControl.Styles>
+    <Grid Margin="6" ColumnDefinitions="2*,*" RowDefinitions="Auto,Auto,Auto,*">
+        <Grid Grid.Row="0" Grid.Column="0" Margin="0,0,3,3" ColumnDefinitions="*,Auto">
+            <ComboBox
+                x:Name="Servers"
+                Grid.Column="0"
+                HorizontalAlignment="Stretch"
+                ItemsSource="{Binding ServerList}"
+                PlaceholderText="Server"
+                SelectedItem="{Binding SelectedServer}" />
+            <Button
+                x:Name="Connect"
+                Grid.Column="1"
+                Width="110"
+                Margin="6,0,0,0"
+                HorizontalContentAlignment="Center"
+                ToolTip.Tip="Reconnects the game to the selected server through the interceptor, or disconnects it.">
+                <Panel>
+                    <TextBlock IsVisible="{Binding !Running}" Text="Connect" />
+                    <TextBlock IsVisible="{Binding Running}" Text="Disconnect" />
+                </Panel>
+            </Button>
+        </Grid>
+        <TextBox
+            x:Name="FilterSearchBox"
+            Grid.Row="0"
+            Grid.Column="1"
+            Margin="3,0,0,3"
+            PlaceholderText="Search filters" />
+        <TextBox
+            x:Name="SearchBox"
+            Grid.Row="1"
+            Grid.Column="0"
+            Margin="0,0,3,3"
+            PlaceholderText="Search packets..." />
+        <ScrollViewer
+            Grid.Row="1"
+            Grid.RowSpan="3"
+            Grid.Column="1"
+            Margin="3,0,0,0"
+            HorizontalScrollBarVisibility="Disabled"
+            VerticalScrollBarVisibility="Auto">
+            <ItemsControl x:Name="Filters">
+                <ItemsControl.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Command="{Binding ClearFiltersCommand}" Header="Clear Filters" />
+                    </ContextMenu>
+                </ItemsControl.ContextMenu>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vms:PacketLogFilterViewModel">
+                        <CheckBox
+                            Margin="0,1"
+                            HorizontalAlignment="Stretch"
+                            Content="{Binding Content}"
+                            IsChecked="{Binding IsChecked}" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+        <Grid Grid.Row="2" Grid.Column="0" Margin="0,3,3,3" ColumnDefinitions="Auto,*,Auto">
+            <ToggleButton
+                x:Name="Logging"
+                Grid.Column="0"
+                Margin="0,0,3,0"
+                Content="Log Packets"
+                IsChecked="{Binding IsLogging}" />
+            <StackPanel Grid.Column="1" HorizontalAlignment="Center" Orientation="Horizontal">
+                <Border
+                    Background="{x:Static views:PacketInterceptorView.OutboundBrush}"
+                    BorderThickness="2,2,1,2"
+                    Classes="legend"
+                    CornerRadius="4,0,0,4">
+                    <TextBlock Text="Outbound" />
+                </Border>
+                <Border
+                    Background="{x:Static views:PacketInterceptorView.InboundBrush}"
+                    BorderThickness="1,2,1,2"
+                    Classes="legend">
+                    <TextBlock Text="Inbound" />
+                </Border>
+                <Border
+                    Background="{x:Static views:PacketInterceptorView.BlockedBrush}"
+                    BorderThickness="1,2,2,2"
+                    Classes="legend"
+                    CornerRadius="0,4,4,0">
+                    <TextBlock Text="Blocked" />
+                </Border>
+            </StackPanel>
+            <Button
+                x:Name="Clear"
+                Grid.Column="2"
+                Command="{Binding ClearPacketsCommand}"
+                Content="Clear" />
+        </Grid>
+        <ListBox
+            x:Name="Packets"
+            Grid.Row="3"
+            Grid.Column="0"
+            Margin="0,3,3,0"
+            ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+            SelectionMode="Multiple,Toggle">
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vms:InterceptedPacketViewModel">
+                    <TextBlock Text="{Binding Packet}" TextWrapping="Wrap" />
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </Grid>
+</UserControl>
