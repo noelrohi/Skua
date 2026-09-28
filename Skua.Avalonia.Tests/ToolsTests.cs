@@ -32,29 +32,35 @@ public sealed class ToolsTests(AppEngine app)
         try
         {
             (Window window, LoaderView loader) = await OpenAsync<LoaderView>("Tools", "Loader");
-            LoaderViewModel model = (LoaderViewModel)loader.DataContext!;
+            try
+            {
+                LoaderViewModel model = (LoaderViewModel)loader.DataContext!;
 
-            loader.FindControl<TextBox>("InputIDs")!.Text = "5";
-            loader.FindControl<ComboBox>("Kind")!.SelectedIndex = 0;
-            Ui.Click(loader.FindControl<Button>("Load")!);
-            await WaitForCallAsync("loadShop 5");
+                loader.FindControl<TextBox>("InputIDs")!.Text = "5";
+                loader.FindControl<ComboBox>("Kind")!.SelectedIndex = 0;
+                Ui.Click(loader.FindControl<Button>("Load")!);
+                await WaitForCallAsync("loadShop 5");
 
-            loader.FindControl<ComboBox>("Kind")!.SelectedIndex = 1;
-            loader.FindControl<TextBox>("InputIDs")!.Text = "1001, 1003";
-            Ui.Click(loader.FindControl<Button>("Load")!);
-            await WaitForCallAsync("showQuests 1001,1003");
+                loader.FindControl<ComboBox>("Kind")!.SelectedIndex = 1;
+                loader.FindControl<TextBox>("InputIDs")!.Text = "1001, 1003";
+                Ui.Click(loader.FindControl<Button>("Load")!);
+                await WaitForCallAsync("showQuests 1001,1003");
 
-            ListBox quests = loader.FindControl<ListBox>("Quests")!;
-            await Ui.PumpUntilAsync(() => quests.ItemCount == 3, "the quests read from the file");
-            loader.FindControl<TextBox>("SearchBox")!.Text = "chest";
-            await Ui.PumpUntilAsync(() => quests.ItemCount == 1, "the search to keep one quest");
-            quests.SelectedIndex = 0;
-            await Ui.PumpUntilAsync(() => loader.SelectedQuests.Count == 1, "the selection");
-            Assert.True(loader.FindControl<Button>("FakeComplete")!.IsEffectivelyEnabled);
-            Ui.Click(loader.FindControl<Button>("LoadQuests")!);
-            await WaitForCallAsync("showQuests 1002");
-            Assert.Equal(3, model.QuestIDs.Count);
-            window.Close();
+                ListBox quests = loader.FindControl<ListBox>("Quests")!;
+                await Ui.PumpUntilAsync(() => quests.ItemCount == 3, "the quests read from the file");
+                loader.FindControl<TextBox>("SearchBox")!.Text = "chest";
+                await Ui.PumpUntilAsync(() => quests.ItemCount == 1, "the search to keep one quest");
+                quests.SelectedIndex = 0;
+                await Ui.PumpUntilAsync(() => loader.SelectedQuests.Count == 1, "the selection");
+                Assert.True(loader.FindControl<Button>("FakeComplete")!.IsEffectivelyEnabled);
+                Ui.Click(loader.FindControl<Button>("LoadQuests")!);
+                await WaitForCallAsync("showQuests 1002");
+                Assert.Equal(3, model.QuestIDs.Count);
+            }
+            finally
+            {
+                window.Close();
+            }
         }
         finally
         {
@@ -71,27 +77,33 @@ public sealed class ToolsTests(AppEngine app)
         {
             await Ui.PumpUntilAsync(() => app.Get<IScriptInventory>().Items.Count > 0, "the inventory to load");
             (Window window, GrabberView grabber) = await OpenAsync<GrabberView>("Tools", "Grabber");
-            GrabberViewModel model = (GrabberViewModel)grabber.DataContext!;
-            model.SelectedTab = model.GrabberTabs.Single(t => t.Title == "Inventory");
-            GrabberListView list = grabber.FindControl<GrabberListView>("List")!;
-            await Ui.PumpUntilAsync(() => list.DataContext == model.SelectedTab, "the Inventory tab");
+            try
+            {
+                GrabberViewModel model = (GrabberViewModel)grabber.DataContext!;
+                model.SelectedTab = model.GrabberTabs.Single(t => t.Title == "Inventory");
+                GrabberListView list = grabber.FindControl<GrabberListView>("List")!;
+                await Ui.PumpUntilAsync(() => list.DataContext == model.SelectedTab, "the Inventory tab");
 
-            Ui.Click(list.FindControl<Button>("Grab")!);
-            ListBox items = list.FindControl<ListBox>("Items")!;
-            await Ui.PumpUntilAsync(() => items.ItemCount == 3, "the grabbed inventory");
-            Assert.Equal(["Default Sword", "Healer", "Treasure Chest"], items.Items.OfType<InventoryItem>().Select(i => i.Name).Order());
+                Ui.Click(list.FindControl<Button>("Grab")!);
+                ListBox items = list.FindControl<ListBox>("Items")!;
+                await Ui.PumpUntilAsync(() => items.ItemCount == 3, "the grabbed inventory");
+                Assert.Equal(["Default Sword", "Healer", "Treasure Chest"], items.Items.OfType<InventoryItem>().Select(i => i.Name).Order());
 
-            list.FindControl<TextBox>("SearchBox")!.Text = "chest";
-            await Ui.PumpUntilAsync(() => items.ItemCount == 1, "the search to keep one item");
-            items.SelectedIndex = 0;
-            PropertyGrid properties = list.FindControl<PropertyGrid>("Properties")!;
-            await Ui.PumpUntilAsync(() => Value(properties, "Name") == "Treasure Chest", "the item's properties");
-            Assert.Equal("5", Value(properties, "Quantity"));
-            Assert.Equal("1000", Value(properties, "Max Stack"));
-            Assert.Contains(PropertyGrid.Rows(items.SelectedItem), r => r is { Name: "Char Item ID", Value: 103 });
-            // The inventory's tasks run on the selection.
-            Assert.Equal([items.SelectedItem!], list.SelectedItems);
-            window.Close();
+                list.FindControl<TextBox>("SearchBox")!.Text = "chest";
+                await Ui.PumpUntilAsync(() => items.ItemCount == 1, "the search to keep one item");
+                items.SelectedIndex = 0;
+                PropertyGrid properties = list.FindControl<PropertyGrid>("Properties")!;
+                await Ui.PumpUntilAsync(() => Value(properties, "Name") == "Treasure Chest", "the item's properties");
+                Assert.Equal("5", Value(properties, "Quantity"));
+                Assert.Equal("1000", Value(properties, "Max Stack"));
+                Assert.Contains(PropertyGrid.Rows(items.SelectedItem), r => r is { Name: "Char Item ID", Value: 103 });
+                // The inventory's tasks run on the selection.
+                Assert.Equal([items.SelectedItem!], list.SelectedItems);
+            }
+            finally
+            {
+                window.Close();
+            }
         }
         finally
         {
@@ -104,13 +116,19 @@ public sealed class ToolsTests(AppEngine app)
     {
         string id = Guid.NewGuid().ToString("N")[..8];
         (Window window, ConsoleView console) = await OpenAsync<ConsoleView>("Tools", "Console");
+        try
+        {
 
-        console.FindControl<TextBox>("Snippet")!.Text = $"Bot.Log(\"console {id}\");";
-        Ui.Click(console.FindControl<Button>("Run")!);
+            console.FindControl<TextBox>("Snippet")!.Text = $"Bot.Log(\"console {id}\");";
+            Ui.Click(console.FindControl<Button>("Run")!);
 
-        using EngineConnection connection = await ConnectAsync();
-        await connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text == $"console {id}");
-        window.Close();
+            using EngineConnection connection = await ConnectAsync();
+            await connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text == $"console {id}");
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 
     [AvaloniaFact]
@@ -138,14 +156,20 @@ public sealed class ToolsTests(AppEngine app)
     public async Task Stats_shows_the_Scripts_counts_as_they_change_on_other_threads()
     {
         (Window window, ScriptStatsView stats) = await OpenAsync<ScriptStatsView>("Tools", "Stats");
-        IScriptBotStats model = app.Get<IScriptBotStats>();
-        int kills = model.Kills + 3;
+        try
+        {
+            IScriptBotStats model = app.Get<IScriptBotStats>();
+            int kills = model.Kills + 3;
 
-        await Task.Run(() => model.Kills = kills, Ct);
+            await Task.Run(() => model.Kills = kills, Ct);
 
-        await Ui.PumpUntilAsync(() => stats.FindControl<TextBlock>("Kills")!.Text == kills.ToString(), "the kills");
-        await Ui.PumpUntilAsync(() => stats.FindControl<TextBlock>("Time")!.Text is { Length: 8 }, "the run time");
-        window.Close();
+            await Ui.PumpUntilAsync(() => stats.FindControl<TextBlock>("Kills")!.Text == kills.ToString(), "the kills");
+            await Ui.PumpUntilAsync(() => stats.FindControl<TextBlock>("Time")!.Text is { Length: 8 }, "the run time");
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 
     [AvaloniaFact]
@@ -157,25 +181,31 @@ public sealed class ToolsTests(AppEngine app)
         {
             await Ui.PumpUntilAsync(() => app.Get<IScriptInventory>().Items.Count > 0, "the inventory to load");
             (Window window, JunkItemsView junk) = await OpenAsync<JunkItemsView>("Tools", "Junk Items");
-            JunkItemsViewModel model = (JunkItemsViewModel)junk.DataContext!;
-            ListBox items = junk.FindControl<ListBox>("Items")!;
-            await Ui.PumpUntilAsync(() => items.Items.OfType<JunkItemEntry>().Any(e => e.Name == "Treasure Chest"), "the inventory's items", TimeSpan.FromSeconds(60));
-
-            junk.FindControl<TextBox>("SearchBox")!.Text = "treasure";
-            await Ui.PumpUntilAsync(() => items.ItemCount == 1, "the search to keep one item");
-            JunkItemEntry chest = items.Items.OfType<JunkItemEntry>().Single();
-            chest.IsSelected = true;
             try
             {
-                model.MarkAsJunkCommand.Execute(null);
-                await Ui.PumpUntilAsync(() => junk.FindControl<TextBlock>("Total")!.Text == "Total Junk: 1", "the junk count");
-                Assert.True(app.Get<IJunkService>().IsJunk(chest.ID));
+                JunkItemsViewModel model = (JunkItemsViewModel)junk.DataContext!;
+                ListBox items = junk.FindControl<ListBox>("Items")!;
+                await Ui.PumpUntilAsync(() => items.Items.OfType<JunkItemEntry>().Any(e => e.Name == "Treasure Chest"), "the inventory's items", TimeSpan.FromSeconds(60));
+
+                junk.FindControl<TextBox>("SearchBox")!.Text = "treasure";
+                await Ui.PumpUntilAsync(() => items.ItemCount == 1, "the search to keep one item");
+                JunkItemEntry chest = items.Items.OfType<JunkItemEntry>().Single();
+                chest.IsSelected = true;
+                try
+                {
+                    model.MarkAsJunkCommand.Execute(null);
+                    await Ui.PumpUntilAsync(() => junk.FindControl<TextBlock>("Total")!.Text == "Total Junk: 1", "the junk count");
+                    Assert.True(app.Get<IJunkService>().IsJunk(chest.ID));
+                }
+                finally
+                {
+                    model.UnmarkAllJunkCommand.Execute(null);
+                }
             }
             finally
             {
-                model.UnmarkAllJunkCommand.Execute(null);
+                window.Close();
             }
-            window.Close();
         }
         finally
         {
@@ -214,22 +244,28 @@ public sealed class ToolsTests(AppEngine app)
 
             Leaf(menu, "View Plugins").Command!.Execute(null);
             (Window window, PluginsView view) = await ShownAsync<PluginsView>("Plugins");
-            ItemsControl list = view.FindControl<ItemsControl>("Plugins")!;
-            await Ui.PumpUntilAsync(() => Names(list).Contains($"Good {id}") && Names(list).Contains($"WPF menu {id}"), "the loaded plugins");
-            Assert.DoesNotContain($"WPF window {id}", Names(list));
+            try
+            {
+                ItemsControl list = view.FindControl<ItemsControl>("Plugins")!;
+                await Ui.PumpUntilAsync(() => Names(list).Contains($"Good {id}") && Names(list).Contains($"WPF menu {id}"), "the loaded plugins");
+                Assert.DoesNotContain($"WPF window {id}", Names(list));
 
-            Leaf(menu, $"Hello {id}").Command!.Execute(null);
-            await connection.WaitForLogsAsync(LogKind.Debug, 1, e => e.Text == $"hello from {id}");
-            // Its action needs WPF: the item logs why, and the app runs on.
-            Leaf(menu, $"Open WPF {id}").Command!.Execute(null);
-            string menuFailed = (await connection.WaitForLogsAsync(LogKind.Debug, 1, e => e.Text!.Contains($"'Open WPF {id}' failed", StringComparison.Ordinal)))[0].Text!;
-            Assert.EndsWith("It needs WPF, which only Skua on Windows has.", menuFailed);
+                Leaf(menu, $"Hello {id}").Command!.Execute(null);
+                await connection.WaitForLogsAsync(LogKind.Debug, 1, e => e.Text == $"hello from {id}");
+                // Its action needs WPF: the item logs why, and the app runs on.
+                Leaf(menu, $"Open WPF {id}").Command!.Execute(null);
+                string menuFailed = (await connection.WaitForLogsAsync(LogKind.Debug, 1, e => e.Text!.Contains($"'Open WPF {id}' failed", StringComparison.Ordinal)))[0].Text!;
+                Assert.EndsWith("It needs WPF, which only Skua on Windows has.", menuFailed);
 
-            // Unloading a plugin takes its item out of the menus that are open.
-            plugins.Unload($"Good {id}");
-            await Ui.PumpUntilAsync(() => !pluginsMenu.Items.OfType<MenuItem>().Any(i => (string)i.Header! == $"Hello {id}"), "the unloaded plugin's item to go");
-            await Ui.PumpUntilAsync(() => !Names(list).Contains($"Good {id}"), "the unloaded plugin to leave the panel");
-            window.Close();
+                // Unloading a plugin takes its item out of the menus that are open.
+                plugins.Unload($"Good {id}");
+                await Ui.PumpUntilAsync(() => !pluginsMenu.Items.OfType<MenuItem>().Any(i => (string)i.Header! == $"Hello {id}"), "the unloaded plugin's item to go");
+                await Ui.PumpUntilAsync(() => !Names(list).Contains($"Good {id}"), "the unloaded plugin to leave the panel");
+            }
+            finally
+            {
+                window.Close();
+            }
         }
         finally
         {
