@@ -25,6 +25,7 @@ internal sealed class MainWindow : Window
         MinHeight = 200;
         Background = Brushes.Black;
         GameView view = new(flash);
+        view.LiveChanged += reason => log.DebugLog($"[gameview] {reason}");
         Content = view;
         Opened += (_, _) => view.Focus();
 

@@ -13,11 +13,14 @@ internal static partial class WindowOcclusion
     private static readonly IntPtr OcclusionState = sel_registerName("occlusionState");
 
     /// <summary>True when AppKit reports no part of the window visible; false off macOS or without a native window (e.g. headless).</summary>
-    public static bool IsOccluded(Window window)
+    public static bool IsOccluded(Window window) => State(window) is { } state && (state & Visible) == 0;
+
+    /// <summary>The window's raw <c>NSWindowOcclusionState</c>, or null off macOS or without a native window.</summary>
+    public static nuint? State(Window window)
     {
         if (!OperatingSystem.IsMacOS() || window.TryGetPlatformHandle() is not IMacOSTopLevelPlatformHandle { NSWindow: var nsWindow } || nsWindow == IntPtr.Zero)
-            return false;
-        return (objc_msgSend_nuint(nsWindow, OcclusionState) & Visible) == 0;
+            return null;
+        return objc_msgSend_nuint(nsWindow, OcclusionState);
     }
 
     [LibraryImport("/usr/lib/libobjc.A.dylib", StringMarshalling = StringMarshalling.Utf8)]

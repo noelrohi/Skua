@@ -151,6 +151,8 @@ public sealed class GameViewTests(AppEngine app)
     public async Task Minimising_the_window_goes_headless_and_restoring_it_goes_live()
     {
         (Window window, GameView view) = await ShowAsync(958, 550);
+        List<string> changes = [];
+        view.LiveChanged += changes.Add;
         Assert.True(view.IsLive);
         Assert.Contains("\"live\":true", app.Flash.Stats(Timeout));
         int from = AppEngine.Calls().Length;
@@ -164,6 +166,8 @@ public sealed class GameViewTests(AppEngine app)
         await WaitForCallsAsync(from, c => c.Contains("view live"));
         Assert.True(view.IsLive);
         Assert.Contains("\"live\":true", app.Flash.Stats(Timeout));
+        // The debug log says why, so a Game View that stops can be told apart from a covered window.
+        Assert.Equal(["headless: the window is minimised", "live"], changes);
         window.Close();
     }
 

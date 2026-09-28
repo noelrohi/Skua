@@ -32,7 +32,6 @@ public sealed class GameView : Control
     private long _lastNumber;
     private bool _live;
     private bool _framePending;
-    private bool _occluded;
     private Window? _window;
     private bool _pointerInside;
     private bool _gameFocused;
@@ -130,19 +129,36 @@ public sealed class GameView : Control
             UpdateLive();
     }
 
+    /// <summary>Raised when the view goes live or stops being live, with why, e.g. <c>headless: occluded (occlusionState 0x2000)</c>.</summary>
+    public event Action<string>? LiveChanged;
+
     /// <summary>Decides again whether the view is live: in a window that is visible, not minimised and not fully covered.</summary>
     public void UpdateLive()
     {
-        if (_window is not null)
-            _occluded = WindowOcclusion.IsOccluded(_window);
-        SetLive(_window is { IsVisible: true, WindowState: not WindowState.Minimized } && !_occluded);
+        if (_window is null)
+        {
+            SetLive(false, "headless: not in a window");
+            return;
+        }
+        nuint? state = WindowOcclusion.State(_window);
+        bool occluded = WindowOcclusion.IsOccluded(_window);
+        string occlusion = state is { } s ? $" (occlusionState 0x{s:x})" : "";
+        if (!_window.IsVisible)
+            SetLive(false, "headless: the window is hidden" + occlusion);
+        else if (_window.WindowState == WindowState.Minimized)
+            SetLive(false, "headless: the window is minimised" + occlusion);
+        else if (occluded)
+            SetLive(false, "headless: the window is fully covered" + occlusion);
+        else
+            SetLive(true, "live" + occlusion);
     }
 
-    private void SetLive(bool live)
+    private void SetLive(bool live, string reason = "headless: left the window")
     {
         if (live == _live)
             return;
         _live = live;
+        LiveChanged?.Invoke(reason);
         _flash.SetLive(live);
         if (live)
             RequestFrame();
