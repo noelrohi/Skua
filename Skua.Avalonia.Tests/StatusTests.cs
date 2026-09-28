@@ -161,6 +161,48 @@ public sealed class StatusTests(AppEngine app)
         await PumpUntilAsync(() => shown.Model.GameState == GameState.LoginScreen, "the login screen");
     }
 
+    [AvaloniaFact]
+    public async Task A_launch_from_the_Skua_Manager_logs_in_on_its_server_then_starts_its_Script()
+    {
+        await using Shown shown = await ShowAsync();
+        string script = Path.Combine(AppEngine.SkuaDir, $"Launched{Guid.NewGuid():N}.cs");
+        File.WriteAllText(script, """
+            using System.Threading;
+            using Skua.Core.Interfaces;
+
+            public class TestScript
+            {
+                public void ScriptMain(IScriptInterface bot)
+                {
+                    while (!bot.ShouldExit)
+                        Thread.Sleep(50);
+                }
+            }
+            """);
+        try
+        {
+            // What the app does once its window shows, given --server and --script.
+            Task launch = shown.Model.LaunchAsync("Sir Ver", script);
+            await PumpUntilAsync(() => launch.IsCompleted, "the launch");
+            await launch;
+
+            Assert.False(shown.Model.MessageIsError, shown.Model.Message);
+            Assert.Equal($"Logged in as SkuaTester (the Test Account) on Sir Ver. Started {Path.GetFileName(script)}.", shown.Model.Message);
+            StatusDto status = await app.Engine.Rpc.StatusAsync(TestContext.Current.CancellationToken);
+            Assert.Equal(GameState.Playing, status.Game.State);
+            Assert.Equal("Sir Ver", status.Game.Server);
+            Assert.Equal(script, status.Script.Run?.Script);
+        }
+        finally
+        {
+            Task stop = app.Engine.Rpc.ScriptStopAsync(TestContext.Current.CancellationToken);
+            await PumpUntilAsync(() => stop.IsCompleted, "the Script to stop");
+            File.Delete(script);
+        }
+        Click(shown.Window, shown.Login.LogOutButton);
+        await PumpUntilAsync(() => shown.Model.GameState == GameState.LoginScreen, "the login screen");
+    }
+
     /// <summary>A window with the login controls and the status strip, over the app's Engine at its login screen with the servers listed.</summary>
     private async Task<Shown> ShowAsync()
     {
