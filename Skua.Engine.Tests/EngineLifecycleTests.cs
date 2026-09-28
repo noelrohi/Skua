@@ -15,6 +15,8 @@ public class EngineLifecycleTests
 
         Assert.Equal("default", status.Engine.Name);
         Assert.Equal(ControlProtocol.Version, status.Engine.Protocol);
+        Assert.Equal(EngineHost.Engine, status.Engine.Host);
+        Assert.Equal(EngineHost.Engine, connection.Hello.Host);
         Assert.False(string.IsNullOrEmpty(status.Engine.Build));
         Assert.True(status.Engine.Pid > 0);
         Assert.True(status.Game.GameHostUp);

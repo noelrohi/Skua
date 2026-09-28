@@ -1,12 +1,24 @@
 namespace Skua.Control;
 
-public sealed record HelloResult(int Protocol, string Build, string EngineName, int Pid);
+/// <summary>The reply to <c>hello</c>.</summary>
+/// <remarks><c>Host</c> is null from an Engine older than protocol 10: <c>skua-engine</c>, or an early Mac App that <c>shutdown</c> still stopped.</remarks>
+public sealed record HelloResult(int Protocol, string Build, string EngineName, int Pid, EngineHost? Host = null);
+
+/// <summary>Who hosts an Engine (ADR 0006): only <c>skua-engine</c>'s may be stopped over the Control Surface.</summary>
+public enum EngineHost
+{
+    /// <summary><c>skua-engine</c>, which the CLI and MCP auto-start and <c>skua engine stop</c> stops.</summary>
+    Engine,
+
+    /// <summary>The Mac App, which owns it: only quitting the app stops it.</summary>
+    App,
+}
 
 /// <summary>The reply to <c>status</c>. Fields that don't apply yet are null.</summary>
 /// <param name="PendingDialogs">The pending Questions, oldest first, as <c>dialogs</c> lists them.</param>
 public sealed record StatusDto(EngineInfoDto Engine, GameStatusDto Game, ScriptStatusDto Script, IReadOnlyList<QuestionDto> PendingDialogs);
 
-public sealed record EngineInfoDto(string Name, string Build, int Protocol, double UptimeSec, int Pid);
+public sealed record EngineInfoDto(string Name, string Build, int Protocol, double UptimeSec, int Pid, EngineHost Host);
 
 /// <param name="GameHostUp">Whether the Game Host process is running.</param>
 /// <param name="State">The game state, as the <c>game.state</c> events report it.</param>

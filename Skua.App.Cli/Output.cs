@@ -17,7 +17,7 @@ internal static class Output
             ? $"Game Host up, {Name(game.State)}{(game.Server is { } server ? $" on {server}" : "")}"
             : "Game Host down";
         string text = $"""
-            Engine  {engine.Name} (pid {engine.Pid}, up {engine.UptimeSec:0} s, build {engine.Build}, protocol {engine.Protocol})
+            Engine  {engine.Name} ({(engine.Host == EngineHost.App ? "in the Skua app, " : "")}pid {engine.Pid}, up {engine.UptimeSec:0} s, build {engine.Build}, protocol {engine.Protocol})
             Game    {gameLine}
             Script  {ScriptLine(status.Script)}
             """;
@@ -313,11 +313,14 @@ internal static class Output
     public static string Engine(EngineStateDto engine) => engine.State switch
     {
         EngineState.Running when engine.Compatible == false =>
-            $"Engine '{engine.Name}' is running (pid {engine.Pid}, build {engine.Build}) on protocol {engine.Protocol}, not {ControlProtocol.Version}; run 'skua engine stop'.",
-        EngineState.Running => $"Engine '{engine.Name}' is running (pid {engine.Pid}, build {engine.Build}).",
+            $"Engine '{engine.Name}' is running{InApp(engine)} (pid {engine.Pid}, build {engine.Build}) on protocol {engine.Protocol}, not {ControlProtocol.Version}; "
+            + (engine.Host == EngineHost.App ? "quit the app." : "run 'skua engine stop'."),
+        EngineState.Running => $"Engine '{engine.Name}' is running{InApp(engine)} (pid {engine.Pid}, build {engine.Build}).",
         EngineState.StartingOrHung => $"Engine '{engine.Name}' is starting or hung; its socket {engine.Socket} doesn't answer.",
         _ => $"Engine '{engine.Name}' is stopped.",
     };
+
+    private static string InApp(EngineStateDto engine) => engine.Host == EngineHost.App ? " in the Skua app" : "";
 
     public static string ScriptSource(ScriptSourceResult result) => result.IsDefault
         ? $"{Source(result.Source)} (the default)"

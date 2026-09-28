@@ -11,9 +11,10 @@ public enum EngineState
 
 /// <summary>What <c>skua engine start|stop|status</c> report.</summary>
 /// <param name="Compatible">Whether the running Engine speaks this CLI's protocol version; null when none is running.</param>
-public sealed record EngineStateDto(string Name, EngineState State, int? Pid, string? Build, int? Protocol, bool? Compatible, string Socket);
+/// <param name="Host">Who hosts the running Engine; null when none is running, or for an Engine older than protocol 10.</param>
+public sealed record EngineStateDto(string Name, EngineState State, int? Pid, string? Build, int? Protocol, bool? Compatible, string Socket, EngineHost? Host);
 
-/// <summary><c>skua engine start|stop|status</c>: the Engine's lifetime, which only the CLI controls.</summary>
+/// <summary><c>skua engine start|stop|status</c>: the lifetime of <c>skua-engine</c>, which only the CLI controls; the Mac App's Engine stops with the app.</summary>
 internal static class EngineCommands
 {
     /// <summary>Long enough for the Engine to stop a Script cooperatively and close the Game Host.</summary>
@@ -40,8 +41,9 @@ internal static class EngineCommands
     }
 
     private static EngineStateDto Running(EngineEndpoint endpoint, EngineConnection connection) =>
-        new(endpoint.Name, EngineState.Running, connection.Hello.Pid, connection.Hello.Build, connection.Hello.Protocol, connection.IsCompatible, endpoint.SocketPath);
+        new(endpoint.Name, EngineState.Running, connection.Hello.Pid, connection.Hello.Build, connection.Hello.Protocol, connection.IsCompatible, endpoint.SocketPath,
+            connection.Hello.Host);
 
     private static EngineStateDto NotRunning(EngineEndpoint endpoint, EngineState state) =>
-        new(endpoint.Name, state, null, null, null, null, endpoint.SocketPath);
+        new(endpoint.Name, state, null, null, null, null, endpoint.SocketPath, null);
 }

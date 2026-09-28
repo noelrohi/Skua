@@ -6,7 +6,8 @@ namespace Skua.Engine.Tests;
 
 /// <summary>
 /// Stands in for an Engine from another build: it holds the lock, serves the socket and answers <c>hello</c> with another build and,
-/// by default, another protocol version. It answers nothing else but <c>shutdown</c> and <c>shutdown_if_idle</c>.
+/// by default, another protocol version. It answers nothing else but <c>shutdown</c> and <c>shutdown_if_idle</c>, which it refuses as the
+/// Mac App's Engine does when its host is <see cref="EngineHost.App"/>.
 /// </summary>
 public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
 {
@@ -18,6 +19,7 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
     private readonly int _protocol;
     private readonly bool _scriptRunning;
     private readonly bool _predatesShutdownIfIdle;
+    private readonly EngineHost? _host;
     private readonly EngineLock _lock;
     private readonly Socket _listener = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
     private readonly CancellationTokenSource _stop = new();
@@ -25,8 +27,11 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
 
     /// <param name="scriptRunning">Whether <c>shutdown_if_idle</c> refuses, as while a Script runs.</param>
     /// <param name="predatesShutdownIfIdle">Whether it is an Engine from before <c>shutdown_if_idle</c>, which doesn't have the method.</param>
-    public OtherVersionEngine(EngineSandbox sandbox, int protocol = OtherProtocol, bool scriptRunning = false, bool predatesShutdownIfIdle = false)
+    /// <param name="host">What its <c>hello</c> says hosts it; null, as from an Engine before protocol 10, by default.</param>
+    public OtherVersionEngine(
+        EngineSandbox sandbox, int protocol = OtherProtocol, bool scriptRunning = false, bool predatesShutdownIfIdle = false, EngineHost? host = null)
     {
+        _host = host;
         _endpoint = sandbox.Endpoint;
         _protocol = protocol;
         _scriptRunning = scriptRunning;
@@ -42,8 +47,11 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
 
     public bool ShutdownRequested => _stop.IsCancellationRequested;
 
+    /// <summary>Whether a client called <c>shutdown</c> or <c>shutdown_if_idle</c>, whether or not it was refused.</summary>
+    public bool ShutdownCalled { get; private set; }
+
     public Task<HelloResult> HelloAsync(int protocol, CancellationToken cancellationToken) =>
-        Task.FromResult(new HelloResult(_protocol, OtherBuild, _endpoint.Name, Environment.ProcessId));
+        Task.FromResult(new HelloResult(_protocol, OtherBuild, _endpoint.Name, Environment.ProcessId, _host));
 
     public Task<StatusDto> StatusAsync(CancellationToken cancellationToken)
     {
@@ -74,14 +82,23 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
 
     public Task ShutdownAsync(CancellationToken cancellationToken)
     {
+        ShutdownCalled = true;
+        if (_host == EngineHost.App)
+            throw new LocalRpcException($"The Skua app owns Engine '{_endpoint.Name}'; quit the app to stop it.")
+            {
+                ErrorCode = ErrorCodes.ToWire(ErrorCode.EngineOwnedByApp),
+            };
         _stop.Cancel();
         return Task.CompletedTask;
     }
 
     public Task ShutdownIfIdleAsync(CancellationToken cancellationToken)
     {
+        ShutdownCalled = true;
         if (_predatesShutdownIfIdle)
             throw new LocalRpcException("Method not found.") { ErrorCode = (int)StreamJsonRpc.Protocol.JsonRpcErrorCode.MethodNotFound };
+        if (_host == EngineHost.App)
+            return ShutdownAsync(cancellationToken);
         if (_scriptRunning)
             throw new LocalRpcException("Can't replace the Engine while a Script is running.")
             {

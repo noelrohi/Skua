@@ -98,7 +98,8 @@ public static class EngineClient
     /// Returns false when no Engine was running.
     /// </summary>
     /// <exception cref="ControlException">
-    /// <see cref="ErrorCode.EngineUnavailable"/> when the Engine is starting or hung; <see cref="ErrorCode.Timeout"/> when it doesn't stop in time.
+    /// <see cref="ErrorCode.EngineUnavailable"/> when the Engine is starting or hung; <see cref="ErrorCode.Timeout"/> when it doesn't stop in time;
+    /// <see cref="ErrorCode.EngineOwnedByApp"/> when the Mac App hosts it, which keeps running.
     /// </exception>
     public static async Task<bool> StopAsync(EngineEndpoint endpoint, TimeSpan timeout, CancellationToken cancellationToken = default)
     {
@@ -127,7 +128,7 @@ public static class EngineClient
 
     /// <summary>
     /// Stops the Engine behind <paramref name="connection"/> when it is from another build and idle, and returns whether it did. A busy one
-    /// is kept, with a notice, when it speaks this protocol version, and fails the connect when it doesn't.
+    /// is kept, with a notice, when it speaks this protocol version, and fails the connect when it doesn't. The Mac App's is never stopped.
     /// </summary>
     private static async Task<bool> ReplaceIfStaleAsync(EngineClientOptions options, EngineConnection connection, CancellationToken cancellationToken)
     {
@@ -136,6 +137,14 @@ public static class EngineClient
             return false;
 
         string staleEngine = $"Engine '{engine.EngineName}' from another build ({engine.Build}, protocol {engine.Protocol})";
+        if (engine.Host == EngineHost.App)
+        {
+            // It would refuse anyway; EnsureCompatible refuses an incompatible one, saying to quit the app.
+            if (connection.IsCompatible)
+                options.Notice?.Invoke($"{staleEngine} wasn't replaced: the Skua app hosts it; quit the app to replace it.");
+            return false;
+        }
+
         try
         {
             if (!await connection.ShutdownIfIdleAsync(cancellationToken))
@@ -166,8 +175,9 @@ public static class EngineClient
         return true;
     }
 
-    /// <summary>Waits until the Engine has released its lock.</summary>
-    private static async Task WaitUntilStoppedAsync(EngineEndpoint endpoint, TimeSpan timeout, CancellationToken cancellationToken)
+    /// <summary>Waits until the Engine has released its lock, e.g. after a <c>shutdown</c> request.</summary>
+    /// <exception cref="ControlException"><see cref="ErrorCode.Timeout"/> when it doesn't stop in time.</exception>
+    public static async Task WaitUntilStoppedAsync(EngineEndpoint endpoint, TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         Stopwatch waited = Stopwatch.StartNew();
         while (EngineLock.IsHeld(endpoint.LockPath))

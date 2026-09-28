@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Avalonia;
 using Skua.App.Mac;
@@ -31,6 +32,20 @@ catch (ControlException e)
     return EngineExitCodes.Usage;
 }
 
+// SIGTERM (and Ctrl-C in a terminal) quits as Cmd-Q does, without asking: the Engine stops cleanly after the window goes.
+App? app = null;
+bool quitEarly = false;
+void OnSignal(PosixSignalContext context)
+{
+    context.Cancel = true;
+    if (Volatile.Read(ref app) is { } running)
+        running.RequestQuit();
+    else
+        Volatile.Write(ref quitEarly, true);
+}
+using PosixSignalRegistration sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, OnSignal);
+using PosixSignalRegistration sigint = PosixSignalRegistration.Create(PosixSignal.SIGINT, OnSignal);
+
 // The Engine binds its socket before Avalonia starts any thread: the umask around bind is process-wide (ADR 0006).
 HostedEngine? engine = null;
 string? failure = null;
@@ -39,11 +54,13 @@ try
 {
     engine = HostedEngine.StartAsync(endpoint, new EngineHostOptions { Mode = EngineHostMode.App }).GetAwaiter().GetResult();
 }
+catch (EngineStartException e) when (e.ExitCode == EngineExitCodes.AlreadyRunning)
+{
+    // Another Engine holds the name: the app offers to take it over.
+}
 catch (EngineStartException e)
 {
-    failure = e.ExitCode == EngineExitCodes.AlreadyRunning
-        ? $"Another Skua Engine named '{endpoint.Name}' is already running, so this window can't start its own. Stop it with `skua engine stop{(endpoint.Name == EngineName.Default ? "" : $" --name {endpoint.Name}")}`, then open Skua again."
-        : e.Message;
+    failure = e.Message;
     exitCode = e.ExitCode;
 }
 catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Net.Sockets.SocketException)
@@ -53,8 +70,11 @@ catch (Exception e) when (e is IOException or UnauthorizedAccessException or Sys
     exitCode = 1;
 }
 
-AppBuilder.Configure(() => new App(engine, failure)).UsePlatformDetect().LogToTrace().StartWithClassicDesktopLifetime([]);
+App skua = new(endpoint, engine, failure);
+Volatile.Write(ref app, skua);
+if (Volatile.Read(ref quitEarly))
+    skua.RequestQuit();
+AppBuilder.Configure(() => skua).UsePlatformDetect().LogToTrace().StartWithClassicDesktopLifetime([]);
 
-if (engine is not null)
-    exitCode = engine.StopAsync().GetAwaiter().GetResult();
-return exitCode;
+// On the thread pool: Avalonia's SynchronizationContext outlives its loop on this thread, so an await here would never resume.
+return Task.Run(async () => await skua.EngineAsync() is { } hosted ? await hosted.StopAsync() : exitCode).GetAwaiter().GetResult();

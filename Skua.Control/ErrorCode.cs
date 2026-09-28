@@ -33,6 +33,9 @@ public enum ErrorCode
 
     /// <summary>macOS's <c>security</c> tool failed to read or change Keychain, e.g. because access was denied.</summary>
     KeychainFailed = 16,
+
+    /// <summary>The Mac App hosts the Engine, so <c>shutdown</c> and <c>shutdown_if_idle</c> are refused: only quitting the app stops it.</summary>
+    EngineOwnedByApp = 17,
 }
 
 /// <summary>

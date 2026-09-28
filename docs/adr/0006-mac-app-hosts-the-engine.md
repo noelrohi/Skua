@@ -21,6 +21,7 @@ The Game Host writes each rendered frame into a shared-memory Frame Buffer that 
   - Closing the window keeps the Engine playing, and the Dock icon reopens it. Quitting the app stops the Engine as `StopAsync` does, and asks first if a Script is running.
 - **One owner at a time.** If a headless `skua-engine` already holds the name when the app starts, the app shows its status (account, map, Script) and offers to take over.
   - Taking over stops that Engine with `shutdown` after the developer confirms; the game logs out and any Script stops. Then the app starts its own Engine.
+    - That start comes after Avalonia's lifetime has started, so the `umask` around `bind` can race the UI threads: a file one of them creates during the bind gets owner-only permissions, which is harmless for a per-user app.
   - It never takes over silently. When the app isn't running, the CLI and MCP auto-start a headless Engine exactly as before.
 - **Script Dialogs keep one broker.** In the app, message boxes still go through `ScriptDialogBroker`, so an agent's `dialog_answer` and the window can answer the same Question.
   - The window shows pending Questions and answers through the broker; `answeredBy` gains `user`.
