@@ -18,6 +18,8 @@ public sealed class BridgeFlashUtil : IFlashUtil
     private readonly Lazy<IScriptManager> _lazyManager;
     private readonly GameHostLaunch _launch;
     private GameHostProcess? _gameHost;
+    private volatile FrameBuffer? _frameBuffer;
+    private volatile bool _live;
 
     public BridgeFlashUtil(IMessenger messenger, Lazy<IScriptManager> manager, GameHostLaunch launch)
     {
@@ -48,21 +50,97 @@ public sealed class BridgeFlashUtil : IFlashUtil
     /// <summary>The names the Game Client has registered for the Engine to call.</summary>
     public IReadOnlyList<string> Callbacks => _gameHost?.Callbacks ?? [];
 
-    /// <summary>Starts the Game Host with the Game Client, closing any earlier one first.</summary>
+    /// <summary>
+    /// The current Game Host's Frame Buffer, when <see cref="GameHostLaunch.WantsFrameBuffer"/> asks for one; a restart replaces it, so read it
+    /// afresh for each frame.
+    /// </summary>
+    public FrameBuffer? FrameBuffer => _frameBuffer;
+
+    /// <summary>Whether the Game View is live, as last set with <see cref="SetLive"/>.</summary>
+    public bool IsLive => _live;
+
+    /// <summary>
+    /// Starts the Game Host with the Game Client, closing any earlier one first. With a Frame Buffer, it creates a new one, and unlinks its
+    /// name once the Game Host has answered a ping, by when the Game Host has mapped it.
+    /// </summary>
     /// <exception cref="FileNotFoundException">The Game Host executable doesn't exist.</exception>
     public void InitializeFlash()
     {
         _gameHost?.Dispose();
+        _frameBuffer?.Dispose();
+        _frameBuffer = null;
 
-        GameHostProcess gameHost = new(_launch.Executable, _launch.Arguments);
+        FrameBuffer? frameBuffer = _launch.WantsFrameBuffer
+            ? FrameBuffer.Create(FrameBuffer.NewName(), GameHostLaunch.StageWidth, GameHostLaunch.StageHeight)
+            : null;
+        GameHostProcess gameHost = new(_launch.Executable, _launch.Arguments(frameBuffer?.Name));
         gameHost.Started += pid => GameHostStarted?.Invoke(pid);
         gameHost.Invoked += OnInvoked;
         gameHost.FlashLog += line => FlashLog?.Invoke(line);
         gameHost.LogLine += line => GameHostLog?.Invoke(line);
         gameHost.BridgeFailed += error => BridgeFailed?.Invoke(error);
         gameHost.Exited += code => GameHostExited?.Invoke(code);
-        gameHost.Start();
+        // Set before Start: the Game Client's first calls (loaded, requestLoadGame) reach handlers that call back into it before Start returns.
         _gameHost = gameHost;
+        _frameBuffer = frameBuffer;
+        try
+        {
+            gameHost.Start();
+        }
+        catch
+        {
+            _gameHost = null;
+            _frameBuffer = null;
+            frameBuffer?.Dispose();
+            throw;
+        }
+        if (frameBuffer is not null)
+            new Thread(() => HandOver(gameHost, frameBuffer)) { IsBackground = true, Name = "Frame Buffer hand-over" }.Start();
+    }
+
+    /// <summary>
+    /// Makes the Game View live (the Game Host renders every 33 ms and writes each frame to the Frame Buffer) or not (the headless render
+    /// defaults). It carries over a Game Host restart.
+    /// </summary>
+    public void SetLive(bool live)
+    {
+        _live = live;
+        TrySend('W', GameInput.EncodeView(live));
+    }
+
+    /// <summary>Sends an input event to the Game Client; dropped when no Game Host runs.</summary>
+    public void SendInput(GameInput input) => TrySend('U', input.Encode());
+
+    private void TrySend(char type, byte[] payload)
+    {
+        try
+        {
+            if (_gameHost is { IsRunning: true } gameHost)
+                gameHost.Send(type, payload);
+        }
+        catch (IOException)
+        {
+            // The Game Host is gone; GameHostExited tells.
+        }
+    }
+
+    /// <summary>Unlinks the Frame Buffer's name once the Game Host has mapped it, then makes a restarted Game Host live if the view is.</summary>
+    private void HandOver(GameHostProcess gameHost, FrameBuffer frameBuffer)
+    {
+        try
+        {
+            gameHost.Request('P', [], GameHostProcess.RequestTimeout);
+            if (_live && ReferenceEquals(_gameHost, gameHost))
+                gameHost.Send('W', GameInput.EncodeView(true));
+        }
+        catch (Exception e) when (e is IOException or TimeoutException or InvalidOperationException)
+        {
+            GameHostLog?.Invoke($"The Game Host didn't answer the Frame Buffer ping: {e.Message}");
+        }
+        finally
+        {
+            frameBuffer.Unlink();
+        }
     }
 
     public string? Call(string function, params object[] args) => Call<string>(function, args);
@@ -113,7 +191,11 @@ public sealed class BridgeFlashUtil : IFlashUtil
 
     public IFlashObject<T> CreateFlashObject<T>(string path) => new FlashObject<T>(Call<int>("lnkCreate", path), this);
 
-    public void Dispose() => _gameHost?.Dispose();
+    public void Dispose()
+    {
+        _gameHost?.Dispose();
+        _frameBuffer?.Dispose();
+    }
 
     private void OnInvoked(string request)
     {

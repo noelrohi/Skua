@@ -7,6 +7,9 @@
 //!   'S' u32 id | u32 max_width (0 = native)   screenshot
 //!   'P' u32 id                                ping (transport-only round trip)
 //!   'Q' u32 id                                stats (JSON)
+//!   'W' u32 id (0) | u8 live                  the Game View is live (1: render every 33 ms and fill the
+//!                                             Frame Buffer) or not (0: the headless defaults); no reply
+//!   'U' u32 id (0) | u8 kind | fields         user input from the Game View (`input.rs`); no reply
 //! Game Host -> Engine
 //!   'R' u32 id | utf8 return XML              reply to 'C'
 //!   'I' u32 id | u32 w | u32 h | u64 frames | PNG bytes   reply to 'S' (w = h = 0, no PNG: no image);
@@ -21,6 +24,7 @@
 //! With the `diag` feature the host also answers 'M' (memory stats), 'G' (full GC), 'Y' (census),
 //! 'Z' <class> (retainer path), 'B' u32 n (render bench) and 'V' "key=value" (render knobs); see `diag.rs`.
 
+use crate::input::{self, Input};
 use std::io::{self, Read};
 
 /// 'L' log levels.
@@ -111,6 +115,10 @@ pub enum Request {
     Stats {
         id: u32,
     },
+    View {
+        live: bool,
+    },
+    Input(Input),
     #[cfg(feature = "diag")]
     Diag {
         id: u32,
@@ -135,6 +143,10 @@ pub fn parse_request(kind: u8, payload: &[u8]) -> Result<Request, String> {
         }
         b'P' => Ok(Request::Ping { id }),
         b'Q' => Ok(Request::Stats { id }),
+        b'W' => Ok(Request::View {
+            live: *rest.first().ok_or("'W' frame without live")? != 0,
+        }),
+        b'U' => input::parse(rest).map(Request::Input),
         #[cfg(feature = "diag")]
         b'M' | b'G' | b'Y' | b'Z' | b'B' | b'V' => Ok(Request::Diag {
             id,
@@ -235,6 +247,21 @@ mod tests {
         );
         assert_eq!(parse_request(b'P', &5u32.to_le_bytes()), Ok(Request::Ping { id: 5 }));
         assert_eq!(parse_request(b'Q', &5u32.to_le_bytes()), Ok(Request::Stats { id: 5 }));
+        assert_eq!(parse_request(b'W', &[0, 0, 0, 0, 1]), Ok(Request::View { live: true }));
+        assert_eq!(parse_request(b'W', &[0, 0, 0, 0, 0]), Ok(Request::View { live: false }));
+        assert_eq!(
+            parse_request(b'U', &[0, 0, 0, 0, 10]),
+            Ok(Request::Input(Input::FocusGained))
+        );
+        let click = [&[0, 0, 0, 0, 2][..], &10f32.to_le_bytes(), &20f32.to_le_bytes(), &[1]].concat();
+        assert_eq!(
+            parse_request(b'U', &click),
+            Ok(Request::Input(Input::MouseDown {
+                x: 10.0,
+                y: 20.0,
+                button: ruffle_core::events::MouseButton::Left
+            }))
+        );
     }
 
     #[test]
@@ -244,6 +271,9 @@ mod tests {
         assert!(parse_request(b'S', &5u32.to_le_bytes()).is_err());
         assert!(parse_request(b'S', &[5, 0, 0, 0, 1, 2]).is_err());
         assert!(parse_request(b'!', &5u32.to_le_bytes()).is_err());
+        assert!(parse_request(b'W', &0u32.to_le_bytes()).is_err());
+        assert!(parse_request(b'U', &0u32.to_le_bytes()).is_err());
+        assert!(parse_request(b'U', &[0, 0, 0, 0, 2, 1]).is_err());
     }
 
     #[cfg(not(feature = "diag"))]

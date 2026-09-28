@@ -8,12 +8,15 @@ mod bridge;
 #[cfg(feature = "diag")]
 mod diag;
 mod frame;
+mod frame_buffer;
+mod input;
 mod opts;
 mod render;
 mod xml;
 
 use backends::{BridgeExternalInterface, BridgeLog, FrameLayer, HeadlessNavigatorInterface, MainThreadSpawner};
 use frame::Request;
+use frame_buffer::FrameBuffer;
 use opts::{Opts, RenderPolicy, USAGE};
 use render::ThreadedBackend;
 use ruffle_core::backend::navigator::SocketMode;
@@ -73,6 +76,13 @@ fn main() {
         .build()
         .expect("tokio runtime");
     let _guard = runtime.enter();
+
+    // Mapped before the reader starts, so by the time the Engine gets its first ping reply it can
+    // unlink the name.
+    let frame_buffer = opts
+        .frame_buffer
+        .as_deref()
+        .map(|name| Arc::new(FrameBuffer::open(name).unwrap_or_else(|e| fail(1, &format!("--frame-buffer: {e}")))));
 
     let (tx, rx) = mpsc::channel::<Msg>();
     let requests = tx.clone();
@@ -152,6 +162,11 @@ fn main() {
         descriptors,
         render,
         policy: opts.render,
+        headless_policy: opts.render,
+        frame_buffer,
+        frames_written: Arc::new(AtomicU64::new(0)),
+        live: false,
+        input_pending: false,
         window,
         trim_ticks: opts.trim_ticks,
         ticks_since_trim: 0,
@@ -192,6 +207,8 @@ struct LoopStats {
     frames_est: f64,
     calls: u64,
     renders: u64,
+    /// 'U' events handed to Ruffle.
+    input_events: u64,
     /// The largest gap between two ticks: App Nap and timer throttling show up here.
     max_tick_gap: Duration,
     tick_busy: Duration,
@@ -207,6 +224,15 @@ struct Host {
     descriptors: Arc<Descriptors>,
     render: Arc<render::Shared>,
     policy: RenderPolicy,
+    /// The policy from the command line, which a Game View that stops being live goes back to.
+    headless_policy: RenderPolicy,
+    frame_buffer: Option<Arc<FrameBuffer>>,
+    /// Frames the render thread has written to the Frame Buffer.
+    frames_written: Arc<AtomicU64>,
+    /// The Game View is live: render every 33 ms and write each frame to the Frame Buffer.
+    live: bool,
+    /// Input arrived since the last tick: the next one doesn't wait out `MIN_TICK_GAP`.
+    input_pending: bool,
     window: Option<minifb::Window>,
     /// 0 = off.
     trim_ticks: u32,
@@ -238,7 +264,16 @@ impl Host {
     }
 
     fn iteration(&mut self, rx: &Receiver<Msg>) {
-        let wait = self.player().time_til_next_frame().min(MAX_WAIT);
+        let mut wait = self.player().time_til_next_frame().min(MAX_WAIT);
+        // A live Game View wakes for each render, or it would show a 33 ms cadence at about 25 fps.
+        if self.live {
+            wait = wait.min(
+                self.policy
+                    .interval
+                    .unwrap_or(MAX_WAIT)
+                    .saturating_sub(self.last_render.elapsed()),
+            );
+        }
         match rx.recv_timeout(wait) {
             Ok(Msg::Task(r)) => {
                 r.run();
@@ -279,6 +314,21 @@ impl Host {
                 let json = self.stats_json();
                 bridge::send(frame::encode_with_id(b'Q', id, json.as_bytes()));
             }
+            Request::View { live } => {
+                self.live = live;
+                self.policy = if live { opts::LIVE } else { self.headless_policy };
+            }
+            Request::Input(input) => {
+                self.stats.input_events += 1;
+                self.input_pending = true;
+                let mut p = self.player();
+                match input {
+                    input::Input::MouseMove { .. } if !p.mouse_in_stage() => p.set_mouse_in_stage(true),
+                    input::Input::MouseLeave => p.set_mouse_in_stage(false),
+                    _ => {}
+                }
+                p.handle_event(input.into_event());
+            }
             #[cfg(feature = "diag")]
             Request::Diag { id, kind, arg } => self.diag(id, kind, &arg),
         }
@@ -288,9 +338,12 @@ impl Host {
         let now = Instant::now();
         let dt = now - self.last_tick;
         self.stats.max_tick_gap = self.stats.max_tick_gap.max(dt);
-        if dt < MIN_TICK_GAP {
+        // Input ticks at once, so the Game Client reacts to it without waiting for its next frame.
+        if dt < MIN_TICK_GAP && !std::mem::take(&mut self.input_pending) {
             return;
         }
+        // Any tick serves pending input.
+        self.input_pending = false;
         let threaded = self.render.threaded.load(Ordering::Relaxed);
         let trim = self.trim_ticks > 0 && {
             self.ticks_since_trim += 1;
@@ -345,6 +398,14 @@ impl Host {
             .is_some()
             .then(|| backend(&mut p).lock().0.capture_frame())
             .flatten();
+        if let (true, Some(fb)) = (self.live, &self.frame_buffer) {
+            let (fb, written) = (fb.clone(), self.frames_written.clone());
+            backend(&mut p).after(move |r| {
+                if write_frame(r, &fb) {
+                    written.fetch_add(1, Ordering::Relaxed);
+                }
+            });
+        }
         drop(p);
         self.note_render(prep);
         if let (Some(w), Some(img)) = (self.window.as_mut(), image) {
@@ -391,7 +452,7 @@ impl Host {
                 "\"submitN\":{},\"submitMsAvg\":{:.1},\"submitMsMax\":{:.1},\"submitMsSum\":{:.0},",
                 "\"prepN\":{},\"prepMsAvg\":{:.1},\"prepMsMax\":{:.1},\"prepMsSum\":{:.0},",
                 "\"mainBlockedN\":{},\"mainBlockedMsSum\":{:.0},\"mainBlockedMsMax\":{:.1},",
-                "\"renderGapMs\":{},\"threaded\":{}"
+                "\"renderGapMs\":{},\"threaded\":{},\"live\":{},\"framesWritten\":{},\"inputEvents\":{}"
             ),
             self.started.elapsed().as_millis(),
             s.ticks,
@@ -416,11 +477,26 @@ impl Host {
             ms(blocked_max_us),
             self.cur_gap.as_millis(),
             self.render.threaded.load(Ordering::Relaxed),
+            self.live,
+            self.frames_written.load(Ordering::Relaxed),
+            s.input_events,
         );
         #[cfg(feature = "diag")]
         let json = format!("{json},{}", diag::stats_extra());
         json + "}"
     }
+}
+
+/// Copies the frame just submitted from the target's readback buffer, which `TextureTarget` fills on
+/// every submit, into the Frame Buffer. Runs on the render thread after the frame; waits for the GPU.
+fn write_frame(r: &mut render::Wgpu, fb: &FrameBuffer) -> bool {
+    let target = r.target();
+    let Some(info) = &target.buffer else { return false };
+    let (buffer, dimensions) = info.buffer.inner();
+    let (width, height) = (target.size.width, target.size.height);
+    ruffle_render_wgpu::utils::capture_image(r.device(), buffer, dimensions, None, |rgba, stride| {
+        fb.write(rgba, width, height, stride as usize, frame_buffer::now_ns())
+    })
 }
 
 /// Sends the 'I' reply: the frame, scaled down to `max_width` if wider, as PNG (w = h = 0 if none).

@@ -23,6 +23,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
 minifb = "0.28"
 objc2 = "0.6"
+# The Frame Buffer: shm_open, mmap and the mach_absolute_time clock.
+libc = "0.2"
 # diag only: the Metal peak command-buffer counter (diag/wgpu-hal-*.patch) and wgpu's resource counters.
 wgpu-hal = { version = "=30.0.1", optional = true }
 wgpu = { version = "=30.0.1", features = ["counters"], optional = true }

@@ -4,6 +4,9 @@
     "projects": [
       "Skua.App.Cli\\Skua.App.Cli.csproj",
       "Skua.App.Engine\\Skua.App.Engine.csproj",
+      "Skua.App.Mac\\Skua.App.Mac.csproj",
+      "Skua.Avalonia.Tests\\Skua.Avalonia.Tests.csproj",
+      "Skua.Avalonia\\Skua.Avalonia.csproj",
       "Skua.Control\\Skua.Control.csproj",
       "Skua.Core.Generators\\Skua.Core.Generators.csproj",
       "Skua.Core.Interfaces\\Skua.Core.Interfaces.csproj",
@@ -11,6 +14,7 @@
       "Skua.Core.Utils\\Skua.Core.Utils.csproj",
       "Skua.Core\\Skua.Core.csproj",
       "Skua.Engine.Tests\\Skua.Engine.Tests.csproj",
+      "Skua.Engine\\Skua.Engine.csproj",
       "Skua.FakeGameHost\\Skua.FakeGameHost.csproj",
       "Skua.MacOS\\Skua.MacOS.csproj"
     ]

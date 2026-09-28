@@ -33,6 +33,7 @@ The Engine starts the Game Host as a child process. Without options it runs with
 | Option | Default | Meaning |
 |---|---|---|
 | `--show-game` | off | Show the game in a debug window. It renders every 33 ms, with no render budget. |
+| `--frame-buffer=NAME` | none | Write frames to this Frame Buffer (below) while the Game View is live. The Mac App's Engine passes it; `skua-engine` never does. |
 | `--render-interval-ms=N` | 1000 | Keep-alive render interval; 0 = render only for screenshots. |
 | `--render-budget-pct=N` | 10 | Render at most N% of wall time; 0 = off. |
 | `--render-max-interval-ms=N` | 5000 | The budget never stretches the interval beyond this. |
@@ -60,6 +61,8 @@ every generated getter stay unchanged. The authoritative list is `src/frame.rs`.
 | Engine → Game Host | `S` | `u32 id` + `u32 maxWidth` (0 = native): a screenshot |
 | Engine → Game Host | `P` | `u32 id`: ping |
 | Engine → Game Host | `Q` | `u32 id`: stats |
+| Engine → Game Host | `W` | `u32 id` (0) + `u8 live`: the Game View is live (render every 33 ms, no budget, and fill the Frame Buffer) or not (the headless defaults). No reply. |
+| Engine → Game Host | `U` | `u32 id` (0) + `u8 kind` + fields: input from the Game View, handed to Ruffle's `Player::handle_event` (`src/input.rs`). No reply. |
 | Game Host → Engine | `R` | `u32 id` + return XML |
 | Game Host → Engine | `I` | `u32 id`, `u32 w`, `u32 h`, `u64 frame` + PNG bytes (w = h = 0 and no PNG if there's no image; `frame` is an estimate, time run × frame rate) |
 | Game Host → Engine | `P` | `u32 id`: pong |
@@ -71,6 +74,22 @@ every generated getter stay unchanged. The authoritative list is `src/frame.rs`.
 
 A frame of unknown type, or one too short for its type, is logged and skipped. A corrupt length ends the host
 with status 2.
+
+## The Game View: Frame Buffer and input
+
+The Mac App shows the game from a Frame Buffer (ADR 0006): a POSIX shared-memory object the Engine creates (mode 0600)
+and names with `--frame-buffer`. The host maps it before it reads stdin, so once the Engine has a reply to its first
+ping it unlinks the name. The layout is in `src/frame_buffer.rs` (mirrored by `Skua.MacOS/GameHost/FrameBuffer.cs`):
+a header, then three slots of RGBA8 rows at the render size, latest frame wins, with a seqlock per slot.
+
+- **`W` live** switches the render policy to the `--show-game` one (33 ms, no budget); `W` not live goes back to the
+  command line's policy. While live, the render thread maps the target's readback buffer after each frame (Ruffle's
+  `TextureTarget` copies into it on every submit) and copies the rows into the free slot.
+- **`U`** kinds are mouse move, down, up and leave (viewport pixels), wheel (lines or pixels), key down and up
+  (Ruffle's `KeyDescriptor`, by variant name), text (a code point), text control (a `TextControlCode` name, e.g.
+  `Backspace`: Ruffle edits text fields only through these) and focus gained and lost. The loop ticks right after
+  each one, even within 4 ms of the last tick.
+- The `Q` stats gain `live`, `framesWritten` and `inputEvents` (both counts since start).
 
 ## Lifecycle
 
@@ -93,6 +112,7 @@ From #13 and #17. Together they keep a headless host under 2 GB and responsive o
 | A keep-alive render even when nobody asks for a frame: without one, Ruffle's CPU-side state grows (Stress2: ~670 MB/min) | `Host::render_if_due` |
 | Tick at most every 4 ms during bursts of Bridge calls | `MIN_TICK_GAP` |
 | `--show-game`: a debug window updated every 33 ms | `opts.rs` |
+| A live Game View (`W`) renders every 33 ms, as `--show-game` does | `opts::LIVE` |
 
 The lag killer is also on while headless, but the Engine owns that.
 
