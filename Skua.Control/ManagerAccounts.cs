@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -24,7 +25,10 @@ public sealed record AccountFailure(string Username, string Message);
 /// display names, tags, groups and the last server) in <c>&lt;SkuaDIR&gt;/Skua.manager.json</c>, which holds no password. Unlike the Windows
 /// Manager's list in <c>Skua.settings.json</c>, no Engine rewrites that file.
 /// </summary>
-/// <remarks>One Manager runs per data folder, so this is the file's only writer.</remarks>
+/// <remarks>
+/// One Manager runs per data folder, so this process is the file's only writer; its saves are serialized even across stores on the same
+/// folder, such as a view model's and a test's.
+/// </remarks>
 public sealed class ManagerAccounts
 {
     public const string FileName = "Skua.manager.json";
@@ -39,6 +43,9 @@ public sealed class ManagerAccounts
         PropertyNameCaseInsensitive = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
+
+    /// <summary>One lock per file, for every store in this process.</summary>
+    private static readonly ConcurrentDictionary<string, Lock> SaveLocks = new();
 
     private readonly Lock _lock = new();
     private Contents _contents;
@@ -219,14 +226,25 @@ public sealed class ManagerAccounts
         }
     }
 
-    /// <summary>Written whole and moved into place, owner-only.</summary>
+    /// <summary>Written whole to a temporary file of its own and moved into place, owner-only.</summary>
     private void Save(Contents contents)
     {
         Directory.CreateDirectory(SkuaDir);
-        string temporary = $"{FilePath}.{Environment.ProcessId}.tmp";
-        File.WriteAllText(temporary, JsonSerializer.Serialize(contents, JsonOptions));
-        File.SetUnixFileMode(temporary, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-        File.Move(temporary, FilePath, overwrite: true);
+        string temporary = $"{FilePath}.{Guid.NewGuid():N}.tmp";
+        lock (SaveLocks.GetOrAdd(FilePath, _ => new Lock()))
+        {
+            try
+            {
+                File.WriteAllText(temporary, JsonSerializer.Serialize(contents, JsonOptions));
+                File.SetUnixFileMode(temporary, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                File.Move(temporary, FilePath, overwrite: true);
+            }
+            catch
+            {
+                File.Delete(temporary);
+                throw;
+            }
+        }
     }
 
     private sealed record Contents

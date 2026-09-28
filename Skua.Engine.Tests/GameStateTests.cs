@@ -140,11 +140,12 @@ public class GameStateTests
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
         int before = (await GameEvents.AllAsync(session.Connection)).Count;
 
-        // Each blip lasts less than a poll interval, and they're far enough apart that no two polls in a row see one.
+        // Each blip lasts one reading, and the next blip waits for a reading without one, so no two polls in a row see one.
         for (int i = 0; i < 4; i++)
         {
-            await session.GameHost.DoAsync("blip 300");
-            await Task.Delay(1500, Ct);
+            await session.GameHost.DoAsync("blip");
+            await session.GameHost.WaitForCallAsync($"blip read {i + 1}");
+            await session.GameHost.WaitForCallAsync("isLoggedIn", after: $"blip read {i + 1}");
         }
 
         Assert.Equal(before, (await GameEvents.AllAsync(session.Connection)).Count);

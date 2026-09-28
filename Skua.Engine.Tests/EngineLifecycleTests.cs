@@ -122,7 +122,7 @@ public class EngineLifecycleTests
         connection.Dispose();
 
         Assert.Equal(0, kill(engine.Id, signal));
-        await engine.WaitForExitAsync(TestContext.Current.CancellationToken);
+        await engine.WaitForExitAsync(TestContext.Current.CancellationToken).WaitAsync(EngineSandbox.StopTimeout, TestContext.Current.CancellationToken);
 
         Assert.Equal(0, engine.ExitCode);
         Assert.False(File.Exists(sandbox.Endpoint.SocketPath));

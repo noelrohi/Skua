@@ -79,7 +79,8 @@ public class ScriptRunTests
         Assert.Equal(ScriptState.Running, running.Status.State);
         Assert.Equal((start.Run, "Tests/Loop.cs", 0, false, DialogMode.Ask, 120),
             (running.Status.Run!.Number, running.Status.Run.Script, running.Status.Run.Relogins, running.Status.Run.ReloggingIn, running.Status.Run.Dialogs, running.Status.Run.DialogTimeoutSec));
-        Assert.InRange(later.Run!.ElapsedSec - running.Status.Run.ElapsedSec, 0.3, 30);
+        // To a tenth of a second each, so 300 ms apart can read as little as 0.2 apart.
+        Assert.InRange(Math.Round(later.Run!.ElapsedSec - running.Status.Run.ElapsedSec, 1), 0.2, 30);
         Assert.True(stop.WasRunning);
         Assert.True(stop.Ended);
         Assert.Equal(ScriptState.Idle, stop.Status.State);
