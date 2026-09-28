@@ -7,11 +7,13 @@ namespace Skua.Avalonia.Tests;
 /// <summary>
 /// A game server on this Mac for the Packet Interceptor's tests: it answers the simulated game's version check and login as SmartFoxServer
 /// does, records each null-terminated message it receives, and sends the game what a test asks. It listens on <c>::1</c>, because the
-/// Interceptor's proxy takes the server's port on 127.0.0.1, as it takes a real server's.
+/// Interceptor's proxy takes the server's port on 127.0.0.1, as it takes a real server's; it holds that port until
+/// <see cref="ReleaseProxyPort"/>, so nothing else, such as the other test project, takes it first.
 /// </summary>
 public sealed class FakeGameServer : IAsyncDisposable
 {
     private readonly TcpListener _listener;
+    private readonly TcpListener _proxyPort;
     private readonly CancellationTokenSource _stop = new();
     private readonly List<string> _received = [];
     private readonly Task _serving;
@@ -30,7 +32,7 @@ public sealed class FakeGameServer : IAsyncDisposable
             {
                 TcpListener probe = new(IPAddress.Loopback, port);
                 probe.Start();
-                probe.Stop();
+                _proxyPort = probe;
                 _listener = listener;
                 Port = port;
                 break;
@@ -44,6 +46,9 @@ public sealed class FakeGameServer : IAsyncDisposable
     }
 
     public int Port { get; }
+
+    /// <summary>Lets go of <see cref="Port"/> on 127.0.0.1, for the Interceptor's proxy to take at once.</summary>
+    public void ReleaseProxyPort() => _proxyPort.Stop();
 
     /// <summary>How many connections the proxy has closed.</summary>
     public int Closed => Volatile.Read(ref _closed);
@@ -120,6 +125,7 @@ public sealed class FakeGameServer : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _stop.Cancel();
+        _proxyPort.Stop();
         _listener.Stop();
         await _serving;
         _stop.Dispose();

@@ -235,8 +235,9 @@ public sealed class HotKeysTests(AppEngine app)
             // The panel's edit shows the dialog and waits for it in a nested frame. So the click is posted, and this waits without running
             // the dispatcher's jobs itself: the frame then runs under the test's dispatcher loop, and the rest of the test runs in it.
             Dispatcher.UIThread.Post(() => Click(gesture));
-            await YieldUntilAsync(() => opened.Count > 0 && opened[0] is { IsVisible: true, DataContext: AssignHotKeyDialogViewModel }, "the assign dialog");
-            DialogWindow dialog = opened[0];
+            // Its own dialog, which needn't be the first: a notice from work a test before left finishing can open one too.
+            await YieldUntilAsync(() => AssignDialog(opened) is not null, "the assign dialog");
+            DialogWindow dialog = AssignDialog(opened)!;
             // Now inside the frame, the dispatcher's jobs can run here: the dialog lays out, so it has a size to close with.
             await PumpUntilAsync(() => Find<AssignHotKeyDialogView>(dialog) is { Bounds.Width: > 0 }, "the assign dialog's layout");
             AssignHotKeyDialogView view = Find<AssignHotKeyDialogView>(dialog)!;
@@ -340,6 +341,9 @@ public sealed class HotKeysTests(AppEngine app)
         await PumpUntilAsync(() => true, "a layout pass");
         return windows.OpenWindow("HotKeys")!;
     }
+
+    private static DialogWindow? AssignDialog(List<DialogWindow> opened) =>
+        opened.FirstOrDefault(d => d is { IsVisible: true, DataContext: AssignHotKeyDialogViewModel });
 
     /// <summary>Waits by yielding to the test's dispatcher loop only, for work that runs in a nested frame it pushes.</summary>
     private static async Task YieldUntilAsync(Func<bool> done, string what)

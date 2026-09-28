@@ -20,7 +20,7 @@ public class LiveRunTests
             run => LiveScenarios.SmokeAsync(run, "Galanoth", LiveScenarios.Leveling, battleonMinutes: 2, scriptMinutes: 3));
 
         // The fake Game Host captures a flat colour, which the screenshot check calls blank; nothing else fails.
-        Assert.Equal(["battleon", "leveling"], result.Failures.Select(f => f.Split(' ')[1]));
+        Assert.True(result.Failures.Select(f => f.Split(' ')[1]).SequenceEqual(["battleon", "leveling"]), string.Join("\n", result.Failures));
         Assert.All(result.Failures, f => Assert.Contains("the frame is blank", f));
         Assert.Equal(["battleon", "battleon", "leveling", "leveling", "leveling"], result.Samples.Select(s => s.Phase));
         Assert.All(result.Samples, s =>

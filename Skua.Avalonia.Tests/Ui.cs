@@ -16,6 +16,16 @@ public static class Ui
 {
     public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
 
+    /// <summary>The windows open now, so a wait that times out can say which were, such as a dialog nobody expected.</summary>
+    private static readonly HashSet<Window> s_open = [];
+
+    [System.Runtime.CompilerServices.ModuleInitializer]
+    internal static void TrackWindows()
+    {
+        Window.WindowOpenedEvent.AddClassHandler<Window>((window, _) => s_open.Add(window));
+        Window.WindowClosedEvent.AddClassHandler<Window>((window, _) => s_open.Remove(window));
+    }
+
     public static async Task PumpUntilAsync(Func<bool> done, string what, TimeSpan? timeout = null)
     {
         TimeSpan limit = timeout ?? Timeout;
@@ -23,12 +33,15 @@ public static class Ui
         while (!done())
         {
             if (waited.Elapsed > limit)
-                throw new TimeoutException($"Waited {limit.TotalSeconds} s for {what}.");
+                throw new TimeoutException($"Waited {limit.TotalSeconds} s for {what}. Open windows: {OpenWindows()}.");
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             Dispatcher.UIThread.RunJobs();
             await Task.Delay(10);
         }
     }
+
+    private static string OpenWindows() =>
+        string.Join(", ", s_open.Select(w => $"'{w.Title}' ({(w.DataContext ?? w.Content)?.GetType().Name})"));
 
     /// <summary>Clicks an enabled button, running its command as a pointer click would.</summary>
     public static void Click(Button button)

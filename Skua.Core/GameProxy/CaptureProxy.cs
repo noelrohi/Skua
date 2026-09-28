@@ -33,15 +33,27 @@ public partial class CaptureProxy : ObservableRecipient, ICaptureProxy
     {
         if (Destination == null)
             return;
-        Running = true;
         _listenPort = Destination.Port;
+        // Listening before this returns: the game is told to connect to the proxy straight after.
+        TcpListener listener = new(IPAddress.Loopback, _listenPort);
+        try
+        {
+            listener.Start();
+        }
+        catch (SocketException)
+        {
+            Running = false;
+            return;
+        }
+        _listener = listener;
+        CancellationTokenSource cts = new();
+        _captureProxyCTS = cts;
+        Running = true;
         _thread = new(() =>
         {
-            _captureProxyCTS = new();
-            _listener = new TcpListener(IPAddress.Loopback, _listenPort);
-            _Listen(_captureProxyCTS.Token);
-            _captureProxyCTS.Dispose();
-            _captureProxyCTS = null;
+            _Listen(cts.Token);
+            Interlocked.CompareExchange(ref _captureProxyCTS, null, cts);
+            cts.Dispose();
         })
         { Name = "Capture Proxy" };
         _thread.Start();
@@ -65,15 +77,6 @@ public partial class CaptureProxy : ObservableRecipient, ICaptureProxy
 
     private void _Listen(CancellationToken token)
     {
-        try
-        {
-            _listener?.Start();
-        }
-        catch
-        {
-            return;
-        }
-
         while (!token.IsCancellationRequested)
         {
             TcpClient? localClient = null;

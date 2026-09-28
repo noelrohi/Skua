@@ -185,6 +185,22 @@ public sealed class ManagerTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task A_store_that_saves_after_another_keeps_the_others_change()
+    {
+        ManagerAccounts first = new(_dir);
+        await first.SetAccountsAsync([new AccountEntry("Alice Tester", "Alice", [])], CancellationToken.None);
+        // As a second Manager on the folder does: it read the list, and saves the last server once its server list arrives.
+        ManagerAccounts second = new(_dir);
+        await first.SetAccountsAsync([], CancellationToken.None);
+
+        second.LastServer = "Twilly";
+
+        ManagerAccounts saved = new(_dir);
+        Assert.Empty(saved.Accounts);
+        Assert.Equal("Twilly", saved.LastServer);
+    }
+
+    [AvaloniaFact]
     public async Task An_Engine_save_after_an_import_of_its_own_settings_file_leaves_the_passwords_out()
     {
         // An Engine that has read the Windows list with its passwords, as one started on that file would have.

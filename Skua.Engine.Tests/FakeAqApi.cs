@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -30,15 +29,13 @@ public sealed record FakeServer(string Name, int Count = 100, int Max = 1000, bo
 /// <summary>Stands in for content.aq.com's servers API, which the Engine reads through Core's <c>GetServers</c>.</summary>
 public sealed class FakeAqApi : IAsyncDisposable
 {
-    private readonly HttpListener _listener = new();
+    private readonly HttpListener _listener;
     private readonly Task _serving;
 
     public FakeAqApi(params FakeServer[] servers)
     {
         Servers = servers;
-        BaseUrl = $"http://127.0.0.1:{FreePort()}/";
-        _listener.Prefixes.Add(BaseUrl);
-        _listener.Start();
+        (_listener, BaseUrl) = LoopbackHttp.Start();
         _serving = ServeAsync();
     }
 
@@ -92,12 +89,5 @@ public sealed class FakeAqApi : IAsyncDisposable
             response.ContentType = "application/json";
             await response.OutputStream.WriteAsync(body);
         }
-    }
-
-    private static int FreePort()
-    {
-        using TcpListener probe = new(IPAddress.Loopback, 0);
-        probe.Start();
-        return ((IPEndPoint)probe.LocalEndpoint).Port;
     }
 }

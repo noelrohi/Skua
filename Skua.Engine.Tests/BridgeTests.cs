@@ -119,6 +119,33 @@ public class BridgeTests
         Assert.Contains("WARN ruffle: a warning", logs);
     }
 
+    [Fact]
+    public async Task A_log_handler_that_throws_doesnt_stop_the_Bridge()
+    {
+        await using EngineSandbox sandbox = new();
+        FakeGameHost fake = new FakeGameHost(sandbox)
+            .Send('F', "[Game] first")
+            .Send('F', "[Game] second")
+            .Send('E', Invoke("done"));
+        using GameHostProcess gameHost = new(EngineSandbox.FakeGameHostExecutable, [fake.Write()]);
+        List<string> flash = [];
+        TaskCompletionSource done = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        // On the reader thread: unhandled there, it would end the process.
+        gameHost.FlashLog += line =>
+        {
+            flash.Add(line);
+            throw new InvalidOperationException("a handler's bug");
+        };
+        gameHost.Invoked += _ => done.TrySetResult();
+
+        gameHost.Start();
+        await done.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        Assert.Equal(["[Game] first", "[Game] second"], flash);
+        Assert.True(gameHost.IsRunning);
+        Assert.Empty(gameHost.Request('P', [], TimeSpan.FromSeconds(5)));
+    }
+
     private static GameHostProcess Start(FakeGameHost fake)
     {
         GameHostProcess gameHost = new(EngineSandbox.FakeGameHostExecutable, [fake.Write()]);

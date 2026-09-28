@@ -122,9 +122,6 @@ public sealed class ScriptOptionsTests(AppEngine app)
         {
             string username = app.Get<IScriptPlayer>().Username;
             Assert.False(string.IsNullOrEmpty(username));
-            // Where CoreBots reads them: CoreBots.cs's CBO_Path.
-            string file = Path.Combine(ClientFileSources.SkuaOptionsDIR, $"CBO_Storage({username}).txt");
-            File.WriteAllLines(file, ["HuntDelayNr: 250", "doRepBoost: True"]);
             // The fake Script Source serves an empty skill set file, which the Loadout tab's class modes can't read; a real one is JSON.
             string skills = Path.Combine(ClientFileSources.SkuaDIR, "UserAdvancedSkills.json");
             if (new FileInfo(skills) is { Exists: false } or { Length: 0 })
@@ -134,6 +131,14 @@ public sealed class ScriptOptionsTests(AppEngine app)
             MenuItem options = MainMenus.InWindow(menu, windows).Items.OfType<MenuItem>().Single(i => (string)i.Header! == "Options");
             MenuItem coreBots = options.Items.OfType<MenuItem>().Single(i => (string)i.Header! == "CoreBots");
             Assert.True(coreBots.IsEnabled, "Options → CoreBots is disabled");
+            // Shown once before, as another test or the Bot Window may have: the file is read again each time it shows.
+            coreBots.Command!.Execute(null);
+            (Window earlier, _) = await ShownAsync<CoreBotsView>("CoreBots");
+            earlier.Close();
+            await Ui.PumpUntilAsync(() => windows.OpenWindow("CoreBots") is null, "the earlier window to close");
+            // Where CoreBots reads them: CoreBots.cs's CBO_Path. A Script's CoreBots writes it too.
+            string file = Path.Combine(ClientFileSources.SkuaOptionsDIR, $"CBO_Storage({username}).txt");
+            File.WriteAllLines(file, ["HuntDelayNr: 250", "doRepBoost: True"]);
 
             coreBots.Command!.Execute(null);
             (Window window, CoreBotsView view) = await ShownAsync<CoreBotsView>("CoreBots");

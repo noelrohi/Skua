@@ -97,8 +97,10 @@ public sealed class MainWindowTitleTests(AppEngine app)
         }
     }
 
-    private static async Task<HostWindow> ShowOptionsAsync(AvaloniaWindowService windows)
+    private async Task<HostWindow> ShowOptionsAsync(AvaloniaWindowService windows)
     {
+        // Core's main menu registers the managed windows as it is made; a test before may not have made it.
+        _ = app.Get<MainMenuViewModel>();
         windows.ShowManagedWindow("Application");
         await PumpUntilAsync(() => windows.OpenWindow("Application") is { } w && Find<ApplicationOptionsView>(w) is not null, "Application Options");
         return windows.OpenWindow("Application")!;

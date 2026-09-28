@@ -76,7 +76,9 @@ public partial class SavedAdvancedSkillsView : UserControl
         }
         Shown = shown;
         SkillsList.ItemsSource = Shown;
-        // A set is equal to another with its class and mode.
+        // A set is equal to another with its class and mode, so the list keeps some selected across the new source, and adding them again
+        // would select them twice.
+        SkillsList.SelectedItems?.Clear();
         foreach (AdvancedSkill set in Shown.Where(selected.Contains))
             SkillsList.SelectedItems?.Add(set);
         if (focused)

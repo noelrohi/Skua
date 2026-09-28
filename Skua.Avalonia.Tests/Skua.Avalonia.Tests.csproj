@@ -27,6 +27,7 @@
   <!-- The Engine tests' fake servers API and fake security tool, and for the take-over tests their sandbox and stand-in Engine. -->
   <ItemGroup>
     <Compile Include="..\Skua.Engine.Tests\FakeAqApi.cs" Link="Fakes\FakeAqApi.cs" />
+    <Compile Include="..\Skua.Engine.Tests\LoopbackHttp.cs" Link="Fakes\LoopbackHttp.cs" />
     <Compile Include="..\Skua.Engine.Tests\FakeKeychain.cs" Link="Fakes\FakeKeychain.cs" />
     <Compile Include="..\Skua.Engine.Tests\EngineSandbox.cs" Link="Fakes\EngineSandbox.cs" />
     <Compile Include="..\Skua.Engine.Tests\OtherVersionEngine.cs" Link="Fakes\OtherVersionEngine.cs" />
