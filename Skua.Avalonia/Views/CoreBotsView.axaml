@@ -1,0 +1,38 @@
+<!-- Ported from Skua.WPF/Views/CoreBotsOptionsView.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.CoreBotsView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:CoreBotsViewModel">
+    <DockPanel Margin="6">
+        <Grid Margin="0,0,0,6" ColumnDefinitions="*,Auto,Auto,Auto" DockPanel.Dock="Top">
+            <ListBox
+                x:Name="Tabs"
+                Grid.Column="0"
+                ItemsSource="{Binding CoreBotsTabs}"
+                SelectedItem="{Binding SelectedTab}">
+                <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vms:TabItemViewModel">
+                        <TextBlock Margin="10,0" Text="{Binding Header}" TextAlignment="Center" />
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            <TextBlock
+                x:Name="CurrentPlayer"
+                Grid.Column="1"
+                Margin="0,0,10,0"
+                VerticalAlignment="Center"
+                FontSize="16"
+                Text="{Binding CurrentPlayer}" />
+            <Button x:Name="Load" Grid.Column="2" Margin="6,0" Command="{Binding LoadCommand}" Content="Load" />
+            <Button x:Name="Save" Grid.Column="3" Command="{Binding SaveCommand}" Content="Save" />
+        </Grid>
+        <ContentControl Content="{Binding SelectedTab.Content}" />
+    </DockPanel>
+</UserControl>

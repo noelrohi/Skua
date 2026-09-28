@@ -20,6 +20,10 @@ public sealed class ViewLocator : IDataTemplate
         [typeof(ScriptRepoViewModel)] = () => new ScriptRepoView(),
         [typeof(LogsViewModel)] = () => new LogsView(),
         [typeof(LogTabViewModel)] = () => new LogTabView(),
+        [typeof(CoreBotsViewModel)] = () => new CoreBotsView(),
+        [typeof(CBOLoadoutViewModel)] = () => new CBOLoadoutView(),
+        [typeof(CBOptionsViewModel)] = () => new CBOptionsView(),
+        [typeof(CBOOtherOptionsViewModel)] = () => new CBOOtherOptionsView(),
         // The Skua Manager's, which runs as its own process (ADR 0006).
         [typeof(ManagerMainViewModel)] = () => new ManagerView(),
         [typeof(ManagerAccountsViewModel)] = () => new AccountsView(),

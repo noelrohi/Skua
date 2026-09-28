@@ -1,0 +1,119 @@
+<!-- Ported from Skua.WPF/UserControls/CoreBotsOptions/CBOLoadoutUserControl.xaml, CBOClassSelectUserControl.xaml and CBOClassEquipmentUserControl.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.CBOLoadoutView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:CBOLoadoutViewModel">
+    <UserControl.Styles>
+        <Style Selector="ComboBox">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="Margin" Value="0,3" />
+        </Style>
+        <Style Selector="Border.group">
+            <Setter Property="BorderBrush" Value="#44FFFFFF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="6" />
+        </Style>
+        <Style Selector="TextBlock.header">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,3" />
+        </Style>
+    </UserControl.Styles>
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+            <Grid
+                x:Name="ClassSelect"
+                Margin="6,6,6,3"
+                x:DataType="vms:CBOClassSelectViewModel"
+                ColumnDefinitions="*,*"
+                DataContext="{Binding ClassSelectViewModel}"
+                RowDefinitions="Auto,Auto">
+                <Border Grid.Row="0" Grid.Column="0" Margin="0,0,3,0" Classes="group">
+                    <StackPanel>
+                        <TextBlock Classes="header" Text="Solo Class" />
+                        <ComboBox x:Name="SoloClass" ItemsSource="{Binding PlayerClasses}" PlaceholderText="Class" SelectedItem="{Binding SelectedSoloClass}" />
+                        <ComboBox ItemsSource="{Binding SoloModeStrings}" PlaceholderText="Mode" SelectedItem="{Binding SelectedSoloModeString}" />
+                        <CheckBox Content="Specify Equipment" IsChecked="{Binding UseSoloEquipment}" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Row="0" Grid.Column="1" Margin="3,0,0,0" Classes="group">
+                    <StackPanel>
+                        <TextBlock Classes="header" Text="Farm Class" />
+                        <ComboBox x:Name="FarmClass" ItemsSource="{Binding PlayerClasses}" PlaceholderText="Class" SelectedItem="{Binding SelectedFarmClass}" />
+                        <ComboBox ItemsSource="{Binding FarmModeStrings}" PlaceholderText="Mode" SelectedItem="{Binding SelectedFarmModeString}" />
+                        <CheckBox Content="Specify Equipment" IsChecked="{Binding UseFarmEquipment}" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Row="1" Grid.Column="0" Margin="0,6,3,0" Classes="group">
+                    <StackPanel>
+                        <TextBlock Classes="header" Text="Dodge Class" />
+                        <ComboBox x:Name="DodgeClass" ItemsSource="{Binding PlayerClasses}" PlaceholderText="Class" SelectedItem="{Binding SelectedDodgeClass}" />
+                        <ComboBox ItemsSource="{Binding DodgeModeStrings}" PlaceholderText="Mode" SelectedItem="{Binding SelectedDodgeModeString}" />
+                        <CheckBox Content="Specify Equipment" IsChecked="{Binding UseDodgeEquipment}" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Row="1" Grid.Column="1" Margin="3,6,0,0" Classes="group">
+                    <StackPanel>
+                        <TextBlock Classes="header" Text="Boss Class" />
+                        <ComboBox x:Name="BossClass" ItemsSource="{Binding PlayerClasses}" PlaceholderText="Class" SelectedItem="{Binding SelectedBossClass}" />
+                        <ComboBox ItemsSource="{Binding BossModeStrings}" PlaceholderText="Mode" SelectedItem="{Binding SelectedBossModeString}" />
+                        <CheckBox Content="Specify Equipment" IsChecked="{Binding UseBossEquipment}" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+            <Expander Margin="6,3,6,6" HorizontalAlignment="Stretch" Header="Equipment" IsExpanded="False">
+                <StackPanel x:Name="Equipment" x:DataType="vms:CBOClassEquipmentViewModel" DataContext="{Binding ClassEquipmentViewModel}">
+                    <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Command="{Binding RefreshInventoryCommand}" Content="Refresh Inventory" />
+                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
+                        <Border Grid.Row="0" Grid.Column="0" Margin="0,6,3,0" Classes="group">
+                            <StackPanel>
+                                <TextBlock Classes="header" Text="Solo Class Equipment" />
+                                <ComboBox ItemsSource="{Binding Helms}" PlaceholderText="Helm" SelectedItem="{Binding SelectedSoloHelm}" />
+                                <ComboBox ItemsSource="{Binding Armors}" PlaceholderText="Armor" SelectedItem="{Binding SelectedSoloArmor}" />
+                                <ComboBox ItemsSource="{Binding Capes}" PlaceholderText="Cape" SelectedItem="{Binding SelectedSoloCape}" />
+                                <ComboBox ItemsSource="{Binding Weapons}" PlaceholderText="Weapon" SelectedItem="{Binding SelectedSoloWeapon}" />
+                                <ComboBox ItemsSource="{Binding Pets}" PlaceholderText="Pet" SelectedItem="{Binding SelectedSoloPet}" />
+                                <ComboBox ItemsSource="{Binding GroundItems}" PlaceholderText="Ground Item" SelectedItem="{Binding SelectedSoloGroundItem}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Row="0" Grid.Column="1" Margin="3,6,0,0" Classes="group">
+                            <StackPanel>
+                                <TextBlock Classes="header" Text="Farm Class Equipment" />
+                                <ComboBox ItemsSource="{Binding Helms}" PlaceholderText="Helm" SelectedItem="{Binding SelectedFarmHelm}" />
+                                <ComboBox ItemsSource="{Binding Armors}" PlaceholderText="Armor" SelectedItem="{Binding SelectedFarmArmor}" />
+                                <ComboBox ItemsSource="{Binding Capes}" PlaceholderText="Cape" SelectedItem="{Binding SelectedFarmCape}" />
+                                <ComboBox ItemsSource="{Binding Weapons}" PlaceholderText="Weapon" SelectedItem="{Binding SelectedFarmWeapon}" />
+                                <ComboBox ItemsSource="{Binding Pets}" PlaceholderText="Pet" SelectedItem="{Binding SelectedFarmPet}" />
+                                <ComboBox ItemsSource="{Binding GroundItems}" PlaceholderText="Ground Item" SelectedItem="{Binding SelectedFarmGroundItem}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Row="1" Grid.Column="0" Margin="0,6,3,0" Classes="group">
+                            <StackPanel>
+                                <TextBlock Classes="header" Text="Dodge Class Equipment" />
+                                <ComboBox ItemsSource="{Binding Helms}" PlaceholderText="Helm" SelectedItem="{Binding SelectedDodgeHelm}" />
+                                <ComboBox ItemsSource="{Binding Armors}" PlaceholderText="Armor" SelectedItem="{Binding SelectedDodgeArmor}" />
+                                <ComboBox ItemsSource="{Binding Capes}" PlaceholderText="Cape" SelectedItem="{Binding SelectedDodgeCape}" />
+                                <ComboBox ItemsSource="{Binding Weapons}" PlaceholderText="Weapon" SelectedItem="{Binding SelectedDodgeWeapon}" />
+                                <ComboBox ItemsSource="{Binding Pets}" PlaceholderText="Pet" SelectedItem="{Binding SelectedDodgePet}" />
+                                <ComboBox ItemsSource="{Binding GroundItems}" PlaceholderText="Ground Item" SelectedItem="{Binding SelectedDodgeGroundItem}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Row="1" Grid.Column="1" Margin="3,6,0,0" Classes="group">
+                            <StackPanel>
+                                <TextBlock Classes="header" Text="Boss Class Equipment" />
+                                <ComboBox ItemsSource="{Binding Helms}" PlaceholderText="Helm" SelectedItem="{Binding SelectedBossHelm}" />
+                                <ComboBox ItemsSource="{Binding Armors}" PlaceholderText="Armor" SelectedItem="{Binding SelectedBossArmor}" />
+                                <ComboBox ItemsSource="{Binding Capes}" PlaceholderText="Cape" SelectedItem="{Binding SelectedBossCape}" />
+                                <ComboBox ItemsSource="{Binding Weapons}" PlaceholderText="Weapon" SelectedItem="{Binding SelectedBossWeapon}" />
+                                <ComboBox ItemsSource="{Binding Pets}" PlaceholderText="Pet" SelectedItem="{Binding SelectedBossPet}" />
+                                <ComboBox ItemsSource="{Binding GroundItems}" PlaceholderText="Ground Item" SelectedItem="{Binding SelectedBossGroundItem}" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </StackPanel>
+            </Expander>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
