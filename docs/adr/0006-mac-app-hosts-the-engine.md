@@ -107,6 +107,23 @@ The Skua Manager, the counterpart of `Skua.Manager`, is **a process of its own, 
 
 The new projects join `Skua.sln` with a `Build.0` entry only for the `Any CPU` configurations, which `Skua.MacOS.slnf` and macOS CI build. The Windows build uses `x64`/`x86` (`Build-Skua.ps1:139`), so it never builds them. They also join `Skua.MacOS.slnf`.
 
+## Packaging
+
+`install-macos.sh --app` (#88) installs the app from the checkout, next to the CLI it already installs.
+
+- **One bundle per build.** `Skua.App.Mac` publishes a self-contained, ad-hoc signed `Skua.app` into `versions/<build>/`. The app is in `Contents/MacOS`, and `Skua.App.Engine`'s publish (`skua`, `skua-engine`, `skua-gamehost`, `skua.swf`) is in `Contents/Helpers`: `Skua` and `skua`, and their `.dll` and `.deps.json` files, are one name on a case-insensitive disk. The CLI's files that match the app's are APFS clones, so the second runtime takes no space.
+- **One build for the app and the CLI.** The `skua` link points into the bundle, so `hello` never refuses the app's Engine for its build.
+- **The installed `Skua.app` only opens the build.** `~/Applications/Skua.app` is a small signed bundle, with the app's `Info.plist` and icon, whose executable is a script that `exec`s the build's app. Reinstalling swaps that small bundle and never changes a file a running app uses, since .NET loads assemblies, and the Engine starts the Game Host, from the app's folder long after launch. The pruning rule keeps a build while any process has a file open in it, so a running app's build stays until it quits. The next launch opens the new build.
+- **Updates follow the app.** Once the app is installed, a plain `./install-macos.sh`, the command the Manager's Updates tab gives, updates it too.
+- **Launch.** Without `--name`, the app serves the Engine Name it last served (`<SkuaDIR>/last-engine-name`), so the Dock reopens the Engine last used. The Manager's launches (`--account`) don't count.
+
+Rejected options for the installed `Skua.app`:
+
+- **A copy of the build.** Replacing it under a running app would change the files that the app loads later, and the build would mismatch its Game Host.
+- **A symlink to the build, or a bundle whose `Contents` is one.** Finder and Launchpad treat a symlinked app as an alias. A symlinked `Contents` fails `codesign --verify` ("unsealed contents present in the bundle root").
+
+LaunchServices records a running app under the build's bundle (`lsappinfo` shows its path), so **Keep in Dock** on a running app may pin that build, which a later install prunes. Dragging `~/Applications/Skua.app` to the Dock pins the one that stays.
+
 ## How the Windows app stays untouched
 
 This carries on ADR 0001 and #18's user stories 57 and 58.
@@ -119,7 +136,7 @@ This carries on ADR 0001 and #18's user stories 57 and 58.
 ## Considered Options
 
 - **The Skua Manager as a window in each app.** Rejected (see [The Skua Manager](#the-skua-manager)): it would close with whichever app showed it, and Core's Manager and panel view models share process-wide messengers.
-- **A separate `Skua Manager.app` bundle.** Deferred: `install-macos.sh` doesn't install app bundles yet, and `Skua --manager` is that app's process whenever bundles come.
+- **A separate `Skua Manager.app` bundle.** Deferred: `install-macos.sh` installs only `Skua.app` (see [Packaging](#packaging)), and `Skua --manager` is that app's process whenever a bundle of its own comes.
 
 - **The app as a client of `skua-engine`, over the Control Surface.** Its advantage is that the game outlives the window. Rejected because:
   - Core's view models need Core in-process, and over the socket every panel would need its own typed operations. ADR 0002 rejected exactly that endless contract, and the Core models never cross the wire.

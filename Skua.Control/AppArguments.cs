@@ -5,7 +5,7 @@ namespace Skua.Control;
 /// or <c>Skua --manager</c> for the Skua Manager. The Manager launches the app with it, and the app parses it, so both sides share one spelling.
 /// </summary>
 /// <remarks>It never carries a password: the app reads the account's from Keychain at its login, as <c>skua login</c> does.</remarks>
-/// <param name="Name">The Engine Name the app serves.</param>
+/// <param name="Name">The Engine Name the app serves: <c>--name</c>, else the one it last served (<see cref="LastEngineName"/>).</param>
 /// <param name="Account">
 /// The name of the account (<see cref="Accounts"/>) this app's Engine logs in with instead of the Active Account, and which the app logs in once it
 /// starts; null for none.
@@ -17,12 +17,18 @@ public sealed record AppArguments(string Name = EngineName.Default, string? Acco
 {
     public const string Usage = "usage: Skua [--name <engine-name>] [--account <account> [--server <server>] [--script <path>]] | Skua --manager";
 
+    /// <param name="defaultName">The Engine Name when there is no <c>--name</c>.</param>
     /// <exception cref="ControlException"><see cref="ErrorCode.InvalidArgument"/> for an unknown option, a missing value or a bad name.</exception>
-    public static AppArguments Parse(IReadOnlyList<string> args)
+    public static AppArguments Parse(IReadOnlyList<string> args, string defaultName = EngineName.Default)
     {
         AppArguments parsed = new();
+        bool named = false;
         for (int i = 0; i < args.Count; i++)
         {
+            // Finder and the Dock may pass a process serial number to an app they open.
+            if (args[i].StartsWith("-psn_", StringComparison.Ordinal))
+                continue;
+            named |= args[i] == "--name";
             string Value() => i + 1 < args.Count ? args[++i] : throw new ControlException(ErrorCode.InvalidArgument, $"{args[i]} needs a value. {Usage}");
             parsed = args[i] switch
             {
@@ -38,7 +44,7 @@ public sealed record AppArguments(string Name = EngineName.Default, string? Acco
             throw new ControlException(ErrorCode.InvalidArgument, $"--server and --script go with --account. {Usage}");
         if (parsed.Manager && parsed != new AppArguments(Manager: true))
             throw new ControlException(ErrorCode.InvalidArgument, $"--manager takes no other option. {Usage}");
-        return parsed;
+        return named || parsed.Manager ? parsed : parsed with { Name = defaultName };
     }
 
     /// <summary>The arguments that <see cref="Parse"/> reads back as this.</summary>

@@ -333,6 +333,13 @@ public sealed class ManagerTests : IDisposable
             Assert.False(updates.UpToDate);
             Assert.Equal("9.8.6+0000000", updates.Installed);
             Assert.Contains("doesn't match", updates.Verdict);
+
+            // With the app installed, skua is the CLI inside the build's Skua.app.
+            File.Delete(Path.Combine(bin, "skua"));
+            File.CreateSymbolicLink(Path.Combine(bin, "skua"), Path.Combine(_dir, "versions", build, "Skua.app", "Contents", "Helpers", "skua"));
+            updates.Refresh();
+            Assert.True(updates.UpToDate);
+            Assert.Equal(build, updates.Installed);
         }
         finally
         {
@@ -387,9 +394,29 @@ public sealed class ManagerTests : IDisposable
         AppArguments launch = new("alicetester", "alicetester", "Sir Ver", "/tmp/Farm.cs");
         Assert.Equal(launch, AppArguments.Parse(launch.ToArgs()));
         Assert.Equal(new AppArguments(Manager: true), AppArguments.Parse(["--manager"]));
+        Assert.Equal(new AppArguments(), AppArguments.Parse(["-psn_0_1234"]));
         Assert.Throws<ControlException>(() => AppArguments.Parse(["--password", "x"]));
         Assert.Throws<ControlException>(() => AppArguments.Parse(["--server", "Twig"]));
         Assert.Throws<ControlException>(() => AppArguments.Parse(["--manager", "--name", "x"]));
+    }
+
+    [Fact]
+    public void Started_without_a_name_the_app_serves_the_Engine_Name_it_last_served_but_not_a_Manager_launch()
+    {
+        string skuaDir = Path.Combine(_dir, "last-name");
+        Assert.Equal(EngineName.Default, AppArguments.Parse([], LastEngineName.Read(skuaDir)).Name);
+
+        LastEngineName.Remember(skuaDir, AppArguments.Parse(["--name", "alt"], LastEngineName.Read(skuaDir)));
+        Assert.Equal("alt", AppArguments.Parse([], LastEngineName.Read(skuaDir)).Name);
+        Assert.Equal(EngineName.Default, AppArguments.Parse(["--name", "default"], LastEngineName.Read(skuaDir)).Name);
+        Assert.Equal(new AppArguments(Manager: true), AppArguments.Parse(["--manager"], LastEngineName.Read(skuaDir)));
+
+        // The Skua Manager's launches name an account's own app.
+        LastEngineName.Remember(skuaDir, AppArguments.Parse(["--name", "alicetester", "--account", "alicetester"], LastEngineName.Read(skuaDir)));
+        Assert.Equal("alt", LastEngineName.Read(skuaDir));
+
+        File.WriteAllText(Path.Combine(skuaDir, LastEngineName.FileName), "Not A Name\n");
+        Assert.Equal(EngineName.Default, LastEngineName.Read(skuaDir));
     }
 
     [Fact]

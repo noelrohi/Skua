@@ -12,9 +12,11 @@ AppArguments arguments;
 EngineEndpoint endpoint;
 try
 {
-    arguments = AppArguments.Parse(args);
+    string skuaDir = EngineEndpoint.DefaultSkuaDir();
+    arguments = AppArguments.Parse(args, LastEngineName.Read(skuaDir));
     if (arguments.Manager)
         return ManagerApp.Run();
+    LastEngineName.Remember(skuaDir, arguments);
     endpoint = EngineEndpoint.FromEnvironment(arguments.Name);
 }
 catch (ControlException e)

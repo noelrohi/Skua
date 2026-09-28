@@ -1,0 +1,42 @@
+<Project>
+
+  <!--
+    dotnet publish -r osx-arm64 -p:SkuaAppBundle=<folder>/Skua.app publishes the Mac App as a self-contained, ad-hoc signed Skua.app (ADR 0006):
+
+      Contents/Info.plist, Contents/Resources/Skua.icns
+      Contents/MacOS/    Skua, skua-gamehost, skua.swf and their runtime: this project's publish
+      Contents/Helpers/  skua, skua-engine, skua-gamehost, skua.swf and their runtime: Skua.App.Engine's publish, from the same build
+
+    The CLI has a folder of its own because Skua and skua (and Skua.dll and skua.dll) are one name on a case-insensitive disk. Its files that
+    are the same as the app's are APFS clones of them, so the second runtime takes no space. The bundle is made afresh on every publish.
+  -->
+
+  <PropertyGroup Condition="'$(SkuaAppBundle)' != ''">
+    <_SkuaAppBundle>$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::Combine('$(MSBuildStartupDirectory)', '$(SkuaAppBundle)'))))</_SkuaAppBundle>
+    <PublishDir>$(_SkuaAppBundle)Contents/MacOS/</PublishDir>
+    <SelfContained>true</SelfContained>
+    <!-- The reference to Skua.App.Engine only orders the build; the CLI is published self-contained into Helpers below. -->
+    <ValidateExecutableReferencesMatchSelfContained>false</ValidateExecutableReferencesMatchSelfContained>
+  </PropertyGroup>
+
+  <Target Name="CheckSkuaAppBundle" BeforeTargets="PrepareForPublish" Condition="'$(SkuaAppBundle)' != ''">
+    <Error Condition="'$(SkuaMacBuild)' != 'true'" Text="Skua.app can only be published on macOS." />
+    <Error Condition="'$(RuntimeIdentifier)' == ''" Text="Skua.app is self-contained: publish it with a runtime, e.g. -r osx-arm64." />
+    <Error Condition="'$(_CommandLineDefinedOutputPath)' == 'true'" Text="-p:SkuaAppBundle names the output; leave out --output." />
+    <Error Condition="'$(_SkuaAppBundle.EndsWith(`.app/`))' != 'true'" Text="-p:SkuaAppBundle must name a folder ending in .app, not '$(SkuaAppBundle)'." />
+    <RemoveDir Directories="$(_SkuaAppBundle)" />
+  </Target>
+
+  <Target Name="PublishSkuaAppBundle" AfterTargets="Publish" Condition="'$(SkuaAppBundle)' != ''">
+    <MSBuild Projects="..\Skua.App.Engine\Skua.App.Engine.csproj" Targets="Publish" Properties="RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=true;PublishDir=$(_SkuaAppBundle)Contents/Helpers/" />
+    <WriteLinesToFile File="$(_SkuaAppBundle)Contents/Info.plist" Lines="$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)Info.plist').Replace('@VERSION@', '$(Version)'))" Overwrite="true" />
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)Skua.icns" DestinationFolder="$(_SkuaAppBundle)Contents/Resources" />
+    <!-- Ad-hoc: macOS runs it without a Developer ID, and notarising is out of scope. Every file in MacOS and Helpers gets a signature. -->
+    <Exec Command="codesign --force --deep --sign - &quot;$(_SkuaAppBundle)&quot;" />
+    <!-- After signing, as a clone keeps the signature its source has in its extended attributes; a disk without clones keeps the copies. -->
+    <Exec Command="cd &quot;$(_SkuaAppBundle)Contents&quot; &amp;&amp; for f in Helpers/*; do a=&quot;MacOS/${f#Helpers/}&quot;; if [ -f &quot;$f&quot; ] &amp;&amp; cmp -s &quot;$f&quot; &quot;$a&quot;; then cp -c &quot;$a&quot; &quot;$f.clone&quot; 2&gt;/dev/null &amp;&amp; mv -f &quot;$f.clone&quot; &quot;$f&quot;; fi; done; true" />
+    <Exec Command="codesign --verify --deep --strict &quot;$(_SkuaAppBundle)&quot;" />
+    <Message Importance="high" Text="Skua.app -> $(_SkuaAppBundle)" />
+  </Target>
+
+</Project>

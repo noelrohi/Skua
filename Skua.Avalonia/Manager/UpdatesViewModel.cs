@@ -77,7 +77,10 @@ public sealed partial class UpdatesViewModel : ObservableObject
     [RelayCommand]
     private void CopyCommand() => _clipboard.SetText(UpdateCommand);
 
-    /// <summary>The build <c>skua</c> links to: <c>$SKUA_BIN_DIR/skua</c> (default <c>~/.local/bin/skua</c>) → <c>…/versions/&lt;build&gt;/skua</c>.</summary>
+    /// <summary>
+    /// The build <c>skua</c> links to: <c>$SKUA_BIN_DIR/skua</c> (default <c>~/.local/bin/skua</c>) → <c>…/versions/&lt;build&gt;/skua</c>, or
+    /// <c>…/versions/&lt;build&gt;/Skua.app/Contents/Helpers/skua</c> when the app is installed too.
+    /// </summary>
     public static string? InstalledBuild(out string link)
     {
         string binDir = Environment.GetEnvironmentVariable("SKUA_BIN_DIR") is { Length: > 0 } dir
@@ -86,7 +89,14 @@ public sealed partial class UpdatesViewModel : ObservableObject
         link = Path.Combine(binDir, "skua");
         try
         {
-            return new FileInfo(link).LinkTarget is { } target && Path.GetFileName(Path.GetDirectoryName(target)) is { Length: > 0 } build ? build : null;
+            if (new FileInfo(link).LinkTarget is not { } target)
+                return null;
+            for (string? folder = Path.GetDirectoryName(target); folder is not null; folder = Path.GetDirectoryName(folder))
+            {
+                if (Path.GetFileName(Path.GetDirectoryName(folder)) == "versions")
+                    return Path.GetFileName(folder);
+            }
+            return Path.GetFileName(Path.GetDirectoryName(target)) is { Length: > 0 } build ? build : null;
         }
         catch (IOException)
         {
