@@ -1,0 +1,93 @@
+<!-- Ported from Skua.WPF/UserControls/FastTravelUserControl.xaml and FastTravelItemUserControl.xaml; the list shows the travels that match the search. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.Helpers.FastTravelView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Skua.Avalonia.Views.Helpers"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:FastTravelViewModel">
+    <Grid RowDefinitions="Auto,*,Auto">
+        <Grid Grid.Row="0" Margin="6,6,6,3" ColumnDefinitions="*,Auto,Auto,Auto,Auto">
+            <TextBox
+                x:Name="SearchBox"
+                Grid.Column="0"
+                Margin="0,0,3,0"
+                PlaceholderText="Search" />
+            <Button
+                Grid.Column="1"
+                Margin="3,0"
+                Command="{Binding SaveFastTravelsCommand}"
+                Content="Save" />
+            <Button
+                x:Name="ClearTravels"
+                Grid.Column="2"
+                Margin="3,0"
+                Command="{Binding ClearFastTravelsCommand}"
+                Content="Clear" />
+            <CheckBox
+                Grid.Column="3"
+                Margin="9,0,0,0"
+                IsChecked="{Binding MapService.UsePrivateRoom}"
+                ToolTip.Tip="Join private rooms with specified number." />
+            <TextBox
+                x:Name="PrivateNumber"
+                Grid.Column="4"
+                Width="120"
+                Margin="3,0,0,0"
+                MaxLength="6"
+                PlaceholderText="Private Number"
+                Text="{Binding MapService.PrivateRoomNumber}" />
+        </Grid>
+        <ScrollViewer Grid.Row="1" Margin="3" VerticalScrollBarVisibility="Auto">
+            <ItemsControl x:Name="Travels">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vms:FastTravelItemViewModel">
+                        <DockPanel Width="300" Margin="3">
+                            <Button
+                                Command="{Binding RemoveCommand}"
+                                Content="✕"
+                                DockPanel.Dock="Right"
+                                ToolTip.Tip="Remove" />
+                            <Button
+                                Margin="0,0,2,0"
+                                Command="{Binding EditCommand}"
+                                Content="Edit"
+                                DockPanel.Dock="Right" />
+                            <Button
+                                MinWidth="70"
+                                Margin="0,0,2,0"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center"
+                                Classes="travel"
+                                Command="{Binding TravelCommand}"
+                                CommandParameter="{Binding}"
+                                Content="{Binding DescriptionName}" />
+                        </DockPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+        <Expander
+            x:Name="AddTravel"
+            Grid.Row="2"
+            Margin="6,3,6,6"
+            HorizontalAlignment="Stretch"
+            Header="Add Fast Travel">
+            <StackPanel>
+                <local:FastTravelEditorView Margin="6,6,6,3" DataContext="{Binding Editor}" />
+                <Button
+                    x:Name="Add"
+                    Margin="6,3,6,6"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Center"
+                    Command="{Binding AddFastTravelCommand}"
+                    Content="Add" />
+            </StackPanel>
+        </Expander>
+    </Grid>
+</UserControl>

@@ -174,7 +174,7 @@ internal sealed class App : Application
         windows.WindowCreated = w => NativeMenu.SetMenu(w, MenuBar());
         // Made here, on the UI thread, where its collections change.
         ScriptDialogsViewModel dialogs = engine.Services.GetRequiredService<ScriptDialogsViewModel>();
-        MainWindow window = new(flash, engine.Services.GetRequiredService<ILogService>(), status, MainMenus.InWindow(mainMenu, windows, OpenManager), dialogs);
+        MainWindow window = new(flash, engine.Services.GetRequiredService<ILogService>(), status, MainMenus.InWindow(mainMenu, windows, OpenManager), new HelpersBar(mainMenu), dialogs);
         window.Notices.WindowOpened = w => NativeMenu.SetMenu(w, MenuBar());
         engine.Services.GetRequiredService<AvaloniaDialogService>().WindowCreated = w => NativeMenu.SetMenu(w, MenuBar());
         _ = new ScriptDialogAlerts(dialogs, window, () => _desktop?.Windows.Any(w => w.IsActive) == true, MacNotifications.Post);

@@ -1,0 +1,42 @@
+<!-- Ported from Skua.WPF/UserControls/FastTravelEditorUserControl.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.Helpers.FastTravelEditorView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:FastTravelEditorViewModel">
+    <StackPanel>
+        <TextBox x:Name="DescriptionName" PlaceholderText="Description Name" Text="{Binding Travel.DescriptionName}" />
+        <TextBox
+            x:Name="MapName"
+            Margin="0,3"
+            PlaceholderText="Map Name"
+            Text="{Binding Travel.MapName}" />
+        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
+            <TextBox
+                x:Name="Cell"
+                Grid.Row="0"
+                Grid.Column="0"
+                MinWidth="120"
+                Margin="0,3,3,3"
+                PlaceholderText="Cell"
+                Text="{Binding Travel.Cell}" />
+            <TextBox
+                x:Name="Pad"
+                Grid.Row="0"
+                Grid.Column="1"
+                MinWidth="120"
+                Margin="3,3,0,3"
+                PlaceholderText="Pad"
+                Text="{Binding Travel.Pad}" />
+            <Button
+                Grid.Row="1"
+                Grid.ColumnSpan="2"
+                Margin="0,3"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Command="{Binding GetCurrentCommand}"
+                Content="Current" />
+        </Grid>
+    </StackPanel>
+</UserControl>

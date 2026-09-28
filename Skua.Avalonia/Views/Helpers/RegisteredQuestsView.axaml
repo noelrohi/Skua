@@ -1,0 +1,53 @@
+<!-- Ported from Skua.WPF/UserControls/RegisteredQuestsUserControl.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.Helpers.RegisteredQuestsView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:RegisteredQuestsViewModel">
+    <Grid ColumnDefinitions="*,Auto" RowDefinitions="*,Auto">
+        <ListBox
+            x:Name="AutoQuestsList"
+            Grid.Row="0"
+            Grid.ColumnSpan="2"
+            Margin="0,0,0,3"
+            ItemsSource="{Binding CurrentAutoQuests}"
+            SelectionMode="Multiple"
+            ToolTip.Tip="The quests the bot completes automatically. ⌫ removes the selected quests; ⌥⌫ removes them all.">
+            <ListBox.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Command="{Binding RemoveAllQuestsCommand}" Header="Remove All" />
+                </ContextMenu>
+            </ListBox.ContextMenu>
+        </ListBox>
+        <Grid Grid.Row="1" Grid.Column="0" ColumnDefinitions="2*,*">
+            <TextBox
+                x:Name="QuestId"
+                Grid.Column="0"
+                Margin="0,3,3,3"
+                PlaceholderText="Quest ID"
+                Text="{Binding AddQuestInput}">
+                <TextBox.KeyBindings>
+                    <KeyBinding Command="{Binding AddQuestCommand}" Gesture="Enter" />
+                </TextBox.KeyBindings>
+            </TextBox>
+            <TextBox
+                Grid.Column="1"
+                Margin="3,3,0,3"
+                PlaceholderText="Reward ID (optional)"
+                Text="{Binding RewardIdInput}"
+                ToolTip.Tip="Item ID for quest reward choice. Leave empty or enter -1 for auto-select.">
+                <TextBox.KeyBindings>
+                    <KeyBinding Command="{Binding AddQuestCommand}" Gesture="Enter" />
+                </TextBox.KeyBindings>
+            </TextBox>
+        </Grid>
+        <Button
+            x:Name="AddQuest"
+            Grid.Row="1"
+            Grid.Column="1"
+            Margin="3,3,0,3"
+            Command="{Binding AddQuestCommand}"
+            Content="Add" />
+    </Grid>
+</UserControl>

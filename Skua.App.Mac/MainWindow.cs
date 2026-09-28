@@ -8,8 +8,8 @@ using Skua.MacOS.GameHost;
 namespace Skua.App.Mac;
 
 /// <summary>
-/// The main window: the main menu and the login controls, the Game View, the status strip with the Notices beside it, and the sheet of a
-/// pending Question over them.
+/// The main window: the main menu with the Auto and Jump buttons, the login controls, the Game View, the status strip with the Notices
+/// beside it, and the sheet of a pending Question over them.
 /// </summary>
 internal sealed class MainWindow : Window
 {
@@ -25,7 +25,7 @@ internal sealed class MainWindow : Window
     /// </summary>
     private const int BarsHeight = 96;
 
-    public MainWindow(BridgeFlashUtil flash, ILogService log, StatusViewModel status, Menu menu, ScriptDialogsViewModel dialogs)
+    public MainWindow(BridgeFlashUtil flash, ILogService log, StatusViewModel status, Menu menu, HelpersBar helpers, ScriptDialogsViewModel dialogs)
     {
         Title = "Skua";
         Width = GameHostLaunch.StageWidth;
@@ -41,10 +41,12 @@ internal sealed class MainWindow : Window
         Sheet = new QuestionSheet(dialogs);
         DockPanel bottom = new() { Background = strip.Background, Children = { Notices, strip } };
         DockPanel.SetDock(Notices, Dock.Right);
-        DockPanel.SetDock(menu, Dock.Top);
+        DockPanel top = new() { Children = { helpers, menu } };
+        DockPanel.SetDock(helpers, Dock.Right);
+        DockPanel.SetDock(top, Dock.Top);
         DockPanel.SetDock(login, Dock.Top);
         DockPanel.SetDock(bottom, Dock.Bottom);
-        Content = new Panel { Children = { new DockPanel { Children = { menu, login, bottom, view } }, Sheet } };
+        Content = new Panel { Children = { new DockPanel { Children = { top, login, bottom, view } }, Sheet } };
         Opened += (_, _) => view.Focus();
 
         TimeSpan interval = TimeSpan.FromSeconds(

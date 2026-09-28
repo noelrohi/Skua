@@ -1,0 +1,62 @@
+<!-- Ported from Skua.WPF/UserControls/AutoUserControl.xaml: auto attack and hunt, with the class and mode to use. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.Helpers.AutoView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:AutoViewModel">
+    <Grid Margin="6" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto">
+        <Button
+            x:Name="AutoAttack"
+            Grid.Column="0"
+            Margin="0,0,3,3"
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Center"
+            Command="{Binding StartAutoAttackCommand}"
+            Content="Auto Attack"
+            IsVisible="{Binding !Auto.IsRunning}" />
+        <Button
+            x:Name="AutoHunt"
+            Grid.Column="1"
+            Margin="3,0,0,3"
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Center"
+            Command="{Binding StartAutoHuntCommand}"
+            Content="Auto Hunt"
+            IsVisible="{Binding !Auto.IsRunning}" />
+        <Button
+            x:Name="Stop"
+            Grid.Column="0"
+            Grid.ColumnSpan="2"
+            Margin="0,0,0,3"
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Center"
+            Command="{Binding StopAutoAsyncCommand}"
+            Content="Stop"
+            IsVisible="{Binding Auto.IsRunning}" />
+        <Grid Grid.Row="1" Grid.ColumnSpan="2" ColumnDefinitions="*,*">
+            <ComboBox
+                x:Name="ClassPicker"
+                Grid.Column="0"
+                Margin="0,3,3,0"
+                HorizontalAlignment="Stretch"
+                ItemsSource="{Binding PlayerClasses}"
+                PlaceholderText="Class"
+                SelectedItem="{Binding SelectedClass}" />
+            <ComboBox
+                Grid.Column="1"
+                Margin="3,3,0,0"
+                HorizontalAlignment="Stretch"
+                ItemsSource="{Binding CurrentClassModeStrings}"
+                PlaceholderText="Mode"
+                SelectedItem="{Binding SelectedClassModeString}" />
+        </Grid>
+        <TextBox
+            Grid.Row="2"
+            Grid.ColumnSpan="2"
+            Margin="0,6,0,0"
+            PlaceholderText="Manual MapIDs (optional)"
+            Text="{Binding ManualMapIDs}"
+            ToolTip.Tip="Enter MapIDs separated by commas for priority targeting (e.g., 12345, 67890). First available monster in the list will be attacked. If it dies, switches to next available, but returns to first when it respawns." />
+    </Grid>
+</UserControl>
