@@ -99,7 +99,8 @@ public class McpTests
 
         Assert.Subset(tools.Select(t => t.Name).ToHashSet(), new HashSet<string> { "servers", "login", "logout" });
         Assert.Equal(GameFixture.Servers.Length, servers.StructuredContent!.Value.GetProperty("servers").GetArrayLength());
-        Assert.Equal(new LoginResult("Galanoth", false, "SkuaTester"), JsonSerializer.Deserialize<LoginResult>(((TextContentBlock)login.Content.Single()).Text, ControlJson.Options));
+        Assert.Equal(new LoginResult("Galanoth", false, "SkuaTester", IsTestAccount: true), JsonSerializer.Deserialize<LoginResult>(((TextContentBlock)login.Content[0]).Text, ControlJson.Options));
+        Assert.Equal("Logged in as SkuaTester (the Test Account) on Galanoth.", ((TextContentBlock)login.Content[1]).Text);
         Assert.True(logout.StructuredContent!.Value.GetProperty("wasLoggedIn").GetBoolean());
     }
 

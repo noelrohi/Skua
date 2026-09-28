@@ -48,6 +48,11 @@ public class ScriptSourceTests
         }
         """);
 
+    private static readonly FakeScript Doomwood = new("Story/Doomwood.cs", "// story", "Doomwood Story", "Completes the Doomwood saga.");
+
+    /// <summary>Older than the window a full download reads the Script Source's history over, so that history has nothing from it.</summary>
+    private static DateTimeOffset MonthAgo => DateTimeOffset.UtcNow.AddDays(-30);
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
@@ -402,13 +407,13 @@ public class ScriptSourceTests
     {
         await using EngineSandbox sandbox = new();
         await using FakeGitHub github = new();
-        github.Commit("noelrohi", "Scripts", "Skua", Leveling, Gold, CoreBots);
+        github.CommitAt(MonthAgo, "noelrohi", "Scripts", "Skua", [Leveling, Gold, CoreBots]);
         using EngineConnection connection = await StartEngineAsync(sandbox, github);
         CancellationToken ct = TestContext.Current.CancellationToken;
         ScriptsUpdateResult full = await connection.ScriptsUpdateAsync(ct);
         ScriptsNewResult afterFull = await connection.ScriptsNewAsync(null, ct);
 
-        github.Commit("noelrohi", "Scripts", "Skua", Gold with { Content = "// gold v2" }, new FakeScript("Story/Doomwood.cs", "// story", "Doomwood Story", "Completes the Doomwood saga."));
+        github.Commit("noelrohi", "Scripts", "Skua", Gold with { Content = "// gold v2" }, Doomwood);
         DateTimeOffset before = DateTimeOffset.UtcNow;
         ScriptsUpdateResult incremental = await connection.ScriptsUpdateAsync(ct);
         ScriptsNewResult news = await connection.ScriptsNewAsync(null, ct);
@@ -419,8 +424,10 @@ public class ScriptSourceTests
         ControlException unknown = await Assert.ThrowsAsync<ControlException>(() => connection.ScriptsNewAsync("not-a-date-or-commit", ct));
 
         Assert.Equal((3, 0), (full.Added.Count, full.Changed.Count));
-        // A full download is the starting point, not news.
+        // A full download is the starting point, not news, and the Script Source's history had nothing in the window.
         Assert.Empty(afterFull.Scripts);
+        Assert.Equal(0, afterFull.Commits);
+        Assert.True(afterFull.HistoryFrom <= afterFull.Since.AddMinutes(1), $"{afterFull.HistoryFrom} is well after {afterFull.Since}");
         Assert.Equal(["Story/Doomwood.cs"], incremental.Added);
         Assert.Equal(["Farm/Gold.cs"], incremental.Changed);
         Assert.Equal(
@@ -439,7 +446,7 @@ public class ScriptSourceTests
     {
         await using EngineSandbox sandbox = new();
         await using FakeGitHub github = new();
-        github.Commit("noelrohi", "Scripts", "Skua", Leveling, Gold);
+        github.CommitAt(MonthAgo, "noelrohi", "Scripts", "Skua", [Leveling, Gold]);
         await sandbox.RunCliAsync(github.Environment(), "scripts", "update");
         github.Commit("noelrohi", "Scripts", "Skua", Leveling with { Content = "// leveling v2" }, CoreBots);
 
@@ -451,6 +458,8 @@ public class ScriptSourceTests
         Assert.True(update.ExitCode == 0, update.Stderr);
         Assert.Contains("1 new, 1 changed; see 'skua scripts new'", update.Stdout);
         Assert.True(news.ExitCode == 0, news.Stderr);
+        Assert.StartsWith("1 new, 1 changed from noelrohi/Scripts@Skua since ", news.Stdout);
+        Assert.Contains(", by 1 update:", news.Stdout);
         Assert.Matches(@"CoreBots\.cs\s+new\s+", news.Stdout);
         Assert.Matches(@"Farm/Leveling\.cs\s+changed\s+", news.Stdout);
         using JsonDocument newsJson = JsonDocument.Parse(json.Stdout);
@@ -458,6 +467,131 @@ public class ScriptSourceTests
         Assert.Equal(0, none.ExitCode);
         Assert.Contains("No Scripts were added or changed", none.Stdout);
     }
+
+    [Fact]
+    public async Task A_first_full_download_records_the_Script_Sources_recent_commits_and_scripts_new_lists_exactly_those()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeGitHub github = new();
+        DateTimeOffset fiveDaysAgo = Second(DateTimeOffset.UtcNow.AddDays(-5));
+        DateTimeOffset threeDaysAgo = Second(DateTimeOffset.UtcNow.AddDays(-3));
+        DateTimeOffset twoDaysAgo = Second(DateTimeOffset.UtcNow.AddDays(-2));
+        DateTimeOffset dayAgo = Second(DateTimeOffset.UtcNow.AddDays(-1));
+        github.CommitAt(MonthAgo, "noelrohi", "Scripts", "Skua", [Leveling, Gold, CoreBots]);
+        github.CommitAt(fiveDaysAgo, "noelrohi", "Scripts", "Skua", [new FakeScript("Story/Old.cs", "// old")]);
+        github.CommitAt(threeDaysAgo, "noelrohi", "Scripts", "Skua", [Gold with { Content = "// gold v2" }, Doomwood]);
+        string threeDaysAgoSha = github.Head("noelrohi", "Scripts", "Skua");
+        // A Script deleted since isn't news; nor is a file that isn't a Script.
+        github.CommitAt(twoDaysAgo, "noelrohi", "Scripts", "Skua", [new FakeScript("README.md", "# Scripts")], "Story/Old.cs");
+        github.CommitAt(dayAgo, "noelrohi", "Scripts", "Skua", [Leveling with { Content = "// leveling v2" }]);
+        string dayAgoSha = github.Head("noelrohi", "Scripts", "Skua");
+
+        ProcessResult update = await sandbox.RunCliAsync(github.Environment(), "scripts", "update");
+        IReadOnlyList<string> api = github.Requests.Where(r => r.StartsWith("/api/", StringComparison.Ordinal)).ToList();
+        ProcessResult news = await sandbox.RunCliAsync(github.Environment(), "scripts", "new");
+        ProcessResult json = await sandbox.RunCliAsync(github.Environment(), "scripts", "new", "--json");
+        ProcessResult sinceCommit = await sandbox.RunCliAsync(github.Environment(), "scripts", "new", "--since", threeDaysAgoSha[..7], "--json");
+
+        Assert.True(update.ExitCode == 0, update.Stderr);
+        Assert.Contains("(full download)", update.Stdout);
+        // The head, then the Script Source's history: the list of commits and each of the four in the window, two of which touch Scripts still there.
+        Assert.Equal(1 + 1 + 4, api.Count);
+        Assert.True(news.ExitCode == 0, news.Stderr);
+        Assert.StartsWith("1 new, 2 changed from noelrohi/Scripts@Skua since ", news.Stdout);
+        Assert.Contains(", by 2 commits from its history:", news.Stdout);
+        Assert.DoesNotContain("No history", news.Stdout);
+        ScriptsNewResult result = JsonSerializer.Deserialize<ScriptsNewResult>(json.Stdout, ControlJson.Options)!;
+        Assert.Equal(
+            [
+                ("Farm/Leveling.cs", (string?)"Leveling", ScriptChange.Changed, dayAgo, dayAgoSha),
+                ("Farm/Gold.cs", "Gold Farm", ScriptChange.Changed, threeDaysAgo, threeDaysAgoSha),
+                ("Story/Doomwood.cs", "Doomwood Story", ScriptChange.Added, threeDaysAgo, threeDaysAgoSha),
+            ],
+            result.Scripts.Select(s => (s.Path, s.Name, s.Change, s.At, s.Commit)));
+        Assert.Equal((0, 2), (result.Updates, result.Commits));
+        Assert.True(result.HistoryFrom <= result.Since.AddMinutes(1), $"{result.HistoryFrom} is well after {result.Since}");
+        Assert.Equal(["Farm/Leveling.cs"], JsonSerializer.Deserialize<ScriptsNewResult>(sinceCommit.Stdout, ControlJson.Options)!.Scripts.Select(s => s.Path));
+    }
+
+    [Fact]
+    public async Task A_full_download_reads_at_most_21_API_requests_of_history_and_scripts_new_says_where_it_starts()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeGitHub github = new();
+        github.CommitAt(MonthAgo, "noelrohi", "Scripts", "Skua", [Leveling]);
+        DateTimeOffset start = Second(DateTimeOffset.UtcNow.AddDays(-6));
+        for (int i = 0; i < 25; i++)
+            github.CommitAt(start.AddHours(i), "noelrohi", "Scripts", "Skua", [new FakeScript($"Farm/Farm{i:D2}.cs", $"// farm {i}")]);
+        using EngineConnection connection = await StartEngineAsync(sandbox, github);
+
+        ScriptsUpdateResult update = await connection.ScriptsUpdateAsync(Ct);
+        int history = github.Requests.Count(r => r.StartsWith("/api/", StringComparison.Ordinal) && !r.EndsWith("/commits/Skua", StringComparison.Ordinal));
+        ScriptsNewResult news = await connection.ScriptsNewAsync(null, Ct);
+        ProcessResult text = await sandbox.RunCliAsync(github.Environment(), "scripts", "new");
+
+        Assert.Equal(26, update.Downloaded);
+        Assert.Equal(21, history);
+        // The 20 newest commits, whose history is complete back to the oldest of them.
+        Assert.Equal(Enumerable.Range(5, 20).Reverse().Select(i => $"Farm/Farm{i:D2}.cs"), news.Scripts.Select(s => s.Path));
+        Assert.Equal(20, news.Commits);
+        Assert.Equal(start.AddHours(5), news.HistoryFrom);
+        Assert.EndsWith($"No history of noelrohi/Scripts@Skua yet from before {start.AddHours(5).ToLocalTime():yyyy-MM-dd HH:mm}.", text.Stdout.Trim());
+    }
+
+    [Fact]
+    public async Task With_the_commits_API_failing_the_full_download_succeeds_and_scripts_new_says_there_is_no_history_yet()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeGitHub github = new();
+        github.CommitAt(DateTimeOffset.UtcNow.AddDays(-2), "noelrohi", "Scripts", "Skua", [Leveling, Gold]);
+        github.HistoryDown = true;
+
+        ProcessResult neverUpdated = await sandbox.RunCliAsync(github.Environment(), "scripts", "new");
+        DateTimeOffset before = DateTimeOffset.UtcNow;
+        ProcessResult update = await sandbox.RunCliAsync(github.Environment(), "scripts", "update", "--json");
+        IReadOnlyList<string> api = github.Requests.Where(r => r.StartsWith("/api/", StringComparison.Ordinal)).ToList();
+        ProcessResult news = await sandbox.RunCliAsync(github.Environment(), "scripts", "new");
+        ProcessResult json = await sandbox.RunCliAsync(github.Environment(), "scripts", "new", "--json");
+
+        Assert.Equal((0, "No history of noelrohi/Scripts@Skua yet; 'skua scripts update' starts it."), (neverUpdated.ExitCode, neverUpdated.Stdout.Trim()));
+        Assert.True(update.ExitCode == 0, update.Stderr);
+        Assert.Equal(2, JsonDocument.Parse(update.Stdout).RootElement.GetProperty("downloaded").GetInt32());
+        // The head, then one refused list of commits, not retried.
+        Assert.Equal(["/api/repos/noelrohi/Scripts/commits/Skua", "/api/repos/noelrohi/Scripts/commits"], api);
+        Assert.True(news.ExitCode == 0, news.Stderr);
+        Assert.StartsWith("No history of noelrohi/Scripts@Skua yet from before ", news.Stdout);
+        Assert.EndsWith("; no Scripts were added or changed after.", news.Stdout.Trim());
+        ScriptsNewResult result = JsonSerializer.Deserialize<ScriptsNewResult>(json.Stdout, ControlJson.Options)!;
+        Assert.Empty(result.Scripts);
+        Assert.InRange(result.HistoryFrom!.Value, before, DateTimeOffset.UtcNow);
+    }
+
+    [Fact]
+    public async Task A_full_download_retried_after_failures_reads_only_the_commits_since_the_last_read()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeGitHub github = new();
+        github.CommitAt(DateTimeOffset.UtcNow.AddDays(-2), "noelrohi", "Scripts", "Skua", [Leveling, Gold]);
+        using EngineConnection connection = await StartEngineAsync(sandbox, github);
+        ScriptsUpdateResult first = await connection.ScriptsUpdateAsync(Ct);
+        // A Script that fails to download leaves the commit unrecorded, so the next update is a full download again.
+        github.Commit("noelrohi", "Scripts", "Skua", Doomwood);
+        File.Delete(Path.Combine(sandbox.SkuaDir, "scripts-commit.txt"));
+        github.ClearRequests();
+
+        ScriptsUpdateResult retried = await connection.ScriptsUpdateAsync(Ct);
+        int history = github.Requests.Count(r => r.StartsWith("/api/", StringComparison.Ordinal) && !r.EndsWith("/commits/Skua", StringComparison.Ordinal));
+        ScriptsNewResult news = await connection.ScriptsNewAsync(null, Ct);
+
+        Assert.Equal((ScriptsUpdateMode.Full, ScriptsUpdateMode.Full), (first.Mode, retried.Mode));
+        // The list, and only the one commit made since the first read.
+        Assert.Equal(2, history);
+        Assert.Equal([("Story/Doomwood.cs", ScriptChange.Added), ("Farm/Gold.cs", ScriptChange.Added), ("Farm/Leveling.cs", ScriptChange.Added)],
+            news.Scripts.Select(s => (s.Path, s.Change)));
+        Assert.Equal(2, news.Commits);
+    }
+
+    private static DateTimeOffset Second(DateTimeOffset time) => DateTimeOffset.FromUnixTimeSeconds(time.ToUnixTimeSeconds());
 
     [Theory]
     [InlineData("Pacific/Kiritimati", "2026-08-31T10:00:00Z")]

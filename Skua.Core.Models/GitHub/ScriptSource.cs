@@ -33,6 +33,13 @@ public class ScriptSource
     [JsonIgnore]
     public string CommitUrl => $"{_apiBaseUrl}repos/{Owner}/{Repo}/commits/{Branch}";
 
+    /// <summary>The newest commits on the branch, at most <paramref name="max"/>, made after <paramref name="since"/>, without their files.</summary>
+    public string CommitsUrl(DateTimeOffset since, int max) =>
+        $"{_apiBaseUrl}repos/{Owner}/{Repo}/commits?sha={Uri.EscapeDataString(Branch)}&since={since.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}&per_page={max}";
+
+    /// <summary>One commit, with the files it added, changed and removed.</summary>
+    public string CommitDetailsUrl(string sha) => $"{_apiBaseUrl}repos/{Owner}/{Repo}/commits/{sha}";
+
     public string CompareUrl(string fromSha, string toSha) => $"{_apiBaseUrl}repos/{Owner}/{Repo}/compare/{fromSha}...{toSha}";
 
     /// <summary>The raw URL of a file in the Script Source, e.g. <c>scripts.json</c> or <c>Farm/Leveling.cs</c>.</summary>

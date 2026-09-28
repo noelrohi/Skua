@@ -88,8 +88,10 @@ internal sealed class ScriptSourceOperations
             using IDisposable lease = _slot.Take("update the Scripts");
             ScriptSource source = _scriptsService.Source;
             ScriptsSyncResult result = await FromScriptSourceAsync(source, () => _scriptsService.SyncScriptsAsync(_shutdown));
-            if (result.Added.Count > 0 || result.Changed.Count > 0)
-                _history.Record(result.Source.ToDto(), result.Commit, result.Mode == ScriptsSyncMode.Full, Entries(result.Added), Entries(result.Changed));
+            if (result.Mode == ScriptsSyncMode.Full)
+                await RecordFullDownloadAsync(result);
+            else if (result.Added.Count > 0 || result.Changed.Count > 0)
+                _history.Record(result.Source.ToDto(), result.Commit, full: false, Entries(result.Added), Entries(result.Changed));
             return new ScriptsUpdateResult(result.Source.ToDto(), Mode(result.Mode), result.Commit, result.Downloaded, result.Failed,
                 result.Added.Select(s => s.FilePath).ToList(), result.Changed.Select(s => s.FilePath).ToList());
         }
@@ -97,6 +99,21 @@ internal sealed class ScriptSourceOperations
         {
             _updating.Release();
         }
+    }
+
+    /// <summary>
+    /// Records a full download with the Script Source's commits of the last <see cref="ScriptHistory.DefaultWindow"/>, since the download itself
+    /// isn't news; after an earlier full download read them, only the commits since.
+    /// </summary>
+    private async Task RecordFullDownloadAsync(ScriptsSyncResult result)
+    {
+        ScriptSourceDto source = result.Source.ToDto();
+        DateTimeOffset since = DateTimeOffset.UtcNow - ScriptHistory.DefaultWindow;
+        if (_history.SourceHistoryReadAt(source) is { } readAt && readAt > since)
+            since = readAt;
+        SourceHistory sourceHistory = await ScriptSourceHistory.ReadAsync(result.Source, since, _shutdown);
+        Dictionary<string, string?> names = result.Added.Concat(result.Changed).ToDictionary(s => s.FilePath, s => NullIfMissing(s.Name), StringComparer.Ordinal);
+        _history.Record(source, result.Commit, full: true, [], [], sourceHistory, names);
     }
 
     /// <remarks>Reads the setting once, so the Script Source and whether it is the default always agree.</remarks>

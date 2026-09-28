@@ -66,19 +66,19 @@ internal sealed class GameOperations
         string service = await ServiceAsync(asAgent, cancellationToken);
         bool sameAccount = service == _loggedInService;
         if (serverName is null && sameAccount && _tracker is { State: GameState.Playing, Server: { } current })
-            return new LoginResult(current, AlreadyLoggedIn: true, _loggedInUsername!);
+            return new LoginResult(current, AlreadyLoggedIn: true, _loggedInUsername!, IsTestAccount(service));
 
         Server server = Choose(await FetchServersAsync(), serverName);
         if (sameAccount && _tracker is { State: GameState.Playing, Server: { } playing } && string.Equals(playing, server.Name, StringComparison.OrdinalIgnoreCase))
-            return new LoginResult(playing, AlreadyLoggedIn: true, _loggedInUsername!);
+            return new LoginResult(playing, AlreadyLoggedIn: true, _loggedInUsername!, IsTestAccount(service));
 
         TestAccount account = await ReadAccountAsync(service, cancellationToken);
         _tracker.LoginStarted();
         try
         {
-            LoginResult result = await LogInAsync(account, server, timeout, cancellationToken);
+            string playingOn = await LogInAsync(account, server, timeout, cancellationToken);
             (_loggedInService, _loggedInUsername) = (service, account.Username);
-            return result;
+            return new LoginResult(playingOn, AlreadyLoggedIn: false, account.Username, IsTestAccount(service));
         }
         finally
         {
@@ -112,14 +112,15 @@ internal sealed class GameOperations
     /// Runs Core's <c>Relogin(name)</c>, which sends the whole server to the game (its IP-only path lands on the wrong server),
     /// then waits itself, since Core waits only 3 s for the world.
     /// </summary>
-    private async Task<LoginResult> LogInAsync(TestAccount account, Server server, TimeSpan timeout, CancellationToken cancellationToken)
+    /// <returns>The server the game plays on.</returns>
+    private async Task<string> LogInAsync(TestAccount account, Server server, TimeSpan timeout, CancellationToken cancellationToken)
     {
         string? before = _tracker.ConnectionMessage();
         _servers.SetLoginInfo(account.Username, account.Password);
         Task relogin = Task.Factory.StartNew(() => _servers.Relogin(server.Name), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         try
         {
-            return new LoginResult(await WaitForWorldAsync(server, relogin, before, timeout, cancellationToken), AlreadyLoggedIn: false, account.Username);
+            return await WaitForWorldAsync(server, relogin, before, timeout, cancellationToken);
         }
         finally
         {
@@ -206,6 +207,8 @@ internal sealed class GameOperations
 
     private static bool IsRefusal(string message) =>
         GameStateTracker.IsConnectionLost(message) || RefusalMessages.Any(m => message.Contains(m, StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsTestAccount(string service) => service == AccountSetting.DefaultService;
 
     /// <summary>
     /// The Keychain service of the account to log in: the active one, except that an agent gets the Test Account unless the active account's

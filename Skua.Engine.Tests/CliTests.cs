@@ -69,17 +69,19 @@ public class CliTests
         ProcessResult login = await sandbox.RunCliAsync(environment, "login");
         ProcessResult status = await sandbox.RunCliAsync(environment, "status");
         ProcessResult again = await sandbox.RunCliAsync(environment, "login", "Sir Ver", "--json");
+        ProcessResult same = await sandbox.RunCliAsync(environment, "login");
         ProcessResult logout = await sandbox.RunCliAsync(environment, "logout");
         ProcessResult unknown = await sandbox.RunCliAsync(environment, "login", "Nowhere", "--timeout", "5");
 
         Assert.Equal(0, servers.ExitCode);
         Assert.Contains("Galanoth", servers.Stdout);
         Assert.Matches(@"Artix\s+1500/1500\s+full", servers.Stdout);
-        Assert.Equal((0, "Logged in on Sir Ver."), (login.ExitCode, login.Stdout.Trim()));
+        Assert.Equal((0, "Logged in as SkuaTester (the Test Account) on Sir Ver."), (login.ExitCode, login.Stdout.Trim()));
         Assert.Contains("playing on Sir Ver", status.Stdout);
         Assert.Equal(0, again.ExitCode);
         using (JsonDocument json = JsonDocument.Parse(again.Stdout))
             Assert.True(json.RootElement.GetProperty("alreadyLoggedIn").GetBoolean());
+        Assert.Equal((0, "Already playing as SkuaTester (the Test Account) on Sir Ver."), (same.ExitCode, same.Stdout.Trim()));
         Assert.Equal((0, "Logged out."), (logout.ExitCode, logout.Stdout.Trim()));
         Assert.Equal(ExitCodes.For(ErrorCode.InvalidArgument), unknown.ExitCode);
         Assert.Contains("No server is named 'Nowhere'", unknown.Stderr);
