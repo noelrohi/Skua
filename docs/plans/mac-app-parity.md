@@ -17,7 +17,6 @@ Tests are in `Skua.Avalonia.Tests` and named `Class.Method`. `ViewCoverageTests`
 | Issue | What |
 |---|---|
 | [#112](https://github.com/noelrohi/Skua/issues/112) | Notifications when a Script stops, errors or relogs while the window isn't in front |
-| [#114](https://github.com/noelrohi/Skua/issues/114) | Hide the Application Options that do nothing on macOS |
 
 ## Main window (`Skua.App.WPF/MainWindow.xaml`)
 
@@ -44,7 +43,7 @@ The Mac App's main window also has a login bar, a status strip, the Question she
 | Auto | `AutoViewModel` | works | `HelpersTests.Auto_attack_starts_and_stops_from_the_Auto_view_and_the_bar_marks_it_running` |
 | Scripts | `ScriptLoaderViewModel` | works | `ScriptsPanelTests.A_Script_picked_from_the_Script_Source_starts_logs_live_and_stops_from_the_panel`, `ScriptsPanelTests.A_Script_started_with_the_CLI_shows_running_and_stopping_it_from_the_panel_ends_script_wait` |
 | Options › Game | `GameOptionsViewModel` | works | `OptionsTests.A_game_option_changed_in_the_panel_reaches_the_game_at_once_and_is_saved_for_the_next_start` |
-| Options › Application | `ApplicationOptionsViewModel` | present | `ViewCoverageTests.Every_window_the_Windows_app_registers_opens_in_the_Mac_App_with_its_view`, `PanelTests.Each_view_binds_to_its_view_model_with_no_binding_errors`. Each option saves to the settings through Core's own command. Its start-up check options drive the start-up checks (`StartUpChecksTests.*`), and Show Username in Title the main window's title (`MainWindowTitleTests`, under Main window). Clear Flash Cache and Client Animation Frame-rate have no macOS meaning ([#114](https://github.com/noelrohi/Skua/issues/114) hides them). |
+| Options › Application | `ApplicationOptionsViewModel` | works | `OptionsTests.Application_Options_leaves_out_Clear_Flash_Cache_and_the_frame_rate_and_every_other_option_shows_and_is_saved_for_the_next_start`, `PanelTests.Each_view_binds_to_its_view_model_with_no_binding_errors`. Each option saves to the settings through Core's own command. Its start-up check options drive the start-up checks (`StartUpChecksTests.*`), and Show Username in Title the main window's title (`MainWindowTitleTests`, under Main window). Clear Flash Cache and Client Animation Frame-rate are hidden (deliberate): the Game Host runs Ruffle, so there is no Flash cache, and the frame-rate sets WPF's `Timeline.DesiredFrameRate`, which Avalonia has no counterpart for. The Mac App's view leaves them out; Core's list, and so the Windows app, keeps them. |
 | Options › CoreBots | `CoreBotsViewModel` | works | `ScriptOptionsTests.CoreBots_options_load_from_the_players_file_and_edits_persist_there` |
 | Options › Application Themes | `ApplicationThemesViewModel` | works | `OptionsTests.Switching_the_theme_restyles_every_open_window_and_is_kept`, `OptionsTests.A_theme_edited_and_saved_in_the_panel_is_listed_kept_and_removable` |
 | Options › HotKeys | `HotKeysViewModel` | works | `HotKeysTests.A_hotkey_assigned_in_the_panel_is_saved_works_at_once_and_is_bound_again_after_a_restart`. Hotkeys default to ⌘ digits (deliberate), so plain keys stay with the game. |

@@ -1,8 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
-using Avalonia.Input;
 using Avalonia.Threading;
 using Skua.Avalonia.Services;
 using Skua.Avalonia.Views;
@@ -108,18 +106,6 @@ public sealed class MainWindowTitleTests(AppEngine app)
 
     private static CheckBox OptionCheckBox(HostWindow window) =>
         (CheckBox)Find<OptionItemView>(window, v => v.Item.Content == "Show Username in Title")!.Content!;
-
-    /// <summary>Clicks a check box as the developer does, once it is scrolled into view.</summary>
-    private static async Task ClickAsync(HostWindow window, CheckBox check)
-    {
-        check.BringIntoView();
-        await PumpUntilAsync(() => check.IsEffectivelyVisible && check.Bounds.Width > 0, "the check box on screen");
-        await PumpUntilAsync(() => true, "a layout pass");
-        Point center = check.TranslatePoint(new Point(check.Bounds.Width / 2, check.Bounds.Height / 2), window)!.Value;
-        window.MouseDown(center, MouseButton.Left);
-        window.MouseUp(center, MouseButton.Left);
-        await PumpUntilAsync(() => true, "a layout pass");
-    }
 
     /// <summary>A setting as the next start reads it, from the settings file through a fresh settings service.</summary>
     private static T? SavedSetting<T>(string key)
