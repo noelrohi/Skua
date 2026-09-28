@@ -26,8 +26,10 @@ public static class ConfigureServices
         services.AddSingleton<ScriptDialogsViewModel>();
         services.AddSingleton<ISoundService, MacSoundService>();
         services.AddTransient<IScriptOptionContainer, AvaloniaScriptOptionContainer>();
-        // Core's main menu makes every panel's view model, so the ones whose tickets come later need these stand-ins.
-        services.AddSingleton<IThemeService, FixedThemeService>();
+        services.AddSingleton<IProcessService, MacProcessService>();
+        services.AddSingleton<IThemeService, AvaloniaThemeService>();
+        services.AddSingleton<GameOptionEdits>();
+        // Core's main menu makes every panel's view model, so the hotkeys, whose ticket comes later, need this stand-in.
         services.AddSingleton<IHotKeyService, NoHotKeyService>();
 
         services.AddSkuaMainAppViewModels();

@@ -1,0 +1,164 @@
+<!--
+    Ported from Skua.WPF/UserControls/ColorSchemeEditorUserControl.xaml and ThemeSettingsUserControl.xaml. Material Design's colour picker
+    becomes a hex box and a row of Material hues.
+-->
+<UserControl
+    x:Class="Skua.Avalonia.Views.ColorSchemeEditorView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:ColorSchemeEditorViewModel">
+    <StackPanel Margin="6" Spacing="6">
+        <Grid
+            x:DataType="vms:ThemeSettingsViewModel"
+            ColumnDefinitions="*,Auto,Auto"
+            DataContext="{Binding ThemeSettings}">
+            <TextBox
+                x:Name="ThemeName"
+                Grid.Column="0"
+                VerticalAlignment="Center"
+                Text="{Binding ThemeName}"
+                PlaceholderText="Theme Name" />
+            <Button
+                x:Name="SaveTheme"
+                Grid.Column="1"
+                Margin="6,0,0,0"
+                Command="{Binding SaveThemeCommand}"
+                Content="Save" />
+            <StackPanel
+                Grid.Column="2"
+                Margin="18,0,0,0"
+                Orientation="Horizontal"
+                Spacing="6">
+                <TextBlock VerticalAlignment="Center" Text="Light" />
+                <ToggleSwitch
+                    x:Name="DarkSwitch"
+                    MinWidth="0"
+                    IsChecked="{Binding ThemeService.IsDarkTheme}"
+                    OffContent=""
+                    OnContent="" />
+                <TextBlock VerticalAlignment="Center" Text="Dark" />
+                <TextBlock
+                    Margin="12,0,0,0"
+                    VerticalAlignment="Center"
+                    Text="Color Adjustment" />
+                <ToggleSwitch
+                    x:Name="AdjustSwitch"
+                    MinWidth="0"
+                    IsChecked="{Binding ThemeService.IsColorAdjusted}"
+                    OffContent=""
+                    OnContent="" />
+                <Button Content="⋯" ToolTip.Tip="Color adjustment">
+                    <Button.Flyout>
+                        <Flyout>
+                            <Grid ColumnDefinitions="Auto,150,48" RowDefinitions="Auto,Auto,Auto">
+                                <TextBlock
+                                    Margin="3"
+                                    VerticalAlignment="Center"
+                                    Text="Desired Contrast Ratio" />
+                                <Slider
+                                    Grid.Column="1"
+                                    Margin="3"
+                                    IsSnapToTickEnabled="True"
+                                    Maximum="21"
+                                    Minimum="1"
+                                    TickFrequency="0.1"
+                                    Value="{Binding ThemeService.DesiredContrastRatio}" />
+                                <TextBlock
+                                    Grid.Column="2"
+                                    Margin="3"
+                                    VerticalAlignment="Center"
+                                    Text="{Binding ThemeService.DesiredContrastRatio, StringFormat='{}{0:0.#}:1'}"
+                                    TextAlignment="Right" />
+                                <TextBlock
+                                    Grid.Row="1"
+                                    Margin="3"
+                                    VerticalAlignment="Center"
+                                    Text="Contrast" />
+                                <ComboBox
+                                    Grid.Row="1"
+                                    Grid.Column="1"
+                                    Margin="3"
+                                    HorizontalAlignment="Stretch"
+                                    ItemsSource="{Binding ThemeService.ContrastValues}"
+                                    SelectedItem="{Binding ThemeService.ContrastValue}" />
+                                <TextBlock
+                                    Grid.Row="2"
+                                    Margin="3"
+                                    VerticalAlignment="Center"
+                                    Text="Color Selection" />
+                                <ComboBox
+                                    Grid.Row="2"
+                                    Grid.Column="1"
+                                    Margin="3"
+                                    HorizontalAlignment="Stretch"
+                                    ItemsSource="{Binding ThemeService.ColorSelectionValues}"
+                                    SelectedItem="{Binding ThemeService.ColorSelectionValue}" />
+                            </Grid>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <Grid ColumnDefinitions="160,*">
+            <StackPanel Margin="0,0,6,0" Spacing="3">
+                <TextBox x:Name="HexBox" PlaceholderText="Color HEX value" />
+                <Border
+                    x:Name="Preview"
+                    Height="60"
+                    BorderBrush="#44808080"
+                    BorderThickness="1" />
+            </StackPanel>
+            <WrapPanel
+                x:Name="Swatches"
+                Grid.Column="1"
+                VerticalAlignment="Center" />
+        </Grid>
+
+        <TextBlock
+            HorizontalAlignment="Center"
+            FontSize="18"
+            Text="Current Scheme" />
+        <Grid ColumnDefinitions="*,*">
+            <Button
+                x:Name="PrimaryScheme"
+                Grid.Column="0"
+                Margin="0,0,3,0"
+                Padding="6"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch"
+                BorderThickness="2"
+                Command="{Binding ChangeToPrimaryCommand}">
+                <StackPanel Spacing="3">
+                    <TextBlock Text="Primary" />
+                    <Border x:Name="PrimarySwatch" Height="48">
+                        <TextBlock
+                            x:Name="PrimaryHex"
+                            Margin="6"
+                            VerticalAlignment="Center" />
+                    </Border>
+                </StackPanel>
+            </Button>
+            <Button
+                x:Name="ForegroundScheme"
+                Grid.Column="1"
+                Margin="3,0,0,0"
+                Padding="6"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch"
+                BorderThickness="2"
+                Command="{Binding ChangeToPrimaryForegroundCommand}">
+                <StackPanel Spacing="3">
+                    <TextBlock Text="Text on Primary" />
+                    <Border x:Name="ForegroundSwatch" Height="48">
+                        <TextBlock
+                            x:Name="ForegroundHex"
+                            Margin="6"
+                            VerticalAlignment="Center" />
+                    </Border>
+                </StackPanel>
+            </Button>
+        </Grid>
+    </StackPanel>
+</UserControl>

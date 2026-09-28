@@ -30,6 +30,9 @@ public sealed class ViewLocator : IDataTemplate
         [typeof(RunningViewModel)] = () => new RunningView(),
         [typeof(UpdatesViewModel)] = () => new UpdatesView(),
         [typeof(GoalsViewModel)] = () => new GoalsView(),
+        [typeof(GameOptionsViewModel)] = () => new GameOptionsView(),
+        [typeof(ApplicationOptionsViewModel)] = () => new ApplicationOptionsView(),
+        [typeof(ApplicationThemesViewModel)] = () => new ApplicationThemesView(),
     };
 
     /// <summary>

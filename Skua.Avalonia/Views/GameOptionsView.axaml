@@ -1,0 +1,64 @@
+<!-- Ported from Skua.WPF/Views/GameOptionsView.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.GameOptionsView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:GameOptionsViewModel">
+    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,*,Auto,Auto">
+        <DockPanel Grid.Row="0" Grid.ColumnSpan="2">
+            <TextBox
+                x:Name="ColumnsBox"
+                Width="70"
+                Margin="3,6,6,6"
+                DockPanel.Dock="Right"
+                ToolTip.Tip="Columns"
+                PlaceholderText="Columns" />
+            <TextBox
+                x:Name="SearchBox"
+                Margin="6,6,3,6"
+                PlaceholderText="Search" />
+        </DockPanel>
+        <ScrollViewer
+            Grid.Row="1"
+            Grid.ColumnSpan="2"
+            HorizontalScrollBarVisibility="Disabled"
+            VerticalScrollBarVisibility="Auto">
+            <UniformGrid x:Name="Options" Margin="3,0" />
+        </ScrollViewer>
+        <ComboBox
+            x:Name="ServerPicker"
+            Grid.Row="2"
+            Grid.ColumnSpan="2"
+            Margin="6,3,3,3"
+            HorizontalAlignment="Stretch"
+            ItemsSource="{Binding ServersList}"
+            PlaceholderText="Relogin Server" />
+        <DockPanel Grid.Row="3" Margin="6,3,3,6">
+            <Button
+                x:Name="DefaultButton"
+                Margin="1,0,0,0"
+                Command="{Binding ResetDefaultOptionsCommand}"
+                Content="Default"
+                DockPanel.Dock="Right"
+                ToolTip.Tip="Reset to the application default values." />
+            <Button
+                x:Name="ResetButton"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Command="{Binding ResetOptionsCommand}"
+                Content="Reset"
+                ToolTip.Tip="Resets to the user saved default values. If no user defaults are found, resets to the application default." />
+        </DockPanel>
+        <Button
+            x:Name="SaveButton"
+            Grid.Row="3"
+            Grid.Column="1"
+            Margin="3,3,6,6"
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Center"
+            Command="{Binding SaveOptionsCommand}"
+            Content="Save"
+            ToolTip.Tip="Saves every game option as it is now, including what a running Script set; the options you change here are saved as you change them." />
+    </Grid>
+</UserControl>

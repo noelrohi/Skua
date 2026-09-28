@@ -1,0 +1,14 @@
+<!-- Ported from Skua.WPF/Views/ApplicationOptionsView.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.ApplicationOptionsView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:ApplicationOptionsViewModel">
+    <ScrollViewer
+        HorizontalScrollBarVisibility="Disabled"
+        ToolTip.Tip="Options with * need an application restart."
+        VerticalScrollBarVisibility="Auto">
+        <StackPanel x:Name="Options" Margin="3" />
+    </ScrollViewer>
+</UserControl>

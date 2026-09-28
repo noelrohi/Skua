@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.Extensions.DependencyInjection;
 using Skua.Avalonia.Services;
 using Skua.Control;
+using Skua.Core.Interfaces;
 using Skua.Engine;
 using Skua.Engine.Tests;
 using Skua.MacOS.GameHost;
@@ -109,6 +110,8 @@ public sealed class AppEngine : IAsyncLifetime
             {
                 services.AddSingleton(new HostMarker());
                 services.AddAvaloniaServices();
+                // Nothing a test clicks opens Finder, a browser or VS Code on the Mac running it: each launch is recorded instead.
+                services.AddSingleton<IProcessService>(s => new MacProcessService(s.GetRequiredService<IDialogService>(), Launches.Run, () => null));
             },
         });
         // By the first ping reply the fake has mapped the Frame Buffer.
@@ -152,3 +155,22 @@ public sealed class AppEngine : IAsyncLifetime
 
 /// <summary>A service the test host adds through <see cref="EngineHostOptions.ConfigureServices"/>.</summary>
 public sealed class HostMarker;
+
+/// <summary>The programs the app's process service would have run, in order, each with its arguments; every run succeeds.</summary>
+public static class Launches
+{
+    private static readonly List<(string Program, string[] Arguments)> s_runs = [];
+
+    public static bool Run(string program, IReadOnlyList<string> arguments)
+    {
+        lock (s_runs)
+            s_runs.Add((program, [.. arguments]));
+        return true;
+    }
+
+    public static IReadOnlyList<(string Program, string[] Arguments)> Runs()
+    {
+        lock (s_runs)
+            return [.. s_runs];
+    }
+}
