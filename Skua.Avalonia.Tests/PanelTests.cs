@@ -113,7 +113,11 @@ public sealed class PanelTests(AppEngine app)
                 $"the {tab} tab to show its line");
         }
         Assert.Equal(0, logs.LogTabs.SelectMany(t => t.Logs).Count(l => l.Contains(AppEngine.Secret, StringComparison.Ordinal)));
+
+        // A closed window lets go of the view model, so its list stops listening to the log lines the Engine keeps sending.
+        ListBox lines = Ui.Find<LogTabView>(window)!.FindControl<ListBox>("Lines")!;
         window.Close();
+        await Ui.PumpUntilAsync(() => lines.ItemsSource is null, "the closed window's list to let go of the log");
     }
 
     private object Resolve(Type type) => type == typeof(LogTabViewModel)

@@ -24,4 +24,15 @@ public sealed class HostWindow : Window
             Title = "Skua";
         }
     }
+
+    /// <summary>
+    /// Lets go of the view model, as the WPF window service does, so a closed window's views stop listening to Core's collections: the view
+    /// models live on, and a later show makes a new window.
+    /// </summary>
+    protected override void OnClosed(EventArgs e)
+    {
+        base.OnClosed(e);
+        Content = null;
+        DataContext = null;
+    }
 }
