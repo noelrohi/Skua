@@ -308,7 +308,11 @@ public sealed class GameViewTests(AppEngine app)
 
             window.WindowState = WindowState.Normal;
             string[] calls = await WaitForCallsAsync(from, c => c.Contains("view viewport 1916x1100 2"));
-            Assert.Equal(["view headless", "view live", "view viewport 1916x1100 2"], calls.Where(c => c.StartsWith("view ", StringComparison.Ordinal)));
+            // In order, though a view an earlier test left may add lines between them.
+            int headless = Array.IndexOf(calls, "view headless");
+            int live = Array.IndexOf(calls, "view live", headless + 1);
+            Assert.True(headless >= 0 && live > headless && Array.IndexOf(calls, "view viewport 1916x1100 2", live + 1) == live + 1,
+                string.Join(", ", calls.Where(c => c.StartsWith("view ", StringComparison.Ordinal))));
         }
         finally
         {
