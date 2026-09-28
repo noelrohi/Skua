@@ -43,7 +43,8 @@ public sealed class TakeOverTests
         await PumpUntilAsync(() => shown.Model.Step is TakeOverStep.Done or TakeOverStep.Stuck, "the take-over");
 
         Assert.Equal(TakeOverStep.Done, shown.Model.Step);
-        Assert.True(engine.HasExited, "the headless Engine exited");
+        // Done means its lock and socket are free; the process itself may take a moment more to end.
+        Assert.True(engine.WaitForExit(TimeSpan.FromSeconds(10)), "the headless Engine exited");
         Assert.Equal(0, engine.ExitCode);
         Assert.Equal([(LockHeld: false, SocketExists: false)], shown.Starts);
     }
@@ -76,7 +77,8 @@ public sealed class TakeOverTests
         await PumpUntilAsync(() => shown.Model.Step is TakeOverStep.Done or TakeOverStep.Stuck, "the second Take over");
 
         Assert.Equal(TakeOverStep.Done, shown.Model.Step);
-        Assert.True(engine.HasExited, "the headless Engine exited");
+        // Done means its lock and socket are free; the process itself may take a moment more to end.
+        Assert.True(engine.WaitForExit(TimeSpan.FromSeconds(10)), "the headless Engine exited");
         Assert.Equal([(LockHeld: false, SocketExists: false)], shown.Starts);
     }
 
