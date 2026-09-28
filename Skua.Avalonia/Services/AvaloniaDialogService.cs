@@ -69,6 +69,20 @@ public sealed class AvaloniaDialogService : IDialogService
         return Ask(caption, message, buttons) is { } choice ? new DialogResult(buttons[choice], choice) : DialogResult.Cancelled;
     }
 
+    /// <summary>
+    /// The app's own yes/no Question, raised from any thread without blocking it, such as a start-up check's. It belongs to no run, whatever
+    /// runs, and waits <see cref="ScriptDialogBroker.OutsideRun"/>'s timeout.
+    /// </summary>
+    /// <returns>Null for the fallback; else whether the answer was Yes.</returns>
+    public async Task<bool?> AskAsync(string message, string caption)
+    {
+        Dispatcher.UIThread.Post(WatchExit);
+        return await _broker.AskAsync(caption, message, YesNo, ScriptDialogBroker.OutsideRun, _exiting.Token) is { } choice ? choice == 0 : null;
+    }
+
+    /// <summary>The app's own Notice, which comes from no Script, whatever runs.</summary>
+    public void Notify(string message, string caption) => _broker.Notice(caption, message, ScriptDialogBroker.OutsideRun);
+
     private int? Ask(string caption, string text, IReadOnlyList<string> choices)
     {
         if (!Dispatcher.UIThread.CheckAccess())

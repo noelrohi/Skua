@@ -159,6 +159,36 @@ public class ScriptSourceTests
     }
 
     [Fact]
+    public async Task A_headless_Engine_runs_none_of_the_Mac_Apps_start_up_checks()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeGitHub github = new();
+        github.Commit("noelrohi", "Scripts", "Skua", Leveling)
+            .Put("noelrohi", "Scripts", "Skua", "Skills/AdvancedSkills.json", "{}")
+            .Put("noelrohi", "Scripts", "Skua", "JunkItems.json", "[]")
+            .Put("noelrohi", "Scripts", "Skua", "QuestData.json", """[{"ID":1,"Name":"Not for a headless Engine"}]""");
+        string settings = Path.Combine(sandbox.SkuaDir, "Skua.settings.json");
+        File.WriteAllText(settings, """
+            {"shared":{"CheckBotScriptsUpdates":true},
+             "client":{"AutoUpdateBotScripts":true,"CheckAdvanceSkillSetsUpdates":true,"AutoUpdateAdvanceSkillSetsUpdates":true,
+                       "CheckJunkItemsUpdates":true,"AutoUpdateJunkItems":true},
+             "manager":{"ChangeLogActivated":false}}
+            """);
+        using EngineConnection connection = await StartEngineAsync(sandbox, github);
+        await connection.StatusAsync(Ct);
+
+        // The app starts its checks once its window shows; give a headless Engine the same time to not start them.
+        await Task.Delay(TimeSpan.FromSeconds(2), Ct);
+
+        Assert.Empty(github.Requests);
+        Assert.False(File.Exists(Path.Combine(sandbox.SkuaDir, "Scripts", "Farm", "Leveling.cs")));
+        // Core creates an empty one at start.
+        Assert.DoesNotContain("Not for a headless Engine", File.ReadAllText(Path.Combine(sandbox.SkuaDir, "QuestData.json")));
+        using JsonDocument file = JsonDocument.Parse(File.ReadAllText(settings));
+        Assert.False(file.RootElement.GetProperty("manager").GetProperty("ChangeLogActivated").GetBoolean());
+    }
+
+    [Fact]
     public async Task The_CLI_shows_sets_and_resets_the_Script_Source_leaving_the_other_settings_alone()
     {
         await using EngineSandbox sandbox = new();

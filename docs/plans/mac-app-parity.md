@@ -17,7 +17,6 @@ Tests are in `Skua.Avalonia.Tests` and named `Class.Method`. `ViewCoverageTests`
 | Issue | What |
 |---|---|
 | [#110](https://github.com/noelrohi/Skua/issues/110) | The main window's title: the version, and optionally the username |
-| [#111](https://github.com/noelrohi/Skua/issues/111) | The start-up update checks (Scripts, skill sets, junk items, quest data) and the first-run Change Logs |
 | [#112](https://github.com/noelrohi/Skua/issues/112) | Notifications when a Script stops, errors or relogs while the window isn't in front |
 | [#113](https://github.com/noelrohi/Skua/issues/113) | Reset Scripts, and Open in VSCode for one Script |
 | [#114](https://github.com/noelrohi/Skua/issues/114) | Hide the Application Options that do nothing on macOS |
@@ -47,7 +46,7 @@ The Mac App's main window also has a login bar, a status strip, the Question she
 | Auto | `AutoViewModel` | works | `HelpersTests.Auto_attack_starts_and_stops_from_the_Auto_view_and_the_bar_marks_it_running` |
 | Scripts | `ScriptLoaderViewModel` | works | `ScriptsPanelTests.A_Script_picked_from_the_Script_Source_starts_logs_live_and_stops_from_the_panel`, `ScriptsPanelTests.A_Script_started_with_the_CLI_shows_running_and_stopping_it_from_the_panel_ends_script_wait` |
 | Options › Game | `GameOptionsViewModel` | works | `OptionsTests.A_game_option_changed_in_the_panel_reaches_the_game_at_once_and_is_saved_for_the_next_start` |
-| Options › Application | `ApplicationOptionsViewModel` | present | `ViewCoverageTests.Every_window_the_Windows_app_registers_opens_in_the_Mac_App_with_its_view`, `PanelTests.Each_view_binds_to_its_view_model_with_no_binding_errors`. Each option saves to the settings through Core's own command; no test toggles one. Its start-up check options do nothing yet ([#111](https://github.com/noelrohi/Skua/issues/111)), nor does Show Username in Title ([#110](https://github.com/noelrohi/Skua/issues/110)). Clear Flash Cache and Client Animation Frame-rate have no macOS meaning ([#114](https://github.com/noelrohi/Skua/issues/114) hides them). |
+| Options › Application | `ApplicationOptionsViewModel` | present | `ViewCoverageTests.Every_window_the_Windows_app_registers_opens_in_the_Mac_App_with_its_view`, `PanelTests.Each_view_binds_to_its_view_model_with_no_binding_errors`. Each option saves to the settings through Core's own command; no test toggles one. Its start-up check options drive the start-up checks (`StartUpChecksTests.*`); Show Username in Title does nothing yet ([#110](https://github.com/noelrohi/Skua/issues/110)). Clear Flash Cache and Client Animation Frame-rate have no macOS meaning ([#114](https://github.com/noelrohi/Skua/issues/114) hides them). |
 | Options › CoreBots | `CoreBotsViewModel` | works | `ScriptOptionsTests.CoreBots_options_load_from_the_players_file_and_edits_persist_there` |
 | Options › Application Themes | `ApplicationThemesViewModel` | works | `OptionsTests.Switching_the_theme_restyles_every_open_window_and_is_kept`, `OptionsTests.A_theme_edited_and_saved_in_the_panel_is_listed_kept_and_removable` |
 | Options › HotKeys | `HotKeysViewModel` | works | `HotKeysTests.A_hotkey_assigned_in_the_panel_is_saved_works_at_once_and_is_bound_again_after_a_restart`. Hotkeys default to ⌘ digits (deliberate), so plain keys stay with the game. |
@@ -123,7 +122,7 @@ Every item above that opens a window also opens it through the window service in
 | `--gh-token` | None | deliberate | The GitHub token is kept in Keychain. |
 | One client per process, many at once | `--name`: one app per Engine Name | works | `AppEngineTests.Skua_status_connects_to_the_app_hosted_Engine_and_says_the_app_hosts_it`, `TakeOverTests.*`. Remembering the last Engine Name is part of [#88](https://github.com/noelrohi/Skua/issues/88) (in progress). |
 | Flash trust file, Flash cache | None | deliberate | The Game Host runs Ruffle, so there is no Flash cache. |
-| Start-up checks: Scripts, AdvanceSkill sets, junk items, quest data | None | gap [#111](https://github.com/noelrohi/Skua/issues/111) | |
+| Start-up checks: Scripts, AdvanceSkill sets, junk items, quest data | The same, once the main window shows, as Application Options say | works | `StartUpChecksTests.*` against the fake Script Source. The Scripts update through the Engine's `scripts_update` instead of `DownloadAllWhereAsync`, so it is refused while a Script runs (the check is skipped, with a `debug` line) and recorded in the Script history. Questions show as the sheet and Notices in Notices. `skua-engine` runs none of them: `ScriptSourceTests.A_headless_Engine_runs_none_of_the_Mac_Apps_start_up_checks`. |
 | Plugins load at start | The same | works | `ToolsTests.Plugins_load_from_the_data_folder_and_one_that_needs_WPF_is_logged_not_fatal` |
 | HotKeys load at start | The same | works | `HotKeysTests.A_hotkey_assigned_in_the_panel_is_saved_works_at_once_and_is_bound_again_after_a_restart` |
 | The server list is fetched at start | The login bar's server picker | works | `StatusTests.Log_in_reaches_logged_in_with_the_account_map_and_server_shown_and_Log_out_returns_to_the_login_screen` |
@@ -146,7 +145,7 @@ Every item above that opens a window also opens it through the window service in
 | Themes tab | Each app's Options › Application Themes | deliberate | The theme is in the data folder's settings, which every app reads. The Manager window keeps the default dark theme. |
 | Goals tab | `GoalsViewModel` | present | `ManagerTests.Each_Manager_view_binds_to_its_view_model_with_no_binding_errors`. Goals is self-contained and needs no game, so no test drives it. |
 | About and Change Logs tabs | Each app's app menu | works | `AppMenuTests.About_and_Change_Logs_open_once_from_the_app_menu_and_show_their_pages` |
-| Change Logs on the first start | None | gap [#111](https://github.com/noelrohi/Skua/issues/111) | |
+| Change Logs on the first start | Each app's first start, with the same `ChangeLogActivated` setting | works | `StartUpChecksTests.Change_Logs_opens_on_the_first_start_and_not_on_later_ones` |
 | Tray: Show Manager, single instance | The Skua Manager… item in every app's menu bar and Dock menu, which brings the running Manager to the front | present | `ManagerTests.The_app_menu_bar_and_window_menu_open_the_Manager` checks the items. The single instance (`manager.lock`) and bringing it to the front were checked by hand in #93's smoke run; no test starts a second Manager process. |
 | Tray: Skua Bot AQW (start a new client) | Accounts › Launch | deliberate | Running and Accounts replace the Launcher (ADR 0006). A blank app starts from `Skua.app` ([#88](https://github.com/noelrohi/Skua/issues/88), in progress). |
 | Tray: Update Scripts | An app's Script Repo › Update, or `skua scripts update` | works | `ScriptsPanelTests.A_Script_picked_from_the_Script_Source_starts_logs_live_and_stops_from_the_panel` |

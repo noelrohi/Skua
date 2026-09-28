@@ -34,13 +34,20 @@ public static class AppMenu
         },
     };
 
+    /// <summary>Opens Change Logs as its menu item does; the app also opens it at its first start (<see cref="StartUpChecks"/>).</summary>
+    public static void ShowChangeLogs(IServiceProvider services, AvaloniaWindowService windows) =>
+        Show<ChangeLogsViewModel>(ChangeLogsKey, services, windows);
+
     private static NativeMenuItem Item<TViewModel>(string header, string key, IServiceProvider services, AvaloniaWindowService windows)
         where TViewModel : class, IManagedWindow => new(header)
     {
-        Command = new RelayCommand(() =>
-        {
-            windows.RegisterManagedWindow(key, services.GetRequiredService<TViewModel>());
-            windows.ShowManagedWindow(key);
-        }),
+        Command = new RelayCommand(() => Show<TViewModel>(key, services, windows)),
     };
+
+    private static void Show<TViewModel>(string key, IServiceProvider services, AvaloniaWindowService windows)
+        where TViewModel : class, IManagedWindow
+    {
+        windows.RegisterManagedWindow(key, services.GetRequiredService<TViewModel>());
+        windows.ShowManagedWindow(key);
+    }
 }

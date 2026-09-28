@@ -21,6 +21,7 @@ public sealed class FakeGitHub : IAsyncDisposable
 {
     private readonly HttpListener _listener = new();
     private readonly Dictionary<string, FakeRepo> _repos = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _dataFiles = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentQueue<string> _requests = new();
     private readonly Task _serving;
 
@@ -81,6 +82,23 @@ public sealed class FakeGitHub : IAsyncDisposable
             if (!_repos.TryGetValue(key, out FakeRepo? fake))
                 _repos[key] = fake = new FakeRepo();
             fake.Commit(DateTimeOffset.FromUnixTimeSeconds(at.ToUnixTimeSeconds()), scripts, removed);
+        }
+        return this;
+    }
+
+    /// <summary>
+    /// Serves a file of <c>owner/repo@branch</c> that isn't a Script, such as the AdvanceSkill sets, the quest data or the junk items: it is
+    /// in no commit and not in <c>scripts.json</c>. Null stops serving it.
+    /// </summary>
+    public FakeGitHub Put(string owner, string repo, string branch, string path, string? content)
+    {
+        string key = $"{RepoKey(owner, repo, branch)}/{path}";
+        lock (_repos)
+        {
+            if (content is null)
+                _dataFiles.Remove(key);
+            else
+                _dataFiles[key] = content;
         }
         return this;
     }
@@ -183,6 +201,8 @@ public sealed class FakeGitHub : IAsyncDisposable
             string file = string.Join('/', rest);
             lock (_repos)
             {
+                if (_dataFiles.TryGetValue($"{RepoKey(rOwner, rRepo, rBranch)}/{file}", out string? data))
+                    return (200, Encoding.UTF8.GetBytes(data));
                 if (_repos.TryGetValue(RepoKey(rOwner, rRepo, rBranch), out FakeRepo? rawRepo))
                 {
                     if (file == "scripts.json")

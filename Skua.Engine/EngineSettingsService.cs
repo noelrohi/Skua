@@ -43,8 +43,15 @@ internal sealed class EngineSettingsService : ISettingsService
         ReloadAccountService();
         ReloadScriptSource();
         ReloadManager();
+        // In the client's role Core sets only the shared and client sections; the Mac App shows Change Logs once, as the Windows Manager does,
+        // so it sets the manager section's flag here, and the save below writes it.
+        if (key == ChangeLogActivatedKey && value is bool activated)
+            _settings.GetManager().ChangeLogActivated = activated;
         _settings.Set(key, value);
     }
+
+    /// <summary>Whether Change Logs has shown since the last update; the one manager setting an Engine sets.</summary>
+    private const string ChangeLogActivatedKey = "ChangeLogActivated";
 
     private void ReloadAccountService() => _settings.GetClient().TestAccountService = AccountSetting.Read(ClientFileSources.SkuaDIR);
 
