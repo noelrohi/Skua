@@ -55,7 +55,6 @@ public sealed partial class ViewCoverageTests(AppEngine app)
     /// <summary>View models with a WPF view that the Mac App doesn't show yet, and the issue that brings it.</summary>
     private static readonly Dictionary<Type, int> Gaps = new()
     {
-        [typeof(BotWindowViewModel)] = 109,
         // The main window exists, but its title doesn't follow MainViewModel's.
         [typeof(MainViewModel)] = 110,
     };

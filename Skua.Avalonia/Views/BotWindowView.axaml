@@ -1,0 +1,45 @@
+<!--
+    Ported from Skua.WPF/BotWindow.xaml: every panel in one window, the searchable list of their titles on the left (the WPF window's
+    drawer) and the selected panel on the right, with Previous, Next and Home above it.
+-->
+<UserControl
+    x:Class="Skua.Avalonia.Views.BotWindowView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:BotWindowViewModel">
+    <Grid ColumnDefinitions="200,*">
+        <DockPanel Grid.Column="0" Margin="6">
+            <TextBox
+                x:Name="SearchBox"
+                Margin="0,0,0,6"
+                DockPanel.Dock="Top"
+                PlaceholderText="Search" />
+            <ListBox x:Name="ViewsList" />
+        </DockPanel>
+        <DockPanel Grid.Column="1">
+            <StackPanel
+                Margin="6,6,6,0"
+                DockPanel.Dock="Top"
+                Orientation="Horizontal"
+                Spacing="4">
+                <Button
+                    x:Name="Previous"
+                    Command="{Binding MovePrevCommand}"
+                    Content="←"
+                    ToolTip.Tip="Previous Item" />
+                <Button
+                    x:Name="Next"
+                    Command="{Binding MoveNextCommand}"
+                    Content="→"
+                    ToolTip.Tip="Next Item" />
+                <Button
+                    x:Name="Home"
+                    Command="{Binding HomeCommand}"
+                    Content="⌂"
+                    ToolTip.Tip="Home" />
+            </StackPanel>
+            <ContentControl x:Name="Shown" Content="{Binding SelectedItem}" />
+        </DockPanel>
+    </Grid>
+</UserControl>

@@ -21,6 +21,10 @@ public static class MainMenus
     /// <summary>The Plugins group, which the WPF window shows as its own menu.</summary>
     public const string PluginsHeader = "Plugins";
 
+    /// <summary>The menu bar's Window menu, and its item that opens the Bot Window, as the main window's + does.</summary>
+    public const string WindowHeader = "Window";
+    public const string BotWindowHeader = "Bot Window";
+
     public static Menu InWindow(MainMenuViewModel viewModel, AvaloniaWindowService windows, Action? openManager = null)
     {
         Menu menu = new();
@@ -49,6 +53,20 @@ public static class MainMenus
         NativeMenuItem item = new(ManagerHeader);
         item.Click += (_, _) => openManager();
         return item;
+    }
+
+    /// <summary>
+    /// The menu bar's Window menu with the Bot Window item: <paramref name="windowMenu"/>, a window's own Window menu (its Top Most), with the
+    /// item added, or a Window menu of its own.
+    /// </summary>
+    public static NativeMenuItem WindowMenu(MainMenuViewModel viewModel, NativeMenuItem? windowMenu = null)
+    {
+        windowMenu ??= new NativeMenuItem(WindowHeader) { Menu = new NativeMenu() };
+        NativeMenu menu = windowMenu.Menu ??= new NativeMenu();
+        if (menu.Items.Count > 0)
+            menu.Items.Add(new NativeMenuItemSeparator());
+        menu.Items.Add(new NativeMenuItem(BotWindowHeader) { Command = viewModel.ShowBotWindowCommand });
+        return windowMenu;
     }
 
     /// <summary>A menu bar menu per group; an item without a group gets a menu of its own, as a menu bar item can't act by itself.</summary>

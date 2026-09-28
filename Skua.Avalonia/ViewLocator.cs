@@ -58,6 +58,8 @@ public sealed class ViewLocator : IDataTemplate
         [typeof(AboutViewModel)] = () => new AboutView(),
         [typeof(ChangeLogsViewModel)] = () => new ChangeLogsView(),
         [typeof(GitHubAuthViewModel)] = () => new GitHubAuthView(),
+        // The main menu's +, every panel in one window.
+        [typeof(BotWindowViewModel)] = () => new BotWindowView(),
     };
 
     /// <summary>

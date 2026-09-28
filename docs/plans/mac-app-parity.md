@@ -16,7 +16,6 @@ Tests are in `Skua.Avalonia.Tests` and named `Class.Method`. `ViewCoverageTests`
 
 | Issue | What |
 |---|---|
-| [#109](https://github.com/noelrohi/Skua/issues/109) | The Bot Window: the main menu's **+**, every panel in one window |
 | [#110](https://github.com/noelrohi/Skua/issues/110) | The main window's title: the version, and optionally the username |
 | [#111](https://github.com/noelrohi/Skua/issues/111) | The start-up update checks (Scripts, skill sets, junk items, quest data) and the first-run Change Logs |
 | [#112](https://github.com/noelrohi/Skua/issues/112) | Notifications when a Script stops, errors or relogs while the window isn't in front |
@@ -43,7 +42,7 @@ The Mac App's main window also has a login bar, a status strip, the Question she
 
 | Item | View model | Status | Evidence or reason |
 |---|---|---|---|
-| **+** (Bot Window) | `BotWindowViewModel` | gap [#109](https://github.com/noelrohi/Skua/issues/109) | |
+| **+** (Bot Window) | `BotWindowViewModel` | works | `BotWindowTests.The_plus_button_and_the_menu_bar_item_open_the_Bot_Window_listing_every_panel_and_showing_the_selected_one`, `BotWindowTests.Jump_inside_the_Bot_Window_moves_the_player`. The **+** sits after Auto and Jump; the menu bar has it as Window › Bot Window. |
 | Jump | `JumpViewModel` | works | `HelpersTests.Picking_a_cell_in_Jump_moves_the_player_there` |
 | Auto | `AutoViewModel` | works | `HelpersTests.Auto_attack_starts_and_stops_from_the_Auto_view_and_the_bar_marks_it_running` |
 | Scripts | `ScriptLoaderViewModel` | works | `ScriptsPanelTests.A_Script_picked_from_the_Script_Source_starts_logs_live_and_stops_from_the_panel`, `ScriptsPanelTests.A_Script_started_with_the_CLI_shows_running_and_stopping_it_from_the_panel_ends_script_wait` |
@@ -91,7 +90,7 @@ Every item above that opens a window also opens it through the window service in
 | About | `AboutViewModel` | works | In the app menu. `AppMenuTests.About_and_Change_Logs_open_once_from_the_app_menu_and_show_their_pages` |
 | Change Logs | `ChangeLogsViewModel` | works | In the app menu. Same test. |
 | GitHub login | `GitHubAuthViewModel` | works | In the app menu. `AppMenuTests.GitHub_login_completes_against_the_fake_device_flow_and_the_token_lands_in_Keychain_only`. The token is kept in Keychain (deliberate). |
-| Bot Window | `BotWindowViewModel` | gap [#109](https://github.com/noelrohi/Skua/issues/109) | |
+| Bot Window | `BotWindowViewModel` | works | `BotWindowTests.Search_filters_by_title_and_Home_Previous_and_Next_move_through_every_panel_with_no_binding_errors`, `BotWindowTests.A_panel_stays_active_while_its_own_window_or_the_Bot_Window_shows_it_and_stops_once_neither_does`. The panel list is always shown, not in a drawer, and the search ignores case (deliberate: as the Mac App's other searches). A panel shown in its own window and the Bot Window stays active until neither shows it; on Windows either one deactivates it. |
 | `HostWindow` (managed windows) | any | works | `ViewCoverageTests.Every_window_the_Windows_app_registers_opens_in_the_Mac_App_with_its_view`, `PanelTests.The_Scripts_menu_item_opens_the_Scripts_window_once` |
 | `CustomWindow`: title bar, minimise, maximise, close | The native macOS title bar | deliberate | macOS draws its own window frame. |
 | `PropertyGrid` | Read-only `PropertyGrid` | deliberate | Editing a grabbed item's snapshot on Windows changes nothing in the game (#84). |
