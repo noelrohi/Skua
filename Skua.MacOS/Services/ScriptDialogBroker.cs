@@ -18,6 +18,9 @@ public enum QuestionAnswerer
 
     /// <summary>Nobody was asked: the policy doesn't ask, the run was stopping, or the waiting thread was interrupted.</summary>
     Fallback,
+
+    /// <summary>The developer, in the Mac App's window.</summary>
+    User,
 }
 
 /// <summary>A Notice a Script showed.</summary>
@@ -64,8 +67,11 @@ public sealed class ScriptDialogBroker
     private int _lastId;
     private TaskCompletionSource _raised = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    /// <summary>Decides how each Question is answered, when it is raised. By default a Question waits 120 s.</summary>
-    public Func<QuestionPolicy> Policy { get; set; } = static () => new QuestionPolicy(true, TimeSpan.FromSeconds(120), null, null);
+    /// <summary>How a Question outside any run is answered: it waits 120 s.</summary>
+    public static readonly QuestionPolicy OutsideRun = new(true, TimeSpan.FromSeconds(120), null, null);
+
+    /// <summary>Decides how each Question is answered, when it is raised. By default, as <see cref="OutsideRun"/>.</summary>
+    public Func<QuestionPolicy> Policy { get; set; } = static () => OutsideRun;
 
     public event Action<Notice>? NoticeShown;
 
@@ -106,26 +112,8 @@ public sealed class ScriptDialogBroker
     /// <exception cref="ThreadInterruptedException">The thread was interrupted while it waited; the Question got the fallback.</exception>
     public int? Ask(string caption, string text, IReadOnlyList<string> choices)
     {
-        QuestionPolicy policy = Policy();
-        Waiter waiter;
-        TimeSpan wait;
-        lock (_lock)
-        {
-            // The run may have been resolved since its policy was read.
-            bool ask = policy.Ask && !(policy.Run is { } run && _closedRuns.Contains(run));
-            wait = ask ? (policy.Timeout > MaxWait ? MaxWait : policy.Timeout) : TimeSpan.Zero;
-            DateTimeOffset now = DateTimeOffset.UtcNow;
-            waiter = new Waiter(new Question(++_lastId, caption, text, [.. choices], now, now + wait, ThreadName(), policy.Script, policy.Run));
-            QuestionRaised?.Invoke(waiter.Question);
-            if (!ask)
-            {
-                QuestionAnswered?.Invoke(waiter.Question, null, QuestionAnswerer.Fallback);
-                return null;
-            }
-            _pending.Add(waiter.Question.Id, waiter);
-            _raised.SetResult();
-            _raised = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        }
+        if (Raise(caption, text, choices, Policy(), out TimeSpan wait) is not { } waiter)
+            return null;
 
         try
         {
@@ -139,6 +127,29 @@ public sealed class ScriptDialogBroker
             waiter.Answered.Dispose();
         }
         return waiter.Choice;
+    }
+
+    /// <summary>
+    /// Raises a Question without blocking any thread, answered as <paramref name="policy"/> says rather than as <see cref="Policy"/> does:
+    /// for a Question the Mac App's own UI thread raises, which mustn't wait on the broker. The task completes with the index of the choice,
+    /// or null for the fallback.
+    /// </summary>
+    /// <param name="cancellationToken">Gives the Question the fallback, e.g. when the app quits.</param>
+    public Task<int?> AskAsync(string caption, string text, IReadOnlyList<string> choices, QuestionPolicy policy, CancellationToken cancellationToken = default)
+    {
+        if (Raise(caption, text, choices, policy, out TimeSpan wait) is not { } waiter)
+            return Task.FromResult<int?>(null);
+
+        int id = waiter.Question.Id;
+        Timer timeout = new(_ => Resolve(id, null, QuestionAnswerer.Timeout), null, wait, Timeout.InfiniteTimeSpan);
+        CancellationTokenRegistration cancelled = cancellationToken.Register(() => Resolve(id, null, QuestionAnswerer.Fallback));
+        return waiter.Completion.Task.ContinueWith(answered =>
+        {
+            timeout.Dispose();
+            cancelled.Dispose();
+            waiter.Answered.Dispose();
+            return answered.Result;
+        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
 
     /// <summary>
@@ -164,6 +175,19 @@ public sealed class ScriptDialogBroker
         }
     }
 
+    /// <summary>Answers a pending Question with the choice at <paramref name="choice"/>; the first answer wins.</summary>
+    /// <returns>Whether it answered: false when no Question with that id is pending, or it has no such choice.</returns>
+    public bool Answer(int id, int choice, QuestionAnswerer answeredBy)
+    {
+        lock (_lock)
+        {
+            if (!_pending.TryGetValue(id, out Waiter? waiter) || choice < 0 || choice >= waiter.Question.Choices.Count)
+                return false;
+            Resolve(id, choice, answeredBy);
+            return true;
+        }
+    }
+
     /// <summary>
     /// Answers every pending Question of the run with the fallback, so the threads waiting on them go on, and every later one at once
     /// until <see cref="Reopen"/>.
@@ -185,6 +209,30 @@ public sealed class ScriptDialogBroker
             _closedRuns.Remove(run);
     }
 
+    /// <summary>Makes a Question pending; returns null, with the Question already answered by the fallback, when the policy doesn't ask.</summary>
+    private Waiter? Raise(string caption, string text, IReadOnlyList<string> choices, QuestionPolicy policy, out TimeSpan wait)
+    {
+        lock (_lock)
+        {
+            // The run may have been resolved since its policy was read.
+            bool ask = policy.Ask && !(policy.Run is { } run && _closedRuns.Contains(run));
+            wait = ask ? (policy.Timeout > MaxWait ? MaxWait : policy.Timeout) : TimeSpan.Zero;
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            Waiter waiter = new(new Question(++_lastId, caption, text, [.. choices], now, now + wait, ThreadName(), policy.Script, policy.Run));
+            QuestionRaised?.Invoke(waiter.Question);
+            if (!ask)
+            {
+                QuestionAnswered?.Invoke(waiter.Question, null, QuestionAnswerer.Fallback);
+                waiter.Answered.Dispose();
+                return null;
+            }
+            _pending.Add(waiter.Question.Id, waiter);
+            _raised.SetResult();
+            _raised = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            return waiter;
+        }
+    }
+
     private void Resolve(int id, int? choice, QuestionAnswerer answerer)
     {
         lock (_lock)
@@ -194,6 +242,7 @@ public sealed class ScriptDialogBroker
             waiter.Choice = choice;
             QuestionAnswered?.Invoke(waiter.Question, choice, answerer);
             waiter.Answered.Set();
+            waiter.Completion.SetResult(choice);
         }
     }
 
@@ -203,6 +252,10 @@ public sealed class ScriptDialogBroker
     {
         public Question Question { get; } = question;
         public ManualResetEventSlim Answered { get; } = new();
+
+        /// <summary>Completes as <see cref="Answered"/> is set, with <see cref="Choice"/>; its continuations never run under the lock.</summary>
+        public TaskCompletionSource<int?> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public int? Choice { get; set; }
     }
 }

@@ -55,6 +55,7 @@ internal sealed class DialogOperations
     {
         QuestionAnswerer.Agent => AnsweredBy.Agent,
         QuestionAnswerer.Timeout => AnsweredBy.Timeout,
+        QuestionAnswerer.User => AnsweredBy.User,
         _ => AnsweredBy.Fallback,
     };
 }

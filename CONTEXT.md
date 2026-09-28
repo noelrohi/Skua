@@ -57,7 +57,7 @@ An OK-only Script Dialog; it never waits for an answer.
 _Avoid_: info box, alert
 
 **Question**:
-A Script Dialog offering a choice (yes/no or named buttons) that waits for a Control Surface to answer it until it times out.
+A Script Dialog offering a choice (yes/no or named buttons) that waits for a Control Surface, or the Mac App's window, to answer it until it times out.
 _Avoid_: prompt, confirm, pending dialog
 
 **Test Account**:

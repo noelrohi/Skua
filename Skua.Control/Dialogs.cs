@@ -29,4 +29,7 @@ public enum AnsweredBy
 
     /// <summary>It got the fallback without waiting: the run's dialog mode is <see cref="DialogMode.Cancel"/>, or the run was stopping.</summary>
     Fallback,
+
+    /// <summary>The developer answered it in the Mac App's window.</summary>
+    User,
 }

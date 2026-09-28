@@ -1,0 +1,39 @@
+<!-- Ported from Skua.WPF/UserControls/Dialogs/InputDialog.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.InputDialogView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:InputDialogViewModel">
+    <StackPanel Margin="6">
+        <TextBlock
+            x:Name="Hint"
+            Margin="6"
+            Opacity="0.8"
+            Text="{Binding DialogHint}"
+            TextWrapping="Wrap" />
+        <TextBox
+            x:Name="Input"
+            Margin="6"
+            PlaceholderText="{Binding TextBoxHint}"
+            Text="{Binding DialogTextInput}" />
+        <Grid ColumnDefinitions="*,*">
+            <Button
+                x:Name="Confirm"
+                Grid.Column="0"
+                Margin="6"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Content="Confirm"
+                IsDefault="True" />
+            <Button
+                x:Name="Cancel"
+                Grid.Column="1"
+                Margin="6"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Content="Cancel"
+                IsCancel="True" />
+        </Grid>
+    </StackPanel>
+</UserControl>
