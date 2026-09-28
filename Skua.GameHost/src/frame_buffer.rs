@@ -147,6 +147,11 @@ impl FrameBuffer {
         unsafe { &*(self.base.add(at) as *const AtomicU64) }
     }
 
+    /// The largest frame the slots hold.
+    pub fn max_size(&self) -> (u32, u32) {
+        (self.max_width, self.max_height)
+    }
+
     #[cfg(test)]
     fn published(&self) -> u64 {
         self.u64(PUBLISHED).load(Ordering::Relaxed)

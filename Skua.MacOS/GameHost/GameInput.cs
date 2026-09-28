@@ -21,6 +21,31 @@ public enum GameKeyLocation : byte
     Numpad = 3,
 }
 
+/// <summary>The Game Client's mouse cursor over the Game View, as Ruffle's <c>MouseCursor</c>.</summary>
+public enum GameCursor : byte
+{
+    Arrow = 0,
+    /// <summary>Over a button or link.</summary>
+    Hand = 1,
+    /// <summary>Over selectable text.</summary>
+    IBeam = 2,
+    /// <summary>Dragging.</summary>
+    Grab = 3,
+}
+
+/// <summary>The cursor the Game Client shows, from the Game Host's <c>O</c> frame; <paramref name="Visible"/> is false after AS3's <c>Mouse.hide()</c>.</summary>
+public readonly record struct GameCursorState(GameCursor Cursor, bool Visible)
+{
+    public static readonly GameCursorState Default = new(GameCursor.Arrow, true);
+
+    /// <summary>The <c>O</c> payload: the cursor, then whether it is visible; null if it is too short.</summary>
+    public static GameCursorState? Decode(ReadOnlySpan<byte> payload) =>
+        payload.Length >= 2 ? new GameCursorState(Enum.IsDefined((GameCursor)payload[0]) ? (GameCursor)payload[0] : GameCursor.Arrow, payload[1] != 0) : null;
+}
+
+/// <summary>The Game View's size in device pixels and the display's scale factor, which a live Game Host renders at.</summary>
+public readonly record struct GameViewport(int Width, int Height, double Scale);
+
 /// <summary>
 /// A key as Ruffle's <c>KeyDescriptor</c>: the physical key by its Ruffle <c>PhysicalKey</c> name (the W3C <c>code</c>, e.g. <c>KeyA</c>,
 /// <c>ShiftLeft</c>), and the logical key as either the character it types or a Ruffle <c>NamedKey</c> name (e.g. <c>Tab</c>).
@@ -50,6 +75,7 @@ public abstract record GameInput
     public const byte TextControlKind = 9;
     public const byte FocusGainedKind = 10;
     public const byte FocusLostKind = 11;
+    public const byte ClipboardKind = 12;
 
     private GameInput()
     {
@@ -79,6 +105,9 @@ public abstract record GameInput
     public sealed record FocusGained : GameInput;
 
     public sealed record FocusLost : GameInput;
+
+    /// <summary>The Mac's clipboard text, sent just before a <c>Paste</c> text control, which pastes it.</summary>
+    public sealed record Clipboard(string Contents) : GameInput;
 
     /// <summary>The <c>U</c> payload after the id.</summary>
     public byte[] Encode()
@@ -125,12 +154,26 @@ public abstract record GameInput
             case FocusLost:
                 bytes.Add(FocusLostKind);
                 break;
+            case Clipboard c:
+                bytes.Add(ClipboardKind);
+                bytes.AddRange(Encoding.UTF8.GetBytes(c.Contents));
+                break;
         }
         return [.. bytes];
     }
 
-    /// <summary>The <c>W</c> payload after the id: whether the Game View is live.</summary>
-    public static byte[] EncodeView(bool live) => [live ? (byte)1 : (byte)0];
+    /// <summary>The <c>W</c> payload after the id: whether the Game View is live, and while live the viewport it shows the stage at.</summary>
+    public static byte[] EncodeView(bool live, GameViewport? viewport = null)
+    {
+        List<byte> bytes = [live ? (byte)1 : (byte)0];
+        if (live && viewport is { } v)
+        {
+            AddU32(bytes, (uint)v.Width);
+            AddU32(bytes, (uint)v.Height);
+            AddF32(bytes, (float)v.Scale);
+        }
+        return [.. bytes];
+    }
 
     private static void Add(List<byte> bytes, byte kind, float x, float y)
     {

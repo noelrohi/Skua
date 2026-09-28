@@ -1,11 +1,17 @@
 //! The Ruffle backends the Game Host supplies: ExternalInterface over the Bridge, AS3 logs, a headless
-//! navigator, the main-thread future spawner, and Ruffle/wgpu logs as 'L' frames.
+//! navigator, the main-thread future spawner, the Game View's UI (cursor and clipboard), and Ruffle/wgpu logs
+//! as 'L' frames.
 
 use crate::{Msg, bridge, frame, xml};
 use ruffle_core::backend::log::LogBackend;
 use ruffle_core::backend::navigator::OwnedFuture;
+use ruffle_core::backend::ui::{
+    DialogResultFuture, FileFilter, FontDefinition, FullscreenError, LanguageIdentifier, MouseCursor,
+    MultiDialogResultFuture, NullUiBackend, UiBackend,
+};
 use ruffle_core::context::UpdateContext;
 use ruffle_core::external::{ExternalInterfaceProvider, Value};
+use ruffle_core::font::FontQuery;
 use ruffle_frontend_utils::backends::navigator::{FutureSpawner, NavigatorInterface};
 use std::collections::HashMap;
 use std::path::Path;
@@ -53,6 +59,122 @@ impl LogBackend for BridgeLog {
 
     fn avm_warning(&self, message: &str) {
         bridge::send(frame::encode(b'F', format!("[warning] {message}").as_bytes()));
+    }
+}
+
+/// The UI backend of a Game Host with a Frame Buffer, which the Mac App's Game View shows (ADR 0006). The cursor goes
+/// to the Engine as 'O' frames. The clipboard is the Mac's: the app sends its text ('U' clipboard) just before each
+/// Paste, and what the game copies goes back as 'K' frames. Everything else is Ruffle's null backend; a headless
+/// host keeps that one, with its empty clipboard.
+pub struct GameViewUi {
+    null: NullUiBackend,
+    clipboard: String,
+    cursor: MouseCursor,
+    visible: bool,
+}
+
+impl Default for GameViewUi {
+    fn default() -> Self {
+        GameViewUi {
+            null: NullUiBackend::new(),
+            clipboard: String::new(),
+            cursor: MouseCursor::Arrow,
+            visible: true,
+        }
+    }
+}
+
+impl GameViewUi {
+    /// The Mac's clipboard text, for the Paste that follows.
+    pub fn set_mac_clipboard(&mut self, text: String) {
+        self.clipboard = text;
+    }
+
+    fn send_cursor(&self) {
+        let cursor = match self.cursor {
+            MouseCursor::Arrow => 0,
+            MouseCursor::Hand => 1,
+            MouseCursor::IBeam => 2,
+            MouseCursor::Grab => 3,
+        };
+        bridge::send(frame::encode_cursor(cursor, self.visible));
+    }
+}
+
+impl UiBackend for GameViewUi {
+    fn mouse_visible(&self) -> bool {
+        self.visible
+    }
+
+    fn set_mouse_visible(&mut self, visible: bool) {
+        if visible != self.visible {
+            self.visible = visible;
+            self.send_cursor();
+        }
+    }
+
+    /// Ruffle calls it only when the cursor changes.
+    fn set_mouse_cursor(&mut self, cursor: MouseCursor) {
+        self.cursor = cursor;
+        self.send_cursor();
+    }
+
+    fn clipboard_content(&mut self) -> String {
+        self.clipboard.clone()
+    }
+
+    fn set_clipboard_content(&mut self, content: String) {
+        bridge::send(frame::encode(b'K', content.as_bytes()));
+        self.clipboard = content;
+    }
+
+    fn set_fullscreen(&mut self, is_full: bool) -> Result<(), FullscreenError> {
+        self.null.set_fullscreen(is_full)
+    }
+
+    fn display_root_movie_download_failed_message(&self, invalid_swf: bool, fetched_error: String) {
+        self.null
+            .display_root_movie_download_failed_message(invalid_swf, fetched_error)
+    }
+
+    fn message(&self, message: &str) {
+        self.null.message(message)
+    }
+
+    fn open_virtual_keyboard(&self) {}
+
+    fn close_virtual_keyboard(&self) {}
+
+    fn language(&self) -> LanguageIdentifier {
+        self.null.language()
+    }
+
+    fn display_unsupported_video(&self, url: Url) {
+        self.null.display_unsupported_video(url)
+    }
+
+    fn load_device_font(&self, query: &FontQuery, register: &mut dyn FnMut(FontDefinition)) {
+        self.null.load_device_font(query, register)
+    }
+
+    fn sort_device_fonts(&self, query: &FontQuery, register: &mut dyn FnMut(FontDefinition)) -> Vec<FontQuery> {
+        self.null.sort_device_fonts(query, register)
+    }
+
+    fn display_file_open_dialog(&mut self, filters: Vec<FileFilter>) -> Option<DialogResultFuture> {
+        self.null.display_file_open_dialog(filters)
+    }
+
+    fn display_file_open_dialog_multiple(&mut self, filters: Vec<FileFilter>) -> Option<MultiDialogResultFuture> {
+        self.null.display_file_open_dialog_multiple(filters)
+    }
+
+    fn display_file_save_dialog(&mut self, file_name: String, title: String) -> Option<DialogResultFuture> {
+        self.null.display_file_save_dialog(file_name, title)
+    }
+
+    fn close_file_dialog(&mut self) {
+        self.null.close_file_dialog()
     }
 }
 

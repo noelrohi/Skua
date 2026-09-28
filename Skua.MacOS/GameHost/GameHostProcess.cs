@@ -81,6 +81,12 @@ public sealed class GameHostProcess : IDisposable
     /// <summary>Raised for each Ruffle/wgpu log line and stderr line of the Game Host, and when the Bridge stops.</summary>
     public event Action<string>? LogLine;
 
+    /// <summary>Raised on the reader thread when the Game Client's mouse cursor changes (a Game Host with a Frame Buffer only).</summary>
+    public event Action<GameCursorState>? CursorChanged;
+
+    /// <summary>Raised on the reader thread with text the Game Client put on the clipboard (a Game Host with a Frame Buffer only).</summary>
+    public event Action<string>? ClipboardCopied;
+
     /// <summary>Raised once when the Game Host sends a corrupt frame; the Bridge reads nothing after it.</summary>
     public event Action<string>? BridgeFailed;
 
@@ -271,6 +277,12 @@ public sealed class GameHostProcess : IDisposable
             case 'X':
                 lock (_callbacks)
                     _callbacks.Add(Encoding.UTF8.GetString(frame.Payload));
+                break;
+            case 'O' when GameCursorState.Decode(frame.Payload) is { } cursor:
+                CursorChanged?.Invoke(cursor);
+                break;
+            case 'K':
+                ClipboardCopied?.Invoke(Encoding.UTF8.GetString(frame.Payload));
                 break;
             default:
                 LogLine?.Invoke($"Skipped a Bridge frame of type '{frame.Type}' ({frame.Payload.Length} bytes).");

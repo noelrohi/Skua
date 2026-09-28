@@ -41,16 +41,26 @@ The Game Host writes each rendered frame into a shared-memory Frame Buffer that 
   - **Reader:** the app polls the header on each display refresh (`TopLevel.RequestAnimationFrame`). On a new sequence it copies the slot into a `WriteableBitmap`, checking the sequence again after the copy (a seqlock).
   - There is no per-frame message on any pipe.
 - **Cadence.** A new Engine → Game Host frame, `W` (view), switches the render policy.
-  - **Live**: the `--show-game` policy, a 33 ms interval with no render budget.
-  - **Headless defaults**: anything else.
-  - The app sends live while the Game View is on screen, and headless when the window is minimised, hidden or fully occluded, or when the app quits.
+  - **Live**: the `--show-game` policy, a 33 ms interval with no render budget, at the viewport the frame carries (Resolution, below).
+  - **Headless defaults**: anything else, at the stage size.
+  - The app sends live while the Game View is on screen, and headless when the window is minimised, hidden or fully occluded, or when the app quits. It learns of occlusion from AppKit's `NSWindowDidChangeOcclusionStateNotification` for the window, which Avalonia doesn't expose.
+  - It sends live again, with the new viewport, when the view's size or its display's scale changes.
 - **Input: a new Engine → Game Host frame, `U` (user input), fire-and-forget.**
   - Format: `u32 id` (0, no reply) + `u8 kind` + fields.
-  - Kinds: mouse move, down, up and leave (x, y as `f32` in Game Host viewport pixels; button), wheel (lines or pixels), key down and up (physical key, logical key, location, as Ruffle's `KeyDescriptor`), text (a code point), text control (Ruffle's `TextControlCode`, such as Backspace: Ruffle edits text fields only through these), and focus gained and lost.
+  - Kinds: mouse move, down, up and leave (x, y as `f32` in Game Host viewport pixels; button), wheel (lines or pixels), key down and up (physical key, logical key, location, as Ruffle's `KeyDescriptor`), text (a code point), text control (Ruffle's `TextControlCode`, such as Backspace: Ruffle edits text fields only through these), focus gained and lost, and clipboard (below).
+  - The wheel goes as Ruffle's desktop player sends it: pixels from a device with precise deltas (a trackpad), lines from a mouse wheel. Avalonia's wheel delta doesn't say which, so the app reads AppKit's current scroll event.
   - The Game Host turns each into a `PlayerEvent`, calls `Player::handle_event` (Ruffle `core/src/player.rs:1060`), and ticks without waiting for the next frame.
   - The app maps pointer positions from the scaled, letterboxed image back to viewport pixels. Ruffle maps viewport pixels to stage coordinates itself.
   - Input stays inside the app process's Engine. It isn't on the Control Surface: agents keep `eval` and the typed operations.
-- **Resolution.** The skeleton renders the native 958×550 stage, and the app scales it to fit. Rendering at the view's backing size (`set_viewport_dimensions` with the scale factor) comes later. `screenshot` stays at the native stage size either way.
+- **Resolution.** A live Game View has the Game Host render at the view's backing size: `W` carries the stage's letterboxed rectangle in device pixels and the display's scale factor, and the Game Host calls `set_viewport_dimensions` with them (#87).
+  - The viewport is never smaller than the stage, so a screenshot is scaled down from it, never up, and never larger than three times it (2874×1650), which sizes the Frame Buffer's slots. The Engine creates them at that size: the object's pages are only touched as frames grow into them.
+  - The app draws a frame at the view's size one frame pixel to one device pixel, on whole device pixels. Any other size (a view smaller than the stage, or larger than the cap) is scaled to fit.
+  - Headless, and whenever the view isn't live, the viewport is the native 958×550 stage.
+  - `screenshot` stays at the native stage size, or `maxWidth`: a larger frame is scaled down to it.
+- **Cursor and clipboard.** A Game Host with a Frame Buffer gets a Ruffle `UiBackend` for the Game View; a headless one keeps Ruffle's null backend, with its empty clipboard.
+  - Cursor changes (`set_mouse_cursor`: the hand over buttons, the I-beam over text, and `Mouse.hide()`) go to the Engine as a new Game Host → Engine frame, `O` (cursor), and the Game View sets that cursor.
+  - Ruffle reads the clipboard synchronously while it handles a Paste, when the Game Host can't ask the app. So on ⌘V the app sends the Mac's clipboard text as a `U` clipboard event, then the Paste. Input that comes while it reads the clipboard waits, so it reaches the game after the paste.
+  - What the game copies (a Copy or Cut in a text field, or `System.setClipboard`) goes to the Engine as `K` (clipboard), and the app puts it on the Mac's clipboard.
 - **Targets**, on an M-series Mac with the Game View live:
 
   | Measure | Target |
@@ -62,7 +72,7 @@ The Game Host writes each rendered frame into a shared-memory Frame Buffer that 
   | Bridge getter round trips | Unchanged from headless (p99 < 1 ms, #17) |
   | Game Host memory | #34's gate: a last-hour footprint slope ≤ 1 MB/min, under 2 GB |
 
-  The Game Host's `Q` stats gain the frames written, the input events and the live flag. The app measures frame age itself.
+  The Game Host's `Q` stats gain the frames written, the input events, the live flag and the viewport. The app measures frame age itself.
 
 ## The Skua Manager
 
@@ -144,7 +154,7 @@ This carries on ADR 0001 and #18's user stories 57 and 58.
 - **The Game Host shows its own window.** This covers the minifb debug window, a winit window with Ruffle desktop's input, and reparenting it into the app through the private `CALayerHost`/`CAContext`. Rejected: it gives two windows in two processes that can't compose with Avalonia's panels, or needs private API. It also gives the Game Host a GUI, which ADR 0003 turned down when it rejected forking Ruffle's desktop app.
 - **Frames over the Bridge pipe.** Rejected: 958×550 RGBA at 30 fps is about 63 MB/s on the same stdout pipe as `R` replies, and it would block getters whose p99 is under 1 ms (#17).
 - **Frames over a separate socket.** Rejected: it adds copies and framing, and gains nothing over shared memory on a one-to-one local link.
-- **IOSurface, zero-copy.** Deferred rather than rejected. It needs three things: a mach-port handoff of the surface, an IOSurface-backed `MTLTexture` through wgpu-hal's `texture_from_raw` (Ruffle has no API for it), and GPU interop on Avalonia's side. It saves one 2 MB memcpy per frame, which `--show-game` already does at 30 fps. Revisit if rendering at Retina size makes the copy matter.
+- **IOSurface, zero-copy.** Deferred rather than rejected. It needs three things: a mach-port handoff of the surface, an IOSurface-backed `MTLTexture` through wgpu-hal's `texture_from_raw` (Ruffle has no API for it), and GPU interop on Avalonia's side. It saves one 2 MB memcpy per frame, which `--show-game` already does at 30 fps. Revisit if rendering at Retina size makes the copy matter. At Retina size (#87) each copy is 8.4 MB; the measurements there found the frame age and CPU cost still within the targets, so it stays deferred.
 - **Polling `screenshot` PNGs.** Rejected: PNG encoding on every frame, and over 100 ms of latency.
 - **Sharing XAML with `Skua.WPF`.** Rejected: WPF and Avalonia XAML differ in namespaces, triggers, styles and controls. Sharing would mean editing the Windows views.
 

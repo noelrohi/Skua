@@ -61,7 +61,7 @@ every generated getter stay unchanged. The authoritative list is `src/frame.rs`.
 | Engine → Game Host | `S` | `u32 id` + `u32 maxWidth` (0 = native): a screenshot |
 | Engine → Game Host | `P` | `u32 id`: ping |
 | Engine → Game Host | `Q` | `u32 id`: stats |
-| Engine → Game Host | `W` | `u32 id` (0) + `u8 live`: the Game View is live (render every 33 ms, no budget, and fill the Frame Buffer) or not (the headless defaults). No reply. |
+| Engine → Game Host | `W` | `u32 id` (0) + `u8 live` [+ `u32 width` + `u32 height` + `f32 scale`]: the Game View is live (render every 33 ms, no budget, at that viewport, and fill the Frame Buffer) or not (the headless defaults, at the stage size). No reply. |
 | Engine → Game Host | `U` | `u32 id` (0) + `u8 kind` + fields: input from the Game View, handed to Ruffle's `Player::handle_event` (`src/input.rs`). No reply. |
 | Game Host → Engine | `R` | `u32 id` + return XML |
 | Game Host → Engine | `I` | `u32 id`, `u32 w`, `u32 h`, `u64 frame` + PNG bytes (w = h = 0 and no PNG if there's no image; `frame` is an estimate, time run × frame rate) |
@@ -71,6 +71,8 @@ every generated getter stay unchanged. The authoritative list is `src/frame.rs`.
 | Game Host → Engine | `F` | Flash log: AS3 `trace()`, warnings and uncaught AS3 errors |
 | Game Host → Engine | `L` | `u8 level` (1 error, 2 warn) + a Ruffle/wgpu log line |
 | Game Host → Engine | `X` | a name AS3 registered with `ExternalInterface.addCallback` |
+| Game Host → Engine | `O` | `u8 cursor` (0 arrow, 1 hand, 2 I-beam, 3 grab) + `u8 visible` (0 after `Mouse.hide()`): the Game View's cursor changed. Only with a Frame Buffer. |
+| Game Host → Engine | `K` | UTF-8 text the game put on the clipboard (a Copy or Cut in a text field, or `System.setClipboard`). Only with a Frame Buffer. |
 
 A frame of unknown type, or one too short for its type, is logged and skipped. A corrupt length ends the host
 with status 2.
@@ -82,14 +84,21 @@ and names with `--frame-buffer`. The host maps it before it reads stdin, so once
 ping it unlinks the name. The layout is in `src/frame_buffer.rs` (mirrored by `Skua.MacOS/GameHost/FrameBuffer.cs`):
 a header, then three slots of RGBA8 rows at the render size, latest frame wins, with a seqlock per slot.
 
-- **`W` live** switches the render policy to the `--show-game` one (33 ms, no budget); `W` not live goes back to the
-  command line's policy. While live, the render thread maps the target's readback buffer after each frame (Ruffle's
-  `TextureTarget` copies into it on every submit) and copies the rows into the free slot.
+- **`W` live** switches the render policy to the `--show-game` one (33 ms, no budget) and the viewport to the one it
+  carries: the Game View's size in device pixels, so it is sharp on Retina, kept between the stage size and the slots'
+  size. `W` not live goes back to the command line's policy and the 958×550 stage. While live, the render thread maps
+  the target's readback buffer after each frame (Ruffle's `TextureTarget` copies into it on every submit) and copies the
+  rows into the free slot.
+- **Screenshots** (`S`) are always the stage size, or `maxWidth`: a frame rendered for a larger Game View is scaled down.
 - **`U`** kinds are mouse move, down, up and leave (viewport pixels), wheel (lines or pixels), key down and up
   (Ruffle's `KeyDescriptor`, by variant name), text (a code point), text control (a `TextControlCode` name, e.g.
-  `Backspace`: Ruffle edits text fields only through these) and focus gained and lost. The loop ticks right after
-  each one, even within 4 ms of the last tick.
-- The `Q` stats gain `live`, `framesWritten` and `inputEvents` (both counts since start).
+  `Backspace`: Ruffle edits text fields only through these), focus gained and lost, and clipboard (the Mac's clipboard
+  text, which the app sends just before a Paste). The loop ticks right after each one, even within 4 ms of the last tick.
+- **The Game View's UI**: a host with a Frame Buffer gets `GameViewUi` (`src/backends.rs`) as Ruffle's `UiBackend`. It
+  sends cursor changes as `O` and what the game copies as `K`, and pastes the text the last `U` clipboard gave. A
+  headless host keeps Ruffle's null UI backend, with its empty clipboard.
+- The `Q` stats gain `live`, `framesWritten` and `inputEvents` (both counts since start), and `viewportWidth` and
+  `viewportHeight`.
 
 ## Lifecycle
 
@@ -112,7 +121,7 @@ From #13 and #17. Together they keep a headless host under 2 GB and responsive o
 | A keep-alive render even when nobody asks for a frame: without one, Ruffle's CPU-side state grows (Stress2: ~670 MB/min) | `Host::render_if_due` |
 | Tick at most every 4 ms during bursts of Bridge calls | `MIN_TICK_GAP` |
 | `--show-game`: a debug window updated every 33 ms | `opts.rs` |
-| A live Game View (`W`) renders every 33 ms, as `--show-game` does | `opts::LIVE` |
+| A live Game View (`W`) renders every 33 ms, as `--show-game` does, at the view's size | `opts::LIVE`, `view_viewport` |
 
 The lag killer is also on while headless, but the Engine owns that.
 

@@ -36,10 +36,15 @@
 //
 // With `--frame-buffer=<name>` (the Mac App's Engine passes it) it maps that Frame Buffer before reading stdin, as skua-gamehost does,
 // and speaks the Game View's frames:
-//   W   the call log records `view live` or `view headless`; while live it writes a synthetic 958x550 frame every 33 ms, a solid colour
-//       whose red, green and blue bytes are the frame number's low, middle and high bytes
-//   U   the call log records each input event as `input <kind> <fields>`, e.g. `input mouseDown 479 275 left` or `input keyDown KeyA a`
-//   Q   its stats gain "live", "framesWritten" and "inputEvents"
+//   W   the call log records `view live` or `view headless`, and a live view's viewport as `view viewport <w>x<h> <scale>`; while live it
+//       writes a synthetic frame of the viewport's size (958x550 without one) every 33 ms, a solid colour whose red, green and blue bytes
+//       are the frame number's low, middle and high bytes
+//   U   the call log records each input event as `input <kind> <fields>`, e.g. `input mouseDown 479 275 left`, `input keyDown KeyA a` or
+//       `input clipboard <text>`
+//   O   with `button <x> <y> <w> <h>` (a rectangle on the 958x550 stage), a mouse move into it sends the hand cursor and one out of it the
+//       arrow, as Ruffle does over a button; positions map from the viewport to the stage
+//   K   with `selection <text>`, a Copy or Cut text control sends <text> as the game's clipboard
+//   Q   its stats gain "live", "framesWritten", "inputEvents", "viewportWidth" and "viewportHeight"
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;
@@ -61,6 +66,11 @@ FakeFrameBuffer? frameBuffer = args.FirstOrDefault(a => a.StartsWith("--frame-bu
     ? FakeFrameBuffer.Open(fbArg["--frame-buffer=".Length..])
     : null;
 long inputEvents = 0;
+// The viewport a live view renders at, the simulated button on the stage, whether the pointer is over it, and the text a Copy copies.
+(int Width, int Height) viewport = (958, 550);
+(float X, float Y, float W, float H)? button = null;
+bool overButton = false;
+string? selection = null;
 
 void Send(char type, ReadOnlySpan<byte> payload)
 {
@@ -161,21 +171,44 @@ Thread reader = new(() =>
                 string json = stats.Replace("{n}", (++statsRequests).ToString());
                 if (frameBuffer is not null)
                 {
-                    string fields = $"\"live\":{(frameBuffer.Live ? "true" : "false")},\"framesWritten\":{frameBuffer.Written},\"inputEvents\":{Interlocked.Read(ref inputEvents)}";
+                    string fields = $"\"live\":{(frameBuffer.Live ? "true" : "false")},\"framesWritten\":{frameBuffer.Written},\"inputEvents\":{Interlocked.Read(ref inputEvents)},\"viewportWidth\":{viewport.Width},\"viewportHeight\":{viewport.Height}";
                     json = json.Trim() == "{}" ? $"{{{fields}}}" : json.TrimEnd()[..^1] + "," + fields + "}";
                 }
                 SendReply('Q', id, json);
                 break;
             case 'W' when body.Length >= 6:
                 bool live = body[5] != 0;
+                List<string> lines = [live ? "view live" : "view headless"];
+                viewport = (958, 550);
+                if (live && body.Length >= 18)
+                {
+                    // Clamped to the slots, as skua-gamehost does.
+                    (int slotWidth, int slotHeight) = frameBuffer?.Max ?? (958, 550);
+                    viewport = (Math.Clamp((int)BinaryPrimitives.ReadUInt32LittleEndian(body.AsSpan(6)), 958, slotWidth),
+                        Math.Clamp((int)BinaryPrimitives.ReadUInt32LittleEndian(body.AsSpan(10)), 550, slotHeight));
+                    lines.Add($"view viewport {viewport.Width}x{viewport.Height} {BinaryPrimitives.ReadSingleLittleEndian(body.AsSpan(14)).ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+                }
                 if (callLog is not null)
-                    File.AppendAllLines(callLog, [live ? "view live" : "view headless"]);
-                frameBuffer?.SetLive(live);
+                    File.AppendAllLines(callLog, lines);
+                frameBuffer?.SetLive(live, viewport.Width, viewport.Height);
                 break;
             case 'U':
                 Interlocked.Increment(ref inputEvents);
                 if (callLog is not null)
                     File.AppendAllLines(callLog, ["input " + FakeInput.Describe(body.AsSpan(5))]);
+                if (FakeInput.Position(body.AsSpan(5)) is { } at && button is { } b)
+                {
+                    // Viewport pixels to the stage, as Ruffle maps them.
+                    float x = at.X * 958 / viewport.Width, y = at.Y * 550 / viewport.Height;
+                    bool over = x >= b.X && x < b.X + b.W && y >= b.Y && y < b.Y + b.H;
+                    if (over != overButton)
+                    {
+                        overButton = over;
+                        Send('O', [over ? (byte)1 : (byte)0, 1]);
+                    }
+                }
+                if (FakeInput.TextControl(body.AsSpan(5)) is "Copy" or "Cut" && selection is not null)
+                    Send('K', Encoding.UTF8.GetBytes(selection));
                 break;
             case 'S':
                 uint maxWidth = BinaryPrimitives.ReadUInt32LittleEndian(body.AsSpan(5));
@@ -247,6 +280,13 @@ void Run(string line)
                 stdout.Write(new byte[4]);
                 stdout.Flush();
             }
+            break;
+        case ["button", ..]:
+            float[] r = line["button ".Length..].Split(' ').Select(v => float.Parse(v, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+            button = (r[0], r[1], r[2], r[3]);
+            break;
+        case ["selection", ..]:
+            selection = line["selection ".Length..];
             break;
         case ["sleep", string ms]:
             Thread.Sleep(int.Parse(ms));
