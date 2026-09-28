@@ -7,7 +7,6 @@
     x:DataType="vms:ApplicationOptionsViewModel">
     <ScrollViewer
         HorizontalScrollBarVisibility="Disabled"
-        ToolTip.Tip="Options with * need an application restart."
         VerticalScrollBarVisibility="Auto">
         <StackPanel x:Name="Options" Margin="3" />
     </ScrollViewer>

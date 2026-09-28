@@ -18,7 +18,7 @@ using static Skua.Avalonia.Tests.Ui;
 
 namespace Skua.Avalonia.Tests;
 
-/// <summary>The Options panels: game options that reach the game and persist, the lag killer in app mode, and themes across every window.</summary>
+/// <summary>The Options panels: game options that reach the game and persist, the lag killer in app mode, themes across every window, and the application options macOS has.</summary>
 /// <remarks>In the Game View tests' collection, as they share the one Engine and its game.</remarks>
 [Collection(nameof(GameViewTests))]
 public sealed class OptionsTests(AppEngine app)
@@ -179,6 +179,48 @@ public sealed class OptionsTests(AppEngine app)
         finally
         {
             window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Application_Options_leaves_out_Clear_Flash_Cache_and_the_frame_rate_and_every_other_option_shows_and_is_saved_for_the_next_start()
+    {
+        ISettingsService settings = app.Get<ISettingsService>();
+        MainViewModel main = app.Get<MainViewModel>();
+        HostWindow window = await ShowAsync("Application");
+        List<DisplayOptionItemViewModelBase> core = ((ApplicationOptionsViewModel)window.DataContext!).ApplicationOptions;
+        List<DisplayOptionItemViewModelBase> checkOptions = [.. core.Where(o => o.DisplayType == typeof(bool))];
+        Dictionary<string, bool> savedBefore = checkOptions.ToDictionary(o => o.Tag, o => settings.Get<bool>(o.Tag));
+        Dictionary<string, object?> valuesBefore = checkOptions.ToDictionary(o => o.Tag, o => o.Value);
+        try
+        {
+            // Core's list, which the Windows app shows, keeps both.
+            Assert.Contains(core, o => o.Content == "Clear Flash Cache");
+            Assert.Contains(core, o => o.Content == "* Client Animation Frame-rate");
+            List<OptionItemView> shown = [.. window.GetVisualDescendants().OfType<OptionItemView>()];
+            Assert.Equal(
+                core.Select(o => o.Content).Where(c => c is not ("Clear Flash Cache" or "* Client Animation Frame-rate")),
+                shown.Select(v => v.Item.Content));
+
+            foreach (OptionItemView view in shown)
+            {
+                CheckBox check = Assert.IsType<CheckBox>(view.Content);
+                bool was = check.IsChecked == true;
+                await ClickAsync(window, check);
+                Assert.Equal(!was, SavedSetting<bool>(view.Item.Tag));
+                await ClickAsync(window, check);
+                Assert.Equal(was, SavedSetting<bool>(view.Item.Tag));
+            }
+        }
+        finally
+        {
+            window.Close();
+            foreach (DisplayOptionItemViewModelBase option in checkOptions)
+            {
+                option.Value = valuesBefore[option.Tag];
+                settings.Set(option.Tag, savedBefore[option.Tag]);
+            }
+            main.ShowUsernameInTitle = savedBefore["ShowUsernameInTitle"];
         }
     }
 

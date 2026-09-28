@@ -4,6 +4,7 @@ using Avalonia.Automation.Peers;
 using Avalonia.Automation.Provider;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Input;
 using Avalonia.LogicalTree;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -34,6 +35,24 @@ public static class Ui
     {
         Assert.True(button.IsEffectivelyEnabled, $"'{button.Content}' is disabled");
         ((IInvokeProvider)ControlAutomationPeer.CreatePeerForElement(button)).Invoke();
+    }
+
+    /// <summary>
+    /// Clicks a control's middle with the pointer, as the developer does, once it is scrolled into view. Open tooltips close first: a
+    /// headless window shows its popups inside itself, where one can cover the control.
+    /// </summary>
+    public static async Task ClickAsync(Window window, global::Avalonia.Controls.Control control)
+    {
+        control.BringIntoView();
+        await PumpUntilAsync(() => control.IsEffectivelyVisible && control.Bounds.Width > 0, "the control on screen");
+        foreach (global::Avalonia.Controls.Control tipped in window.GetVisualDescendants().OfType<global::Avalonia.Controls.Control>().Where(ToolTip.GetIsOpen))
+            ToolTip.SetIsOpen(tipped, false);
+        await PumpUntilAsync(() => Find<ToolTip>(window) is null, "the tooltips to close");
+        await PumpUntilAsync(() => true, "a layout pass");
+        Point center = control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), window)!.Value;
+        window.MouseDown(center, MouseButton.Left);
+        window.MouseUp(center, MouseButton.Left);
+        await PumpUntilAsync(() => true, "a layout pass");
     }
 
     /// <summary>The first control of type <typeparamref name="T"/> in <paramref name="root"/>'s visual tree that satisfies <paramref name="match"/>.</summary>
