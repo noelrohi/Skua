@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Specialized;
+using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
@@ -38,6 +39,9 @@ public sealed class FakeGitHub : IAsyncDisposable
     /// <summary>Delays every raw file response, so a test can catch an update in flight.</summary>
     public TimeSpan RawDelay { get; set; }
 
+    /// <summary>Every raw file response waits for this, so a test can hold an update in flight for as long as it needs, then let it finish.</summary>
+    public Task RawHeld { get; set; } = Task.CompletedTask;
+
     /// <summary>Answers every request with 503, as GitHub does when it can't be reached through a proxy or is down.</summary>
     public bool Down { get; set; }
 
@@ -48,6 +52,18 @@ public sealed class FakeGitHub : IAsyncDisposable
 
     /// <summary>Every request path served so far, in order, e.g. <c>/raw/auqw/Scripts/refs/heads/Skua/scripts.json</c>.</summary>
     public IReadOnlyList<string> Requests => [.. _requests];
+
+    /// <summary>Waits for the first raw file request, e.g. an update's <c>scripts.json</c>.</summary>
+    public async Task WaitForRawRequestAsync()
+    {
+        Stopwatch waited = Stopwatch.StartNew();
+        while (!Requests.Any(r => r.StartsWith("/raw/", StringComparison.Ordinal)))
+        {
+            if (waited.Elapsed > TimeSpan.FromSeconds(30))
+                throw new TimeoutException("No raw file was requested.");
+            await Task.Delay(20, TestContext.Current.CancellationToken);
+        }
+    }
 
     /// <summary>The raw paths of Script files fetched from a repository, relative to it.</summary>
     public IReadOnlyList<string> ScriptDownloads(string owner, string repo, string branch)
@@ -180,6 +196,7 @@ public sealed class FakeGitHub : IAsyncDisposable
         if (parts is ["raw", var rOwner, var rRepo, "refs", "heads", var rBranch, .. var rest] && rest.Length > 0)
         {
             await Task.Delay(RawDelay);
+            await RawHeld;
             string file = string.Join('/', rest);
             lock (_repos)
             {

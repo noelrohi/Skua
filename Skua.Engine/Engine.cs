@@ -44,6 +44,7 @@ internal sealed class Engine : IEngineRpc
     private readonly DialogOperations _dialogs;
     private readonly ScriptRuns _runs;
     private readonly ActionSlot _slot;
+    private readonly ActionSlot _scriptsSlot;
 
     private Engine(EngineEndpoint endpoint, GameHostSupervisor gameHost, EngineLogs logs, IServiceProvider services, EngineHostOptions options)
     {
@@ -56,8 +57,9 @@ internal sealed class Engine : IEngineRpc
         _dialogs = new DialogOperations(broker, logs);
         _runs = new(logs, manager, services.GetRequiredService<IScriptOption>(), broker, keepLagKillerOn: options.IsHeadless);
         _slot = new();
+        _scriptsSlot = new();
         SemaphoreSlim compiling = new(1, 1);
-        _scriptSource = new ScriptSourceOperations(services.GetRequiredService<IGetScriptsService>(), _runs, _slot, _shutdown.Token);
+        _scriptSource = new ScriptSourceOperations(services.GetRequiredService<IGetScriptsService>(), _runs, _scriptsSlot, _shutdown.Token);
         _screenshots = new ScreenshotOperations(services.GetRequiredService<BridgeFlashUtil>(), services.GetRequiredService<IScriptOption>());
         GameActionSlot gameSlot = new(gameHost.Tracker, _runs, _slot);
         _game = new GameOperations(
@@ -66,9 +68,9 @@ internal sealed class Engine : IEngineRpc
         _moves = new MoveOperations(
             services.GetRequiredService<IScriptMap>(), services.GetRequiredService<IScriptPlayer>(), services.GetRequiredService<IScriptWait>(), gameHost.Tracker, gameSlot);
         _queries = new GameQueries(services.GetRequiredService<IScriptInterface>(), services.GetRequiredService<IFlashUtil>(), gameHost.Tracker, gameSlot);
-        _scripts = new ScriptOperations(manager, _runs, broker, _slot, compiling);
+        _scripts = new ScriptOperations(manager, _runs, broker, _slot, _scriptsSlot, compiling);
         _eval = new EvalOperations(manager, services.GetRequiredService<IScriptInterface>(), logs, compiling);
-        services.GetRequiredService<EngineScripts>().Attach(_scripts, _scriptSource, _runs, _slot, compiling);
+        services.GetRequiredService<EngineScripts>().Attach(_scripts, _scriptSource, _runs, _slot, _scriptsSlot, compiling);
     }
 
     /// <summary>The build a CLI compares with its own, which it shares when built together, to tell whether this Engine is stale.</summary>
@@ -179,14 +181,17 @@ internal sealed class Engine : IEngineRpc
     {
         EnsureHeadless("A replacement by another build");
         const string action = "replace the Engine";
-        // The lease is never returned, so no command starts a Script while the Engine shuts down.
+        // The leases are never returned, so no command starts a Script while the Engine shuts down, and it never cuts a Scripts update short.
         IDisposable lease = _slot.Take(action);
+        IDisposable? scriptsLease = null;
         try
         {
+            scriptsLease = _scriptsSlot.Take(action);
             _runs.EnsureIdle(action);
         }
         catch
         {
+            scriptsLease?.Dispose();
             lease.Dispose();
             throw;
         }

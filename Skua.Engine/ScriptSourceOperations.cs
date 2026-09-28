@@ -14,17 +14,18 @@ internal sealed class ScriptSourceOperations
 {
     private readonly IGetScriptsService _scriptsService;
     private readonly ScriptRuns _runs;
-    private readonly ActionSlot _slot;
+    private readonly ActionSlot _scriptsSlot;
     private readonly CancellationToken _shutdown;
     private readonly SemaphoreSlim _updating = new(1, 1);
     private readonly ScriptHistory _history = new();
 
+    /// <param name="scriptsSlot">The Engine's Scripts slot, which a Script's compile takes too.</param>
     /// <param name="shutdown">Ends an update in flight; a client disconnecting doesn't.</param>
-    public ScriptSourceOperations(IGetScriptsService scriptsService, ScriptRuns runs, ActionSlot slot, CancellationToken shutdown)
+    public ScriptSourceOperations(IGetScriptsService scriptsService, ScriptRuns runs, ActionSlot scriptsSlot, CancellationToken shutdown)
     {
         _scriptsService = scriptsService;
         _runs = runs;
-        _slot = slot;
+        _scriptsSlot = scriptsSlot;
         _shutdown = shutdown;
     }
 
@@ -76,7 +77,10 @@ internal sealed class ScriptSourceOperations
 
     public ScriptsNewResult New(string? since) => _history.New(_scriptsService.Source.ToDto(), since);
 
-    /// <remarks>Refused while a Script runs, and holds the Engine's slot, so a Script's files never change under it.</remarks>
+    /// <remarks>
+    /// Refused while a Script runs, and holds the Engine's Scripts slot, so a Script's files never change under it and no Script compiles
+    /// until the update ends; a login or another game action goes ahead meanwhile.
+    /// </remarks>
     public async Task<ScriptsUpdateResult> UpdateAsync()
     {
         if (!_updating.Wait(0))
@@ -84,8 +88,9 @@ internal sealed class ScriptSourceOperations
 
         try
         {
+            // The slot first: a Script's start holds it until its run has begun, so no start slips in after the check.
+            using IDisposable lease = _scriptsSlot.Take("update the Scripts");
             _runs.EnsureIdle("update the Scripts");
-            using IDisposable lease = _slot.Take("update the Scripts");
             ScriptSource source = _scriptsService.Source;
             ScriptsSyncResult result = await FromScriptSourceAsync(source, () => _scriptsService.SyncScriptsAsync(_shutdown));
             if (result.Mode == ScriptsSyncMode.Full)
@@ -125,7 +130,7 @@ internal sealed class ScriptSourceOperations
 
     /// <param name="source"><c>owner/repo@branch</c>, or null for the default.</param>
     /// <remarks>
-    /// Refused while a Script runs or an update is in flight, and holds the Engine's slot, so a Script never starts while the Script Source
+    /// Refused while a Script runs or an update is in flight, and holds the Engine's Scripts slot, so a Script never starts while the Script Source
     /// changes. The Engine reads the setting afresh at every call, so it takes effect without a restart.
     /// </remarks>
     public ScriptSourceResult SetSource(string? source)
@@ -135,8 +140,8 @@ internal sealed class ScriptSourceOperations
 
         try
         {
+            using IDisposable lease = _scriptsSlot.Take("change the Script Source");
             _runs.EnsureIdle("change the Script Source");
-            using IDisposable lease = _slot.Take("change the Script Source");
             try
             {
                 ScriptSourceSetting.Write(ClientFileSources.SkuaDIR, source is null ? null : ScriptSourceSetting.Parse(source));

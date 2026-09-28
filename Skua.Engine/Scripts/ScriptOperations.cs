@@ -24,15 +24,19 @@ internal sealed class ScriptOperations
     private readonly ScriptRuns _runs;
     private readonly ScriptDialogBroker _dialogs;
     private readonly ActionSlot _slot;
+    private readonly ActionSlot _scriptsSlot;
     private readonly SemaphoreSlim _compiling;
 
+    /// <param name="slot">The Engine's action slot.</param>
+    /// <param name="scriptsSlot">The Engine's Scripts slot, so a Script never compiles during a Scripts update.</param>
     /// <param name="compiling">Held around every compile, since Core's Script manager compiles one thing at a time.</param>
-    public ScriptOperations(IScriptManager manager, ScriptRuns runs, ScriptDialogBroker dialogs, ActionSlot slot, SemaphoreSlim compiling)
+    public ScriptOperations(IScriptManager manager, ScriptRuns runs, ScriptDialogBroker dialogs, ActionSlot slot, ActionSlot scriptsSlot, SemaphoreSlim compiling)
     {
         _manager = manager;
         _runs = runs;
         _dialogs = dialogs;
         _slot = slot;
+        _scriptsSlot = scriptsSlot;
         _compiling = compiling;
     }
 
@@ -42,6 +46,7 @@ internal sealed class ScriptOperations
         string action = $"list the options of {name}";
         _runs.EnsureIdle(action);
         using IDisposable lease = _slot.Take(action);
+        using IDisposable scriptsLease = _scriptsSlot.Take(action);
         IScriptOptionContainer config = await LoadConfigAsync(name, file);
         return new ScriptOptionsResult(name, config.Storage, Options(config).Select(o => Describe(config, o.Key, o.Option)).ToList());
     }
@@ -54,6 +59,7 @@ internal sealed class ScriptOperations
         string action = $"start {name}";
         _runs.EnsureIdle(action);
         using IDisposable lease = _slot.Take(action);
+        using IDisposable scriptsLease = _scriptsSlot.Take(action);
 
         int run = _runs.Begin(name, dialogs ?? DialogMode.Ask, dialogTimeoutSec ?? DefaultDialogTimeoutSec);
         try
