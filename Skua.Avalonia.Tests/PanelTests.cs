@@ -148,8 +148,11 @@ public sealed class PanelTests(AppEngine app)
             // The Skua Manager's come from its own container, in its own process.
             ?? _manager.Value.GetRequiredService(type);
 
+    /// <remarks>Its folder is in the sandbox, which the fixture deletes.</remarks>
     private readonly Lazy<ServiceProvider> _manager = new(() =>
-        new ServiceCollection().AddManagerServices(Directory.CreateTempSubdirectory("skua-manager-").FullName).BuildServiceProvider());
+        new ServiceCollection()
+            .AddManagerServices(Directory.CreateDirectory(Path.Combine(AppEngine.SkuaDir, "manager-" + Guid.NewGuid().ToString("N")[..8])).FullName)
+            .BuildServiceProvider());
 
     private static IEnumerable<MenuItem> Leaves(IEnumerable<MenuItem> items) =>
         items.SelectMany(i => i.Items.Count > 0 ? Leaves(i.Items.OfType<MenuItem>()) : [i]);

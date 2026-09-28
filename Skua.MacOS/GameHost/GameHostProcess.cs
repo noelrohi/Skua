@@ -15,7 +15,8 @@ public sealed record GameHostScreenshot(int Width, int Height, long Frame, byte[
 /// <remarks>
 /// One reader thread takes every frame: replies complete their request by id, and the Game Client's calls queue for one dispatch thread,
 /// which raises <see cref="Invoked"/> in order. A handler may call back into the Bridge, because replies never wait for the dispatch thread.
-/// A handler's exception, or an unexpected one reading the Bridge, never ends the process: the reader thread is the Engine's.
+/// A handler's exception, or an unexpected one reading the Bridge, never ends the process: the reader thread is the Engine's. The
+/// process's own exit and stderr events are guarded the same way, as they run on thread pool threads.
 /// Subscribe to the events before calling <see cref="Start"/>, so no frame or exit is missed.
 /// </remarks>
 public sealed class GameHostProcess : IDisposable
@@ -48,11 +49,11 @@ public sealed class GameHostProcess : IDisposable
             startInfo.ArgumentList.Add(argument);
 
         _process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
-        _process.Exited += (_, _) => Exited?.Invoke(_process.ExitCode);
+        _process.Exited += (_, _) => Raise(Exited, _process.ExitCode);
         _process.ErrorDataReceived += (_, e) =>
         {
             if (e.Data is not null)
-                LogLine?.Invoke(e.Data);
+                Raise(LogLine, e.Data);
         };
     }
 
@@ -297,7 +298,10 @@ public sealed class GameHostProcess : IDisposable
         }
     }
 
-    /// <summary>Raises an event on the reader thread, where a handler's exception would abort the process; it goes to stderr instead.</summary>
+    /// <summary>
+    /// Raises an event on a thread where a handler's exception would abort the process; it goes to Trace instead, which the Engine records
+    /// in its debug log (and echoes on stderr in skua-engine), with the thread it was raised on.
+    /// </summary>
     private static void Raise<T>(Action<T>? handler, T value)
     {
         try
@@ -306,7 +310,15 @@ public sealed class GameHostProcess : IDisposable
         }
         catch (Exception e)
         {
-            Console.Error.WriteLine($"A Game Host event handler failed: {e}");
+            string message = $"A Game Host event handler failed on thread '{Thread.CurrentThread.Name ?? "pool"}': {e}";
+            try
+            {
+                Trace.WriteLine(message);
+            }
+            catch
+            {
+                Console.Error.WriteLine(message);
+            }
         }
     }
 
@@ -320,7 +332,7 @@ public sealed class GameHostProcess : IDisposable
             }
             catch (Exception e)
             {
-                LogLine?.Invoke($"A handler of a Game Client call failed: {e}");
+                Raise(LogLine, $"A handler of a Game Client call failed: {e}");
             }
         }
     }

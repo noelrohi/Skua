@@ -146,6 +146,54 @@ public class BridgeTests
         Assert.Empty(gameHost.Request('P', [], TimeSpan.FromSeconds(5)));
     }
 
+    [Fact]
+    public async Task A_handler_that_throws_is_traced_with_its_thread_and_exception()
+    {
+        await using EngineSandbox sandbox = new();
+        FakeGameHost fake = new FakeGameHost(sandbox).Send('F', "[Game] line").Send('E', Invoke("done"));
+        using GameHostProcess gameHost = new(EngineSandbox.FakeGameHostExecutable, [fake.Write()]);
+        string marker = "a handler's bug " + Guid.NewGuid().ToString("N");
+        TaskCompletionSource done = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        gameHost.FlashLog += _ => throw new InvalidOperationException(marker);
+        gameHost.Invoked += _ => done.TrySetResult();
+        // The Engine records Trace in its debug log; this stands in for it.
+        TraceLines traced = new();
+        Trace.Listeners.Add(traced);
+        try
+        {
+            gameHost.Start();
+            await done.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            Trace.Listeners.Remove(traced);
+        }
+
+        string line = Assert.Single(traced.Lines, l => l.Contains(marker, StringComparison.Ordinal));
+        Assert.StartsWith("A Game Host event handler failed on thread 'Game Host reader': System.InvalidOperationException", line);
+    }
+
+    [Fact]
+    public async Task An_exit_handler_that_throws_doesnt_end_the_process()
+    {
+        await using EngineSandbox sandbox = new();
+        FakeGameHost fake = new FakeGameHost(sandbox).Exit(3);
+        using GameHostProcess gameHost = new(EngineSandbox.FakeGameHostExecutable, [fake.Write()]);
+        TaskCompletionSource<int> exited = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        // On a thread pool thread: unhandled there, it would end this test process.
+        gameHost.Exited += code =>
+        {
+            exited.TrySetResult(code);
+            throw new InvalidOperationException("an exit handler's bug");
+        };
+
+        gameHost.Start();
+
+        Assert.Equal(3, await exited.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        // Long enough for the runtime to have ended the process, had the exception escaped.
+        await Task.Delay(500, TestContext.Current.CancellationToken);
+    }
+
     private static GameHostProcess Start(FakeGameHost fake)
     {
         GameHostProcess gameHost = new(EngineSandbox.FakeGameHostExecutable, [fake.Write()]);
@@ -154,4 +202,28 @@ public class BridgeTests
     }
 
     private static string Invoke(string function) => $"<invoke name=\"{function}\" returntype=\"xml\"></invoke>";
+
+    /// <summary>Collects the lines written to Trace while it is listening.</summary>
+    private sealed class TraceLines : TraceListener
+    {
+        private readonly List<string> _lines = [];
+
+        public IReadOnlyList<string> Lines
+        {
+            get
+            {
+                lock (_lines)
+                    return [.. _lines];
+            }
+        }
+
+        public override void Write(string? message) => WriteLine(message);
+
+        public override void WriteLine(string? message)
+        {
+            if (message is not null)
+                lock (_lines)
+                    _lines.Add(message);
+        }
+    }
 }

@@ -135,19 +135,46 @@ public sealed class EngineSandbox : IAsyncDisposable
     {
         try
         {
-            await EngineClient.StopAsync(Endpoint, StopTimeout);
-        }
-        catch (ControlException)
-        {
-        }
+            try
+            {
+                await EngineClient.StopAsync(Endpoint, StopTimeout);
+            }
+            catch (ControlException)
+            {
+            }
 
-        foreach (Process process in _processes)
-        {
-            if (!process.HasExited)
-                process.Kill();
-            process.Dispose();
+            foreach (Process process in _processes)
+            {
+                // The whole tree, so a CLI under script(1) goes too; and waited for, so nothing writes to the folder once it is deleted.
+                if (!process.HasExited)
+                    process.Kill(entireProcessTree: true);
+                process.WaitForExit(StopTimeout);
+                process.Dispose();
+            }
         }
-        Directory.Delete(SkuaDir, recursive: true);
+        finally
+        {
+            DeleteFolder(SkuaDir);
+        }
+    }
+
+    /// <summary>Deletes a sandbox's folder, retrying for a while when a process that is ending still writes to it.</summary>
+    /// <exception cref="IOException">It still couldn't be deleted.</exception>
+    public static void DeleteFolder(string dir)
+    {
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                if (Directory.Exists(dir))
+                    Directory.Delete(dir, recursive: true);
+                return;
+            }
+            catch (IOException) when (attempt < 20)
+            {
+                Thread.Sleep(100);
+            }
+        }
     }
 }
 
