@@ -14,8 +14,10 @@ mod opts;
 mod render;
 mod xml;
 
-use backends::{BridgeExternalInterface, BridgeLog, FrameLayer, HeadlessNavigatorInterface, MainThreadSpawner};
-use frame::Request;
+use backends::{
+    BridgeExternalInterface, BridgeLog, FrameLayer, GameViewUi, HeadlessNavigatorInterface, MainThreadSpawner,
+};
+use frame::{Request, Viewport};
 use frame_buffer::FrameBuffer;
 use opts::{Opts, RenderPolicy, USAGE};
 use render::ThreadedBackend;
@@ -23,6 +25,7 @@ use ruffle_core::backend::navigator::SocketMode;
 use ruffle_core::{FloatDuration, Player, PlayerBuilder, StageScaleMode};
 use ruffle_frontend_utils::backends::navigator::ExternalNavigatorBackend;
 use ruffle_frontend_utils::content::{ContentDescriptor, PlayingContent};
+use ruffle_render::backend::ViewportDimensions;
 use ruffle_render_wgpu::backend::{
     self as wgpu_backend, WgpuRenderBackend, create_wgpu_instance, request_adapter_and_device,
 };
@@ -40,9 +43,14 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use url::Url;
 
-/// The Game Client's stage size.
+/// The Game Client's stage size: the headless viewport, and the size of every screenshot.
 const WIDTH: u32 = 958;
 const HEIGHT: u32 = 550;
+const NATIVE: ViewportDimensions = ViewportDimensions {
+    width: WIDTH,
+    height: HEIGHT,
+    scale_factor: 1.0,
+};
 /// During a burst of Bridge calls, tick at most this often: a tick per call only adds the tick's own
 /// cost (sockets, timers, streams) to every round trip.
 const MIN_TICK_GAP: Duration = Duration::from_millis(4);
@@ -126,7 +134,13 @@ fn main() {
         HeadlessNavigatorInterface,
     );
 
-    let player = PlayerBuilder::new()
+    let builder = PlayerBuilder::new();
+    // The Game View's cursor and clipboard; a headless host keeps Ruffle's null UI.
+    let builder = match frame_buffer {
+        Some(_) => builder.with_ui(GameViewUi::default()),
+        None => builder,
+    };
+    let player = builder
         .with_renderer(renderer)
         .with_navigator(navigator)
         .with_log(BridgeLog)
@@ -166,6 +180,7 @@ fn main() {
         frame_buffer,
         frames_written: Arc::new(AtomicU64::new(0)),
         live: false,
+        viewport: NATIVE,
         input_pending: false,
         window,
         trim_ticks: opts.trim_ticks,
@@ -231,6 +246,8 @@ struct Host {
     frames_written: Arc<AtomicU64>,
     /// The Game View is live: render every 33 ms and write each frame to the Frame Buffer.
     live: bool,
+    /// The viewport Ruffle renders at: the Game View's size while live, else the stage's.
+    viewport: ViewportDimensions,
     /// Input arrived since the last tick: the next one doesn't wait out `MIN_TICK_GAP`.
     input_pending: bool,
     window: Option<minifb::Window>,
@@ -314,9 +331,15 @@ impl Host {
                 let json = self.stats_json();
                 bridge::send(frame::encode_with_id(b'Q', id, json.as_bytes()));
             }
-            Request::View { live } => {
+            Request::View { live, viewport } => {
                 self.live = live;
                 self.policy = if live { opts::LIVE } else { self.headless_policy };
+                let max = self.frame_buffer.as_ref().map(|fb| fb.max_size());
+                let viewport = view_viewport(live.then_some(viewport).flatten(), max);
+                if dims(viewport) != dims(self.viewport) {
+                    self.viewport = viewport;
+                    self.player().set_viewport_dimensions(viewport);
+                }
             }
             Request::Input(input) => {
                 self.stats.input_events += 1;
@@ -325,9 +348,16 @@ impl Host {
                 match input {
                     input::Input::MouseMove { .. } if !p.mouse_in_stage() => p.set_mouse_in_stage(true),
                     input::Input::MouseLeave => p.set_mouse_in_stage(false),
+                    input::Input::Clipboard(ref text) => {
+                        if let Some(ui) = <dyn Any>::downcast_mut::<GameViewUi>(p.ui_mut()) {
+                            ui.set_mac_clipboard(text.clone());
+                        }
+                    }
                     _ => {}
                 }
-                p.handle_event(input.into_event());
+                if let Some(event) = input.into_event() {
+                    p.handle_event(event);
+                }
             }
             #[cfg(feature = "diag")]
             Request::Diag { id, kind, arg } => self.diag(id, kind, &arg),
@@ -452,7 +482,8 @@ impl Host {
                 "\"submitN\":{},\"submitMsAvg\":{:.1},\"submitMsMax\":{:.1},\"submitMsSum\":{:.0},",
                 "\"prepN\":{},\"prepMsAvg\":{:.1},\"prepMsMax\":{:.1},\"prepMsSum\":{:.0},",
                 "\"mainBlockedN\":{},\"mainBlockedMsSum\":{:.0},\"mainBlockedMsMax\":{:.1},",
-                "\"renderGapMs\":{},\"threaded\":{},\"live\":{},\"framesWritten\":{},\"inputEvents\":{}"
+                "\"renderGapMs\":{},\"threaded\":{},\"live\":{},\"framesWritten\":{},\"inputEvents\":{},",
+                "\"viewportWidth\":{},\"viewportHeight\":{}"
             ),
             self.started.elapsed().as_millis(),
             s.ticks,
@@ -480,6 +511,8 @@ impl Host {
             self.live,
             self.frames_written.load(Ordering::Relaxed),
             s.input_events,
+            self.viewport.width,
+            self.viewport.height,
         );
         #[cfg(feature = "diag")]
         let json = format!("{json},{}", diag::stats_extra());
@@ -499,7 +532,28 @@ fn write_frame(r: &mut render::Wgpu, fb: &FrameBuffer) -> bool {
     })
 }
 
-/// Sends the 'I' reply: the frame, scaled down to `max_width` if wider, as PNG (w = h = 0 if none).
+/// The viewport for a 'W': the Game View's size while live, never below the stage's (so screenshots are scaled down,
+/// never up) nor above the Frame Buffer's slots; the stage's otherwise.
+fn view_viewport(view: Option<Viewport>, max: Option<(u32, u32)>) -> ViewportDimensions {
+    match (view, max) {
+        (Some(v), Some((max_w, max_h))) => ViewportDimensions {
+            width: v.width.clamp(WIDTH, max_w.max(WIDTH)),
+            height: v.height.clamp(HEIGHT, max_h.max(HEIGHT)),
+            scale_factor: if v.scale.is_finite() && v.scale > 0.0 {
+                v.scale
+            } else {
+                1.0
+            },
+        },
+        _ => NATIVE,
+    }
+}
+
+fn dims(v: ViewportDimensions) -> (u32, u32, f64) {
+    (v.width, v.height, v.scale_factor)
+}
+
+/// Sends the 'I' reply: the frame at the stage size, or scaled down to `max_width` if narrower, as PNG (w = h = 0 if none).
 fn screenshot_reply(id: u32, frames: u64, max_width: u32, image: Option<image::RgbaImage>) {
     let (width, height, png) = match image.map(|img| encode_screenshot(img, max_width)) {
         Some(Ok(encoded)) => encoded,
@@ -515,13 +569,17 @@ fn screenshot_reply(id: u32, frames: u64, max_width: u32, image: Option<image::R
     bridge::send(frame::encode_image(id, width, height, frames, &png));
 }
 
-/// The frame as PNG, scaled down to `max_width` (0 = native) if wider, keeping its aspect ratio; with its final size.
+/// The frame as PNG at the stage size, or at `max_width` (0 = native) if narrower, keeping the stage's aspect ratio;
+/// with its final size. A frame rendered for a larger Game View is scaled down to it.
 fn encode_screenshot(mut img: image::RgbaImage, max_width: u32) -> image::ImageResult<(u32, u32, Vec<u8>)> {
-    if max_width > 0 && img.width() > max_width {
-        let height = (img.height() as f64 * max_width as f64 / img.width() as f64)
-            .round()
-            .max(1.0) as u32;
-        img = image::imageops::resize(&img, max_width, height, image::imageops::FilterType::Triangle);
+    let (width, height) = if max_width > 0 && max_width < WIDTH {
+        let height = (HEIGHT as f64 * max_width as f64 / WIDTH as f64).round().max(1.0) as u32;
+        (max_width, height)
+    } else {
+        (WIDTH, HEIGHT)
+    };
+    if img.dimensions() != (width, height) {
+        img = image::imageops::resize(&img, width, height, image::imageops::FilterType::Triangle);
     }
     let mut png = Vec::new();
     img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)?;
@@ -530,10 +588,15 @@ fn encode_screenshot(mut img: image::RgbaImage, max_width: u32) -> image::ImageR
 
 #[cfg(test)]
 mod tests {
-    use super::encode_screenshot;
+    use super::{NATIVE, Viewport, dims, encode_screenshot, view_viewport};
 
     fn stage() -> image::RgbaImage {
         image::RgbaImage::from_pixel(958, 550, image::Rgba([32, 64, 128, 255]))
+    }
+
+    /// A frame rendered for a Retina Game View at twice the stage's size.
+    fn retina() -> image::RgbaImage {
+        image::RgbaImage::from_pixel(1916, 1100, image::Rgba([32, 64, 128, 255]))
     }
 
     fn decoded_size(png: &[u8]) -> (u32, u32) {
@@ -559,6 +622,42 @@ mod tests {
     fn max_width_never_scales_up() {
         let (w, h, _) = encode_screenshot(stage(), 2000).unwrap();
         assert_eq!((w, h), (958, 550));
+    }
+
+    #[test]
+    fn a_frame_rendered_larger_is_scaled_to_the_stage_size() {
+        let (w, h, png) = encode_screenshot(retina(), 0).unwrap();
+        assert_eq!((w, h), (958, 550));
+        assert_eq!(decoded_size(&png), (958, 550));
+        assert_eq!(
+            encode_screenshot(retina(), 2000).unwrap().0,
+            958,
+            "max_width never scales up"
+        );
+        let (w, h, _) = encode_screenshot(retina(), 479).unwrap();
+        assert_eq!((w, h), (479, 275));
+        // A viewport a pixel off the stage's aspect ratio still gives the stage's size.
+        let odd = image::RgbaImage::from_pixel(1500, 862, image::Rgba([0, 0, 0, 255]));
+        let (w, h, _) = encode_screenshot(odd, 0).unwrap();
+        assert_eq!((w, h), (958, 550));
+    }
+
+    #[test]
+    fn the_viewport_follows_a_live_game_view_within_the_stage_and_the_slots() {
+        let view = |width, height, scale| Some(Viewport { width, height, scale });
+        let max = Some((2874, 1650));
+        assert_eq!(dims(view_viewport(view(1916, 1100, 2.0), max)), (1916, 1100, 2.0));
+        let v = view_viewport(view(6000, 3444, 2.0), max);
+        assert_eq!((v.width, v.height), (2874, 1650), "clamped to the slots");
+        let v = view_viewport(view(479, 275, 1.0), max);
+        assert_eq!((v.width, v.height), (958, 550), "never below the stage");
+        assert_eq!(view_viewport(view(1916, 1100, f64::NAN), max).scale_factor, 1.0);
+        assert_eq!(dims(view_viewport(None, max)), dims(NATIVE), "not live: the stage size");
+        assert_eq!(
+            dims(view_viewport(view(1916, 1100, 2.0), None)),
+            dims(NATIVE),
+            "no Frame Buffer: headless"
+        );
     }
 
     #[test]

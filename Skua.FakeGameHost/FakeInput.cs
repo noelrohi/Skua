@@ -7,6 +7,15 @@ internal static class FakeInput
 {
     private static readonly string[] Buttons = ["unknown", "left", "right", "middle"];
 
+    /// <summary>The position of a mouse move, down or up, in viewport pixels; null for any other event.</summary>
+    public static (float X, float Y)? Position(ReadOnlySpan<byte> payload) =>
+        payload.Length >= 9 && payload[0] is 1 or 2 or 3
+            ? (BinaryPrimitives.ReadSingleLittleEndian(payload[1..]), BinaryPrimitives.ReadSingleLittleEndian(payload[5..]))
+            : null;
+
+    /// <summary>The text-control code of a text-control event, else null.</summary>
+    public static string? TextControl(ReadOnlySpan<byte> payload) => payload.Length >= 2 && payload[0] == 9 ? Name(payload[1..], out _) : null;
+
     /// <summary>E.g. <c>mouseDown 479 275 left</c>, <c>keyDown KeyA a</c>, <c>keyUp ShiftLeft Shift left</c>, <c>text é</c>.</summary>
     public static string Describe(ReadOnlySpan<byte> payload)
     {
@@ -25,6 +34,7 @@ internal static class FakeInput
                 9 => "textControl " + Name(payload[1..], out _),
                 10 => "focusGained",
                 11 => "focusLost",
+                12 => "clipboard " + Encoding.UTF8.GetString(payload[1..]),
                 byte kind => $"unknown {kind}",
             };
         }

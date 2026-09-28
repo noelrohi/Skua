@@ -1,13 +1,11 @@
 using System.Runtime.InteropServices;
 
 /// <summary>
-/// The fake's end of the Frame Buffer (see Skua.MacOS/GameHost/FrameBuffer.cs for the layout): while live, it writes a solid 958x550 frame
-/// every 33 ms, coloured by its frame number, as skua-gamehost writes the game's frames.
+/// The fake's end of the Frame Buffer (see Skua.MacOS/GameHost/FrameBuffer.cs for the layout): while live, it writes a solid frame of the
+/// viewport's size every 33 ms, coloured by its frame number, as skua-gamehost writes the game's frames.
 /// </summary>
 internal sealed unsafe partial class FakeFrameBuffer
 {
-    private const int Width = 958;
-    private const int Height = 550;
     private const int HeaderBytes = 256;
     private const int SlotsOffset = 64;
     private const int SlotStride = 48;
@@ -15,6 +13,8 @@ internal sealed unsafe partial class FakeFrameBuffer
 
     private readonly byte* _base;
     private readonly long _slotBytes;
+    private int _width = 958;
+    private int _height = 550;
     private readonly object _lock = new();
     private Timer? _timer;
     private long _written;
@@ -52,11 +52,16 @@ internal sealed unsafe partial class FakeFrameBuffer
         return new FakeFrameBuffer(mapped, slotBytes);
     }
 
-    public void SetLive(bool live)
+    /// <summary>The largest frame the slots hold.</summary>
+    public (int Width, int Height) Max => ((int)*(uint*)(_base + 16), (int)*(uint*)(_base + 20));
+
+    /// <summary>Goes live or not; while live, frames are <paramref name="width"/> by <paramref name="height"/>.</summary>
+    public void SetLive(bool live, int width, int height)
     {
         lock (_lock)
         {
             Live = live;
+            (_width, _height) = (width, height);
             _timer?.Dispose();
             _timer = live ? new Timer(_ => WriteFrame(), null, TimeSpan.Zero, TimeSpan.FromMilliseconds(33)) : null;
         }
@@ -80,12 +85,12 @@ internal sealed unsafe partial class FakeFrameBuffer
 
             ulong number = *(ulong*)(_base + 40) + 1;
             uint pixel = (uint)(number & 0xFF) | (uint)((number >> 8) & 0xFF) << 8 | (uint)((number >> 16) & 0xFF) << 16 | 0xFF000000;
-            new Span<uint>(_base + HeaderBytes + (_slotBytes * slot), Width * Height).Fill(pixel);
+            new Span<uint>(_base + HeaderBytes + (_slotBytes * slot), _width * _height).Fill(pixel);
             *(ulong*)(desc + 8) = number;
             *(ulong*)(desc + 16) = clock_gettime_nsec_np(8);
-            *(uint*)(desc + 24) = Width;
-            *(uint*)(desc + 28) = Height;
-            *(uint*)(desc + 32) = Width * 4;
+            *(uint*)(desc + 24) = (uint)_width;
+            *(uint*)(desc + 28) = (uint)_height;
+            *(uint*)(desc + 32) = (uint)_width * 4;
             Volatile.Write(ref *(ulong*)desc, (seq | 1) + 1);
             Volatile.Write(ref *(uint*)(_base + 28), slot);
             Volatile.Write(ref *(ulong*)(_base + 40), number);

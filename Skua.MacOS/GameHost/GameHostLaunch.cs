@@ -9,9 +9,17 @@ public sealed record GameHostLaunch(string Executable, string Swf)
     public const string ExecutableName = "skua-gamehost";
     public const string SwfName = "skua.swf";
 
-    /// <summary>The Game Client's stage size, which the Game Host renders at.</summary>
+    /// <summary>The Game Client's stage size, which the Game Host renders at while headless, and every screenshot's size.</summary>
     public const int StageWidth = 958;
     public const int StageHeight = 550;
+
+    /// <summary>
+    /// A live Game View renders at its size in device pixels (twice the stage's on Retina at the native size), up to this many times the
+    /// stage's, which sizes the Frame Buffer's slots. Pages of a slot are only touched as frames grow into them.
+    /// </summary>
+    public const int MaxViewScale = 3;
+    public const int MaxViewWidth = StageWidth * MaxViewScale;
+    public const int MaxViewHeight = StageHeight * MaxViewScale;
 
     /// <summary>Whether the Game Host gets a Frame Buffer for the Game View: in the Mac App, never in <c>skua-engine</c>.</summary>
     public bool WantsFrameBuffer { get; init; }

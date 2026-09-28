@@ -15,7 +15,7 @@ The runtime that executes the Game Client.
 _Avoid_: Flash player, player, container
 
 **Game View**:
-The live picture of the Game Client in the Mac App; clicks and keys in it go to the game.
+The live picture of the Game Client in the Mac App, rendered at its size in device pixels; clicks, keys, the wheel and the clipboard in it go to the game, and the game's cursor shows over it.
 _Avoid_: game window, stream, preview, viewer
 
 **Bridge**:

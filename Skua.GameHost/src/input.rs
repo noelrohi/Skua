@@ -13,6 +13,7 @@
 //!   9 text control  name (a `TextControlCode`, e.g. Backspace)
 //!   10 focus gained
 //!   11 focus lost
+//!   12 clipboard    utf8 text to the end            (the Mac's clipboard, sent just before a Paste; see `GameViewUi`)
 //!
 //! A name is a u8 length, then ASCII. Keys go by Ruffle's variant names, not its discriminants, so a
 //! Ruffle update that reorders an enum can't change what a key means.
@@ -36,11 +37,13 @@ pub enum Input {
     TextControl(TextControlCode),
     FocusGained,
     FocusLost,
+    Clipboard(String),
 }
 
 impl Input {
-    pub fn into_event(self) -> PlayerEvent {
-        match self {
+    /// The Ruffle event; `None` for the clipboard, which goes to the UI backend instead.
+    pub fn into_event(self) -> Option<PlayerEvent> {
+        Some(match self {
             Input::MouseMove { x, y } => PlayerEvent::MouseMove { x, y },
             Input::MouseDown { x, y, button } => PlayerEvent::MouseDown {
                 x,
@@ -57,7 +60,8 @@ impl Input {
             Input::TextControl(code) => PlayerEvent::TextControl { code },
             Input::FocusGained => PlayerEvent::FocusGained,
             Input::FocusLost => PlayerEvent::FocusLost,
-        }
+            Input::Clipboard(_) => return None,
+        })
     }
 }
 
@@ -157,6 +161,7 @@ pub fn parse(payload: &[u8]) -> Result<Input, String> {
         }
         10 => Input::FocusGained,
         11 => Input::FocusLost,
+        12 => Input::Clipboard(String::from_utf8(r.0.to_vec()).map_err(|_| "'U' clipboard isn't UTF-8".to_string())?),
         kind => return Err(format!("'U' frame: unknown kind {kind}")),
     })
 }
@@ -538,6 +543,17 @@ mod tests {
         );
         assert_eq!(parse(&[10]), Ok(Input::FocusGained));
         assert_eq!(parse(&[11]), Ok(Input::FocusLost));
+    }
+
+    #[test]
+    fn parses_the_clipboard_as_the_rest_of_the_frame() {
+        assert_eq!(
+            parse(&[&[12][..], "hé 👋".as_bytes()].concat()),
+            Ok(Input::Clipboard("hé 👋".into()))
+        );
+        assert_eq!(parse(&[12]), Ok(Input::Clipboard(String::new())));
+        assert!(parse(&[12, 0xFF]).is_err());
+        assert!(Input::Clipboard("x".into()).into_event().is_none());
     }
 
     #[test]

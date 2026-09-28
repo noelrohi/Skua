@@ -247,6 +247,8 @@ Skua.App.Mac/bin/Debug/net10.0/Skua --manager   # the Skua Manager
 - Each window's **Window › Top Most** keeps it above other windows, as the Windows title bar's menu does; the app remembers it per window (the main window, and each panel) in `MacTopMostWindows` under `client` in `Skua.settings.json`.
 - The app is a new binary to Keychain, so its first login makes macOS ask whether `security` may read the account: choose "Always Allow". An unsigned rebuild may ask again.
 - Click the game and type in it. The Game View is live (the Game Host renders every 33 ms) only while the window is on screen; minimised, hidden or fully covered, the Game Host goes back to the headless defaults.
+- The Game View is sharp on a Retina display: the Game Host renders at the view's size in device pixels, up to three times the stage (2874×1650). `skua screenshot` stays at the stage's 958×550 (or `--max-width`) whatever the view's size.
+- The game's cursor shows over it: the hand over its buttons, the I-beam over text. ⌘C, ⌘X and ⌘V in its text fields (chat, the login fields) copy to and paste from the Mac's clipboard. A trackpad scrolls by pixels and a mouse wheel by lines, as in Flash.
 - Every 60 s (`SKUA_GAMEHOST_STATS_SEC`) the `debug` log gets a `[gameview] stats` line (frames shown, frame age p50/p95) next to `[gamehost] stats`.
 
 ### The Skua Manager

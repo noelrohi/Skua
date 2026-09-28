@@ -67,7 +67,42 @@ public sealed unsafe partial class FrameBufferTests
         Assert.Equal([8, 0xE9, 0, 0, 0], new GameInput.Text('é').Encode());
         Assert.Equal([9, 9, .. "Backspace"u8], new GameInput.TextControl("Backspace").Encode());
         Assert.Equal([10], new GameInput.FocusGained().Encode());
+        Assert.Equal([12, .. "hé"u8], new GameInput.Clipboard("hé").Encode());
         Assert.Equal([1], GameInput.EncodeView(true));
+        Assert.Equal([1, .. BitConverter.GetBytes(1916u), .. BitConverter.GetBytes(1100u), .. BitConverter.GetBytes(2f)],
+            GameInput.EncodeView(true, new GameViewport(1916, 1100, 2)));
+        // Not live: the Game Host goes back to the stage size, so no viewport goes.
+        Assert.Equal([0], GameInput.EncodeView(false, new GameViewport(1916, 1100, 2)));
+    }
+
+    [Fact]
+    public void Decodes_the_Game_Hosts_cursor()
+    {
+        Assert.Equal(new GameCursorState(GameCursor.Hand, true), GameCursorState.Decode([1, 1]));
+        Assert.Equal(new GameCursorState(GameCursor.Grab, false), GameCursorState.Decode([3, 0]));
+        Assert.Equal(new GameCursorState(GameCursor.Arrow, true), GameCursorState.Decode([9, 1]));
+        Assert.Null(GameCursorState.Decode([1]));
+    }
+
+    [Fact]
+    public void Tells_the_latest_frames_size_as_frames_grow_and_shrink()
+    {
+        using FrameBuffer buffer = FrameBuffer.Create(FrameBuffer.NewName(), 6, 4);
+        using Writer writer = new(buffer.Name);
+        Assert.Null(buffer.LatestSize());
+
+        writer.Write(slot: 0, number: 1, width: 3, height: 2, fill: 0x11, stamp: 1);
+        Assert.Equal((3, 2), buffer.LatestSize());
+        writer.Write(slot: 1, number: 2, width: 6, height: 4, fill: 0x22, stamp: 2);
+        Assert.Equal((6, 4), buffer.LatestSize());
+
+        // A reader sized for the smaller frame refuses the larger one rather than overrun its rows.
+        byte[] small = new byte[3 * 4 * 2];
+        fixed (byte* destination = small)
+            Assert.Null(buffer.TryRead(0, destination, 12, 2));
+        byte[] large = new byte[6 * 4 * 4];
+        fixed (byte* destination = large)
+            Assert.Equal(new FrameInfo(2, 6, 4, 2), buffer.TryRead(0, destination, 24, 4));
     }
 
     private const uint NoSlot = uint.MaxValue;

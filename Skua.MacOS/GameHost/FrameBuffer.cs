@@ -215,6 +215,26 @@ public sealed unsafe partial class FrameBuffer : IDisposable
         }
     }
 
+    /// <summary>
+    /// The size of the latest frame, so a reader can size its destination before <see cref="TryRead"/>; null before the first. The writer
+    /// may publish another size meanwhile, which <see cref="TryRead"/> then refuses if it doesn't fit.
+    /// </summary>
+    public (int Width, int Height)? LatestSize()
+    {
+        lock (_lock)
+        {
+            if (_base is null)
+                return null;
+            uint latest = Volatile.Read(ref *(uint*)(_base + LatestOffset));
+            if (latest >= SlotCount)
+                return null;
+            byte* slot = _base + SlotsOffset + (SlotStride * latest);
+            int width = (int)Volatile.Read(ref *(uint*)(slot + SlotWidthOffset));
+            int height = (int)Volatile.Read(ref *(uint*)(slot + SlotHeightOffset));
+            return width > 0 && height > 0 && width <= MaxWidth && height <= MaxHeight ? (width, height) : null;
+        }
+    }
+
     /// <summary>The frames the Game Host has published so far.</summary>
     public long Published
     {

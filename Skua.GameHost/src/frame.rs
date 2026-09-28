@@ -7,8 +7,10 @@
 //!   'S' u32 id | u32 max_width (0 = native)   screenshot
 //!   'P' u32 id                                ping (transport-only round trip)
 //!   'Q' u32 id                                stats (JSON)
-//!   'W' u32 id (0) | u8 live                  the Game View is live (1: render every 33 ms and fill the
-//!                                             Frame Buffer) or not (0: the headless defaults); no reply
+//!   'W' u32 id (0) | u8 live [| u32 width | u32 height | f32 scale]
+//!                                             the Game View is live (1: render every 33 ms at the viewport
+//!                                             given, and fill the Frame Buffer) or not (0: the headless
+//!                                             defaults, at the stage size); no reply
 //!   'U' u32 id (0) | u8 kind | fields         user input from the Game View (`input.rs`); no reply
 //! Game Host -> Engine
 //!   'R' u32 id | utf8 return XML              reply to 'C'
@@ -20,6 +22,10 @@
 //!   'F' utf8 text                             AS3 trace() / uncaught AS3 error (flash log)
 //!   'L' u8 level (1 error, 2 warn) | utf8 text   Ruffle/wgpu log line (debug log)
 //!   'X' utf8 name                             ExternalInterface.addCallback registered
+//!   'O' u8 cursor | u8 visible                the Game View's mouse cursor changed (0 arrow, 1 hand, 2 I-beam,
+//!                                             3 grab; visible 0 after AS3 Mouse.hide()); only with a Frame Buffer
+//!   'K' utf8 text                             the game put text on the clipboard (a Copy or Cut in a text field,
+//!                                             or System.setClipboard); only with a Frame Buffer
 //!
 //! With the `diag` feature the host also answers 'M' (memory stats), 'G' (full GC), 'Y' (census),
 //! 'Z' <class> (retainer path), 'B' u32 n (render bench) and 'V' "key=value" (render knobs); see `diag.rs`.
@@ -65,6 +71,11 @@ pub fn encode_log(level: u8, text: &str) -> Vec<u8> {
     payload.push(level);
     payload.extend_from_slice(text.as_bytes());
     encode(b'L', &payload)
+}
+
+/// The 'O' frame: the Game View's cursor.
+pub fn encode_cursor(cursor: u8, visible: bool) -> Vec<u8> {
+    encode(b'O', &[cursor, visible as u8])
 }
 
 /// Reads one frame as (type, payload). `Ok(None)` means the stream ended, cleanly or mid-frame:
@@ -117,6 +128,8 @@ pub enum Request {
     },
     View {
         live: bool,
+        /// The Game View's size in device pixels while live; `None` keeps the stage size.
+        viewport: Option<Viewport>,
     },
     Input(Input),
     #[cfg(feature = "diag")]
@@ -125,6 +138,14 @@ pub enum Request {
         kind: u8,
         arg: Vec<u8>,
     },
+}
+
+/// The size the Game View shows the stage at: device pixels and the display's scale factor.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Viewport {
+    pub width: u32,
+    pub height: u32,
+    pub scale: f64,
 }
 
 /// Parses a frame from the Engine. An unknown type or a short payload is an error the host logs and
@@ -145,6 +166,14 @@ pub fn parse_request(kind: u8, payload: &[u8]) -> Result<Request, String> {
         b'Q' => Ok(Request::Stats { id }),
         b'W' => Ok(Request::View {
             live: *rest.first().ok_or("'W' frame without live")? != 0,
+            viewport: match (read_u32(rest, 1), read_u32(rest, 5), read_u32(rest, 9)) {
+                (Some(width), Some(height), Some(scale)) => Some(Viewport {
+                    width,
+                    height,
+                    scale: f32::from_bits(scale) as f64,
+                }),
+                _ => None,
+            },
         }),
         b'U' => input::parse(rest).map(Request::Input),
         #[cfg(feature = "diag")]
@@ -198,6 +227,12 @@ mod tests {
     }
 
     #[test]
+    fn encodes_the_cursor() {
+        assert_eq!(encode_cursor(1, true), vec![3, 0, 0, 0, b'O', 1, 1]);
+        assert_eq!(encode_cursor(0, false), vec![3, 0, 0, 0, b'O', 0, 0]);
+    }
+
+    #[test]
     fn encodes_a_log_line_with_its_level() {
         assert_eq!(encode_log(1, "boom"), vec![6, 0, 0, 0, b'L', 1, b'b', b'o', b'o', b'm']);
     }
@@ -247,8 +282,38 @@ mod tests {
         );
         assert_eq!(parse_request(b'P', &5u32.to_le_bytes()), Ok(Request::Ping { id: 5 }));
         assert_eq!(parse_request(b'Q', &5u32.to_le_bytes()), Ok(Request::Stats { id: 5 }));
-        assert_eq!(parse_request(b'W', &[0, 0, 0, 0, 1]), Ok(Request::View { live: true }));
-        assert_eq!(parse_request(b'W', &[0, 0, 0, 0, 0]), Ok(Request::View { live: false }));
+        assert_eq!(
+            parse_request(b'W', &[0, 0, 0, 0, 1]),
+            Ok(Request::View {
+                live: true,
+                viewport: None
+            })
+        );
+        assert_eq!(
+            parse_request(b'W', &[0, 0, 0, 0, 0]),
+            Ok(Request::View {
+                live: false,
+                viewport: None
+            })
+        );
+        let retina = [
+            &[0, 0, 0, 0, 1][..],
+            &1916u32.to_le_bytes(),
+            &1100u32.to_le_bytes(),
+            &2f32.to_le_bytes(),
+        ]
+        .concat();
+        assert_eq!(
+            parse_request(b'W', &retina),
+            Ok(Request::View {
+                live: true,
+                viewport: Some(Viewport {
+                    width: 1916,
+                    height: 1100,
+                    scale: 2.0
+                })
+            })
+        );
         assert_eq!(
             parse_request(b'U', &[0, 0, 0, 0, 10]),
             Ok(Request::Input(Input::FocusGained))

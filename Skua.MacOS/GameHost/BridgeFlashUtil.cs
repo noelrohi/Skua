@@ -22,6 +22,9 @@ public sealed class BridgeFlashUtil : IFlashUtil
     private GameHostProcess? _gameHost;
     private volatile FrameBuffer? _frameBuffer;
     private volatile bool _live;
+    /// <summary>The last <c>W</c> payload, which a restarted Game Host gets too.</summary>
+    private volatile byte[] _view = GameInput.EncodeView(false);
+    private GameCursorState _cursor = GameCursorState.Default;
 
     public BridgeFlashUtil(IMessenger messenger, Lazy<IScriptManager> manager, GameHostLaunch launch)
     {
@@ -44,6 +47,15 @@ public sealed class BridgeFlashUtil : IFlashUtil
     /// <summary>Raised for each Flash log line: AS3 <c>trace()</c>, warnings and uncaught AS3 errors.</summary>
     public event Action<string>? FlashLog;
 
+    /// <summary>
+    /// Raised when the Game Client's mouse cursor over the Game View changes, on a Bridge thread, and with the default when a Game Host
+    /// starts.
+    /// </summary>
+    public event Action<GameCursorState>? CursorChanged;
+
+    /// <summary>Raised on a Bridge thread with text the Game Client put on the clipboard: a Copy or Cut in a text field, or <c>System.setClipboard</c>.</summary>
+    public event Action<string>? ClipboardCopied;
+
     /// <summary>Raised when the Game Host sends a corrupt frame, with the reason; the Bridge reads nothing after it.</summary>
     public event Action<string>? BridgeFailed;
 
@@ -61,6 +73,9 @@ public sealed class BridgeFlashUtil : IFlashUtil
     /// <summary>Whether the Game View is live, as last set with <see cref="SetLive"/>.</summary>
     public bool IsLive => _live;
 
+    /// <summary>The Game Client's cursor, as it last reported it.</summary>
+    public GameCursorState Cursor => _cursor;
+
     /// <summary>
     /// Starts the Game Host with the Game Client, closing any earlier one first. With a Frame Buffer, it creates a new one, and unlinks its
     /// name once the Game Host has answered a ping, by when the Game Host has mapped it.
@@ -72,8 +87,10 @@ public sealed class BridgeFlashUtil : IFlashUtil
         _frameBuffer?.Dispose();
         _frameBuffer = null;
 
+        SetCursor(GameCursorState.Default);
+
         FrameBuffer? frameBuffer = _launch.WantsFrameBuffer
-            ? FrameBuffer.Create(FrameBuffer.NewName(), GameHostLaunch.StageWidth, GameHostLaunch.StageHeight)
+            ? FrameBuffer.Create(FrameBuffer.NewName(), GameHostLaunch.MaxViewWidth, GameHostLaunch.MaxViewHeight)
             : null;
         GameHostProcess gameHost = new(_launch.Executable, _launch.Arguments(frameBuffer?.Name));
         gameHost.Started += pid => GameHostStarted?.Invoke(pid);
@@ -81,6 +98,8 @@ public sealed class BridgeFlashUtil : IFlashUtil
         gameHost.FlashLog += line => FlashLog?.Invoke(line);
         gameHost.LogLine += line => GameHostLog?.Invoke(line);
         gameHost.BridgeFailed += error => BridgeFailed?.Invoke(error);
+        gameHost.CursorChanged += SetCursor;
+        gameHost.ClipboardCopied += text => ClipboardCopied?.Invoke(text);
         gameHost.Exited += code => GameHostExited?.Invoke(code);
         // Set before Start: the Game Client's first calls (loaded, requestLoadGame) reach handlers that call back into it before Start returns.
         _gameHost = gameHost;
@@ -101,13 +120,15 @@ public sealed class BridgeFlashUtil : IFlashUtil
     }
 
     /// <summary>
-    /// Makes the Game View live (the Game Host renders every 33 ms and writes each frame to the Frame Buffer) or not (the headless render
-    /// defaults). It carries over a Game Host restart.
+    /// Makes the Game View live (the Game Host renders every 33 ms at <paramref name="viewport"/>, or the stage size without one, and writes
+    /// each frame to the Frame Buffer) or not (the headless render defaults, at the stage size). Call it again when the viewport changes.
+    /// It carries over a Game Host restart.
     /// </summary>
-    public void SetLive(bool live)
+    public void SetLive(bool live, GameViewport? viewport = null)
     {
         _live = live;
-        TrySend('W', GameInput.EncodeView(live));
+        _view = GameInput.EncodeView(live, viewport);
+        TrySend('W', _view);
     }
 
     /// <summary>Sends an input event to the Game Client; dropped when no Game Host runs.</summary>
@@ -141,6 +162,12 @@ public sealed class BridgeFlashUtil : IFlashUtil
         return FlashXml.ReadReturn(Encoding.UTF8.GetString(reply), typeof(string)) as string;
     }
 
+    private void SetCursor(GameCursorState cursor)
+    {
+        _cursor = cursor;
+        CursorChanged?.Invoke(cursor);
+    }
+
     private void TrySend(char type, byte[] payload)
     {
         try
@@ -160,8 +187,8 @@ public sealed class BridgeFlashUtil : IFlashUtil
         try
         {
             gameHost.Request('P', [], GameHostProcess.RequestTimeout);
-            if (_live && ReferenceEquals(_gameHost, gameHost))
-                gameHost.Send('W', GameInput.EncodeView(true));
+            if (_view is [1, ..] view && ReferenceEquals(_gameHost, gameHost))
+                gameHost.Send('W', view);
         }
         catch (Exception e) when (e is IOException or TimeoutException or InvalidOperationException)
         {
