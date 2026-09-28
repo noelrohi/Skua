@@ -6,6 +6,7 @@ using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Skua.Avalonia;
+using Skua.Avalonia.Manager;
 using Skua.Avalonia.Services;
 using Skua.Control;
 using Skua.Core.Interfaces;
@@ -25,6 +26,7 @@ namespace Skua.App.Mac;
 internal sealed class App : Application
 {
     private readonly EngineEndpoint _endpoint;
+    private readonly AppArguments _arguments;
     private readonly string? _failure;
     private HostedEngine? _engine;
     private Task? _takingOver;
@@ -35,17 +37,23 @@ internal sealed class App : Application
 
     /// <param name="engine">The Engine started before Avalonia, or null when it didn't start.</param>
     /// <param name="failure">Why it didn't start, or null when another Engine holds the name, which the app offers to take over.</param>
-    public App(EngineEndpoint endpoint, HostedEngine? engine, string? failure)
+    /// <param name="arguments">The command line; with an account, the app logs it in once its window shows, as the Skua Manager launches it.</param>
+    public App(EngineEndpoint endpoint, AppArguments arguments, HostedEngine? engine, string? failure)
     {
         _endpoint = endpoint;
+        _arguments = arguments;
         _engine = engine;
         _failure = failure;
     }
 
-    /// <summary>How the app hosts its Engine, at launch and after a take-over: with the app's own services and view models.</summary>
-    public static EngineHostOptions EngineOptions => new()
+    /// <summary>
+    /// How the app hosts its Engine, at launch and after a take-over: with the app's own services and view models, and the account the Skua
+    /// Manager launched it for, if any, in place of the Active Account.
+    /// </summary>
+    public static EngineHostOptions EngineOptions(AppArguments arguments) => new()
     {
         Mode = EngineHostMode.App,
+        AccountService = arguments.Account is { } account ? Accounts.ServiceOf(account) : null,
         ConfigureServices = services => services.AddAvaloniaServices(),
     };
 
@@ -108,6 +116,19 @@ internal sealed class App : Application
             Dispatcher.UIThread.Post(Quit);
     }
 
+    /// <summary>Shows the main window and brings the app to the front, as the Dock icon does; callable from any thread.</summary>
+    public void RequestShow()
+    {
+        if (_desktop is not null)
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (_closeAndQuit is { } closeAndQuit)
+                    closeAndQuit.Reopen();
+                else
+                    _desktop.MainWindow?.Activate();
+            });
+    }
+
     private void Quit()
     {
         if (_closeAndQuit is { } closeAndQuit)
@@ -146,24 +167,43 @@ internal sealed class App : Application
         // Core's main menu registers the managed windows as it is made.
         MainMenuViewModel mainMenu = engine.Services.GetRequiredService<MainMenuViewModel>();
         AvaloniaWindowService windows = engine.Services.GetRequiredService<AvaloniaWindowService>();
-        // Each window carries the menu bar, since macOS shows the key window's.
-        windows.WindowCreated = w => NativeMenu.SetMenu(w, MainMenus.Native(mainMenu, windows));
+        // Every window carries the menu bar with the Manager item, since macOS shows the key window's.
+        NativeMenu MenuBar() => MainMenus.Native(mainMenu, windows, OpenManager);
+        windows.WindowCreated = w => NativeMenu.SetMenu(w, MenuBar());
         // Made here, on the UI thread, where its collections change.
         ScriptDialogsViewModel dialogs = engine.Services.GetRequiredService<ScriptDialogsViewModel>();
-        MainWindow window = new(flash, engine.Services.GetRequiredService<ILogService>(), status, MainMenus.InWindow(mainMenu, windows), dialogs);
-        window.Notices.WindowOpened = w => NativeMenu.SetMenu(w, MainMenus.Native(mainMenu, windows));
-        engine.Services.GetRequiredService<AvaloniaDialogService>().WindowCreated = w => NativeMenu.SetMenu(w, MainMenus.Native(mainMenu, windows));
+        MainWindow window = new(flash, engine.Services.GetRequiredService<ILogService>(), status, MainMenus.InWindow(mainMenu, windows, OpenManager), dialogs);
+        window.Notices.WindowOpened = w => NativeMenu.SetMenu(w, MenuBar());
+        engine.Services.GetRequiredService<AvaloniaDialogService>().WindowCreated = w => NativeMenu.SetMenu(w, MenuBar());
         _ = new ScriptDialogAlerts(dialogs, window, () => _desktop?.Windows.Any(w => w.IsActive) == true, MacNotifications.Post);
-        NativeMenu.SetMenu(window, MainMenus.Native(mainMenu, windows));
+        NativeMenu.SetMenu(window, MenuBar());
+        if (NativeDock.GetMenu(this) is null)
+            NativeDock.SetMenu(this, new NativeMenu { Items = { MainMenus.ManagerItem(OpenManager) } });
         _closeAndQuit = new CloseAndQuit(window, engine.Rpc, engine.Endpoint.Name, () =>
         {
             // The app goes headless as it quits, before the Engine stops.
             flash.SetLive(false);
             Shutdown();
         });
+        // Launched by the Skua Manager for an account: log it in, and start its Script, once the window is up.
+        if (_arguments.Account is not null)
+            window.Opened += (_, _) => _ = status.LaunchAsync(_arguments.Server, _arguments.Script);
         // Only quitting stops the Engine, but should it stop by itself the window can't go on without it.
         engine.Completion.ContinueWith(_ => RequestQuit(), TaskScheduler.Default);
         return window;
+    }
+
+    /// <summary>The menu's and the Dock's "Skua Manager": opens the Manager's own process, or brings it to the front.</summary>
+    private void OpenManager()
+    {
+        try
+        {
+            ManagerProcess.Open(_endpoint.SkuaDir);
+        }
+        catch (ControlException e)
+        {
+            MessageWindow.Create("Skua Manager", e.Message).Show();
+        }
     }
 
     private Window CreateTakeOverWindow()
@@ -195,7 +235,7 @@ internal sealed class App : Application
     /// </remarks>
     private async Task StartTakenOverEngineAsync(Window takeOverWindow)
     {
-        _engine = await Task.Run(() => HostedEngine.StartAsync(_endpoint, EngineOptions));
+        _engine = await Task.Run(() => HostedEngine.StartAsync(_endpoint, EngineOptions(_arguments)));
         Window main = CreateMainWindow(_engine);
         if (_desktop is not null)
             _desktop.MainWindow = main;

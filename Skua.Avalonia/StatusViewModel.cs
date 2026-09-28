@@ -119,25 +119,51 @@ public sealed partial class StatusViewModel : ObservableObject
         }
     }
 
-    /// <summary>Logs in with the Active Account on the picked server, or on one the Engine picks, as <c>skua login</c> does.</summary>
+    /// <summary>
+    /// Logs in with the Engine's account (the app's own, or else the Active Account) on the picked server, or on one the Engine picks, as
+    /// <c>skua login</c> does.
+    /// </summary>
     [RelayCommand(CanExecute = nameof(CanLogIn))]
-    private async Task LogInAsync()
+    private Task LogInAsync() => LogInAsync(SelectedServer.Name);
+
+    /// <summary>Logs in on <paramref name="server"/>, or on one the Engine picks, showing the outcome; returns whether it is playing.</summary>
+    public async Task<bool> LogInAsync(string? server)
     {
         Busy = true;
         Show(null, error: false);
         try
         {
-            string? server = SelectedServer.Name;
             LoginResult result = await Task.Run(() => _engine.LoginAsync(server, null, asAgent: false, CancellationToken.None));
             Show($"{(result.AlreadyLoggedIn ? "Already playing" : "Logged in")} as {result.Username}{(result.IsTestAccount ? " (the Test Account)" : "")} on {result.Server}.", error: false);
+            return true;
         }
         catch (Exception e)
         {
             Show(e.Message, error: true);
+            return false;
         }
         finally
         {
             Busy = false;
+        }
+    }
+
+    /// <summary>
+    /// What an app the Skua Manager launched does once its window shows: logs its account in, on <paramref name="server"/> or one the Engine
+    /// picks, then starts <paramref name="script"/> if given, as <c>skua script start</c> does.
+    /// </summary>
+    public async Task LaunchAsync(string? server, string? script)
+    {
+        if (!await LogInAsync(server) || script is null)
+            return;
+        try
+        {
+            ScriptStartResult started = await Task.Run(() => _engine.ScriptStartAsync(script, cancellationToken: CancellationToken.None));
+            Show($"{Message} Started {Path.GetFileName(started.Status.Run?.Script ?? script)}.", error: false);
+        }
+        catch (Exception e)
+        {
+            Show($"Couldn't start {Path.GetFileName(script)}: {e.Message}", error: true);
         }
     }
 

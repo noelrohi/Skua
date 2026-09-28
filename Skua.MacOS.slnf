@@ -15,6 +15,7 @@
       "Skua.Core\\Skua.Core.csproj",
       "Skua.Engine.Tests\\Skua.Engine.Tests.csproj",
       "Skua.Engine\\Skua.Engine.csproj",
+      "Skua.FakeApp\\Skua.FakeApp.csproj",
       "Skua.FakeGameHost\\Skua.FakeGameHost.csproj",
       "Skua.MacOS\\Skua.MacOS.csproj"
     ]

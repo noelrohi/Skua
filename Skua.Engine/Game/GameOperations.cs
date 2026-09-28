@@ -30,13 +30,16 @@ internal sealed class GameOperations
     private readonly EngineLogs _logs;
     private readonly GameStateTracker _tracker;
     private readonly GameActionSlot _slot;
+    private readonly string? _accountService;
 
     /// <summary>The Keychain service of the account the game last logged in with, and its username.</summary>
     private string? _loggedInService;
 
     private string? _loggedInUsername;
 
-    public GameOperations(IScriptServers servers, IFlashUtil flash, ISettingsService settings, EngineLogs logs, GameStateTracker tracker, GameActionSlot slot)
+    /// <param name="accountService">The Keychain service of this Engine's own account, which it logs in with instead of the active one; or null.</param>
+    public GameOperations(
+        IScriptServers servers, IFlashUtil flash, ISettingsService settings, EngineLogs logs, GameStateTracker tracker, GameActionSlot slot, string? accountService = null)
     {
         _servers = servers;
         _flash = flash;
@@ -44,6 +47,7 @@ internal sealed class GameOperations
         _logs = logs;
         _tracker = tracker;
         _slot = slot;
+        _accountService = accountService;
     }
 
     public async Task<ServersResult> ServersAsync()
@@ -211,12 +215,13 @@ internal sealed class GameOperations
     private static bool IsTestAccount(string service) => service == AccountSetting.DefaultService;
 
     /// <summary>
-    /// The Keychain service of the account to log in: the active one, except that an agent gets the Test Account unless the active account's
-    /// Keychain item carries <see cref="AccountSetting.AllowAgentsComment"/>. The comment is read without the password, so without asking macOS.
+    /// The Keychain service of the account to log in: this Engine's own account when its host gave one, else the active one; except that an
+    /// agent gets the Test Account unless that account's Keychain item carries <see cref="AccountSetting.AllowAgentsComment"/>. The comment is
+    /// read without the password, so without asking macOS.
     /// </summary>
     private async Task<string> ServiceAsync(bool asAgent, CancellationToken cancellationToken)
     {
-        string active = _settings.Get<string>(TestAccount.ServiceSetting)!;
+        string active = _accountService ?? _settings.Get<string>(TestAccount.ServiceSetting)!;
         if (!asAgent || active == AccountSetting.DefaultService)
             return active;
         KeychainAttributes? attributes;

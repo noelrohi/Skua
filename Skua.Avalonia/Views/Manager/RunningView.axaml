@@ -1,0 +1,39 @@
+<!-- The macOS counterpart of Skua.WPF/UserControls/LauncherUserControl.xaml: the running apps and Engines rather than Skua.exe processes. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.Manager.RunningView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:m="using:Skua.Avalonia.Manager"
+    x:DataType="m:RunningViewModel">
+    <DockPanel Margin="8">
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+            <Button DockPanel.Dock="Right" Content="Refresh" Command="{Binding RefreshCommand}" />
+            <TextBlock x:Name="Status" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Text="{Binding Status}" />
+        </DockPanel>
+        <TextBlock DockPanel.Dock="Top" Margin="0,0,0,6" Foreground="Gray" TextWrapping="Wrap"
+                   Text="Every Skua app and Engine using this data folder. Stopping an app quits it: its game logs out and any Script stops." />
+        <ListBox x:Name="EngineList" ItemsSource="{Binding Engines}">
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="m:RunningItemViewModel">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4">
+                            <Button Content="Bring to front" IsVisible="{Binding CanShow}"
+                                    Command="{Binding $parent[ListBox].((m:RunningViewModel)DataContext).BringToFrontCommand}" CommandParameter="{Binding}" />
+                            <Button Content="Stop"
+                                    Command="{Binding $parent[ListBox].((m:RunningViewModel)DataContext).StopCommand}" CommandParameter="{Binding}" />
+                        </StackPanel>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock>
+                                <Run FontWeight="SemiBold" Text="{Binding Name}" />
+                                <Run Foreground="Gray" Text="{Binding Host}" />
+                                <Run Text="{Binding Account}" />
+                            </TextBlock>
+                            <TextBlock FontSize="12" Text="{Binding Game}" />
+                            <TextBlock FontSize="12" Foreground="Gray" Text="{Binding Script, StringFormat='Script: {0}'}" IsVisible="{Binding Script, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                        </StackPanel>
+                    </DockPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </DockPanel>
+</UserControl>

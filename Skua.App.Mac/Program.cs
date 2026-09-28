@@ -2,29 +2,20 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Avalonia;
 using Skua.App.Mac;
+using Skua.Avalonia.Manager;
 using Skua.Control;
 using Skua.Engine;
 
 [assembly: UnsupportedOSPlatform("windows")]
 
-string name = EngineName.Default;
-for (int i = 0; i < args.Length; i++)
-{
-    switch (args[i])
-    {
-        case "--name" when i + 1 < args.Length:
-            name = args[++i];
-            break;
-        default:
-            Console.Error.WriteLine("usage: Skua [--name <engine-name>]");
-            return EngineExitCodes.Usage;
-    }
-}
-
+AppArguments arguments;
 EngineEndpoint endpoint;
 try
 {
-    endpoint = EngineEndpoint.FromEnvironment(name);
+    arguments = AppArguments.Parse(args);
+    if (arguments.Manager)
+        return ManagerApp.Run();
+    endpoint = EngineEndpoint.FromEnvironment(arguments.Name);
 }
 catch (ControlException e)
 {
@@ -45,6 +36,12 @@ void OnSignal(PosixSignalContext context)
 }
 using PosixSignalRegistration sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, OnSignal);
 using PosixSignalRegistration sigint = PosixSignalRegistration.Create(PosixSignal.SIGINT, OnSignal);
+// The Skua Manager's "Bring to front": the main window shows again, as the Dock icon shows it.
+using PosixSignalRegistration show = PosixSignalRegistration.Create((PosixSignal)AppInstances.ShowSignal, context =>
+{
+    context.Cancel = true;
+    Volatile.Read(ref app)?.RequestShow();
+});
 
 // Questions name the thread that raised them: this one runs the window.
 Thread.CurrentThread.Name ??= "UI Thread";
@@ -55,7 +52,7 @@ string? failure = null;
 int exitCode = EngineExitCodes.Success;
 try
 {
-    engine = HostedEngine.StartAsync(endpoint, App.EngineOptions).GetAwaiter().GetResult();
+    engine = HostedEngine.StartAsync(endpoint, App.EngineOptions(arguments)).GetAwaiter().GetResult();
 }
 catch (EngineStartException e) when (e.ExitCode == EngineExitCodes.AlreadyRunning)
 {
@@ -73,7 +70,7 @@ catch (Exception e) when (e is IOException or UnauthorizedAccessException or Sys
     exitCode = 1;
 }
 
-App skua = new(endpoint, engine, failure);
+App skua = new(endpoint, arguments, engine, failure);
 Volatile.Write(ref app, skua);
 if (Volatile.Read(ref quitEarly))
     skua.RequestQuit();

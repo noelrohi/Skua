@@ -10,6 +10,11 @@
     <RootNamespace>Skua.App.Mac</RootNamespace>
   </PropertyGroup>
 
+  <!-- The Skua Manager's Updates tab compares the installed build with the checkout this app was built from. -->
+  <ItemGroup>
+    <AssemblyMetadata Include="SkuaCheckout" Value="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Avalonia.Desktop" Version="12.1.3" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.3" />

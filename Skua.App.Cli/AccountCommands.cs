@@ -1,5 +1,4 @@
 using System.Text;
-using System.Text.RegularExpressions;
 using Skua.Control;
 
 namespace Skua.App.Cli;
@@ -14,18 +13,16 @@ namespace Skua.App.Cli;
 public sealed record AccountDto(string? Name, string Service, string Username, bool Active, bool AllowAgents);
 
 /// <summary>
-/// <c>skua account add|show|use|remove</c>: the accounts <c>skua login</c> can use, kept in Keychain by the CLI alone. The Control Surface never
+/// <c>skua account add|show|use|remove</c>: the accounts <c>skua login</c> can use, kept in Keychain by the CLI and the Skua Manager through <see cref="Accounts"/>. The Control Surface never
 /// carries a credential, so neither the Engine nor MCP can set one; the Engine reads the active account at every login.
 /// </summary>
 /// <remarks>
 /// A personal account named <c>main</c> is stored under <c>skua-account-main</c>. The Test Account keeps its reserved name <c>test</c> and service,
 /// which agents and the live tests use; <c>add</c> changes it only with <c>--test</c>, or its name and <c>--replace</c>.
 /// </remarks>
-internal static partial class AccountCommands
+internal static class AccountCommands
 {
-    public const string TestAccountName = "test";
-
-    private const string ServicePrefix = "skua-account-";
+    public const string TestAccountName = Accounts.TestAccountName;
 
     /// <summary>
     /// Stores a personal account, named <paramref name="name"/> or after its username, and makes <c>skua login</c> use it; or, with
@@ -61,7 +58,7 @@ internal static partial class AccountCommands
         if (password.Length == 0)
             throw new ControlException(ErrorCode.InvalidArgument, "The password is empty; nothing was stored.");
 
-        await Keychain.AddAsync(service, username, $"Skua account {name}", allowAgents ? AccountSetting.AllowAgentsComment : "", password, cancellationToken);
+        await Accounts.StoreAsync(name, username, password, allowAgents, cancellationToken);
         if (!test)
             AccountSetting.Write(SkuaDir, service);
         return new AccountDto(name, service, username, Active: AccountSetting.Read(SkuaDir) == service, AllowAgents: test || allowAgents);
@@ -103,25 +100,15 @@ internal static partial class AccountCommands
         return ToDto(name ?? NameOf(service), service, account, service == active);
     }
 
-    /// <exception cref="ControlException"><see cref="ErrorCode.InvalidArgument"/> unless the name matches <c>[a-z0-9-]{1,16}</c>.</exception>
-    private static string ServiceOf(string name)
-    {
-        if (!NamePattern().IsMatch(name))
-            throw new ControlException(ErrorCode.InvalidArgument, $"Account name '{name}' is invalid; it must match [a-z0-9-]{{1,16}}.");
-        return name == TestAccountName ? AccountSetting.DefaultService : ServicePrefix + name;
-    }
+    private static string ServiceOf(string name) => Accounts.ServiceOf(name);
 
-    private static string? NameOf(string service) =>
-        service == AccountSetting.DefaultService ? TestAccountName
-        : service.StartsWith(ServicePrefix, StringComparison.Ordinal) && NamePattern().IsMatch(service[ServicePrefix.Length..]) ? service[ServicePrefix.Length..]
-        : null;
+    private static string? NameOf(string service) => Accounts.NameOf(service);
 
     /// <summary>A personal account's default name: its username in lower case, with a hyphen for each run of other characters.</summary>
     /// <exception cref="ControlException"><see cref="ErrorCode.InvalidArgument"/> when that makes no usable name.</exception>
     private static string NameFor(string username)
     {
-        string name = NotNameCharacters().Replace(username.ToLowerInvariant(), "-").Trim('-');
-        name = name.Length > 16 ? name[..16].TrimEnd('-') : name;
+        string name = Accounts.NameFor(username);
         if (name.Length == 0 || name == TestAccountName)
             throw new ControlException(ErrorCode.InvalidArgument, $"The username '{username}' makes no account name of its own; give one with --name.");
         return name;
@@ -147,12 +134,6 @@ internal static partial class AccountCommands
         $"No account is in Keychain under '{service}'; add it with 'skua account add{((name ?? NameOf(service)) is { } known ? known == TestAccountName ? " --test" : $" --name {known}" : "")}'.");
 
     private static string SkuaDir => EngineEndpoint.DefaultSkuaDir();
-
-    [GeneratedRegex("^[a-z0-9-]{1,16}$")]
-    private static partial Regex NamePattern();
-
-    [GeneratedRegex("[^a-z0-9]+")]
-    private static partial Regex NotNameCharacters();
 }
 
 /// <summary>Asks on the terminal, on stderr so stdout keeps only the result; with stdin redirected, each answer is a line of it.</summary>

@@ -1,0 +1,21 @@
+<!-- Ported from Skua.Manager/MainWindow.xaml: one tab per part of the Manager. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.Manager.ManagerView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    xmlns:mvms="using:Skua.Core.ViewModels.Manager"
+    x:DataType="mvms:ManagerMainViewModel">
+    <TabControl x:Name="Tabs" ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab}">
+        <TabControl.ItemTemplate>
+            <DataTemplate x:DataType="vms:TabItemViewModel">
+                <TextBlock Text="{Binding Header}" />
+            </DataTemplate>
+        </TabControl.ItemTemplate>
+        <TabControl.ContentTemplate>
+            <DataTemplate x:DataType="vms:TabItemViewModel">
+                <ContentControl Content="{Binding Content}" />
+            </DataTemplate>
+        </TabControl.ContentTemplate>
+    </TabControl>
+</UserControl>

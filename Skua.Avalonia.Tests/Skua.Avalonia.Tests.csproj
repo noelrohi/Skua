@@ -41,10 +41,12 @@
     <ProjectReference Include="..\Skua.Avalonia\Skua.Avalonia.csproj" />
     <ProjectReference Include="..\Skua.Control\Skua.Control.csproj" />
     <ProjectReference Include="..\Skua.Engine\Skua.Engine.csproj" />
-    <!-- The executables the tests run land next to them: skua, skua-engine (for the take-over tests) and fake-gamehost. -->
+    <!-- The executables the tests run land next to them: skua, skua-engine (for the take-over tests), fake-gamehost and fake-app. -->
     <ProjectReference Include="..\Skua.App.Cli\Skua.App.Cli.csproj" />
     <ProjectReference Include="..\Skua.App.Engine\Skua.App.Engine.csproj" />
     <ProjectReference Include="..\Skua.FakeGameHost\Skua.FakeGameHost.csproj" />
+    <!-- The Skua Manager's tests launch it in place of the Mac App. -->
+    <ProjectReference Include="..\Skua.FakeApp\Skua.FakeApp.csproj" />
   </ItemGroup>
 
 </Project>

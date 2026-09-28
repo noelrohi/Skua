@@ -57,6 +57,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Skua.App.Mac", "Skua.App.Ma
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Skua.Avalonia.Tests", "Skua.Avalonia.Tests\Skua.Avalonia.Tests.csproj", "{BCD42DF0-137C-4F3D-9F0D-197149BA0742}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Skua.FakeApp", "Skua.FakeApp\Skua.FakeApp.csproj", "{58062B1D-F16B-423A-AF32-5ABF13C3854C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -320,6 +322,14 @@ Global
 		{BCD42DF0-137C-4F3D-9F0D-197149BA0742}.Release|Any CPU.Build.0 = Release|Any CPU
 		{BCD42DF0-137C-4F3D-9F0D-197149BA0742}.Release|x64.ActiveCfg = Release|Any CPU
 		{BCD42DF0-137C-4F3D-9F0D-197149BA0742}.Release|x86.ActiveCfg = Release|Any CPU
+		{58062B1D-F16B-423A-AF32-5ABF13C3854C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{58062B1D-F16B-423A-AF32-5ABF13C3854C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{58062B1D-F16B-423A-AF32-5ABF13C3854C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{58062B1D-F16B-423A-AF32-5ABF13C3854C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{58062B1D-F16B-423A-AF32-5ABF13C3854C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{58062B1D-F16B-423A-AF32-5ABF13C3854C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{58062B1D-F16B-423A-AF32-5ABF13C3854C}.Release|x64.ActiveCfg = Release|Any CPU
+		{58062B1D-F16B-423A-AF32-5ABF13C3854C}.Release|x86.ActiveCfg = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
