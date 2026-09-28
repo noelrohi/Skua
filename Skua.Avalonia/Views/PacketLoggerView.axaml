@@ -1,0 +1,99 @@
+<!-- Ported from Skua.WPF/Views/PacketLoggerView.xaml. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.PacketLoggerView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    x:DataType="vms:PacketLoggerViewModel">
+    <Grid Margin="6" ColumnDefinitions="2*,*" RowDefinitions="Auto,*,Auto,Auto">
+        <TextBox
+            x:Name="SearchBox"
+            Grid.Row="0"
+            Grid.Column="0"
+            Margin="0,0,3,3"
+            PlaceholderText="Search packets" />
+        <TextBox
+            x:Name="FilterSearchBox"
+            Grid.Row="0"
+            Grid.Column="1"
+            Margin="3,0,0,3"
+            PlaceholderText="Search filters" />
+        <ListBox
+            x:Name="Packets"
+            Grid.Row="1"
+            Grid.Column="0"
+            Margin="0,3,3,3"
+            SelectionMode="Multiple,Toggle" />
+        <ScrollViewer
+            Grid.Row="1"
+            Grid.RowSpan="2"
+            Grid.Column="1"
+            Margin="3,0,0,3"
+            HorizontalScrollBarVisibility="Disabled"
+            VerticalScrollBarVisibility="Auto">
+            <ItemsControl x:Name="Filters">
+                <ItemsControl.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Command="{Binding ClearFiltersCommand}" Header="Clear Filters" />
+                    </ContextMenu>
+                </ItemsControl.ContextMenu>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vms:PacketLogFilterViewModel">
+                        <CheckBox
+                            Margin="0,1"
+                            HorizontalAlignment="Stretch"
+                            Content="{Binding Content}"
+                            IsChecked="{Binding IsChecked}" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+        <Grid Grid.Row="2" Grid.Column="0" ColumnDefinitions="*,*">
+            <Button
+                x:Name="UnselectAll"
+                Grid.Column="0"
+                Margin="0,3,3,3"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Content="Unselect All Logs" />
+            <Button
+                Grid.Column="1"
+                Margin="3,3,3,3"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Command="{Binding ClearFiltersCommand}"
+                Content="Clear Filters" />
+        </Grid>
+        <Grid
+            Grid.Row="3"
+            Grid.Column="0"
+            Grid.ColumnSpan="2"
+            Margin="0,3,0,0"
+            ColumnDefinitions="*,*,*">
+            <Button
+                x:Name="Clear"
+                Grid.Column="0"
+                Margin="0,0,3,0"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Command="{Binding ClearPacketLogsCommand}"
+                Content="Clear" />
+            <Button
+                Grid.Column="1"
+                Margin="3,0"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Command="{Binding SavePacketLogsCommand}"
+                Content="Save" />
+            <ToggleButton
+                x:Name="Enabled"
+                Grid.Column="2"
+                Margin="3,0,0,0"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Content="Enabled"
+                IsChecked="{Binding IsReceivingPackets}"
+                ToolTip.Tip="Logs the packets the game sends while on." />
+        </Grid>
+    </Grid>
+</UserControl>

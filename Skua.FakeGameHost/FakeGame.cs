@@ -1,4 +1,7 @@
+using System.Net;
+using System.Net.Sockets;
 using System.Security;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Xml.Linq;
@@ -6,7 +9,8 @@ using System.Xml.Linq;
 /// <summary>
 /// The AQW game as skua.swf exposes it over the Bridge, simulated just far enough for the Engine to log in, play and lose the connection:
 /// the login screen, the account login, connecting to a server, the world, the connection message and the kick warning; and to move and
-/// look around: map transfers and jumps, the player, the item stores, the quest tree, the map's players and monsters, and drops.
+/// look around: map transfers and jumps, the player, the item stores, the quest tree, the map's players and monsters, and drops. Its
+/// <c>connectTo</c> connects over TCP to a game server on this Mac only (a loopback address), as the Packet Interceptor has the game do.
 /// </summary>
 /// <remarks>
 /// Replies are what skua.swf returns: strings, with game objects as JSON. Anything it doesn't simulate is left to the scenario's replies.
@@ -50,6 +54,8 @@ internal sealed class FakeGame
     private bool _brokenLogin;
     /// <summary>The type of the text field the stage's focus is on (<c>input</c> for chat's), or null when it isn't on one.</summary>
     private string? _focus;
+    /// <summary>The game server <c>connectTo</c> connected to, which the game's packets go to until it closes.</summary>
+    private NetworkStream? _socket;
 
     private const int MaxHp = 1000;
     private const int RequiredXp = 4000;
@@ -104,6 +110,7 @@ internal sealed class FakeGame
                 ("jumpCorrectRoom", [string cell, string pad, ..]) => Jump(cell, pad),
                 ("selectArrayObjects", ["world.map.currentScene.labels", "name"]) => _world ? Str(new JsonArray([.. Cells(_map).Select(c => JsonValue.Create(c))]).ToJsonString()) : "<undefined/>",
                 ("getMonsters", _) => Str((_world ? Monsters(_map) : []).ToJsonString()),
+                ("sendClientPacket", [string packet, string type]) => ClientPacket(packet, type),
                 _ => null,
             };
         }
@@ -187,6 +194,10 @@ internal sealed class FakeGame
                 case ["cell", string cell]:
                     _cell = cell;
                     Packet($"%xt%zm%moveToCell%{_roomId}%{cell}%Spawn%");
+                    return true;
+                case ["packet", string packet]:
+                    // The game's packet call, as for each packet it sends.
+                    Packet(packet);
                     return true;
                 default:
                     return false;
@@ -290,6 +301,10 @@ internal sealed class FakeGame
                 _world = false;
                 _server = null;
                 _bankOpen = false;
+                CloseSocket();
+                break;
+            case "connectTo" when args is [string ip, string port]:
+                ConnectTo(ip, int.Parse(port));
                 break;
             case "gotoAndPlay" when args is ["Login"]:
                 ToLoginScreen();
@@ -318,7 +333,13 @@ internal sealed class FakeGame
             case "world.myAvatar.pMC.artLoaded":
                 return Str("true");
             case "sfc.sendString" when args is [string packet]:
+                _note($"send {packet}");
                 SendString(packet);
+                WriteSocket(packet);
+                break;
+            case "sfc.sendJson" when args is [string packet]:
+                _note($"sendJson {packet}");
+                WriteSocket(packet);
                 break;
         }
         return "<undefined/>";
@@ -367,8 +388,127 @@ internal sealed class FakeGame
         return "<undefined/>";
     }
 
+    /// <summary>
+    /// The game's <c>connectTo</c>, for a game server on this Mac: it connects to it, sends SmartFoxServer's version check and, once the
+    /// server answers, its login, and enters the world once the server accepts it. Messages both ways are null-terminated; the login carries
+    /// the username alone. The server closing the connection loses it. Any address other than a loopback one is refused without connecting,
+    /// so the fake never reaches a real game server.
+    /// </summary>
+    private void ConnectTo(string ip, int port)
+    {
+        if (!_account)
+            return;
+        CloseSocket();
+        if (!IPAddress.TryParse(ip, out IPAddress? address) || !IPAddress.IsLoopback(address))
+        {
+            _note($"connectTo {ip} {port} refused");
+            _connDetail = "Connection failed";
+            return;
+        }
+        _connDetail = "Connecting to game server...";
+        string username = _username;
+        Task.Run(async () =>
+        {
+            using TcpClient client = new() { NoDelay = true };
+            try
+            {
+                await client.ConnectAsync(address, port);
+            }
+            catch (SocketException ex)
+            {
+                _note($"connectTo {ip} {port} failed");
+                lock (_lock)
+                    _connDetail = $"Connection failed: {ex.SocketErrorCode}";
+                return;
+            }
+            NetworkStream stream = client.GetStream();
+            lock (_lock)
+                _socket = stream;
+            _note($"connectTo {ip} {port}");
+            WriteSocket("<msg t='sys'><body action='verChk' r='0'><ver v='165' /></body></msg>");
+            List<byte> message = [];
+            byte[] buffer = new byte[4096];
+            try
+            {
+                for (int read; (read = await stream.ReadAsync(buffer)) > 0;)
+                {
+                    foreach (byte b in buffer.AsSpan(0, read))
+                    {
+                        if (b != 0)
+                        {
+                            message.Add(b);
+                            continue;
+                        }
+                        string text = Encoding.UTF8.GetString([.. message]);
+                        message.Clear();
+                        if (text.Contains("action='apiOK'", StringComparison.Ordinal))
+                            WriteSocket($"<msg t='sys'><body action='login' r='0'><login z='zone_master'><nick><![CDATA[{username}]]></nick><pword><![CDATA[]]></pword></login></body></msg>");
+                        else if (text.StartsWith("%xt%loginResponse%-1%true%", StringComparison.Ordinal))
+                            ServerAccepted(stream, ip);
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+            {
+            }
+            lock (_lock)
+            {
+                if (_socket != stream)
+                    return;
+                _socket = null;
+                _connected = false;
+                _connDetail = "Connection lost";
+            }
+        });
+    }
+
+    private void ServerAccepted(NetworkStream stream, string ip)
+    {
+        lock (_lock)
+        {
+            if (_socket != stream)
+                return;
+            _connected = true;
+            _server = ip;
+            LoginAccepted();
+            Join("battleon", "Enter", "Spawn");
+            _world = true;
+            _connDetail = null;
+            _inventoryAt = DateTime.UtcNow.AddMilliseconds(_inventoryDelay);
+        }
+    }
+
+    /// <summary>Sends a message to the game server <c>connectTo</c> connected to, if any.</summary>
+    private void WriteSocket(string text)
+    {
+        lock (_lock)
+        {
+            try
+            {
+                _socket?.Write([.. Encoding.UTF8.GetBytes(text), 0]);
+            }
+            catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+            {
+            }
+        }
+    }
+
+    private void CloseSocket()
+    {
+        _socket?.Dispose();
+        _socket = null;
+    }
+
+    /// <summary>The game handles a packet as if the server had sent it; this records it as <c>clientPacket &lt;type&gt; &lt;packet&gt;</c>.</summary>
+    private string ClientPacket(string packet, string type)
+    {
+        _note($"clientPacket {type} {packet}");
+        return "<undefined/>";
+    }
+
     private void ToLoginScreen()
     {
+        CloseSocket();
         _connected = false;
         _world = false;
         _server = null;

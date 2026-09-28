@@ -39,6 +39,9 @@ public sealed class ViewLocator : IDataTemplate
         [typeof(ScriptStatsViewModel)] = () => new ScriptStatsView(),
         [typeof(ConsoleViewModel)] = () => new ConsoleView(),
         [typeof(PluginsViewModel)] = () => new PluginsView(),
+        [typeof(PacketSpammerViewModel)] = () => new PacketSpammerView(),
+        [typeof(PacketLoggerViewModel)] = () => new PacketLoggerView(),
+        [typeof(PacketInterceptorViewModel)] = () => new PacketInterceptorView(),
         // The Skua Manager's, which runs as its own process (ADR 0006).
         [typeof(ManagerMainViewModel)] = () => new ManagerView(),
         [typeof(ManagerAccountsViewModel)] = () => new AccountsView(),

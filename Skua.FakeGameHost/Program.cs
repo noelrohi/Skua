@@ -21,10 +21,14 @@
 // account; `servers <json>`, `connect-delay <ms>`, `inventory-delay <ms>` (500 unless set; transfers are refused until then), `reject <server> <message>` and `account <username> <password>` (another account it accepts) configure it, and `lose-connection <message>`,
 // `kick`, `logout-button`, `die`, `combat`, `afk`, `join <map>`, `cell <cell>`, `gain <xp> <gold>` (a level up sends `levelUp`), `blip` (the next login check reads the connection as dropped; the call log records `blip read <n>`, from 1), `connection-message <message>`, `broken-login`,
 // `login-response` (the last login's response again), `lock-map <map>` (transfers to it are ignored), `drop <id> <qty> <name>`,
-// `pickup <id>` and `focus <input|dynamic|none>` (the text field the stage's focus is on, e.g. chat's input) act in it.
+// `pickup <id>`, `focus <input|dynamic|none>` (the text field the stage's focus is on, e.g. chat's input) and `packet <text>` (the game's
+// packet call, as for a packet it sends) act in it.
 // The call log adds ` lag-killed` to a screenshot taken while the game's lag killer hides the world, and records what the game did:
 // `tfer <map> <cell> <pad>` for each map transfer, `jump <cell> <pad>`, `getBank` and `loadBank` (which the game server ignores),
-// `toggleBank open` or `toggleBank closed` for the bank panel, `loadShop <id>` and `showQuests <ids>`.
+// `toggleBank open` or `toggleBank closed` for the bank panel, `loadShop <id>`, `showQuests <ids>`, `send <packet>` and
+// `sendJson <packet>` for each packet sent to the server, `clientPacket <type> <packet>` for each handed to the game as the server's, and
+// `connectTo <ip> <port>` (or with ` failed` or ` refused`) for the game's connectTo. connectTo connects over TCP to a game server on a
+// loopback address, as the Packet Interceptor has it do, and refuses any other address; see FakeGame.ConnectTo.
 //
 // Like skua-gamehost, it answers C calls with R, P pings with P and Q stats with Q, and exits when its stdin closes.
 // It answers S screenshots with I: a solid PNG of the 958x550 stage, scaled down to max_width like the real one, and a frame

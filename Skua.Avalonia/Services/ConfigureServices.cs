@@ -39,6 +39,10 @@ public static class ConfigureServices
         services.AddSkuaMainAppViewModels();
         // The Scripts panel starts and stops Scripts as script_start and script_stop do, so the Engine's runs say who stopped one.
         services.AddSingleton(s => ActivatorUtilities.CreateInstance<ScriptLoaderViewModel>(s, s.GetRequiredService<EngineScripts>().ScriptManager));
+        // The Packet Interceptor lists packets through the synchronization context it is made on; made on this one, it lists them on the UI
+        // thread whichever thread resolves it first.
+        ServiceDescriptor interceptor = services.Last(d => d.ServiceType == typeof(PacketInterceptorViewModel));
+        services.AddSingleton(s => UiThreadContext.Run(() => (PacketInterceptorViewModel)interceptor.ImplementationFactory!(s)));
 
         return services;
     }
