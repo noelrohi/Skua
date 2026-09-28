@@ -59,6 +59,8 @@ internal sealed class App : Application
 
     public override void Initialize()
     {
+        // The app menu's title; unset, it is "Avalonia Application".
+        Name = "Skua";
         Styles.Add(new FluentTheme());
         RequestedThemeVariant = ThemeVariant.Dark;
     }

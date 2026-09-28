@@ -48,3 +48,7 @@ jobs:
 
       - name: Test
         run: dotnet test Skua.MacOS.slnf --configuration Release --no-build --blame-hang-timeout 5m
+
+      # As install-macos.sh --app makes it: the publish signs the bundle and verifies the signature. After the tests, as it rebuilds for the runtime.
+      - name: Package Skua.app
+        run: dotnet publish Skua.App.Mac --configuration Release --runtime osx-arm64 "-p:SkuaAppBundle=$RUNNER_TEMP/Skua.app"

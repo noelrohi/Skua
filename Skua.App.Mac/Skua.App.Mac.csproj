@@ -29,5 +29,6 @@
   </ItemGroup>
 
   <Import Project="..\Skua.App.Engine\MacBuild.targets" />
+  <Import Project="AppBundle.targets" />
 
 </Project>

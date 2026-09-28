@@ -181,6 +181,21 @@ To update, `git pull` and run it again. A build is the version and the commit, p
 
 `skua mcp` never replaces an Engine, because an MCP server outlives an update and would replace the newer Engine with its own; restart the MCP client after an update.
 
+#### The Mac App
+
+```sh
+./install-macos.sh --app
+open ~/Applications/Skua.app
+```
+
+`--app` builds the Mac App too, as `versions/<build>/Skua.app`: a self-contained, ad-hoc signed bundle with `skua`, `skua-engine`, `skua-gamehost` and `skua.swf` from the same build inside it. The app is in `Contents/MacOS` and the CLI in `Contents/Helpers`, as `Skua` and `skua` are one name on a case-insensitive disk. `~/.local/bin/skua` links to the `skua` inside the bundle, so the app and the CLI never disagree on the build. `~/Applications/Skua.app` (`SKUA_APPS_DIR` changes the folder) is a small app with the same name and icon that opens that build: open it from Finder, Launchpad, Spotlight or the Dock, or with `open -a Skua --args --name <engine-name>`.
+
+- **Updating:** run `./install-macos.sh` again, with or without `--app`: once the app is installed, it updates both. A running app keeps its build, and the build's folder, until you quit and reopen it; the script says when one is running. Until then, a `skua` from the new build reaches it as described above.
+- **Keychain:** each build is a new binary to Keychain, so the first login from a newly installed app may make macOS ask whether `security` may read the account again: choose "Always Allow".
+- **Gatekeeper:** a build made on your Mac isn't quarantined, so it opens without a prompt. A `Skua.app` copied from another Mac or downloaded is quarantined, and an ad-hoc signed app isn't notarised, so its first open says macOS can't verify it. Open it once from System Settings › Privacy & Security › **Open Anyway** (on macOS 14 and earlier, Control-click it in Finder and choose **Open**), or remove the quarantine with `xattr -dr com.apple.quarantine <path>/Skua.app`.
+- **Dock:** to keep Skua in the Dock, drag `~/Applications/Skua.app` there from Finder. **Keep in Dock** on the running app may pin its build instead, which a later update removes.
+- `dotnet publish Skua.App.Mac -c Release -r osx-arm64 -p:SkuaAppBundle=<folder>/Skua.app` makes the bundle alone, afresh each time.
+
 ### Building the macOS Engine and CLI
 
 `Skua.MacOS.slnf` builds the headless Engine (`skua-engine`), the CLI (`skua`, which is also the MCP server as `skua mcp`), the Mac App (`Skua`) and their tests. The Engine itself is the `Skua.Engine` library, which both `skua-engine` and the Mac App host:
@@ -208,6 +223,7 @@ Skua.App.Mac/bin/Debug/net10.0/Skua [--name <engine-name>]
 Skua.App.Mac/bin/Debug/net10.0/Skua --manager   # the Skua Manager
 ```
 
+- Without `--name`, it serves the Engine Name it last served (`default` at first), so opening it from the Dock returns to the Engine you used last. The Skua Manager's launches don't count.
 - It starts its Engine, and binds the Engine's socket, before its window opens, so `skua status` in a terminal talks to it.
 - If a `skua-engine` already holds the name, the app shows what it is doing (account, map, Script) and offers **Take over** or **Quit**. Take over stops it (its game closes and any Script stops) and starts the app's own Engine; if a Script is running, it asks a second time first. It never takes over silently, and it can't take over another Skua app's Engine: use that app, or give this one another `--name`.
 - The app owns its Engine: `skua engine stop` refuses with `EngineOwnedByApp` (exit 27), "The Skua app owns Engine '<name>'; quit the app to stop it.", and the game keeps running. `skua status` shows `host: "app"`.
