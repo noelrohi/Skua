@@ -42,6 +42,15 @@
     <Compile Include="..\Skua.Engine.Tests\LogWaits.cs" Link="Fakes\LogWaits.cs" />
   </ItemGroup>
 
+  <!-- The Windows app's XAML and the Mac App's, which the view coverage test reads to hold the two to the same view models. Content, as
+       Avalonia's build takes any None *.axaml out. -->
+  <ItemGroup>
+    <Content Include="..\Skua.WPF\**\*.xaml" Exclude="..\Skua.WPF\bin\**;..\Skua.WPF\obj\**" Link="ViewSources\Wpf\Skua.WPF\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <Content Include="..\Skua.App.WPF\**\*.xaml" Exclude="..\Skua.App.WPF\bin\**;..\Skua.App.WPF\obj\**" Link="ViewSources\Wpf\Skua.App.WPF\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <Content Include="..\Skua.Manager\**\*.xaml" Exclude="..\Skua.Manager\bin\**;..\Skua.Manager\obj\**" Link="ViewSources\Wpf\Skua.Manager\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <Content Include="..\Skua.Avalonia\**\*.axaml" Exclude="..\Skua.Avalonia\bin\**;..\Skua.Avalonia\obj\**" Link="ViewSources\Avalonia\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Skua.Avalonia\Skua.Avalonia.csproj" />
     <ProjectReference Include="..\Skua.Control\Skua.Control.csproj" />
