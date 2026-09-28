@@ -9,6 +9,8 @@ namespace Skua.Engine.Logging;
 /// <summary>
 /// Core's <see cref="ILogService"/> on the Engine: Script, debug and flash lines go to <see cref="EngineLogs"/>,
 /// and every Bridge call failure is a flash line plus a <c>bridge.error</c> event.
+/// Every text line the Engine records, redacted as stored, is also sent as Core's <see cref="AddLogMessage"/>, so the Mac App's Logs panel
+/// shows it live.
 /// </summary>
 internal sealed class EngineLogService : ILogService
 {
@@ -20,7 +22,20 @@ internal sealed class EngineLogService : ILogService
     {
         _logs = logs;
         WeakReferenceMessenger.Default.Register<EngineLogService, FlashErrorMessage>(this, static (recipient, message) => recipient.OnFlashError(message));
+        logs.TextWritten += static (kind, text) =>
+        {
+            if (LogTypeOf(kind) is { } type)
+                WeakReferenceMessenger.Default.Send(new AddLogMessage(type, text));
+        };
     }
+
+    private static LogType? LogTypeOf(LogKind kind) => kind switch
+    {
+        LogKind.Script => LogType.Script,
+        LogKind.Debug => LogType.Debug,
+        LogKind.Flash => LogType.Flash,
+        _ => null,
+    };
 
     public void DebugLog(string message)
     {

@@ -68,6 +68,7 @@ internal sealed class Engine : IEngineRpc
         _queries = new GameQueries(services.GetRequiredService<IScriptInterface>(), services.GetRequiredService<IFlashUtil>(), gameHost.Tracker, gameSlot);
         _scripts = new ScriptOperations(manager, _runs, broker, _slot, compiling);
         _eval = new EvalOperations(manager, services.GetRequiredService<IScriptInterface>(), logs, compiling);
+        services.GetRequiredService<EngineScripts>().Attach(_scripts, _scriptSource, _runs, _slot, compiling);
     }
 
     /// <summary>The build a CLI compares with its own, which it shares when built together, to tell whether this Engine is stale.</summary>

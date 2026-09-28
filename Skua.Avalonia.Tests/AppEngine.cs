@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.DependencyInjection;
+using Skua.Avalonia.Services;
 using Skua.Control;
 using Skua.Engine;
 using Skua.Engine.Tests;
@@ -39,6 +40,12 @@ public sealed class AppEngine : IAsyncLifetime
     /// <summary>The security tool the Engine reads the Active Account with; it holds the Test Account.</summary>
     public static FakeKeychain Keychain { get; private set; } = null!;
 
+    /// <summary>A secret the Engine redacts from every log, as it does a password.</summary>
+    public const string Secret = "hunter2-app-secret";
+
+    /// <summary>Stands in for GitHub, serving the Engine's default Script Source; the tests commit Scripts to it.</summary>
+    public static FakeGitHub GitHub { get; private set; } = null!;
+
     private HostedEngine? _engine;
 
     /// <summary>
@@ -71,20 +78,38 @@ public sealed class AppEngine : IAsyncLifetime
         Environment.SetEnvironmentVariable(Skua.Control.Keychain.ToolVariable, Keychain.Tool);
         foreach ((string key, string value) in Api.Environment())
             Environment.SetEnvironmentVariable(key, value);
-        Environment.SetEnvironmentVariable(Skua.Core.Models.GitHub.ScriptSource.RawUrlEnvironmentVariable, "http://127.0.0.1:9/raw/");
-        Environment.SetEnvironmentVariable(Skua.Core.Models.GitHub.ScriptSource.ApiUrlEnvironmentVariable, "http://127.0.0.1:9/api/");
+        Environment.SetEnvironmentVariable("SKUA_REDACT", Secret);
+        // Core reads the GitHub URLs once, so the fake serves every test.
+        GitHub = new FakeGitHub();
+        foreach ((string name, string value) in GitHub.Environment())
+            Environment.SetEnvironmentVariable(name, value);
     }
 
     public HostedEngine Engine => _engine ?? throw new InvalidOperationException("The Engine hasn't started.");
 
     public BridgeFlashUtil Flash => Engine.Services.GetRequiredService<BridgeFlashUtil>();
 
+    public T Get<T>() where T : notnull => Engine.Services.GetRequiredService<T>();
+
+    /// <summary>Writes a Script at a path in the Scripts folder, as an update would, and returns its absolute path.</summary>
+    public static string WriteScript(string path, string source)
+    {
+        string file = Path.Combine(SkuaDir, "Scripts", path);
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        File.WriteAllText(file, source);
+        return file;
+    }
+
     public async ValueTask InitializeAsync()
     {
         _engine = await HostedEngine.StartAsync(EngineEndpoint.FromEnvironment(), new EngineHostOptions
         {
             Mode = EngineHostMode.App,
-            ConfigureServices = services => services.AddSingleton(new HostMarker()),
+            ConfigureServices = services =>
+            {
+                services.AddSingleton(new HostMarker());
+                services.AddAvaloniaServices();
+            },
         });
         // By the first ping reply the fake has mapped the Frame Buffer.
         Stopwatch waited = Stopwatch.StartNew();
@@ -97,6 +122,7 @@ public sealed class AppEngine : IAsyncLifetime
         if (_engine is not null)
             await _engine.StopAsync();
         await Api.DisposeAsync();
+        await GitHub.DisposeAsync();
         try
         {
             Directory.Delete(SkuaDir, recursive: true);

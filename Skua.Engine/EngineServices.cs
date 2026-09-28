@@ -32,6 +32,7 @@ internal static class EngineServices
         services.AddMacServices(gameHost);
 
         services.AddSingleton<ILogService>(new EngineLogService(logs));
+        services.AddSingleton<EngineScripts>();
 
         configure?.Invoke(services);
 

@@ -6,8 +6,10 @@ using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Skua.Avalonia;
+using Skua.Avalonia.Services;
 using Skua.Control;
 using Skua.Core.Interfaces;
+using Skua.Core.ViewModels;
 using Skua.Engine;
 using Skua.MacOS.GameHost;
 
@@ -39,6 +41,13 @@ internal sealed class App : Application
         _engine = engine;
         _failure = failure;
     }
+
+    /// <summary>How the app hosts its Engine, at launch and after a take-over: with the app's own services and view models.</summary>
+    public static EngineHostOptions EngineOptions => new()
+    {
+        Mode = EngineHostMode.App,
+        ConfigureServices = services => services.AddAvaloniaServices(),
+    };
 
     public override void Initialize()
     {
@@ -134,7 +143,13 @@ internal sealed class App : Application
         BridgeFlashUtil flash = engine.Services.GetRequiredService<BridgeFlashUtil>();
         StatusViewModel status = new(engine.Rpc, engine.Endpoint.Name, host: "app");
         engine.StatusChanged += status.Changed;
-        MainWindow window = new(flash, engine.Services.GetRequiredService<ILogService>(), status);
+        // Core's main menu registers the managed windows as it is made.
+        MainMenuViewModel mainMenu = engine.Services.GetRequiredService<MainMenuViewModel>();
+        AvaloniaWindowService windows = engine.Services.GetRequiredService<AvaloniaWindowService>();
+        // Each window carries the menu bar, since macOS shows the key window's.
+        windows.WindowCreated = w => NativeMenu.SetMenu(w, MainMenus.Native(mainMenu, windows));
+        MainWindow window = new(flash, engine.Services.GetRequiredService<ILogService>(), status, MainMenus.InWindow(mainMenu, windows));
+        NativeMenu.SetMenu(window, MainMenus.Native(mainMenu, windows));
         _closeAndQuit = new CloseAndQuit(window, engine.Rpc, engine.Endpoint.Name, () =>
         {
             // The app goes headless as it quits, before the Engine stops.
@@ -175,7 +190,7 @@ internal sealed class App : Application
     /// </remarks>
     private async Task StartTakenOverEngineAsync(Window takeOverWindow)
     {
-        _engine = await Task.Run(() => HostedEngine.StartAsync(_endpoint, new EngineHostOptions { Mode = EngineHostMode.App }));
+        _engine = await Task.Run(() => HostedEngine.StartAsync(_endpoint, EngineOptions));
         Window main = CreateMainWindow(_engine);
         if (_desktop is not null)
             _desktop.MainWindow = main;

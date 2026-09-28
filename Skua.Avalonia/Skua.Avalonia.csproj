@@ -1,11 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- The Mac App's Avalonia layer (ADR 0006), the counterpart of Skua.WPF: the Game View, and later Core's views and platform services. -->
+  <!-- The Mac App's Avalonia layer (ADR 0006), the counterpart of Skua.WPF: the Game View, Core's views and the platform services. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,6 +17,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Skua.Control\Skua.Control.csproj" />
     <ProjectReference Include="..\Skua.MacOS\Skua.MacOS.csproj" />
+    <!-- The Engine this app hosts: the Scripts panels start, stop and update through its operations. -->
+    <ProjectReference Include="..\Skua.Engine\Skua.Engine.csproj" />
   </ItemGroup>
 
 </Project>

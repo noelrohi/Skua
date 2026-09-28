@@ -33,6 +33,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The Engine tests' stand-in for GitHub, serving the Script Source. -->
+    <Compile Include="..\Skua.Engine.Tests\FakeGitHub.cs" Link="FakeGitHub.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Skua.Avalonia\Skua.Avalonia.csproj" />
     <ProjectReference Include="..\Skua.Control\Skua.Control.csproj" />
     <ProjectReference Include="..\Skua.Engine\Skua.Engine.csproj" />
