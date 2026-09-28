@@ -335,6 +335,10 @@ internal sealed class FakeGame
             case "world.showQuests" when args is [string quests, ..]:
                 _note($"showQuests {quests}");
                 break;
+            case "world.goto" when args is [string player]:
+                // The /goto command; the player stays where it is.
+                _note($"goto {player}");
+                break;
             case "world.myAvatar.pMC.artLoaded":
                 return Str("true");
             case "sfc.sendString" when args is [string packet]:

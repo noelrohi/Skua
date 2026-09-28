@@ -16,6 +16,8 @@
     <PackageReference Include="Avalonia.Skia" Version="12.1.3" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.3" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <!-- Butlerv4Tests changes the Scripts' plugin to listen on the loopback address only. -->
+    <PackageReference Include="Mono.Cecil" Version="0.11.6" />
     <PackageReference Include="xunit.v3" Version="3.2.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
   </ItemGroup>
@@ -65,7 +67,7 @@
     <ProjectReference Include="..\Skua.App.Cli\Skua.App.Cli.csproj" />
     <ProjectReference Include="..\Skua.App.Engine\Skua.App.Engine.csproj" />
     <ProjectReference Include="..\Skua.FakeGameHost\Skua.FakeGameHost.csproj" />
-    <!-- The Skua Manager's tests launch it in place of the Mac App. -->
+    <!-- The Skua Manager's tests launch it in place of the Mac App, and Butlerv4Tests as a leader's and a butler's apps. -->
     <ProjectReference Include="..\Skua.FakeApp\Skua.FakeApp.csproj" />
   </ItemGroup>
 
