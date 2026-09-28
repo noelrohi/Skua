@@ -121,6 +121,7 @@ public sealed class LiveRun
     private readonly Stopwatch _elapsed = Stopwatch.StartNew();
     private int _gameHostPid;
     private bool _stoppingScript;
+    private bool _loggingOut;
     private bool _scriptExpected;
     private bool _loggedIn;
 
@@ -503,6 +504,9 @@ public sealed class LiveRun
             case (LogKind.Events, EventTypes.QuestionRaised or EventTypes.NoticeShown):
                 Note($"{entry.Type}: {Cut(entry.Data.ToString()!, 300)}");
                 break;
+            case (LogKind.Events, EventTypes.GameDisconnected) when _loggingOut:
+                // The run's own logout, at its end, which the watcher can still read.
+                break;
             case (LogKind.Events, EventTypes.GameDisconnected or EventTypes.GameRelogin or EventTypes.GameHostExited):
                 EndFromWatcher($"{entry.Type}: {entry.Data}");
                 break;
@@ -528,7 +532,10 @@ public sealed class LiveRun
             if (_scriptExpected)
                 await StopScriptAsync();
             if (_loggedIn && !Fatal.IsCancellationRequested)
+            {
+                _loggingOut = true;
                 await _connection.LogoutAsync(Ct);
+            }
         }
         catch (Exception e) when (e is ControlException or OperationCanceledException)
         {

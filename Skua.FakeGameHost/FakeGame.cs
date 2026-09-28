@@ -29,6 +29,8 @@ internal sealed class FakeGame
     private bool _connected;
     private bool _world;
     private bool _kicked;
+    private bool _blip;
+    private int _blipsRead;
     private string? _connDetail;
     private string? _server;
     private string _map = "battleon";
@@ -89,7 +91,7 @@ internal sealed class FakeGame
         {
             return (name, args) switch
             {
-                ("isLoggedIn", _) => Str(_connected),
+                ("isLoggedIn", _) => Str(ReadConnected()),
                 ("isKicked", _) => Str(_kicked),
                 ("isNull", [string path]) => Str(Get(path) is null),
                 ("getGameObject", [string path]) => Json(Get(path)),
@@ -122,14 +124,9 @@ internal sealed class FakeGame
                     // Only the message: the connection flag may lag behind it.
                     _connDetail = message;
                     return true;
-                case ["blip", string ms]:
-                    // The connection flag drops for a moment, as a slow poll can read it.
-                    _connected = false;
-                    Task.Delay(int.Parse(ms)).ContinueWith(_ =>
-                    {
-                        lock (_lock)
-                            _connected = _server is not null;
-                    });
+                case ["blip"]:
+                    // The connection flag drops for one reading, as a slow poll can read it.
+                    _blip = true;
                     return true;
                 case ["broken-login"]:
                     _brokenLogin = true;
@@ -195,6 +192,16 @@ internal sealed class FakeGame
                     return false;
             }
         }
+    }
+
+    /// <summary>The connection flag, which reads as dropped once after a <c>blip</c>; the call log records <c>blip read &lt;n&gt;</c> when it has.</summary>
+    private bool ReadConnected()
+    {
+        if (!_blip)
+            return _connected;
+        _blip = false;
+        _note($"blip read {++_blipsRead}");
+        return false;
     }
 
     private object? Get(string path) => path switch

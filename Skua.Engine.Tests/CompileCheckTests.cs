@@ -78,6 +78,8 @@ public class CompileCheckTests
             ["Farm/After.cs"] = TestScripts.Main(""),
         });
         await using GameFixture game = await CompileCheck.StartAsync(sandbox, checkout);
+        // The Engine's first compile loads the compiler, which on a busy Mac takes longer than the check's timeout.
+        await game.Connection.ScriptOptionsAsync("Farm/After.cs", Ct);
 
         CompileCheckResult result = await CompileCheck.RunAsync(game.Connection, CompileCheck.Scripts(checkout), TimeSpan.FromSeconds(3), Ct);
 

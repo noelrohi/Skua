@@ -173,6 +173,17 @@ public sealed class ManagerTests : IDisposable
         await store.SetAccountsAsync([], CancellationToken.None);
     }
 
+    [Fact]
+    public async Task Two_stores_on_one_folder_can_save_at_once()
+    {
+        ManagerAccounts first = new(_dir), second = new(_dir);
+
+        await Task.WhenAll(Enumerable.Range(0, 200).Select(i => Task.Run(() => (i % 2 == 0 ? first : second).LastServer = $"Server{i}")));
+
+        Assert.StartsWith("Server", new ManagerAccounts(_dir).LastServer);
+        Assert.Equal([ManagerAccounts.FileName], Directory.GetFiles(_dir).Select(Path.GetFileName));
+    }
+
     [AvaloniaFact]
     public async Task An_Engine_save_after_an_import_of_its_own_settings_file_leaves_the_passwords_out()
     {

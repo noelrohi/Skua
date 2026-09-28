@@ -282,16 +282,16 @@ public class LogTests
         (_, EngineConnection connection) = await sandbox.StartEngineAsync(gameHost.Environment());
         using (connection)
         {
-            await connection.WaitForLogsAsync(LogKind.Events, 1, e => e.Type == EventTypes.GameHostExited);
+            // The Bridge's reader and the process's exit are separate threads, so the error and the exit can be logged in either order.
+            await connection.WaitForLogsAsync(LogKind.Events, 2, e => e.Type is EventTypes.BridgeError or EventTypes.GameHostExited);
             IReadOnlyList<LogEntryDto> events = (await connection.LogsAsync(LogKind.Events, cancellationToken: Ct)).Entries;
 
-            Assert.Equal(
-                [EventTypes.EngineStarted, EventTypes.GameHostStarted, EventTypes.BridgeError, EventTypes.GameHostExited],
-                events.Select(e => e.Type));
+            Assert.Equal([EventTypes.EngineStarted, EventTypes.GameHostStarted], events.Take(2).Select(e => e.Type));
+            Assert.Equal([EventTypes.BridgeError, EventTypes.GameHostExited], events.Skip(2).Select(e => e.Type).Order());
             Assert.Equal(await gameHost.PidAsync(), events[1].Data!.Value.GetProperty("pid").GetInt32());
             Assert.Equal(EngineSandbox.FakeGameHostExecutable, events[1].Data!.Value.GetProperty("executable").GetString());
-            Assert.Contains("invalid length", events[2].Data!.Value.GetProperty("error").GetString());
-            Assert.Equal(3, events[3].Data!.Value.GetProperty("code").GetInt32());
+            Assert.Contains("invalid length", events.Single(e => e.Type == EventTypes.BridgeError).Data!.Value.GetProperty("error").GetString());
+            Assert.Equal(3, events.Single(e => e.Type == EventTypes.GameHostExited).Data!.Value.GetProperty("code").GetInt32());
         }
     }
 

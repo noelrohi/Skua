@@ -31,9 +31,12 @@ public sealed class ScriptsPanelTests(AppEngine app)
 
         Ui.Click(loader.FindControl<Button>("SearchScripts")!);
         (Window repoWindow, ScriptRepoView repo) = await ShownAsync<ScriptRepoView>("Script Repo");
-        Ui.Click(repo.FindControl<Button>("UpdateScripts")!);
-        await Ui.PumpUntilAsync(() => repo.Shown.Any(s => s.FilePath == "Tests/PanelHello.cs" && s.Downloaded), "the updated Script in the list");
+        Button update = repo.FindControl<Button>("UpdateScripts")!;
+        Ui.Click(update);
+        // The Script is on disk, and may show as downloaded, before the update has finished.
+        await Ui.PumpUntilAsync(() => update.IsEffectivelyEnabled, "the update to finish");
         Assert.StartsWith("Downloaded", repo.FindControl<TextBlock>("UpdateResult")!.Text);
+        await Ui.PumpUntilAsync(() => repo.Shown.Any(s => s.FilePath == "Tests/PanelHello.cs" && s.Downloaded), "the updated Script in the list");
         repo.FindControl<TextBox>("SearchBox")!.Text = "panel hello";
         await Ui.PumpUntilAsync(() => repo.Shown.Count == 1, "the search to keep one Script");
         Assert.Equal("Tests/PanelHello.cs", repo.Shown[0].FilePath);
@@ -164,6 +167,9 @@ public sealed class ScriptsPanelTests(AppEngine app)
 
     private async Task<(Window, T)> OpenAsync<T>(string key) where T : Visual
     {
+        // A Script that a failed test left running would fail this test's start as well.
+        using (EngineConnection connection = await ConnectAsync())
+            await connection.ScriptStopAsync(Ct);
         // Core's main menu registers the managed windows as it is made.
         app.Get<MainMenuViewModel>();
         app.Get<AvaloniaWindowService>().ShowManagedWindow(key);
