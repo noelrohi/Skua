@@ -164,6 +164,8 @@ internal sealed class App : Application
         BridgeFlashUtil flash = engine.Services.GetRequiredService<BridgeFlashUtil>();
         StatusViewModel status = new(engine.Rpc, engine.Endpoint.Name, host: "app");
         engine.StatusChanged += status.Changed;
+        // The developer's theme, before any window shows.
+        _ = engine.Services.GetRequiredService<IThemeService>();
         // Core's main menu registers the managed windows as it is made.
         MainMenuViewModel mainMenu = engine.Services.GetRequiredService<MainMenuViewModel>();
         AvaloniaWindowService windows = engine.Services.GetRequiredService<AvaloniaWindowService>();

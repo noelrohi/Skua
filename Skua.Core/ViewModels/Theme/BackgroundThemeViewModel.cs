@@ -3,7 +3,6 @@ using CommunityToolkit.Mvvm.Input;
 using Skua.Core.Interfaces;
 using Skua.Core.Models;
 using Skua.Core.Services;
-using Skua.Core.Utils;
 
 namespace Skua.Core.ViewModels;
 
@@ -11,11 +10,13 @@ public class BackgroundThemeViewModel : ObservableObject
 {
     private readonly BackgroundThemeService _backgroundService;
     private readonly IFileDialogService _fileDialogService;
+    private readonly IProcessService _processService;
 
-    public BackgroundThemeViewModel(BackgroundThemeService backgroundService, IFileDialogService fileDialogService)
+    public BackgroundThemeViewModel(BackgroundThemeService backgroundService, IFileDialogService fileDialogService, IProcessService processService)
     {
         _backgroundService = backgroundService;
         _fileDialogService = fileDialogService;
+        _processService = processService;
         BrowseBackgroundCommand = new AsyncRelayCommand(BrowseBackgroundAsync);
         OpenThemesFolderCommand = new RelayCommand(OpenThemesFolder);
         RefreshBackgroundsCommand = new RelayCommand(() => OnPropertyChanged(nameof(AvailableBackgrounds)));
@@ -77,7 +78,8 @@ public class BackgroundThemeViewModel : ObservableObject
     {
         try
         {
-            System.Diagnostics.Process.Start("explorer.exe", ClientFileSources.SkuaThemesDIR);
+            // Explorer on Windows, Finder on macOS.
+            _processService.OpenLink(ClientFileSources.SkuaThemesDIR);
         }
         catch (Exception)
         {
@@ -88,7 +90,7 @@ public class BackgroundThemeViewModel : ObservableObject
     {
         try
         {
-            Link.OpenBrowser("https://github.com/auqw/SkuaBackgrounds");
+            _processService.OpenLink("https://github.com/auqw/SkuaBackgrounds");
         }
         catch (Exception)
         {
