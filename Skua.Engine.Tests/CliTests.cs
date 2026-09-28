@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Skua.App.Cli;
 using Skua.Control;
 
@@ -428,6 +429,20 @@ public sealed class OutputReader
                 throw new TimeoutException($"The output never contained \"{expected}\"; it was:\n{Text}");
             await Task.Delay(25, TestContext.Current.CancellationToken);
         }
+    }
+
+    /// <summary>Waits until the output from <paramref name="from"/> on matches <paramref name="expected"/>, and returns that output.</summary>
+    public async Task<string> WaitForAsync(Regex expected, int from)
+    {
+        Stopwatch waited = Stopwatch.StartNew();
+        string text;
+        while (!expected.IsMatch(text = Text[from..]))
+        {
+            if (waited.Elapsed > TimeSpan.FromSeconds(30))
+                throw new TimeoutException($"The output never matched \"{expected}\" after {from} characters; it was:\n{Text}");
+            await Task.Delay(25, TestContext.Current.CancellationToken);
+        }
+        return text;
     }
 
     /// <summary>Waits for the output to end, and returns all of it.</summary>

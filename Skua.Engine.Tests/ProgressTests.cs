@@ -58,13 +58,15 @@ public class ProgressTests
             await output.WaitForAsync("XP 37.5% · 5,000 gold (+0) · battleon · run 1");
             await gameHost.DoAsync("gain 250 1200");
             await output.WaitForAsync("XP 43.8% · 6,200 gold (+1,200)");
-            await output.WaitForAsync("tick 3");
+            // Ticks logged before the first status reply have no status line to clear, and a loaded machine can log several; so the
+            // tick checked is the first one logged once the status line shows.
+            int statusShown = output.Text.IndexOf("XP 43.8%", StringComparison.Ordinal);
+            string after = await output.WaitForAsync(new Regex(@"tick \d+\r?\n\r\u001b\[2KLevel 10 · XP"), statusShown);
             follow.Kill();
 
             // Each log line clears the status line first, and the status line is redrawn after it.
-            string text = output.Text;
-            Assert.Contains("\r\u001b[2Ktick 3", text);
-            Assert.Matches(@"tick 3\r?\n\r\u001b\[2KLevel 10 · XP", text);
+            string tick = Regex.Match(after, @"tick \d+").Value;
+            Assert.Matches($@"\r\u001b\[2K{tick}\r?\n", after);
         }
     }
 
