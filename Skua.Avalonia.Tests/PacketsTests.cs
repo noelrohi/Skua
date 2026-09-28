@@ -183,8 +183,9 @@ public sealed class PacketsTests(AppEngine app)
                 await Ui.PumpUntilAsync(() => server.Received().Any(m => m.Contains("action='login'", StringComparison.Ordinal)), "the game's login through the proxy");
                 await Ui.PumpUntilAsync(() => connect.IsEffectivelyEnabled && Ui.Text(connect) == "Disconnect", "Connect to finish");
                 Assert.True(proxy.Running);
-                // Connect waits for the world only a few seconds, and ends with the game still entering it on a slow Mac.
-                await Ui.PumpUntilAsync(() => player.Playing, "the game to enter the world through the proxy");
+                // Connect ends once the game is in the world through the proxy.
+                Assert.True(player.Playing);
+                Assert.False(view.FindControl<TextBlock>("ConnectFailure")!.IsVisible);
                 Assert.Contains($"connectTo 127.0.0.1 {server.Port}", GameCalls());
                 await Ui.PumpUntilAsync(
                     () => Has(view, "action='verChk'", true) && Has(view, "action='apiOK'", false) && Has(view, "%xt%loginResponse%", false),
@@ -244,11 +245,168 @@ public sealed class PacketsTests(AppEngine app)
         finally
         {
             if (proxy.Running)
-                await Task.Run(() => model.ConnectInterceptorCommand.Execute(null), Ct);
+                await Task.Run(() => model.ConnectInterceptorCommand.ExecuteAsync(null), Ct);
             proxy.Interceptors.Remove(blocker);
             servers.CachedServers.Remove(local);
             model.SelectedServer = null;
             model.PacketFilters.ForEach(f => f.IsChecked = true);
+            model.Packets.Clear();
+            await connection.LogoutAsync(Ct);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Connect_waits_for_a_slow_server_to_let_the_game_into_the_world_even_while_another_Script_is_stopping()
+    {
+        string id = Guid.NewGuid().ToString("N")[..8];
+        // The server accepts the login later than ConnectIP's few seconds of waiting.
+        await using FakeGameServer server = new() { LoginDelay = TimeSpan.FromSeconds(4) };
+        PacketInterceptorViewModel model = app.Get<PacketInterceptorViewModel>();
+        ICaptureProxy proxy = app.Get<ICaptureProxy>();
+        IScriptServers servers = app.Get<IScriptServers>();
+        IScriptPlayer player = app.Get<IScriptPlayer>();
+        IScriptManager scripts = app.Get<IScriptManager>();
+        Server local = new() { Name = $"Slow {id}", IP = "::1", Port = server.Port, Online = true };
+        // A Script that takes its time to stop: ShouldExit stays true for a few seconds after the stop is asked for.
+        AppEngine.WriteScript($"Tests/Linger{id}.cs", """
+            using System.Diagnostics;
+            using System.Threading;
+            using Skua.Core.Interfaces;
+
+            public class TestScript
+            {
+                public void ScriptMain(IScriptInterface bot)
+                {
+                    while (!bot.ShouldExit)
+                        Thread.Sleep(50);
+                    Stopwatch lingered = Stopwatch.StartNew();
+                    while (lingered.Elapsed.TotalSeconds < 6)
+                    {
+                        try
+                        {
+                            Thread.Sleep(50);
+                        }
+                        catch (ThreadInterruptedException)
+                        {
+                        }
+                    }
+                }
+            }
+            """);
+        using EngineConnection connection = await ConnectAsync();
+        await connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        servers.CachedServers.Add(local);
+        Task? stopping = null;
+        try
+        {
+            (Window window, PacketInterceptorView view) = await OpenAsync<PacketInterceptorView>("Interceptor");
+            try
+            {
+                view.FindControl<ComboBox>("Servers")!.SelectedItem = local;
+                Button connect = view.FindControl<Button>("Connect")!;
+                await Ui.PumpUntilAsync(() => player.Playing && player.Loaded && !scripts.ShouldExit, "the game to settle");
+
+                await connection.ScriptStartAsync($"Tests/Linger{id}.cs", cancellationToken: Ct);
+                await Ui.PumpUntilAsync(() => scripts.ScriptRunning, "the Script to run");
+                stopping = Task.Run(() => connection.ScriptStopAsync(Ct), Ct);
+                await Ui.PumpUntilAsync(() => scripts.ShouldExit, "the Script to begin stopping");
+
+                server.ReleaseProxyPort();
+                Ui.Click(connect);
+                await Ui.PumpUntilAsync(() => connect.IsEffectivelyEnabled, "Connect to finish");
+                Assert.Equal("Disconnect", Ui.Text(connect));
+                Assert.True(proxy.Running);
+                Assert.True(player.Playing, "Connect finished before the game was in the world");
+                Assert.False(view.FindControl<TextBlock>("ConnectFailure")!.IsVisible);
+                Assert.Contains(server.Received(), m => m.Contains("action='login'", StringComparison.Ordinal));
+
+                Ui.Click(connect);
+                await Ui.PumpUntilAsync(() => connect.IsEffectivelyEnabled && Ui.Text(connect) == "Connect", "Disconnect to finish");
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+        finally
+        {
+            if (proxy.Running)
+                await Task.Run(() => model.ConnectInterceptorCommand.ExecuteAsync(null), Ct);
+            if (stopping is not null)
+                await stopping;
+            else if (scripts.ScriptRunning)
+                await connection.ScriptStopAsync(Ct);
+            servers.CachedServers.Remove(local);
+            model.SelectedServer = null;
+            model.Packets.Clear();
+            await connection.LogoutAsync(Ct);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Connect_that_doesnt_get_the_game_into_the_world_stops_the_proxy_and_says_so_and_the_next_Connect_clears_it()
+    {
+        string id = Guid.NewGuid().ToString("N")[..8];
+        await using FakeGameServer server = new() { AcceptsLogin = false };
+        PacketInterceptorViewModel model = app.Get<PacketInterceptorViewModel>();
+        ICaptureProxy proxy = app.Get<ICaptureProxy>();
+        IScriptServers servers = app.Get<IScriptServers>();
+        IScriptPlayer player = app.Get<IScriptPlayer>();
+        IScriptManager scripts = app.Get<IScriptManager>();
+        IScriptOption options = app.Get<IScriptOption>();
+        Server local = new() { Name = $"Refusing {id}", IP = "::1", Port = server.Port, Online = true };
+        int loginTimeout = options.LoginTimeout;
+        bool autoRelogin = options.AutoRelogin;
+        using EngineConnection connection = await ConnectAsync();
+        await connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        servers.CachedServers.Add(local);
+        options.LoginTimeout = 2000;
+        try
+        {
+            (Window window, PacketInterceptorView view) = await OpenAsync<PacketInterceptorView>("Interceptor");
+            try
+            {
+                view.FindControl<ComboBox>("Servers")!.SelectedItem = local;
+                Button connect = view.FindControl<Button>("Connect")!;
+                TextBlock failure = view.FindControl<TextBlock>("ConnectFailure")!;
+                await Ui.PumpUntilAsync(() => player.Playing && player.Loaded && !scripts.ShouldExit, "the game to settle");
+
+                // The game reaches the server through the proxy, which never lets it in.
+                server.ReleaseProxyPort();
+                Ui.Click(connect);
+                await Ui.PumpUntilAsync(() => server.Received().Any(m => m.Contains("action='login'", StringComparison.Ordinal)), "the game's login through the proxy");
+                await Ui.PumpUntilAsync(() => connect.IsEffectivelyEnabled, "Connect to finish");
+                Assert.Equal("Connect", Ui.Text(connect));
+                Assert.False(proxy.Running);
+                Assert.False(player.Playing);
+                await Ui.PumpUntilAsync(() => failure.IsVisible, "the reason Connect failed");
+                Assert.Equal("The game didn't enter the world through the interceptor within 2 s, so the interceptor stopped.", failure.Text);
+                Assert.Equal(autoRelogin, options.AutoRelogin);
+                await Ui.PumpUntilAsync(() => !Accepts(server.Port), "the proxy to stop listening");
+
+                // Once the server lets the game in, Connect gets there, and the reason goes.
+                server.AcceptsLogin = true;
+                Ui.Click(connect);
+                await Ui.PumpUntilAsync(() => !failure.IsVisible, "the reason to clear as Connect starts");
+                await Ui.PumpUntilAsync(() => connect.IsEffectivelyEnabled, "Connect to finish");
+                Assert.Equal("Disconnect", Ui.Text(connect));
+                Assert.True(player.Playing);
+
+                Ui.Click(connect);
+                await Ui.PumpUntilAsync(() => connect.IsEffectivelyEnabled && Ui.Text(connect) == "Connect", "Disconnect to finish");
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+        finally
+        {
+            options.LoginTimeout = loginTimeout;
+            if (proxy.Running)
+                await Task.Run(() => model.ConnectInterceptorCommand.ExecuteAsync(null), Ct);
+            servers.CachedServers.Remove(local);
+            model.SelectedServer = null;
             model.Packets.Clear();
             await connection.LogoutAsync(Ct);
         }

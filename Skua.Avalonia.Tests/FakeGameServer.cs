@@ -6,7 +6,8 @@ namespace Skua.Avalonia.Tests;
 
 /// <summary>
 /// A game server on this Mac for the Packet Interceptor's tests: it answers the simulated game's version check and login as SmartFoxServer
-/// does, records each null-terminated message it receives, and sends the game what a test asks. It listens on <c>::1</c>, because the
+/// does (the login after <see cref="LoginDelay"/>, or never while <see cref="AcceptsLogin"/> is off), records each null-terminated
+/// message it receives, and sends the game what a test asks. It listens on <c>::1</c>, because the
 /// Interceptor's proxy takes the server's port on 127.0.0.1, as it takes a real server's; it holds that port until
 /// <see cref="ReleaseProxyPort"/>, so nothing else, such as the other test project, takes it first.
 /// </summary>
@@ -49,6 +50,12 @@ public sealed class FakeGameServer : IAsyncDisposable
 
     /// <summary>Lets go of <see cref="Port"/> on 127.0.0.1, for the Interceptor's proxy to take at once.</summary>
     public void ReleaseProxyPort() => _proxyPort.Stop();
+
+    /// <summary>How long the server takes to accept a login, as a busy one does.</summary>
+    public TimeSpan LoginDelay { get; init; }
+
+    /// <summary>Whether the server accepts a login at all; while it doesn't, the game never enters the world.</summary>
+    public bool AcceptsLogin { get; set; } = true;
 
     /// <summary>How many connections the proxy has closed.</summary>
     public int Closed => Volatile.Read(ref _closed);
@@ -109,8 +116,8 @@ public sealed class FakeGameServer : IAsyncDisposable
                             _received.Add(text);
                         if (text.Contains("action='verChk'", StringComparison.Ordinal))
                             Send("<msg t='sys'><body action='apiOK' r='0'></body></msg>");
-                        else if (text.Contains("action='login'", StringComparison.Ordinal))
-                            Send("%xt%loginResponse%-1%true%1%player%Welcome%");
+                        else if (text.Contains("action='login'", StringComparison.Ordinal) && AcceptsLogin)
+                            _ = AcceptLoginAsync(stream, stop);
                     }
                 }
             }
@@ -122,7 +129,19 @@ public sealed class FakeGameServer : IAsyncDisposable
         }
     }
 
-    public async ValueTask DisposeAsync()
+    private async Task AcceptLoginAsync(NetworkStream stream, CancellationToken stop)
+    {
+        try
+        {
+            await Task.Delay(LoginDelay, stop);
+            await stream.WriteAsync(Encoding.UTF8.GetBytes("%xt%loginResponse%-1%true%1%player%Welcome%\0"), stop);
+        }
+        catch (Exception ex) when (ex is IOException or OperationCanceledException or ObjectDisposedException)
+        {
+        }
+    }
+
+        public async ValueTask DisposeAsync()
     {
         _stop.Cancel();
         _proxyPort.Stop();

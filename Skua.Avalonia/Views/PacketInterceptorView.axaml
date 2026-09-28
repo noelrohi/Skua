@@ -23,7 +23,7 @@
         </Style>
     </UserControl.Styles>
     <Grid Margin="6" ColumnDefinitions="2*,*" RowDefinitions="Auto,Auto,Auto,*">
-        <Grid Grid.Row="0" Grid.Column="0" Margin="0,0,3,3" ColumnDefinitions="*,Auto">
+        <Grid Grid.Row="0" Grid.Column="0" Margin="0,0,3,3" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
             <ComboBox
                 x:Name="Servers"
                 Grid.Column="0"
@@ -43,6 +43,15 @@
                     <TextBlock IsVisible="{Binding Running}" Text="Disconnect" />
                 </Panel>
             </Button>
+            <TextBlock
+                x:Name="ConnectFailure"
+                Grid.Row="1"
+                Grid.ColumnSpan="2"
+                Margin="0,3,0,0"
+                Foreground="OrangeRed"
+                IsVisible="{Binding ConnectFailure, Converter={x:Static ObjectConverters.IsNotNull}}"
+                Text="{Binding ConnectFailure}"
+                TextWrapping="Wrap" />
         </Grid>
         <TextBox
             x:Name="FilterSearchBox"

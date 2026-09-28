@@ -18,7 +18,8 @@ namespace Skua.Avalonia.Views;
 /// The proxy listens on 127.0.0.1 at the server's port and the game connects to it with its own <c>connectTo</c>; the Game Host's sockets
 /// are plain TCP (Ruffle's <c>SocketMode::Allow</c>), so this works as on Windows. Core adds packets on the UI thread, through the
 /// synchronization context its view model was made on (<see cref="Services.UiThreadContext"/>). Connecting waits for the world to load,
-/// so Connect runs off the UI thread and the window keeps drawing the packets meanwhile.
+/// so Connect runs off the UI thread and the window keeps drawing the packets meanwhile; it ends once the game is in the world, or with the
+/// proxy stopped and the reason shown under the button if the game didn't get there within the Login Timeout.
 /// </remarks>
 public partial class PacketInterceptorView : UserControl
 {
@@ -93,7 +94,7 @@ public partial class PacketInterceptorView : UserControl
         Connect.IsEnabled = false;
         try
         {
-            await Task.Run(() => viewModel.ConnectInterceptorCommand.Execute(null));
+            await Task.Run(() => viewModel.ConnectInterceptorCommand.ExecuteAsync(null));
         }
         catch (Exception ex)
         {

@@ -77,6 +77,7 @@ internal static class PacketInterceptor
             return true;
         }));
 
-        return new PacketInterceptorViewModel(filters, s.GetRequiredService<ICaptureProxy>(), s.GetRequiredService<IScriptServers>());
+        return new PacketInterceptorViewModel(filters, s.GetRequiredService<ICaptureProxy>(), s.GetRequiredService<IScriptServers>(),
+            s.GetRequiredService<IScriptPlayer>(), s.GetRequiredService<IFlashUtil>());
     }
 }
