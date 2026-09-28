@@ -22,8 +22,8 @@ public sealed class EngineScripts
     }
 
     /// <summary>
-    /// Core's Script manager as the window's Scripts panel uses it: a start is refused while the Engine runs or starts a Script or holds
-    /// its slot, as <c>script_start</c> is, and a stop from outside the Script's own thread is a <c>script_stop</c>, so the run ends as
+    /// Core's Script manager as the window's Scripts panel uses it: a start is refused while the Engine runs or starts a Script, holds
+    /// its action slot or updates the Scripts, as <c>script_start</c> is, and a stop from outside the Script's own thread is a <c>script_stop</c>, so the run ends as
     /// stopped rather than completed.
     /// </summary>
     public IScriptManager ScriptManager { get; }
@@ -32,12 +32,14 @@ public sealed class EngineScripts
     /// <exception cref="LocalRpcException">It was refused (a Script runs, another update runs) or the Script Source couldn't be read.</exception>
     public Task<ScriptsUpdateResult> UpdateAsync() => Operations.Source.UpdateAsync();
 
-    internal void Attach(ScriptOperations scripts, ScriptSourceOperations source, ScriptRuns runs, ActionSlot slot, SemaphoreSlim compiling) =>
-        _attached = new Attached(scripts, source, runs, slot, compiling);
+    internal void Attach(
+        ScriptOperations scripts, ScriptSourceOperations source, ScriptRuns runs, ActionSlot slot, ActionSlot scriptsSlot, SemaphoreSlim compiling) =>
+        _attached = new Attached(scripts, source, runs, slot, scriptsSlot, compiling);
 
     private Attached Operations => _attached ?? throw new InvalidOperationException("The Engine hasn't started.");
 
-    private sealed record Attached(ScriptOperations Scripts, ScriptSourceOperations Source, ScriptRuns Runs, ActionSlot Slot, SemaphoreSlim Compiling);
+    private sealed record Attached(
+        ScriptOperations Scripts, ScriptSourceOperations Source, ScriptRuns Runs, ActionSlot Slot, ActionSlot ScriptsSlot, SemaphoreSlim Compiling);
 
     /// <summary>Forwards to Core's manager, except for starts, stops and compiles, which go through the Engine's rules.</summary>
     private sealed class WindowScriptManager : IScriptManager
@@ -97,6 +99,7 @@ public sealed class EngineScripts
             Attached engine = _owner.Operations;
             string action = $"start {ScriptPaths.Name(Core.LoadedScript)}";
             IDisposable lease;
+            IDisposable scriptsLease;
             try
             {
                 engine.Runs.EnsureIdle(action);
@@ -106,8 +109,18 @@ public sealed class EngineScripts
             {
                 return e;
             }
+            try
+            {
+                scriptsLease = engine.ScriptsSlot.Take(action);
+            }
+            catch (LocalRpcException e)
+            {
+                lease.Dispose();
+                return e;
+            }
 
             using (lease)
+            using (scriptsLease)
             {
                 await engine.Compiling.WaitAsync();
                 try

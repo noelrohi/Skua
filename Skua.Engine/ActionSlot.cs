@@ -3,8 +3,10 @@ using Skua.Control;
 namespace Skua.Engine;
 
 /// <summary>
-/// The one slot that serializes the Engine's state-changing commands (login, logout, script_options and a Script's start):
-/// a second one while the slot is taken fails with <see cref="ErrorCode.Busy"/>.
+/// A slot that serializes a set of the Engine's commands: a second one while the slot is taken fails with <see cref="ErrorCode.Busy"/>.
+/// The Engine has two. Its action slot serializes the state-changing commands (login, logout, join, jump, script_options and a Script's
+/// start); its Scripts slot keeps a Scripts update or a change of Script Source apart from a Script's compile (script_options and a start),
+/// so a login never waits for an update and a Script never compiles against a half-finished one.
 /// </summary>
 internal sealed class ActionSlot
 {

@@ -344,6 +344,65 @@ public class ScriptSourceTests
     }
 
     [Fact]
+    public async Task During_a_slow_Scripts_update_a_login_goes_ahead_but_a_Script_is_refused_until_the_update_ends()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeGitHub github = new();
+        TaskCompletionSource held = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        github.RawHeld = held.Task;
+        github.Commit("noelrohi", "Scripts", "Skua", Hello("v2"));
+        await using GameFixture game = await GameFixture.StartAsync(sandbox, environment: github.Environment());
+        TestScripts.Write(sandbox, "Tests/Hello.cs", Hello("v1").Content);
+
+        Task<ScriptsUpdateResult> update = game.Connection.ScriptsUpdateAsync(Ct);
+        await github.WaitForRawRequestAsync();
+        LoginResult login = await game.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        ControlException start = await Assert.ThrowsAsync<ControlException>(() => game.Connection.ScriptStartAsync("Tests/Hello.cs", cancellationToken: Ct));
+        ControlException options = await Assert.ThrowsAsync<ControlException>(() => game.Connection.ScriptOptionsAsync("Tests/Hello.cs", Ct));
+        bool stillUpdating = !update.IsCompleted;
+        held.SetResult();
+        ScriptsUpdateResult updated = await update;
+        await game.Connection.ScriptStartAsync("Tests/Hello.cs", cancellationToken: Ct);
+
+        Assert.Equal(("Galanoth", true), (login.Server, login.IsTestAccount));
+        Assert.True(stillUpdating, "the update was still in flight during the login");
+        Assert.Equal(ErrorCode.Busy, start.Code);
+        Assert.Contains("Can't start Tests/Hello.cs", start.Message);
+        Assert.Contains("update the Scripts", start.Message);
+        Assert.Equal(ErrorCode.Busy, options.Code);
+        Assert.Equal(ScriptsUpdateMode.Full, updated.Mode);
+        // The first start ran once the update had finished, so it compiled the updated Script.
+        await game.Connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text == "hello v2");
+        await game.Connection.ScriptWaitAsync(60, Ct);
+    }
+
+    [Fact]
+    public async Task During_a_slow_Scripts_update_skua_login_goes_ahead_and_skua_script_start_says_why_it_cant()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeGitHub github = new();
+        TaskCompletionSource held = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        github.RawHeld = held.Task;
+        github.Commit("noelrohi", "Scripts", "Skua", Hello("v2"));
+        await using GameFixture game = await GameFixture.StartAsync(sandbox, environment: github.Environment());
+        TestScripts.Write(sandbox, "Tests/Hello.cs", Hello("v1").Content);
+
+        Task<ScriptsUpdateResult> update = game.Connection.ScriptsUpdateAsync(Ct);
+        await github.WaitForRawRequestAsync();
+        ProcessResult login = await sandbox.RunCliAsync("login", "Galanoth");
+        ProcessResult start = await sandbox.RunCliAsync("script", "start", "Tests/Hello.cs", "--no-update");
+        bool stillUpdating = !update.IsCompleted;
+        held.SetResult();
+        await update;
+
+        Assert.True(login.ExitCode == 0, login.Stderr);
+        Assert.Contains("Galanoth", login.Stdout);
+        Assert.True(stillUpdating, "the update was still in flight during the login");
+        Assert.Equal(ExitCodes.For(ErrorCode.Busy), start.ExitCode);
+        Assert.Contains("update the Scripts", start.Stderr);
+    }
+
+    [Fact]
     public async Task An_unreachable_Script_Source_fails_with_its_code()
     {
         await using EngineSandbox sandbox = new();

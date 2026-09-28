@@ -6,7 +6,9 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Threading;
 using Skua.Control;
+using Skua.Engine;
 using Skua.Engine.Tests;
+using StreamJsonRpc;
 
 namespace Skua.Avalonia.Tests;
 
@@ -37,6 +39,50 @@ public sealed class StatusTests(AppEngine app)
         await PumpUntilAsync(() => shown.Model.GameState == GameState.LoginScreen, "the login screen");
         Assert.Equal("Engine default (app)  ·  login screen  ·  no Script", shown.Strip.Text);
         Assert.False(shown.Login.LogOutButton.IsEffectivelyEnabled, "Log out is off at the login screen");
+    }
+
+    [AvaloniaFact]
+    public async Task Log_in_goes_ahead_during_a_start_up_Scripts_update_while_a_Script_start_is_refused_until_it_ends()
+    {
+        await using Shown shown = await ShowAsync();
+        await PickAsync(shown, "Galanoth");
+        string path = $"Tests/Updating{Guid.NewGuid():N}.cs";
+        AppEngine.GitHub.Commit("noelrohi", "Scripts", "Skua", new FakeScript(path, "public class TestScript { }"));
+        EngineScripts scripts = app.Get<EngineScripts>();
+        TaskCompletionSource held = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        AppEngine.GitHub.ClearRequests();
+        AppEngine.GitHub.RawHeld = held.Task;
+        Task<ScriptsUpdateResult> update;
+        Exception? refused;
+        try
+        {
+            // As the start-up check updates the Scripts, off the UI thread.
+            update = Task.Run(scripts.UpdateAsync, TestContext.Current.CancellationToken);
+            await PumpUntilAsync(() => AppEngine.GitHub.Requests.Any(r => r.StartsWith("/raw/", StringComparison.Ordinal)), "the update to start downloading");
+
+            Click(shown.Window, shown.Login.LogInButton);
+            await PumpUntilAsync(() => shown.Model.Message is not null && !shown.Model.Busy, "the login to finish");
+            Assert.False(update.IsCompleted, "the update was still in flight during the login");
+
+            // As the Scripts panel's Start Script does.
+            scripts.ScriptManager.SetLoadedScript(Path.Combine(AppEngine.SkuaDir, "Scripts", path));
+            refused = await scripts.ScriptManager.StartScript();
+        }
+        finally
+        {
+            AppEngine.GitHub.RawHeld = Task.CompletedTask;
+            held.TrySetResult();
+        }
+        await PumpUntilAsync(() => update.IsCompleted, "the update to finish");
+        await update;
+
+        Assert.False(shown.Model.MessageIsError, shown.Model.Message);
+        Assert.Equal("Logged in as SkuaTester (the Test Account) on Galanoth.", shown.Login.MessageText.Text);
+        Assert.Contains("update the Scripts", Assert.IsType<LocalRpcException>(refused).Message);
+        Assert.False(scripts.ScriptManager.ScriptRunning);
+
+        Click(shown.Window, shown.Login.LogOutButton);
+        await PumpUntilAsync(() => shown.Model.GameState == GameState.LoginScreen, "the login screen");
     }
 
     [AvaloniaFact]
