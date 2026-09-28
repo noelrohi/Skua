@@ -27,7 +27,6 @@ internal sealed class MainWindow : Window
 
     public MainWindow(BridgeFlashUtil flash, ILogService log, StatusViewModel status, Menu menu, HelpersBar helpers, ScriptDialogsViewModel dialogs)
     {
-        Title = "Skua";
         Width = GameHostLaunch.StageWidth;
         Height = GameHostLaunch.StageHeight + BarsHeight;
         MinWidth = 320;

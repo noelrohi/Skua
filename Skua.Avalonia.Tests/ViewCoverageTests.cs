@@ -30,6 +30,7 @@ public sealed partial class ViewCoverageTests(AppEngine app)
     private static readonly Dictionary<Type, (Type ShownBy, string How)> ShownInCode = new()
     {
         [typeof(MainMenuViewModel)] = (typeof(MainMenus), "the window's menu and the macOS menu bar are built from it"),
+        [typeof(MainViewModel)] = (typeof(MainWindowTitle), "the main window's title follows its title"),
         [typeof(DisplayOptionItemViewModelBase)] = (typeof(OptionItemView), "each option's editor, as its type asks"),
         [typeof(CBOBoolOptionItemViewModel)] = (typeof(CBOptionsView), "CoreBots' option rows, which XAML can't template (closed generics)"),
         [typeof(CBOBoolChoiceOptionItemViewModel)] = (typeof(CBOptionsView), "CoreBots' option rows, which XAML can't template (closed generics)"),
@@ -53,11 +54,7 @@ public sealed partial class ViewCoverageTests(AppEngine app)
     };
 
     /// <summary>View models with a WPF view that the Mac App doesn't show yet, and the issue that brings it.</summary>
-    private static readonly Dictionary<Type, int> Gaps = new()
-    {
-        // The main window exists, but its title doesn't follow MainViewModel's.
-        [typeof(MainViewModel)] = 110,
-    };
+    private static readonly Dictionary<Type, int> Gaps = [];
 
     [Fact]
     public void Every_Core_view_model_with_a_WPF_view_has_an_Avalonia_view_or_is_listed_as_deliberate_or_a_gap()

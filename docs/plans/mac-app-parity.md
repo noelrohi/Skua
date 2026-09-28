@@ -16,7 +16,6 @@ Tests are in `Skua.Avalonia.Tests` and named `Class.Method`. `ViewCoverageTests`
 
 | Issue | What |
 |---|---|
-| [#110](https://github.com/noelrohi/Skua/issues/110) | The main window's title: the version, and optionally the username |
 | [#112](https://github.com/noelrohi/Skua/issues/112) | Notifications when a Script stops, errors or relogs while the window isn't in front |
 | [#113](https://github.com/noelrohi/Skua/issues/113) | Reset Scripts, and Open in VSCode for one Script |
 | [#114](https://github.com/noelrohi/Skua/issues/114) | Hide the Application Options that do nothing on macOS |
@@ -25,7 +24,7 @@ Tests are in `Skua.Avalonia.Tests` and named `Class.Method`. `ViewCoverageTests`
 
 | Windows | Mac App | Status | Evidence or reason |
 |---|---|---|---|
-| Title: `MainViewModel.Title`, with the username when Show Username in Title is on | Always "Skua" | gap [#110](https://github.com/noelrohi/Skua/issues/110) | |
+| Title: `MainViewModel.Title`, with the username when Show Username in Title is on | `MainViewModel.Title` from the app's container, with this build's version recorded at start, and the Engine Name after it unless it is `default` | works | `MainWindowTitleTests.The_title_is_Skua_and_the_builds_version_over_an_older_one_and_names_an_Engine_other_than_default`, `MainWindowTitleTests.With_Show_Username_in_Title_on_the_title_ends_with_the_username_after_a_login_and_turning_it_off_removes_it_for_the_next_start_too`. The Engine Name, as in `Skua - 1.4.4.4 : SkuaTester (Engine alice)`, is deliberate: it tells apart the apps the Skua Manager launches in the Window menu and with ⌘`. |
 | Game (`GameContainerUserControl`, the Flash ActiveX host) | Game View (`GameView`) over the Game Host's Frame Buffer | works | `GameViewTests.Shows_the_Game_Hosts_frames_as_they_advance`, `GameViewTests.Keys_and_typed_text_arrive_in_order` |
 | Game polish: sharpness, cursor, clipboard | Retina rendering, the hand cursor, ⌘C and ⌘V in chat, the wheel by lines or pixels | works | `GameViewTests.On_a_Retina_display_the_Game_Host_renders_at_the_views_device_pixels_and_they_are_drawn_one_to_one`, `GameViewTests.The_cursor_changes_over_the_games_buttons`, `GameViewTests.Command_V_pastes_the_Macs_clipboard_into_the_game_after_the_keys_before_it`, `GameViewTests.Text_the_game_copies_goes_on_the_Macs_clipboard` |
 | Main menu (`MainMenuUserControl`) | The in-window menu and the macOS menu bar, both built from `MainMenuViewModel` | works | `PanelTests.The_main_menu_enables_the_panels_with_views_and_the_items_with_their_own_command_and_shows_the_rest_disabled` |
@@ -46,7 +45,7 @@ The Mac App's main window also has a login bar, a status strip, the Question she
 | Auto | `AutoViewModel` | works | `HelpersTests.Auto_attack_starts_and_stops_from_the_Auto_view_and_the_bar_marks_it_running` |
 | Scripts | `ScriptLoaderViewModel` | works | `ScriptsPanelTests.A_Script_picked_from_the_Script_Source_starts_logs_live_and_stops_from_the_panel`, `ScriptsPanelTests.A_Script_started_with_the_CLI_shows_running_and_stopping_it_from_the_panel_ends_script_wait` |
 | Options › Game | `GameOptionsViewModel` | works | `OptionsTests.A_game_option_changed_in_the_panel_reaches_the_game_at_once_and_is_saved_for_the_next_start` |
-| Options › Application | `ApplicationOptionsViewModel` | present | `ViewCoverageTests.Every_window_the_Windows_app_registers_opens_in_the_Mac_App_with_its_view`, `PanelTests.Each_view_binds_to_its_view_model_with_no_binding_errors`. Each option saves to the settings through Core's own command; no test toggles one. Its start-up check options drive the start-up checks (`StartUpChecksTests.*`); Show Username in Title does nothing yet ([#110](https://github.com/noelrohi/Skua/issues/110)). Clear Flash Cache and Client Animation Frame-rate have no macOS meaning ([#114](https://github.com/noelrohi/Skua/issues/114) hides them). |
+| Options › Application | `ApplicationOptionsViewModel` | present | `ViewCoverageTests.Every_window_the_Windows_app_registers_opens_in_the_Mac_App_with_its_view`, `PanelTests.Each_view_binds_to_its_view_model_with_no_binding_errors`. Each option saves to the settings through Core's own command. Its start-up check options drive the start-up checks (`StartUpChecksTests.*`), and Show Username in Title the main window's title (`MainWindowTitleTests`, under Main window). Clear Flash Cache and Client Animation Frame-rate have no macOS meaning ([#114](https://github.com/noelrohi/Skua/issues/114) hides them). |
 | Options › CoreBots | `CoreBotsViewModel` | works | `ScriptOptionsTests.CoreBots_options_load_from_the_players_file_and_edits_persist_there` |
 | Options › Application Themes | `ApplicationThemesViewModel` | works | `OptionsTests.Switching_the_theme_restyles_every_open_window_and_is_kept`, `OptionsTests.A_theme_edited_and_saved_in_the_panel_is_listed_kept_and_removable` |
 | Options › HotKeys | `HotKeysViewModel` | works | `HotKeysTests.A_hotkey_assigned_in_the_panel_is_saved_works_at_once_and_is_bound_again_after_a_restart`. Hotkeys default to ⌘ digits (deliberate), so plain keys stay with the game. |
