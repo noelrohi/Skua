@@ -205,6 +205,7 @@ The Mac App (`Skua.App.Mac`, ADR 0006) is the Game View with its own Engine insi
 ```bash
 dotnet build Skua.App.Mac
 Skua.App.Mac/bin/Debug/net10.0/Skua [--name <engine-name>]
+Skua.App.Mac/bin/Debug/net10.0/Skua --manager   # the Skua Manager
 ```
 
 - It starts its Engine, and binds the Engine's socket, before its window opens, so `skua status` in a terminal talks to it.
@@ -221,6 +222,20 @@ Skua.App.Mac/bin/Debug/net10.0/Skua [--name <engine-name>]
 - Click the game and type in it. The Game View is live (the Game Host renders every 33 ms) only while the window is on screen; minimised, hidden or fully covered, the Game Host goes back to the headless defaults.
 - Every 60 s (`SKUA_GAMEHOST_STATS_SEC`) the `debug` log gets a `[gameview] stats` line (frames shown, frame age p50/p95) next to `[gamehost] stats`.
 
+### The Skua Manager
+
+The Skua Manager keeps your accounts and launches a Mac App per account, as `Skua.Manager` does on Windows (ADR 0006). Open it from any app's menu bar (**Manager › Skua Manager…**) or Dock menu, or run `Skua --manager`. It is its own process, one per data folder: opening it again brings it to the front.
+
+- **Accounts.** Add one with its username, an optional display name and its password; saving the same username again changes its password or display name. The password goes only to Keychain, as a `skua account` item named after the username (`Main User` → `main-user`, under `skua-account-main-user`), so `skua account use main-user` works on it too. Adding one doesn't change the Active Account. The rest of the list (display names, tags, groups, the last server) is in `<SkuaDIR>/Skua.manager.json`, which never holds a password. Removing an account deletes its Keychain item.
+- **Tags and groups** filter and launch as on Windows: tag an account or the selected ones, pick tags to show only accounts with any of them, and put accounts in groups, each with its own Launch.
+- **Import Windows list…** reads the Windows Manager's `Skua.settings.json` (or an older `ManagerSettings.json`), moves each password into Keychain and removes it from the file. It keeps a copy of the file as it was, `<file>.<time>.bak`, readable only by you; that copy still holds the passwords, so delete it once you've checked the import.
+- **Launch** starts `Skua --name <account> --account <account>` for each account (selected, all shown, one, or a group), a second apart. Each app has the account's name as its Engine Name, logs that account in once its window shows (on the server picked with **On server**, or on one it picks), and starts the Script if **With Script** is on. No password is on a command line. That app's Engine always uses its own account, `skua login` against its socket included; an agent's login there gets the Test Account unless the account was added with `--allow-agents` (ADR 0005). Launching an account whose app is running brings it to the front.
+- **Running** lists every Skua app and Engine using the data folder, with its game and Script. **Bring to front** shows an app's window; **Stop** quits an app (or stops a headless Engine), asking first while a Script runs. Its game logs out; the others keep playing.
+- **Updates** shows the build `install-macos.sh` installed, the checkout this app was built from, and whether they match. To update, run the command it gives (`cd <checkout> && ./install-macos.sh`), then quit and reopen the apps. It downloads nothing.
+- **Goals** shows Skua's funding goals, as on Windows.
+
+The Manager's tests launch `fake-app` (`Skua.FakeApp`, set with `SKUA_APP_EXECUTABLE`) in place of the Mac App: it takes the same command line and hosts the same Engine, without a window.
+
 The tests never run the real Game Host, read the real Keychain or reach AQW: they point `SKUA_GAMEHOST` at a fake that speaks the Bridge frames and simulates the game, `SKUA_SECURITY_TOOL` at a fake `security`, and `SKUA_AQ_SERVERS_URL` at a fake servers API.
 
 Environment overrides:
@@ -234,6 +249,8 @@ Environment overrides:
 | `SKUA_GITHUB_RAW_URL`, `SKUA_GITHUB_API_URL` | `https://raw.githubusercontent.com/` and `https://api.github.com/`, for tests |
 | `SKUA_AQ_SERVERS_URL` | The game's servers API, `http://content.aq.com/game/api/data/servers`, for tests |
 | `SKUA_SECURITY_TOOL` | The `security` tool that `skua account` and the Engine's login use for Keychain (default `/usr/bin/security`), for tests |
+| `SKUA_APP_EXECUTABLE` | The app the Skua Manager launches (default the binary it runs from), for tests |
+| `SKUA_BIN_DIR`, `SKUA_CHECKOUT` | Where the Manager's Updates tab finds the installed `skua` link (default `~/.local/bin`), and the checkout it compares it with (default the one the app was built in) |
 | `SKUA_GAMEHOST_STATS_SEC` | Seconds between the Game Host's stats lines (ticks, frame rate, largest tick gap) in the `debug` log, and the Mac App's Game View stats lines: 60 by default, 0 for none |
 
 #### Accounts and the Test Account

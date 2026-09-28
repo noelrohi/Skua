@@ -1,0 +1,25 @@
+<!-- Replaces Skua.WPF/UserControls/ClientUpdateUserControl.xaml on macOS: Skua updates from its checkout, not from release zips. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.Manager.UpdatesView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:m="using:Skua.Avalonia.Manager"
+    x:DataType="m:UpdatesViewModel">
+    <StackPanel Margin="12" Spacing="10">
+        <TextBlock x:Name="Verdict" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" Text="{Binding Verdict}" />
+        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="6">
+            <TextBlock Grid.Row="0" Foreground="Gray" Text="Installed (skua)" />
+            <SelectableTextBlock x:Name="Installed" Grid.Row="0" Grid.Column="1" TextWrapping="Wrap" Text="{Binding Installed}" />
+            <TextBlock Grid.Row="1" Foreground="Gray" Text="Checkout" />
+            <SelectableTextBlock x:Name="Checkout" Grid.Row="1" Grid.Column="1" TextWrapping="Wrap" Text="{Binding Checkout}" />
+            <TextBlock Grid.Row="2" Foreground="Gray" Text="This app" />
+            <SelectableTextBlock Grid.Row="2" Grid.Column="1" TextWrapping="Wrap" Text="{Binding App}" />
+        </Grid>
+        <TextBlock TextWrapping="Wrap" Text="To update, run this in Terminal. It builds the checkout and installs skua, skua-engine and the Game Host from it; then quit and reopen the Skua apps." />
+        <DockPanel>
+            <Button DockPanel.Dock="Right" Margin="6,0,0,0" Content="Copy" Command="{Binding CopyCommandCommand}" />
+            <TextBox x:Name="UpdateCommand" IsReadOnly="True" FontFamily="Menlo,monospace" Text="{Binding UpdateCommand}" />
+        </DockPanel>
+        <Button HorizontalAlignment="Left" Content="Check again" Command="{Binding RefreshCommand}" />
+    </StackPanel>
+</UserControl>

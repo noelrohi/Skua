@@ -64,6 +64,25 @@ The Game Host writes each rendered frame into a shared-memory Frame Buffer that 
 
   The Game Host's `Q` stats gain the frames written, the input events and the live flag. The app measures frame age itself.
 
+## The Skua Manager
+
+The Skua Manager, the counterpart of `Skua.Manager`, is **a process of its own, not a window in the Mac App** (#93): `Skua --manager`, from the same binary, one per data folder. Each app's menu bar (Manager › Skua Manager…) and Dock menu start it, or bring the running one to the front; it holds `<SkuaDIR>/manager.lock` and writes its pid next to it. It hosts no Engine and no Game Host.
+
+- **Why not a window in the app.** An app is one Engine Name playing one account, and the Manager outlives any one of them: quitting the app that showed the Manager would close it while the apps it launched play on. Core's Manager view models also talk over the process-wide messengers the app's own panels use: the account list answers every Script load (`LoadScriptMessage`) with a message box, and `ShowMainWindowMessage` has a handler in both. In its own process none of that crosses.
+- **Accounts live in Keychain.** Each account is a Keychain item written by the code `skua account add` uses (`Skua.Control.Accounts`), under its account name's service (`skua-account-<name>`). Its name is its username's default name, made unique; `test` and `default` are never used. The rest (display names, tags, groups, the last server) is in `<SkuaDIR>/Skua.manager.json`, owner-only, which holds no password and which no Engine writes. The Windows Manager keeps its list in `Skua.settings.json` with plain-text passwords (`SettingsModels.cs:13`); Core's settings service saves that whole file from memory, so the Manager reads and writes none of it.
+  - Core's `AccountManagerViewModel` runs unchanged, over a settings service that sends a typed password to Keychain and returns none. Its Start messages go to the Mac launcher instead of `Skua.exe -p <password>`.
+  - Removing an account deletes its Keychain item; if it was the Active Account, the Test Account becomes active again, as `skua account remove` does.
+  - **Import** reads a Windows list (`manager.ManagedAccounts` and `AccountGroups` in `Skua.settings.json`, or the older `ManagerSettings.json`, objects or `display{=}user{=}password` strings). It moves each password to Keychain, copies the file to `<file>.<time>.bak` (owner-only; it still holds the passwords), and then blanks the passwords that moved, under Core's settings lock. An Engine reads the file's `manager` section afresh before it saves, so an Engine that read the passwords at its start never writes them back.
+- **Launch.** Each launch starts `Skua --name <account> --account <account> [--server <s>] [--script <path>]`, detached, with its stdio on `/dev/null` and no `SKUA_ENGINE_SOCKET`. The Engine Name is the account name, so each account has its own app process and Engine (the one-per-Engine-Name rule above). No password is on the command line.
+  - `--account` pins the Engine's account (`EngineHostOptions.AccountService`): its logins use that account instead of the Active Account, whoever asks. An agent's login keeps ADR 0005's rule with the pinned account in the Active Account's place, so it gets the Test Account unless that account allows agents. Manager launches are human logins.
+  - Once its window shows, the app logs the account in through the login bar's own path, then starts the Script if one was given.
+  - Launching an account whose app runs brings it to the front instead.
+- **Running** lists every Engine whose socket in the data folder answers `hello` and `status`, apps and headless ones alike.
+  - **Bring to front** sends the app `SIGUSR1`, which shows its main window as the Dock icon does, and activates it with `NSRunningApplication`, which macOS allows from the active app.
+  - **Stop** asks first while a Script runs. An app gets `SIGTERM`, which quits it without asking; a headless Engine gets `shutdown`. Both are checked against the pid `hello` gives just before.
+- **Updates** replaces Client Updates, which downloads Windows release zips. It shows the build `install-macos.sh` installed (the `skua` link's `versions/<build>`), the checkout's build (`<Version>+<commit>`, from the checkout the app was built in), and whether they match. To update, it gives the `./install-macos.sh` command. It downloads nothing.
+- **Goals** is Core's `GoalsViewModel`, ported as is. Windows' Launcher (`Skua.exe` processes), Options (download folder, theme sync) and Client Updates have no macOS counterpart.
+
 ## Project layout
 
 | Project | What it is |
@@ -75,6 +94,7 @@ The Game Host writes each rendered frame into a shared-memory Frame Buffer that 
 | `Skua.MacOS` | Gains the Frame Buffer reader and the input sender next to `GameHostProcess`. |
 | `Skua.GameHost` | Gains `--frame-buffer`, `W` and `U`. |
 | `Skua.FakeGameHost` | Speaks `W` and `U`, writes a synthetic frame, and records input in its call log, so tests can check both. |
+| `Skua.FakeApp` (new, test double) | The Mac App without a window, for the Skua Manager's tests: the same command line and App-hosted Engine, with the account pin. |
 | `Skua.Avalonia.Tests` (new) | Avalonia.Headless tests: every view model has a view, and each view binds without binding errors. |
 
 - **`Skua.Avalonia`:**
@@ -98,6 +118,9 @@ This carries on ADR 0001 and #18's user stories 57 and 58.
 
 ## Considered Options
 
+- **The Skua Manager as a window in each app.** Rejected (see [The Skua Manager](#the-skua-manager)): it would close with whichever app showed it, and Core's Manager and panel view models share process-wide messengers.
+- **A separate `Skua Manager.app` bundle.** Deferred: `install-macos.sh` doesn't install app bundles yet, and `Skua --manager` is that app's process whenever bundles come.
+
 - **The app as a client of `skua-engine`, over the Control Surface.** Its advantage is that the game outlives the window. Rejected because:
   - Core's view models need Core in-process, and over the socket every panel would need its own typed operations. ADR 0002 rejected exactly that endless contract, and the Core models never cross the wire.
   - Frames would still need a cross-process path from the Game Host to a third process.
@@ -117,3 +140,6 @@ This carries on ADR 0001 and #18's user stories 57 and 58.
 - A live Game View changes the Game Host's render cadence from about 1 s to 33 ms, which the headless memory defaults were not tuned for. The walking skeleton measures memory on the login screen, and a live run checks #34's gate with the view open. #67 (headless idle growth) stays separate.
 - Hotkeys and typing in the game compete for the same keys. `IHotKeyService` on macOS has to decide who wins when the Game View has focus; the hotkeys ticket settles it.
 - Several Engines in one app would break ADR 0001's one-Game-Client-per-process rule. They would mean one app process per Engine Name.
+- The Skua Manager is a third kind of process from the app's binary. It launches apps with the binary it runs from, so the Manager and its apps are always one build.
+- A Manager-launched app's Engine uses its own account even for `skua login` against its socket. The Active Account still governs every other Engine.
+- Removing an account in the Manager deletes the Keychain item that `skua account` shares with it.

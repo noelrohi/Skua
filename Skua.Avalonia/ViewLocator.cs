@@ -1,7 +1,10 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
+using Skua.Avalonia.Manager;
 using Skua.Avalonia.Views;
+using Skua.Avalonia.Views.Manager;
 using Skua.Core.ViewModels;
+using Skua.Core.ViewModels.Manager;
 
 namespace Skua.Avalonia;
 
@@ -17,6 +20,12 @@ public sealed class ViewLocator : IDataTemplate
         [typeof(ScriptRepoViewModel)] = () => new ScriptRepoView(),
         [typeof(LogsViewModel)] = () => new LogsView(),
         [typeof(LogTabViewModel)] = () => new LogTabView(),
+        // The Skua Manager's, which runs as its own process (ADR 0006).
+        [typeof(ManagerMainViewModel)] = () => new ManagerView(),
+        [typeof(ManagerAccountsViewModel)] = () => new AccountsView(),
+        [typeof(RunningViewModel)] = () => new RunningView(),
+        [typeof(UpdatesViewModel)] = () => new UpdatesView(),
+        [typeof(GoalsViewModel)] = () => new GoalsView(),
     };
 
     /// <summary>

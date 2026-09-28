@@ -3,10 +3,12 @@ using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Logging;
 using Microsoft.Extensions.DependencyInjection;
+using Skua.Avalonia.Manager;
 using Skua.Avalonia.Services;
 using Skua.Avalonia.Views;
 using Skua.Core.Interfaces;
 using Skua.Core.ViewModels;
+using Skua.Core.ViewModels.Manager;
 
 namespace Skua.Avalonia.Tests;
 
@@ -20,7 +22,10 @@ public sealed class PanelTests(AppEngine app)
         foreach (Type type in ViewLocator.ViewModelTypes)
             Assert.True(ViewLocator.HasView(Resolve(type)), $"{type.Name} has no view");
         Assert.Equal(
-            [nameof(LogTabViewModel), nameof(LogsViewModel), nameof(ScriptLoaderViewModel), nameof(ScriptRepoViewModel)],
+            [
+                nameof(GoalsViewModel), nameof(LogTabViewModel), nameof(LogsViewModel), nameof(ManagerAccountsViewModel), nameof(ManagerMainViewModel),
+                nameof(RunningViewModel), nameof(ScriptLoaderViewModel), nameof(ScriptRepoViewModel), nameof(UpdatesViewModel),
+            ],
             ViewLocator.ViewModelTypes.Select(t => t.Name).Order(StringComparer.Ordinal));
     }
 
@@ -120,9 +125,13 @@ public sealed class PanelTests(AppEngine app)
         await Ui.PumpUntilAsync(() => lines.ItemsSource is null, "the closed window's list to let go of the log");
     }
 
-    private object Resolve(Type type) => type == typeof(LogTabViewModel)
-        ? app.Get<IEnumerable<LogTabViewModel>>().First()
-        : app.Engine.Services.GetRequiredService(type);
+    private object Resolve(Type type) =>
+        type == typeof(LogTabViewModel) ? app.Get<IEnumerable<LogTabViewModel>>().First()
+        // The Skua Manager's come from its own container, in its own process.
+        : app.Engine.Services.GetService(type) ?? _manager.Value.GetRequiredService(type);
+
+    private readonly Lazy<ServiceProvider> _manager = new(() =>
+        new ServiceCollection().AddManagerServices(Directory.CreateTempSubdirectory("skua-manager-").FullName).BuildServiceProvider());
 
     private static IEnumerable<MenuItem> Leaves(IEnumerable<MenuItem> items) =>
         items.SelectMany(i => i.Items.Count > 0 ? Leaves(i.Items.OfType<MenuItem>()) : [i]);

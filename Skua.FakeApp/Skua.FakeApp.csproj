@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    A test double for the Mac App, which the Skua Manager's tests launch in its place (AppInstances.ExecutableVariable): the same command line
+    and the same App-hosted Engine, with the account pin, but no window.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>fake-app</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Skua.Control\Skua.Control.csproj" />
+    <ProjectReference Include="..\Skua.Engine\Skua.Engine.csproj" />
+  </ItemGroup>
+
+</Project>

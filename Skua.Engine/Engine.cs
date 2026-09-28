@@ -62,7 +62,7 @@ internal sealed class Engine : IEngineRpc
         GameActionSlot gameSlot = new(gameHost.Tracker, _runs, _slot);
         _game = new GameOperations(
             services.GetRequiredService<IScriptServers>(), services.GetRequiredService<IFlashUtil>(), services.GetRequiredService<ISettingsService>(), logs,
-            gameHost.Tracker, gameSlot);
+            gameHost.Tracker, gameSlot, options.AccountService);
         _moves = new MoveOperations(
             services.GetRequiredService<IScriptMap>(), services.GetRequiredService<IScriptPlayer>(), services.GetRequiredService<IScriptWait>(), gameHost.Tracker, gameSlot);
         _queries = new GameQueries(services.GetRequiredService<IScriptInterface>(), services.GetRequiredService<IFlashUtil>(), gameHost.Tracker, gameSlot);

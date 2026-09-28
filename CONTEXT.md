@@ -36,6 +36,10 @@ _Avoid_: frontend, UI, client
 Skua's desktop app on macOS: the Game View and Skua's panels, with its own Engine inside it. It is not a Control Surface, but Control Surfaces reach its Engine.
 _Avoid_: GUI, viewer, frontend, desktop client
 
+**Skua Manager**:
+The Mac App's companion process (`Skua --manager`) that keeps a developer's accounts, their passwords in Keychain, and launches one Mac App per account, with the account's name as its Engine Name.
+_Avoid_: launcher, account manager (alone)
+
 **Engine Name**:
 The short name that identifies one Engine on a Mac, so several Engines can run side by side; the default is `default`.
 _Avoid_: instance, profile, session

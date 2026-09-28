@@ -1,3 +1,6 @@
+using System.Reflection;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Skua.Control;
 using Skua.Core.Interfaces;
 using Skua.Core.Models;
@@ -9,7 +12,8 @@ namespace Skua.Engine;
 /// Core's settings, in <c>&lt;SkuaDIR&gt;/Skua.settings.json</c> as for the Windows client. The Engine reads the file once, when it starts,
 /// except for <see cref="AccountSetting.Key"/> and <see cref="ScriptSourceSetting.Key"/>, which <c>skua account</c> and <c>skua scripts source</c>
 /// change while the Engine runs: they are read afresh whenever they are read, and before any change is saved, so a save never puts back an old
-/// value.
+/// value. The Windows Manager's section (<c>manager</c>) is read afresh before any change is saved too: an import moves its passwords to Keychain
+/// and removes them from the file, and a save from an Engine that read them at its start mustn't put them back.
 /// </summary>
 internal sealed class EngineSettingsService : ISettingsService
 {
@@ -38,6 +42,7 @@ internal sealed class EngineSettingsService : ISettingsService
     {
         ReloadAccountService();
         ReloadScriptSource();
+        ReloadManager();
         _settings.Set(key, value);
     }
 
@@ -46,6 +51,27 @@ internal sealed class EngineSettingsService : ISettingsService
     /// <summary>Null while the setting is unset, so a save leaves it out and the Engine's default applies.</summary>
     private void ReloadScriptSource() =>
         _settings.GetShared().ScriptSource = ScriptSourceSetting.Read(ClientFileSources.SkuaDIR)?.ToCore();
+
+    /// <summary>Copies the file's <c>manager</c> section over the one read at start; a missing or unreadable one leaves it as it is.</summary>
+    private void ReloadManager()
+    {
+        ManagerSettings? fresh;
+        try
+        {
+            if (JsonNode.Parse(File.ReadAllText(ClientFileSources.SkuaSettingsDIR), new JsonNodeOptions { PropertyNameCaseInsensitive = true })?["manager"] is not JsonObject manager)
+                return;
+            fresh = manager.Deserialize<ManagerSettings>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
+        {
+            return;
+        }
+        if (fresh is null)
+            return;
+        ManagerSettings current = _settings.GetManager();
+        foreach (PropertyInfo property in typeof(ManagerSettings).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanWrite))
+            property.SetValue(current, property.GetValue(fresh));
+    }
 
     public void Initialize(AppRole role) => _settings.Initialize(role);
 
@@ -63,6 +89,7 @@ internal sealed class EngineSettingsService : ISettingsService
     {
         ReloadAccountService();
         ReloadScriptSource();
+        ReloadManager();
         _settings.SetApplicationVersion();
     }
 }

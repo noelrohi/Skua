@@ -22,6 +22,13 @@ public sealed class EngineHostOptions
     /// <summary>Runs once the Engine holds its lock, before it writes anything; <c>skua-engine --detach</c> redirects its stdio here.</summary>
     public Action<EngineEndpoint>? LockAcquired { get; init; }
 
+    /// <summary>
+    /// The Keychain service of the account this Engine logs in with, in place of the Active Account that <c>skua account</c> chooses; null for
+    /// the Active Account. The Skua Manager launches each app with its own account (ADR 0006). Agents' logins keep ADR 0005's rule, with this
+    /// account in the Active Account's place.
+    /// </summary>
+    public string? AccountService { get; init; }
+
     /// <summary>Adds the host's own services after the Engine's, so they win, before <c>Ioc.Default</c> is configured.</summary>
     public Action<IServiceCollection>? ConfigureServices { get; init; }
 

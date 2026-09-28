@@ -37,9 +37,18 @@ internal static class SettingsFile
     /// <see cref="ErrorCode.InvalidArgument"/> when the settings file isn't a JSON object, and <see cref="ErrorCode.Busy"/> when another process
     /// holds the file's lock for 10 s.
     /// </exception>
-    public static void Update(string skuaDir, Action<JsonObject> change)
+    public static void Update(string skuaDir, Action<JsonObject> change) => UpdateFile(Path(skuaDir), change);
+
+    /// <summary>
+    /// Changes the JSON object in the settings file at <paramref name="path"/> (an empty one when there is no file) and saves it, under Core's
+    /// lock, so a file an app is using and a copied one are changed alike.
+    /// </summary>
+    /// <exception cref="ControlException">
+    /// <see cref="ErrorCode.InvalidArgument"/> when the file isn't a JSON object, and <see cref="ErrorCode.Busy"/> when another process holds
+    /// the lock for 10 s.
+    /// </exception>
+    public static void UpdateFile(string path, Action<JsonObject> change)
     {
-        string path = Path(skuaDir);
         using Mutex mutex = new(false, FileMutex);
         bool held;
         try
@@ -71,7 +80,7 @@ internal static class SettingsFile
 
             change(root);
 
-            Directory.CreateDirectory(skuaDir);
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
             string temporary = $"{path}.{Environment.ProcessId}.tmp";
             File.WriteAllText(temporary, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
             File.Move(temporary, path, overwrite: true);

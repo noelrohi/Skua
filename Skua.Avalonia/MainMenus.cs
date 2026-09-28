@@ -7,20 +7,37 @@ namespace Skua.Avalonia;
 /// <summary>
 /// The main menu, built from Core's <see cref="MainMenuViewModel"/> as the WPF main menu is: in the window, and in the macOS menu bar.
 /// An item opens its managed window, and is disabled while that window has no view (<see cref="AvaloniaWindowService.CanShow"/>);
-/// items with their own command, such as Bank and the plugins, stay disabled until their tickets.
+/// items with their own command, such as Bank and the plugins, stay disabled until their tickets. Given a way to open the Skua Manager, each
+/// ends with a Manager menu holding it.
 /// </summary>
 public static class MainMenus
 {
-    public static Menu InWindow(MainMenuViewModel viewModel, AvaloniaWindowService windows)
+    public const string ManagerHeader = "Skua Manager…";
+
+    public static Menu InWindow(MainMenuViewModel viewModel, AvaloniaWindowService windows, Action? openManager = null)
     {
         Menu menu = new();
         foreach (MainMenuItemViewModel item in Items(viewModel))
             menu.Items.Add(MenuItem(item, windows));
+        if (openManager is not null)
+        {
+            MenuItem manager = new() { Header = ManagerHeader };
+            manager.Click += (_, _) => openManager();
+            menu.Items.Add(new MenuItem { Header = "Manager", Items = { manager } });
+        }
         return menu;
     }
 
+    /// <summary>The item that opens the Skua Manager, for the menu bar and the Dock menu.</summary>
+    public static NativeMenuItem ManagerItem(Action openManager)
+    {
+        NativeMenuItem item = new(ManagerHeader);
+        item.Click += (_, _) => openManager();
+        return item;
+    }
+
     /// <summary>A menu bar menu per group; an item without a group gets a menu of its own, as a menu bar item can't act by itself.</summary>
-    public static NativeMenu Native(MainMenuViewModel viewModel, AvaloniaWindowService windows)
+    public static NativeMenu Native(MainMenuViewModel viewModel, AvaloniaWindowService windows, Action? openManager = null)
     {
         NativeMenu bar = new();
         foreach (MainMenuItemViewModel item in Items(viewModel))
@@ -37,6 +54,8 @@ public static class MainMenus
             }
             bar.Items.Add(new NativeMenuItem(item.Header) { Menu = menu });
         }
+        if (openManager is not null)
+            bar.Items.Add(new NativeMenuItem("Manager") { Menu = new NativeMenu { Items = { ManagerItem(openManager) } } });
         return bar;
     }
 

@@ -1,0 +1,158 @@
+<!-- Ported from Skua.WPF/Views/AccountManager.xaml: the list, its tags and its groups, with launching and importing the macOS way. -->
+<UserControl
+    x:Class="Skua.Avalonia.Views.Manager.AccountsView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:m="using:Skua.Avalonia.Manager"
+    xmlns:vms="using:Skua.Core.ViewModels"
+    xmlns:mvms="using:Skua.Core.ViewModels.Manager"
+    xmlns:servers="using:Skua.Core.Models.Servers"
+    x:DataType="m:ManagerAccountsViewModel">
+    <DockPanel Margin="8">
+        <!-- Add or edit: the same username again updates its password and display name. -->
+        <Expander x:Name="AddForm" DockPanel.Dock="Top" Header="Add or edit an account" HorizontalAlignment="Stretch" Margin="0,0,0,6">
+            <Grid ColumnDefinitions="*,*,*,Auto" ColumnSpacing="6">
+                <TextBox x:Name="Username" Grid.Column="0" PlaceholderText="Username" Text="{Binding Accounts.UsernameInput}" />
+                <TextBox x:Name="DisplayName" Grid.Column="1" PlaceholderText="Display name (optional)" Text="{Binding Accounts.DisplayNameInput}" />
+                <TextBox x:Name="Password" Grid.Column="2" PlaceholderText="Password (goes to Keychain)" PasswordChar="•" TextChanged="OnPasswordChanged" />
+                <Button x:Name="Save" Grid.Column="3" Content="Save" Command="{Binding Accounts.AddAccountCommand}" IsDefault="True" />
+            </Grid>
+        </Expander>
+
+        <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6" ItemSpacing="6" LineSpacing="6">
+            <Button x:Name="LaunchSelected" Content="Launch selected" Command="{Binding LaunchSelectedCommand}" />
+            <Button x:Name="LaunchAll" Content="Launch all shown" Command="{Binding LaunchAllCommand}" />
+            <CheckBox x:Name="UseServer" Content="On server" IsChecked="{Binding UseSelectedServer}" />
+            <ComboBox
+                x:Name="Servers"
+                MinWidth="140"
+                IsEnabled="{Binding UseSelectedServer}"
+                ItemsSource="{Binding Accounts.ServerList}"
+                SelectedItem="{Binding Accounts.SelectedServer}">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="servers:Server">
+                        <TextBlock Text="{Binding Name}" />
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+            <CheckBox x:Name="WithScript" Content="With Script" IsChecked="{Binding Accounts.StartWithScript}" />
+            <Button Content="Script…" Command="{Binding Accounts.ChangeScriptPathCommand}" />
+            <TextBlock VerticalAlignment="Center" MaxWidth="260" TextTrimming="CharacterEllipsis" Text="{Binding Accounts.ScriptPath}" />
+            <Button x:Name="Import" Content="Import Windows list…" Command="{Binding ImportCommand}" />
+        </WrapPanel>
+
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+            <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,6,0" Text="Tags:" />
+            <Button DockPanel.Dock="Right" Content="Clear" Command="{Binding Accounts.ClearTagFiltersCommand}" />
+            <TextBox DockPanel.Dock="Right" Width="120" Margin="6,0" PlaceholderText="Find a tag" Text="{Binding Accounts.TagSearchText}" />
+            <ItemsControl x:Name="TagFilters" ItemsSource="{Binding Accounts.FilteredTags}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel ItemSpacing="4" LineSpacing="4" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="mvms:TagFilterItem">
+                        <ToggleButton IsChecked="{Binding IsSelected}">
+                            <TextBlock>
+                                <Run Text="{Binding Name}" />
+                                <Run Text=" " />
+                                <Run Foreground="Gray" Text="{Binding Count}" />
+                            </TextBlock>
+                        </ToggleButton>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </DockPanel>
+
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+            <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Text="{Binding Accounts.SelectedAccountQuant, StringFormat='{}{0} selected'}" />
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
+                <Button Content="Select none" Command="{Binding Accounts.DeselectAllCommand}" />
+                <Button Content="Up" Command="{Binding Accounts.MoveSelectedUpCommand}" />
+                <Button Content="Down" Command="{Binding Accounts.MoveSelectedDownCommand}" />
+                <Button Content="Tag selected…" Click="OnTagSelected" />
+                <Button Content="Group selected…" Click="OnGroupSelected" />
+                <Button x:Name="RemoveSelected" Content="Remove selected" Command="{Binding Accounts.RemoveAccountsCommand}" />
+            </StackPanel>
+            <TextBlock x:Name="Status" Margin="12,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Text="{Binding Status}" />
+        </DockPanel>
+
+        <DockPanel DockPanel.Dock="Right" Width="260" Margin="8,0,0,0">
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                <Button DockPanel.Dock="Right" Content="New group…" Click="OnNewGroup" />
+                <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="Groups" />
+            </DockPanel>
+            <ScrollViewer>
+                <ItemsControl x:Name="Groups" ItemsSource="{Binding Accounts.Groups}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="mvms:GroupItemViewModel">
+                            <Expander Margin="0,0,0,4" HorizontalAlignment="Stretch" IsExpanded="{Binding IsExpanded}">
+                                <Expander.Header>
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Right" Content="Launch" Command="{Binding StartCommand}" />
+                                        <TextBlock VerticalAlignment="Center" Text="{Binding Name}" />
+                                    </DockPanel>
+                                </Expander.Header>
+                                <StackPanel Spacing="4">
+                                    <ItemsControl ItemsSource="{Binding Accounts}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vms:AccountItemViewModel">
+                                                <DockPanel>
+                                                    <Button DockPanel.Dock="Right" Content="✕" Padding="6,0" Click="OnRemoveFromGroup" ToolTip.Tip="Remove from the group" />
+                                                    <TextBlock VerticalAlignment="Center" Text="{Binding DisplayName}" />
+                                                </DockPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <Button Content="With Script" Command="{Binding StartWithScriptCommand}" />
+                                        <Button Content="Rename…" Command="{Binding RenameCommand}" />
+                                        <Button Content="Remove" Command="{Binding RemoveCommand}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Expander>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </DockPanel>
+
+        <ListBox x:Name="AccountList" ItemsSource="{Binding Accounts.FilteredAccounts}">
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vms:AccountItemViewModel">
+                    <DockPanel>
+                        <CheckBox DockPanel.Dock="Left" IsChecked="{Binding UseCheck}" />
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4">
+                            <Button Content="Launch" Command="{Binding StartCommand}" />
+                            <Button Content="With Script" Command="{Binding StartWithScriptCommand}" />
+                            <Button Content="Tags…" Command="{Binding AddTagsCommand}" />
+                            <Button Content="Group…" Command="{Binding AddToGroupCommand}" />
+                            <Button Content="Remove" Command="{Binding RemoveCommand}" />
+                        </StackPanel>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock>
+                                <Run FontWeight="SemiBold" Text="{Binding DisplayName}" />
+                                <Run Foreground="Gray" Text="{Binding Username}" />
+                            </TextBlock>
+                            <ItemsControl ItemsSource="{Binding Tags}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel ItemSpacing="4" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="x:String">
+                                        <Border Padding="4,0" CornerRadius="3" Background="#33607D8B">
+                                            <TextBlock FontSize="11" Text="{Binding}" />
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </DockPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </DockPanel>
+</UserControl>
