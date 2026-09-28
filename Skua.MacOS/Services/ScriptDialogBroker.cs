@@ -98,9 +98,14 @@ public sealed class ScriptDialogBroker
     }
 
     /// <summary>Shows a Notice; it never waits.</summary>
-    public void Notice(string caption, string text)
+    public void Notice(string caption, string text) => Notice(caption, text, Policy());
+
+    /// <summary>
+    /// Shows a Notice that belongs to what <paramref name="policy"/> says rather than to what <see cref="Policy"/> does: for the Mac App's own
+    /// Notices, which come from no Script whatever runs.
+    /// </summary>
+    public void Notice(string caption, string text, QuestionPolicy policy)
     {
-        QuestionPolicy policy = Policy();
         Notice notice = new(caption, text, ThreadName(), policy.Script);
         lock (_lock)
             NoticeShown?.Invoke(notice);

@@ -202,9 +202,25 @@ internal sealed class App : Application
             flash.SetLive(false);
             Shutdown();
         });
-        // Launched by the Skua Manager for an account: log it in, and start its Script, once the window is up.
-        if (_arguments.Account is not null)
-            window.Opened += (_, _) => _ = status.LaunchAsync(_arguments.Server, _arguments.Script);
+        // Once the window is first up: launched by the Skua Manager for an account, log it in and start its Script; then the start-up checks,
+        // as on Windows, after that Script has started, so the Scripts check leaves its files alone.
+        StartUpChecks checks = engine.Services.GetRequiredService<StartUpChecks>();
+        ILogService log = engine.Services.GetRequiredService<ILogService>();
+        async void OnFirstOpened(object? sender, EventArgs e)
+        {
+            window.Opened -= OnFirstOpened;
+            if (_arguments.Account is not null)
+                await status.LaunchAsync(_arguments.Server, _arguments.Script);
+            try
+            {
+                await checks.RunAsync();
+            }
+            catch (Exception failure)
+            {
+                log.DebugLog($"Start-up check failed: {failure}");
+            }
+        }
+        window.Opened += OnFirstOpened;
         // Only quitting stops the Engine, but should it stop by itself the window can't go on without it.
         engine.Completion.ContinueWith(_ => RequestQuit(), TaskScheduler.Default);
         return window;

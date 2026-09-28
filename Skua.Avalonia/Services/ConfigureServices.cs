@@ -47,6 +47,7 @@ public static class ConfigureServices
         services.AddSingleton<AboutViewModel>();
         services.AddSingleton<ChangeLogsViewModel>();
         services.AddSingleton<GitHubAuthViewModel>();
+        services.AddSingleton<StartUpChecks>();
         // The Scripts panel starts and stops Scripts as script_start and script_stop do, so the Engine's runs say who stopped one.
         services.AddSingleton(s => ActivatorUtilities.CreateInstance<ScriptLoaderViewModel>(s, s.GetRequiredService<EngineScripts>().ScriptManager));
         // The Packet Interceptor lists packets through the synchronization context it is made on; made on this one, it lists them on the UI
