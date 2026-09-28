@@ -6,6 +6,7 @@ using Avalonia.Interactivity;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Skua.Control;
+using Skua.Core.Interfaces;
 using Skua.Core.ViewModels;
 using Skua.Engine;
 
@@ -17,7 +18,8 @@ namespace Skua.Avalonia.Views;
 /// <remarks>
 /// The list shows a copy of the view model's Scripts made on the UI thread. Core refills them from other threads, and Avalonia replays
 /// such changes on the UI thread later, by when the Scripts may have changed again (WPF synchronizes the collection instead).
-/// Update runs <c>skua scripts update</c>'s operation on the Engine, which refuses while a Script runs.
+/// Update runs <c>skua scripts update</c>'s operation on the Engine, which refuses while a Script runs; Reset asks first, then runs the
+/// Engine's reset under the same rules.
 /// </remarks>
 public partial class ScriptRepoView : UserControl
 {
@@ -125,13 +127,42 @@ public partial class ScriptRepoView : UserControl
         return null;
     }
 
-    private async void OnUpdateClick(object? sender, RoutedEventArgs e)
+    /// <summary>The question on screen while a reset waits for an answer, or null.</summary>
+    public ConfirmDialog? PendingReset { get; private set; }
+
+    private async void OnUpdateClick(object? sender, RoutedEventArgs e) =>
+        await SyncAsync("Updating the Scripts…", scripts => scripts.UpdateAsync());
+
+    private async void OnResetClick(object? sender, RoutedEventArgs e)
     {
-        UpdateScripts.IsEnabled = false;
-        UpdateResult.Text = "Updating the Scripts…";
+        if (PendingReset is not null || TopLevel.GetTopLevel(this) is not Window owner)
+            return;
+        string source = Ioc.Default.GetRequiredService<IGetScriptsService>().Source.ToString();
+        PendingReset = new ConfirmDialog("Reset the Scripts?",
+            $"Reset deletes everything in the Scripts folder, including Scripts you added or edited, then downloads every Script from {source} again. Your junk items list is kept.",
+            "Reset");
+        bool reset;
         try
         {
-            ScriptsUpdateResult result = await Ioc.Default.GetRequiredService<EngineScripts>().UpdateAsync();
+            reset = await PendingReset.ShowDialog<bool>(owner);
+        }
+        finally
+        {
+            PendingReset = null;
+        }
+        if (reset)
+            await SyncAsync("Resetting the Scripts…", scripts => scripts.ResetAsync());
+    }
+
+    /// <summary>Runs an update or a reset on the Engine, with Update and Reset off meanwhile, and says how it went.</summary>
+    private async Task SyncAsync(string running, Func<EngineScripts, Task<ScriptsUpdateResult>> sync)
+    {
+        UpdateScripts.IsEnabled = false;
+        ResetScripts.IsEnabled = false;
+        UpdateResult.Text = running;
+        try
+        {
+            ScriptsUpdateResult result = await sync(Ioc.Default.GetRequiredService<EngineScripts>());
             UpdateResult.Text = Describe(result);
         }
         catch (Exception ex)
@@ -141,6 +172,7 @@ public partial class ScriptRepoView : UserControl
         finally
         {
             UpdateScripts.IsEnabled = true;
+            ResetScripts.IsEnabled = true;
         }
         UpdateResult.SetValue(ToolTip.TipProperty, UpdateResult.Text);
         _viewModel?.RefreshScriptsCommand.Execute(null);
@@ -161,6 +193,16 @@ public partial class ScriptRepoView : UserControl
     private void OnDownloadClick(object? sender, RoutedEventArgs e) => OnSelected(sender, viewModel => viewModel.DownloadCommand.Execute(null));
 
     private void OnDeleteClick(object? sender, RoutedEventArgs e) => OnSelected(sender, viewModel => viewModel.DeleteCommand.Execute(null));
+
+    /// <summary>
+    /// Opens the Script in VS Code through the app's process service, as the Windows view's Open in VSCode does; straight to the service,
+    /// rather than through the Scripts panel's message, so it never depends on that panel's view model being made.
+    /// </summary>
+    private void OnOpenInVSCodeClick(object? sender, RoutedEventArgs e) => OnSelected(sender, viewModel =>
+    {
+        if (viewModel.SelectedItem is { Downloaded: true } script)
+            Ioc.Default.GetRequiredService<IProcessService>().OpenVSC(script.LocalFile);
+    });
 
     /// <summary>Runs a command of the view model on the Script whose context menu was used, as the Windows view selects it first.</summary>
     private void OnSelected(object? sender, Action<ScriptRepoViewModel> command)

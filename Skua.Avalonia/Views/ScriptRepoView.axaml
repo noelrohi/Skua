@@ -1,4 +1,4 @@
-<!-- Ported from Skua.WPF/Views/ScriptRepoView.xaml; the search is ScriptRepoSearch, and Update is skua scripts update's operation. -->
+<!-- Ported from Skua.WPF/Views/ScriptRepoView.xaml; the search is ScriptRepoSearch, Update is skua scripts update's operation, and Reset is the Windows Manager's Reset Scripts on the Engine. -->
 <UserControl
     x:Class="Skua.Avalonia.Views.ScriptRepoView"
     xmlns="https://github.com/avaloniaui"
@@ -17,6 +17,13 @@
                         Content="Update"
                         DockPanel.Dock="Left"
                         ToolTip.Tip="Download the Scripts that are new or changed in the Script Source, as skua scripts update does." />
+                    <Button
+                        x:Name="ResetScripts"
+                        Margin="0,0,6,0"
+                        Click="OnResetClick"
+                        Content="Reset…"
+                        DockPanel.Dock="Left"
+                        ToolTip.Tip="Delete the local Scripts, including your own edits, and download every Script from the Script Source again." />
                     <Button
                         x:Name="RefreshScripts"
                         Margin="6,0,0,0"
@@ -61,6 +68,7 @@
                                     <ContextMenu>
                                         <MenuItem Click="OnDownloadClick" Header="Download" IsEnabled="{Binding !Downloaded}" />
                                         <MenuItem Click="OnDeleteClick" Header="Delete" IsEnabled="{Binding Downloaded}" />
+                                        <MenuItem Click="OnOpenInVSCodeClick" Header="Open in VSCode" IsEnabled="{Binding Downloaded}" />
                                         <MenuItem Command="{Binding LoadScriptCommand}" CommandParameter="{Binding}" Header="Load" IsEnabled="{Binding Downloaded}" />
                                         <MenuItem Command="{Binding StartScriptCommand}" CommandParameter="{Binding}" Header="Start" IsEnabled="{Binding Downloaded}" />
                                     </ContextMenu>

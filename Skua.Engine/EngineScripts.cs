@@ -8,7 +8,7 @@ namespace Skua.Engine;
 
 /// <summary>
 /// The Engine's Script operations for the Mac App's own panels, so a start, a stop or an update from the window is the same operation a
-/// Control Surface makes with <c>script_start</c>, <c>script_stop</c> or <c>scripts_update</c>.
+/// Control Surface makes with <c>script_start</c>, <c>script_stop</c> or <c>scripts_update</c>; a reset follows <c>scripts_update</c>'s rules.
 /// </summary>
 public sealed class EngineScripts
 {
@@ -31,6 +31,14 @@ public sealed class EngineScripts
     /// <summary>Syncs the Scripts folder with the Script Source, as <c>skua scripts update</c> does.</summary>
     /// <exception cref="LocalRpcException">It was refused (a Script runs, another update runs) or the Script Source couldn't be read.</exception>
     public Task<ScriptsUpdateResult> UpdateAsync() => Operations.Source.UpdateAsync();
+
+    /// <summary>
+    /// Deletes the local Scripts, the junk items list aside, and downloads every Script from the Script Source again, as the Windows Manager's
+    /// Reset Scripts does. Only the Mac App resets; no Control Surface can.
+    /// </summary>
+    /// <exception cref="LocalRpcException">It was refused (a Script runs, an update runs) or the Script Source couldn't be read.</exception>
+    /// <exception cref="IOException">A local Script couldn't be deleted.</exception>
+    public Task<ScriptsUpdateResult> ResetAsync() => Operations.Source.ResetAsync();
 
     internal void Attach(
         ScriptOperations scripts, ScriptSourceOperations source, ScriptRuns runs, ActionSlot slot, ActionSlot scriptsSlot, SemaphoreSlim compiling) =>
