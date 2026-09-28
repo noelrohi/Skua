@@ -48,7 +48,8 @@ public sealed class NoticesButton : Button
             ItemsSource = model.Notices,
             MaxHeight = 360,
             Width = 420,
-            ItemTemplate = new FuncDataTemplate<ShownNotice>((notice, _) => Row(notice), supportsRecycling: false),
+            // A row being recycled, as at Clear, has its content cleared before its template, so the template is built once more with null (#137).
+            ItemTemplate = new FuncDataTemplate<ShownNotice>((notice, _) => notice is null ? null : Row(notice), supportsRecycling: false),
         };
         List.DoubleTapped += (_, _) => OpenSelected();
         OpenButton = new Button { Content = "Open" };
