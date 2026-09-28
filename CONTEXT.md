@@ -14,6 +14,10 @@ _Avoid_: SWF, flash, client (alone)
 The runtime that executes the Game Client.
 _Avoid_: Flash player, player, container
 
+**Game View**:
+The live picture of the Game Client in the Mac App; clicks and keys in it go to the game.
+_Avoid_: game window, stream, preview, viewer
+
 **Bridge**:
 The two-way channel over which the Engine and the Game Client call each other.
 _Avoid_: ExternalInterface, flash call, IPC
@@ -27,6 +31,10 @@ _Avoid_: bot, core, daemon, backend
 **Control Surface**:
 Anything that drives the Engine from outside its process, such as a CLI, an MCP server or a GUI.
 _Avoid_: frontend, UI, client
+
+**Mac App**:
+Skua's desktop app on macOS: the Game View and Skua's panels, with its own Engine inside it. It is not a Control Surface, but Control Surfaces reach its Engine.
+_Avoid_: GUI, viewer, frontend, desktop client
 
 **Engine Name**:
 The short name that identifies one Engine on a Mac, so several Engines can run side by side; the default is `default`.
