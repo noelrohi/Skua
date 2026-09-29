@@ -14,12 +14,15 @@ public static class BridgeFrames
     /// <summary>Large enough for a full-size screenshot PNG.</summary>
     public const int MaxLength = 64 * 1024 * 1024;
 
-    /// <summary>Reads the next frame, or returns null at a clean end of stream.</summary>
+    /// <summary>
+    /// Reads the next frame with blocking reads, or returns null at a clean end of stream. Blocking reads of a pipe are plain
+    /// <c>read(2)</c> calls; async ones go through System.Net.Sockets on Unix, where the runtime once failed under load.
+    /// </summary>
     /// <exception cref="InvalidDataException">The stream ends mid-frame or declares an impossible length.</exception>
-    public static async Task<BridgeFrame?> ReadAsync(Stream stream, CancellationToken cancellationToken = default)
+    public static BridgeFrame? Read(Stream stream)
     {
         byte[] header = new byte[4];
-        int read = await stream.ReadAtLeastAsync(header, header.Length, throwOnEndOfStream: false, cancellationToken);
+        int read = stream.ReadAtLeast(header, header.Length, throwOnEndOfStream: false);
         if (read == 0)
             return null;
         if (read < header.Length)
@@ -30,7 +33,7 @@ public static class BridgeFrames
             throw new InvalidDataException($"A Bridge frame declared an invalid length of {length} bytes.");
 
         byte[] body = new byte[length];
-        if (await stream.ReadAtLeastAsync(body, body.Length, throwOnEndOfStream: false, cancellationToken) < body.Length)
+        if (stream.ReadAtLeast(body, body.Length, throwOnEndOfStream: false) < body.Length)
             throw new InvalidDataException("The Bridge stream ended inside a frame.");
 
         return new BridgeFrame((char)body[0], body[1..]);

@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text;
 using Skua.MacOS.GameHost;
@@ -194,6 +195,43 @@ public class BridgeTests
         await Task.Delay(500, TestContext.Current.CancellationToken);
     }
 
+    [Fact]
+    public void Frames_are_read_with_blocking_reads_so_the_runtimes_async_pipe_read_is_never_used()
+    {
+        // The runtime once failed with this exception inside an async pipe read on the Game Host reader thread (#105, #129).
+        using AsyncFaultingStream stream = new([.. Frame('F', "[Game] line"), .. Frame('E', "done")]);
+
+        BridgeFrame? first = BridgeFrames.Read(stream);
+        BridgeFrame? second = BridgeFrames.Read(stream);
+
+        Assert.Equal(('F', "[Game] line"), (first!.Type, Encoding.UTF8.GetString(first.Payload)));
+        Assert.Equal(('E', "done"), (second!.Type, Encoding.UTF8.GetString(second.Payload)));
+        Assert.Null(BridgeFrames.Read(stream));
+    }
+
+    [Fact]
+    public async Task Stderr_lines_are_raised_as_log_lines_before_Dispose_returns()
+    {
+        await using EngineSandbox sandbox = new();
+        FakeGameHost fake = new FakeGameHost(sandbox).Stderr("WARN wgpu: first").Stderr("WARN wgpu: last").Send('E', Invoke("done"));
+        List<string> logs = [];
+        TaskCompletionSource done = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using (GameHostProcess gameHost = new(EngineSandbox.FakeGameHostExecutable, [fake.Write()]))
+        {
+            gameHost.LogLine += line =>
+            {
+                lock (logs)
+                    logs.Add(line);
+            };
+            gameHost.Invoked += _ => done.TrySetResult();
+            gameHost.Start();
+            await done.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        }
+
+        lock (logs)
+            Assert.Equal(["WARN wgpu: first", "WARN wgpu: last"], logs.Where(l => l.StartsWith("WARN wgpu", StringComparison.Ordinal)));
+    }
+
     private static GameHostProcess Start(FakeGameHost fake)
     {
         GameHostProcess gameHost = new(EngineSandbox.FakeGameHostExecutable, [fake.Write()]);
@@ -202,6 +240,27 @@ public class BridgeTests
     }
 
     private static string Invoke(string function) => $"<invoke name=\"{function}\" returntype=\"xml\"></invoke>";
+
+    private static byte[] Frame(char type, string payload)
+    {
+        byte[] body = [(byte)type, .. Encoding.UTF8.GetBytes(payload)];
+        byte[] frame = new byte[4 + body.Length];
+        BinaryPrimitives.WriteUInt32LittleEndian(frame, (uint)body.Length);
+        body.CopyTo(frame, 4);
+        return frame;
+    }
+
+    /// <summary>A stream whose blocking reads work and whose async reads fail as the runtime's pipe read did.</summary>
+    private sealed class AsyncFaultingStream(byte[] bytes) : MemoryStream(bytes)
+    {
+        private static MissingFieldException Fault() => new("Field not found: 'BufferMemoryReceiveOperation.Buffer'.");
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => throw Fault();
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => throw Fault();
+
+        public override IAsyncResult BeginRead(byte[] buffer, int offset, int count, AsyncCallback? callback, object? state) => throw Fault();
+    }
 
     /// <summary>Collects the lines written to Trace while it is listening.</summary>
     private sealed class TraceLines : TraceListener

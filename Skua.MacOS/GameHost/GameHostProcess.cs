@@ -15,8 +15,8 @@ public sealed record GameHostScreenshot(int Width, int Height, long Frame, byte[
 /// <remarks>
 /// One reader thread takes every frame: replies complete their request by id, and the Game Client's calls queue for one dispatch thread,
 /// which raises <see cref="Invoked"/> in order. A handler may call back into the Bridge, because replies never wait for the dispatch thread.
-/// A handler's exception, or an unexpected one reading the Bridge, never ends the process: the reader thread is the Engine's. The
-/// process's own exit and stderr events are guarded the same way, as they run on thread pool threads.
+/// Another thread reads stderr. Both use blocking reads. A handler's exception, or an unexpected one reading a pipe, never ends the process:
+/// these threads are the Engine's. The process's exit event is guarded the same way, as it runs on a thread pool thread.
 /// Subscribe to the events before calling <see cref="Start"/>, so no frame or exit is missed.
 /// </remarks>
 public sealed class GameHostProcess : IDisposable
@@ -32,6 +32,7 @@ public sealed class GameHostProcess : IDisposable
     private readonly BlockingCollection<string> _invocations = new();
     private readonly List<string> _callbacks = [];
     private Stream? _stdin;
+    private Thread? _stderrReader;
     private uint _nextId;
     private volatile bool _closed;
     private bool _disposed;
@@ -50,11 +51,6 @@ public sealed class GameHostProcess : IDisposable
 
         _process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
         _process.Exited += (_, _) => Raise(Exited, _process.ExitCode);
-        _process.ErrorDataReceived += (_, e) =>
-        {
-            if (e.Data is not null)
-                Raise(LogLine, e.Data);
-        };
     }
 
     public int Pid => _process.Id;
@@ -105,8 +101,12 @@ public sealed class GameHostProcess : IDisposable
         _process.Start();
         _stdin = _process.StandardInput.BaseStream;
         Started?.Invoke(_process.Id);
-        _process.BeginErrorReadLine();
-        new Thread(ReadLoop) { IsBackground = true, Name = "Game Host reader" }.Start();
+        // Blocking reads, as BridgeFrames.Read explains; taken here so an early Dispose can't race the threads for them.
+        Stream stdout = _process.StandardOutput.BaseStream;
+        StreamReader stderr = _process.StandardError;
+        new Thread(() => ReadLoop(stdout)) { IsBackground = true, Name = "Game Host reader" }.Start();
+        _stderrReader = new Thread(() => ReadStderr(stderr)) { IsBackground = true, Name = "Game Host stderr" };
+        _stderrReader.Start();
         new Thread(DispatchLoop) { IsBackground = true, Name = "Game Host dispatch" }.Start();
     }
 
@@ -226,16 +226,17 @@ public sealed class GameHostProcess : IDisposable
             if (!_process.WaitForExit(ExitGrace))
                 _process.Kill(entireProcessTree: true);
             _process.WaitForExit();
+            // Its last lines, such as a panic's, are raised before Dispose returns; a child that holds stderr open doesn't hold Dispose.
+            _stderrReader?.Join(ExitGrace);
         }
         _process.Dispose();
     }
 
-    private void ReadLoop()
+    private void ReadLoop(Stream stdout)
     {
-        Stream stdout = _process.StandardOutput.BaseStream;
         try
         {
-            while (BridgeFrames.ReadAsync(stdout).GetAwaiter().GetResult() is { } frame)
+            while (BridgeFrames.Read(stdout) is { } frame)
                 Receive(frame);
         }
         catch (InvalidDataException e)
@@ -261,6 +262,23 @@ public sealed class GameHostProcess : IDisposable
                     reply.TrySetException(new IOException("The Game Host has exited."));
             }
             _invocations.CompleteAdding();
+        }
+    }
+
+    private void ReadStderr(StreamReader stderr)
+    {
+        try
+        {
+            while (stderr.ReadLine() is { } line)
+                Raise(LogLine, line);
+        }
+        catch (Exception e) when (e is IOException or ObjectDisposedException)
+        {
+            // The Game Host is gone; the Bridge read tells.
+        }
+        catch (Exception e)
+        {
+            Raise(LogLine, $"The Game Host's stderr read failed: {e}");
         }
     }
 

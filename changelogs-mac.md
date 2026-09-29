@@ -4,6 +4,13 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 
 ---
 
+## September 29, 2026
+
+### Fixes
+* The game no longer sometimes stops answering right after Skua starts.
+
+---
+
 ## September 28, 2026: the Mac App
 
 ### Playing in the window

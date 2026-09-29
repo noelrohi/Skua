@@ -162,6 +162,13 @@ public sealed class FakeGameHost
         return this;
     }
 
+    /// <summary>Writes a line to stderr, as Ruffle's and wgpu's own logging does.</summary>
+    public FakeGameHost Stderr(string text)
+    {
+        _lines.Add($"stderr {text}");
+        return this;
+    }
+
     /// <summary>Runs one directive <paramref name="count"/> times, with <c>{i}</c> in it replaced by 0, 1, 2…</summary>
     public FakeGameHost Repeat(int count, string directive)
     {
