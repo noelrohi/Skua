@@ -5,6 +5,7 @@
 //   calllog <path>        append the name of every C call to <path>, one per line (killLag with its argument)
 //   send <type> <text>    send one frame of <type> (one character) with <text> as its UTF-8 payload
 //   log <level> <text>    send an L frame: the level byte (1 error, 2 warn), then <text>
+//   stderr <text>         write <text> as a line to stderr
 //   repeat <n> <directive>  run <directive> n times, with {i} in it replaced by 0 to n-1
 //   corrupt               send a frame header declaring a length of 0
 //   reply <name> <xml>    answer every C call to <name> with <xml> (unscripted calls get <undefined/>)
@@ -269,6 +270,9 @@ void Run(string line)
             break;
         case ["log", string level, string text]:
             Send('L', [byte.Parse(level), .. Encoding.UTF8.GetBytes(text)]);
+            break;
+        case ["stderr", ..]:
+            Console.Error.WriteLine(line["stderr ".Length..]);
             break;
         case ["repeat", string count, string directive]:
             for (int i = 0; i < int.Parse(count); i++)
