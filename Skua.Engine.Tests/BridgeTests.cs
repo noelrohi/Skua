@@ -232,6 +232,26 @@ public class BridgeTests
             Assert.Equal(["WARN wgpu: first", "WARN wgpu: last"], logs.Where(l => l.StartsWith("WARN wgpu", StringComparison.Ordinal)));
     }
 
+    [Fact]
+    public async Task The_fakes_call_log_keeps_every_line_recorded_from_two_threads_at_once()
+    {
+        await using EngineSandbox sandbox = new();
+        FakeGameHost fake = new FakeGameHost(sandbox).LogCalls().Control();
+        using GameHostProcess gameHost = Start(fake);
+
+        // Its reader thread records each call while the control file's thread records notes, as connectTo's connection does mid-run.
+        Task calls = Task.Run(() =>
+        {
+            for (int i = 0; i < 500; i++)
+                gameHost.Call(Invoke($"call{i}"));
+        }, TestContext.Current.CancellationToken);
+        await fake.DoAsync("repeat 500 note note{i}");
+        await calls;
+
+        string[] logged = await fake.CallsAsync();
+        Assert.Empty(Enumerable.Range(0, 500).SelectMany(i => new[] { $"call{i}", $"note{i}" }).Except(logged));
+    }
+
     private static GameHostProcess Start(FakeGameHost fake)
     {
         GameHostProcess gameHost = new(EngineSandbox.FakeGameHostExecutable, [fake.Write()]);
