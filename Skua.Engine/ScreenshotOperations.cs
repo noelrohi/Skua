@@ -73,13 +73,11 @@ internal sealed class ScreenshotOperations
             throw GameHostDown();
 
         GameHostScreenshot? shot;
-        // Turning the option off also stops Core's timer from hiding the world again during the capture.
-        bool lagKiller = _options.LagKiller;
         try
         {
-            if (lagKiller)
-                _options.LagKiller = false;
-            shot = _flash.Screenshot(maxWidth, timeout);
+            // The hold, not the option: Core's timer may have read the option just before, and would hide the world again mid-capture.
+            using (_flash.HoldLagKillerOff(lift: _options.LagKiller))
+                shot = _flash.Screenshot(maxWidth, timeout);
         }
         catch (IOException)
         {
@@ -91,8 +89,8 @@ internal sealed class ScreenshotOperations
         }
         finally
         {
-            if (lagKiller)
-                _options.LagKiller = true;
+            if (_options.LagKiller && _flash.IsGameHostRunning)
+                _flash.Call("killLag", true);
         }
 
         if (shot is null)

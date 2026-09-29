@@ -321,6 +321,27 @@ public class LoginTests
         Assert.Equal("killLag false", calls[..shot].Last(c => c.StartsWith("killLag", StringComparison.Ordinal)));
     }
 
+    [Fact]
+    public async Task A_killLag_true_from_another_thread_during_a_screenshot_doesnt_hide_the_world_for_it()
+    {
+        await using EngineSandbox sandbox = new();
+        // Slow killLag replies hold the capture after it lifts the lag killer, as Core's timer, having read the option just before, is sending it.
+        await using GameFixture session = await GameFixture.StartAsync(sandbox, g => g.Delay("killLag", 2000));
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        await session.GameHost.WaitForCallAsync("killLag true");
+        await session.Connection.EvalAsync("1", cancellationToken: Ct);
+
+        Task<ScreenshotResult> shot = session.Connection.ScreenshotAsync(cancellationToken: Ct);
+        await session.GameHost.WaitForCallAsync("killLag false");
+        await session.Connection.EvalAsync("""Bot.Flash.Call("killLag", true)""", cancellationToken: Ct);
+        await shot;
+        string[] calls = await session.GameHost.WaitForCallAsync("killLag true", after: "screenshot 0");
+
+        Assert.Contains("screenshot 0", calls);
+        int shotAt = Array.IndexOf(calls, "screenshot 0");
+        Assert.Equal("killLag false", calls[..shotAt].Last(c => c.StartsWith("killLag", StringComparison.Ordinal)));
+    }
+
     private static async Task<string> AssertionsAsync()
     {
         using Process pmset = Process.Start(new ProcessStartInfo("pmset", "-g assertions") { RedirectStandardOutput = true })!;
