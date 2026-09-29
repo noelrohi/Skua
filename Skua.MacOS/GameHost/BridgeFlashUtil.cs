@@ -25,6 +25,9 @@ public sealed class BridgeFlashUtil : IFlashUtil
     /// <summary>The last <c>W</c> payload, which a restarted Game Host gets too.</summary>
     private volatile byte[] _view = GameInput.EncodeView(false);
     private GameCursorState _cursor = GameCursorState.Default;
+    /// <summary>Makes a <c>killLag</c> call and a <see cref="HoldLagKillerOff"/> change atomic, so no <c>killLag true</c> lands inside a hold.</summary>
+    private readonly object _lagKillerLock = new();
+    private int _lagKillerHolds;
 
     public BridgeFlashUtil(IMessenger messenger, Lazy<IScriptManager> manager, GameHostLaunch launch)
     {
@@ -219,6 +222,45 @@ public sealed class BridgeFlashUtil : IFlashUtil
     {
         if (_lazyManager.Value.ShouldExit && Thread.CurrentThread.Name == "Script Thread")
             _lazyManager.Value.ScriptCts?.Token.ThrowIfCancellationRequested();
+        object? result = null;
+        Exception? error = null;
+        if (function != "killLag")
+            result = TryInvoke(function, type, args, out error);
+        else
+        {
+            lock (_lagKillerLock)
+            {
+                if (_lagKillerHolds == 0 || args is not [true])
+                    result = TryInvoke(function, type, args, out error);
+            }
+        }
+        Report(error, function, args);
+        return result;
+    }
+
+    /// <summary>
+    /// Keeps the game's lag killer, which hides the world, off until the hold is disposed; a <c>killLag true</c> meanwhile is dropped,
+    /// whichever thread sends it. Disposing doesn't turn it back on.
+    /// </summary>
+    /// <param name="lift">Turns it off first, for a lag killer that's on.</param>
+    public IDisposable HoldLagKillerOff(bool lift)
+    {
+        object[] args = [false];
+        Exception? error = null;
+        lock (_lagKillerLock)
+        {
+            _lagKillerHolds++;
+            if (lift)
+                TryInvoke("killLag", typeof(string), args, out error);
+        }
+        Report(error, "killLag", args);
+        return new LagKillerHold(this);
+    }
+
+    /// <summary>Makes the call without reporting its failure, so a caller can report it outside a lock.</summary>
+    private object? TryInvoke(string function, Type type, object[] args, out Exception? error)
+    {
+        error = null;
         try
         {
             GameHostProcess gameHost = _gameHost ?? throw new IOException("The Game Host hasn't started.");
@@ -226,8 +268,26 @@ public sealed class BridgeFlashUtil : IFlashUtil
         }
         catch (Exception e)
         {
-            _messenger.Send<FlashErrorMessage>(new(e, function, args));
+            error = e;
             return default;
+        }
+    }
+
+    private void Report(Exception? error, string function, object[] args)
+    {
+        if (error is not null)
+            _messenger.Send<FlashErrorMessage>(new(error, function, args));
+    }
+
+    private sealed class LagKillerHold(BridgeFlashUtil flash) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+                lock (flash._lagKillerLock)
+                    flash._lagKillerHolds--;
         }
     }
 

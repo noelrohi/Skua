@@ -14,6 +14,7 @@
 //   noimage               answer S requests with no image (w = h = 0), as when the Game Host can't capture
 //   stats <json>          answer Q requests with <json> ({} unless set); {n} in it is replaced by the number of Q requests so far
 //   sleep <ms>            pause
+//   note <text>           append <text> to the call log, from the thread running the directive
 //   exit <code>           exit at once
 //   control <path>        also run each line appended to <path> while the fake runs, so a test can act mid-run; each one run
 //                         appends a line to <path>.done
@@ -57,6 +58,7 @@ object writeLock = new();
 Dictionary<string, string> replies = new();
 Dictionary<string, int> delays = new();
 string? callLog = null;
+object callLogLock = new();
 bool noImage = false;
 string stats = "{}";
 int statsRequests = 0;
@@ -84,6 +86,16 @@ void Send(char type, ReadOnlySpan<byte> payload)
         stdout.Write(frame);
         stdout.Flush();
     }
+}
+
+// The stdin loop and the simulated game's own threads (connectTo's connection) both record here. .NET appends at the end it last saw, not
+// with O_APPEND, so two appends at once can write at the same offset and one line overwrites the other.
+void Record(IEnumerable<string> lines)
+{
+    if (callLog is null)
+        return;
+    lock (callLogLock)
+        File.AppendAllLines(callLog, lines);
 }
 
 void SendReply(char type, uint id, string text)
@@ -119,11 +131,7 @@ foreach (string line in scenario)
             controlFile = file;
             break;
         case ["game", string username, string password]:
-            game = new FakeGame(username, password, invoke => Send('E', Encoding.UTF8.GetBytes(invoke)), note =>
-            {
-                if (callLog is not null)
-                    File.AppendAllLines(callLog, [note]);
-            });
+            game = new FakeGame(username, password, invoke => Send('E', Encoding.UTF8.GetBytes(invoke)), note => Record([note]));
             break;
         case ["servers", ..]:
             game?.Servers(line["servers ".Length..]);
@@ -157,8 +165,7 @@ Thread reader = new(() =>
             case 'C':
                 string invoke = Encoding.UTF8.GetString(body, 5, body.Length - 5);
                 string name = Regex.Match(invoke, "name=\"([^\"]*)\"").Groups[1].Value;
-                if (callLog is not null)
-                    File.AppendAllLines(callLog, [name == "killLag" ? $"killLag {Regex.Match(invoke, "<(true|false)/>").Groups[1].Value}" : name]);
+                Record([name == "killLag" ? $"killLag {Regex.Match(invoke, "<(true|false)/>").Groups[1].Value}" : name]);
                 string reply = game?.Answer(invoke) ?? replies.GetValueOrDefault(name, "<undefined/>");
                 if (delays.TryGetValue(name, out int delay))
                     Task.Delay(delay).ContinueWith(_ => SendReply('R', id, reply));
@@ -189,14 +196,12 @@ Thread reader = new(() =>
                         Math.Clamp((int)BinaryPrimitives.ReadUInt32LittleEndian(body.AsSpan(10)), 550, slotHeight));
                     lines.Add($"view viewport {viewport.Width}x{viewport.Height} {BinaryPrimitives.ReadSingleLittleEndian(body.AsSpan(14)).ToString(System.Globalization.CultureInfo.InvariantCulture)}");
                 }
-                if (callLog is not null)
-                    File.AppendAllLines(callLog, lines);
+                Record(lines);
                 frameBuffer?.SetLive(live, viewport.Width, viewport.Height);
                 break;
             case 'U':
                 Interlocked.Increment(ref inputEvents);
-                if (callLog is not null)
-                    File.AppendAllLines(callLog, ["input " + FakeInput.Describe(body.AsSpan(5))]);
+                Record(["input " + FakeInput.Describe(body.AsSpan(5))]);
                 if (FakeInput.Position(body.AsSpan(5)) is { } at && button is { } b)
                 {
                     // Viewport pixels to the stage, as Ruffle maps them.
@@ -213,8 +218,7 @@ Thread reader = new(() =>
                 break;
             case 'S':
                 uint maxWidth = BinaryPrimitives.ReadUInt32LittleEndian(body.AsSpan(5));
-                if (callLog is not null)
-                    File.AppendAllLines(callLog, [$"screenshot {maxWidth}{(game?.LagKilled == true ? " lag-killed" : "")}"]);
+                Record([$"screenshot {maxWidth}{(game?.LagKilled == true ? " lag-killed" : "")}"]);
                 byte[] image = Screenshot(id, maxWidth);
                 if (delays.TryGetValue("screenshot", out int screenshotDelay))
                     Task.Delay(screenshotDelay).ContinueWith(_ => Send('I', image));
@@ -294,6 +298,9 @@ void Run(string line)
             break;
         case ["sleep", string ms]:
             Thread.Sleep(int.Parse(ms));
+            break;
+        case ["note", ..]:
+            Record([line["note ".Length..]]);
             break;
         case ["exit", string code]:
             Environment.Exit(int.Parse(code));
