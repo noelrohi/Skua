@@ -1,0 +1,111 @@
+name: Release macOS
+
+# A pushed vX.Y.Z tag publishes Skua.app (arm64) as a GitHub Release with the appcast.xml its installed releases check (#148).
+# It needs the SPARKLE_ED_PRIVATE_KEY secret and the SPARKLE_ED_PUBLIC_KEY variable: see BUILD.md, "Cutting a release".
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-macos
+
+jobs:
+  release:
+    # The appcast's URL, in every release's Info.plist, is this fork's.
+    if: github.repository == 'noelrohi/Skua'
+    runs-on: macos-15
+    defaults:
+      run:
+        shell: bash
+    env:
+      SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+      SPARKLE_ED_PUBLIC_KEY: ${{ vars.SPARKLE_ED_PUBLIC_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Before the long build: a release whose updates its users can't verify must never go out.
+      - name: Check the tag and the signing keys
+        id: check
+        run: |
+          version="$(Skua.App.Mac/Updates/release.sh version "$GITHUB_REF_NAME")"
+          if [[ -z "$SPARKLE_ED_PRIVATE_KEY" ]]; then
+            echo "::error::The SPARKLE_ED_PRIVATE_KEY secret is missing. Add the private key from Sparkle's generate_keys -x (BUILD.md, Cutting a release)."
+            exit 1
+          fi
+          if [[ -z "$SPARKLE_ED_PUBLIC_KEY" ]]; then
+            echo "::error::The SPARKLE_ED_PUBLIC_KEY variable is missing. Add the public key generate_keys prints (BUILD.md, Cutting a release)."
+            exit 1
+          fi
+          derived="$(printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | Skua.App.Mac/Updates/release.sh public-key)"
+          if [[ "$derived" != "$SPARKLE_ED_PUBLIC_KEY" ]]; then
+            echo "::error::SPARKLE_ED_PUBLIC_KEY isn't the public half of SPARKLE_ED_PRIVATE_KEY, whose public key is $derived."
+            exit 1
+          fi
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 17
+
+      - name: Install the Rust toolchain
+        working-directory: Skua.GameHost
+        run: rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: Skua.GameHost
+          save-if: false
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/skua-as3
+          key: skua-as3-${{ hashFiles('Skua.AS3/compile-as3.sh') }}
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/skua-sparkle
+          key: skua-sparkle-${{ hashFiles('Skua.App.Mac/Updates/sparkle.sh') }}
+
+      # The run number is CFBundleVersion, which Sparkle compares: it grows with every run of this workflow.
+      - name: Build Skua.app
+        env:
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          dotnet publish Skua.App.Mac --configuration Release --runtime osx-arm64 "-p:SkuaAppBundle=$RUNNER_TEMP/release/Skua.app" \
+            "-p:SkuaReleaseVersion=$VERSION" "-p:SkuaBuildNumber=$GITHUB_RUN_NUMBER" "-p:SkuaUpdatePublicKey=$SPARKLE_ED_PUBLIC_KEY" \
+            "-p:InformationalVersion=$VERSION+$GITHUB_SHA" -p:IncludeSourceRevisionInInformationalVersion=false
+
+      - name: Zip, sign and write the appcast
+        env:
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          out="$RUNNER_TEMP/release"
+          zip="$out/Skua-$VERSION.zip"
+          ditto -c -k --keepParent "$out/Skua.app" "$zip"
+          sparkle="$(Skua.App.Mac/Updates/sparkle.sh)"
+          signed="$(printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | "$sparkle/bin/sign_update" --ed-key-file - "$zip")"
+          signature="$(sed -n 's/^sparkle:edSignature="\([^"]*\)".*/\1/p' <<<"$signed")"
+          # As an installed release will: against the public key in its Info.plist.
+          Skua.App.Mac/Updates/release.sh verify "$SPARKLE_ED_PUBLIC_KEY" "$zip" "$signature"
+          Skua.App.Mac/Updates/release.sh notes changelogs-mac.md >"$out/notes.md"
+          Skua.App.Mac/Updates/release.sh html <"$out/notes.md" >"$out/notes.html"
+          Skua.App.Mac/Updates/release.sh appcast "$VERSION" "$GITHUB_RUN_NUMBER" \
+            "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/Skua-$VERSION.zip" "$signed" "$out/notes.html" >"$out/appcast.xml"
+          xmllint --noout "$out/appcast.xml"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          out="$RUNNER_TEMP/release"
+          gh release create "$GITHUB_REF_NAME" "$out/Skua-$VERSION.zip" "$out/appcast.xml" \
+            --repo "$GITHUB_REPOSITORY" --title "Skua $VERSION" --notes-file "$out/notes.md" --verify-tag

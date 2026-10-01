@@ -10,8 +10,8 @@
     <RootNamespace>Skua.App.Mac</RootNamespace>
   </PropertyGroup>
 
-  <!-- The Skua Manager's Updates tab compares the installed build with the checkout this app was built from. -->
-  <ItemGroup>
+  <!-- The Skua Manager's Updates tab compares the installed build with the checkout this app was built from; a release updates itself. -->
+  <ItemGroup Condition="'$(SkuaReleaseVersion)' == ''">
     <AssemblyMetadata Include="SkuaCheckout" Value="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))" />
   </ItemGroup>
 

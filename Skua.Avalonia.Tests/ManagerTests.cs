@@ -5,6 +5,7 @@ using Avalonia.Headless.XUnit;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.DependencyInjection;
 using Skua.Avalonia.Manager;
+using Skua.Avalonia.Views.Manager;
 using Skua.Control;
 using Skua.Core.Interfaces;
 using Skua.Core.Models;
@@ -362,6 +363,33 @@ public sealed class ManagerTests : IDisposable
             Environment.SetEnvironmentVariable(UpdatesViewModel.CheckoutVariable, null);
             Environment.SetEnvironmentVariable("SKUA_BIN_DIR", null);
         }
+    }
+
+    [AvaloniaFact]
+    public async Task A_releases_updates_view_says_it_updates_itself_and_shows_no_command()
+    {
+        AppUpdates.Release release = new("/Applications/Skua.app", "1.2.3", "42", "https://example.invalid/appcast.xml", "key");
+        UpdatesViewModel updates = new(new NoClipboard(), release);
+        Assert.True(updates.IsRelease);
+        Assert.Equal(("", true), (updates.UpdateCommand, updates.UpToDate));
+        Assert.StartsWith("Skua 1.2.3 is a release: it checks for updates once a day", updates.Verdict);
+        Assert.Contains(AppUpdates.CheckHeader, updates.Verdict);
+        using PanelTests.BindingErrors errors = new();
+        HostWindow window = new(updates);
+        try
+        {
+            window.Show();
+            await Ui.PumpUntilAsync(() => Ui.Find<UpdatesView>(window) is not null, "the Updates view");
+            UpdatesView view = Ui.Find<UpdatesView>(window)!;
+            Assert.False(view.FindControl<TextBox>("UpdateCommand")!.IsEffectivelyVisible);
+            Assert.Equal(updates.Verdict, view.FindControl<TextBlock>("Verdict")!.Text);
+            Assert.True(errors.Lines.Count == 0, string.Join("\n", errors.Lines));
+        }
+        finally
+        {
+            window.Close();
+        }
+        Assert.False(new UpdatesViewModel(new NoClipboard(), null).IsRelease);
     }
 
     [AvaloniaFact]

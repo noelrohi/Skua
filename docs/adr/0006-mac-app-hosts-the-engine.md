@@ -132,6 +132,8 @@ Rejected options for the installed `Skua.app`:
 - **A copy of the build.** Replacing it under a running app would change the files that the app loads later, and the build would mismatch its Game Host.
 - **A symlink to the build, or a bundle whose `Contents` is one.** Finder and Launchpad treat a symlinked app as an alias. A symlinked `Contents` fails `codesign --verify` ("unsealed contents present in the bundle root").
 
+A release (#148) is the other layout: one `Skua.app`, wherever the user puts it, that Sparkle replaces in place from the fork's GitHub Releases. As with the rejected copy above, a replaced bundle would change the files a running process loads later, so the app lets an update proceed only while nothing else runs from its bundle (another app, the Manager, or an Engine or MCP server its `skua` started); the app itself is replaced after it quits. A dev build from `install-macos.sh` never updates itself.
+
 LaunchServices records a running app under the build's bundle (`lsappinfo` shows its path), so **Keep in Dock** on a running app may pin that build, which a later install prunes. Dragging `~/Applications/Skua.app` to the Dock pins the one that stays.
 
 ## How the Windows app stays untouched

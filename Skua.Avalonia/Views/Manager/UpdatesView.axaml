@@ -1,4 +1,4 @@
-<!-- Replaces Skua.WPF/UserControls/ClientUpdateUserControl.xaml on macOS: Skua updates from its checkout, not from release zips. -->
+<!-- Replaces Skua.WPF/UserControls/ClientUpdateUserControl.xaml on macOS: a dev build updates from its checkout, a release through Sparkle. -->
 <UserControl
     x:Class="Skua.Avalonia.Views.Manager.UpdatesView"
     xmlns="https://github.com/avaloniaui"
@@ -15,8 +15,8 @@
             <TextBlock Grid.Row="2" Foreground="Gray" Text="This app" />
             <SelectableTextBlock Grid.Row="2" Grid.Column="1" TextWrapping="Wrap" Text="{Binding App}" />
         </Grid>
-        <TextBlock TextWrapping="Wrap" Text="To update, run this in Terminal. It builds the checkout and installs skua, skua-engine and the Game Host from it; then quit and reopen the Skua apps." />
-        <DockPanel>
+        <TextBlock IsVisible="{Binding !IsRelease}" TextWrapping="Wrap" Text="To update, run this in Terminal. It builds the checkout and installs skua, skua-engine and the Game Host from it; then quit and reopen the Skua apps." />
+        <DockPanel IsVisible="{Binding !IsRelease}">
             <Button DockPanel.Dock="Right" Margin="6,0,0,0" Content="Copy" Command="{Binding CopyCommandCommand}" />
             <TextBox x:Name="UpdateCommand" IsReadOnly="True" FontFamily="Menlo,monospace" Text="{Binding UpdateCommand}" />
         </DockPanel>

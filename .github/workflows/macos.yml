@@ -37,6 +37,12 @@ jobs:
           path: ~/Library/Caches/skua-as3
           key: skua-as3-${{ hashFiles('Skua.AS3/compile-as3.sh') }}
 
+      # Sparkle, which Skua.app embeds and the update tests run; its pin lives in the script.
+      - uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/skua-sparkle
+          key: skua-sparkle-${{ hashFiles('Skua.App.Mac/Updates/sparkle.sh') }}
+
       # Builds skua-gamehost and skua.swf too, through Skua.App.Engine's macOS targets.
       - name: Build
         run: dotnet build Skua.MacOS.slnf --configuration Release

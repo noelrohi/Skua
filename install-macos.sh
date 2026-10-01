@@ -7,6 +7,8 @@
 # folder opens it. Once that is installed, a plain re-run updates the app too, so the app and skua always share a build. A running app
 # keeps its own build, whose folder is kept, until it's reopened.
 #
+# These dev builds never update themselves; a release of Skua.app does (BUILD.md, "Install a release"), and this script leaves one alone.
+#
 # Usage: ./install-macos.sh [--app] [dotnet publish arguments, e.g. -p:SkuaGameHostPath=<file>]
 #
 #   SKUA_INSTALL_DIR  where builds go, each in versions/<build> (default ~/.local/share/skua)
@@ -51,7 +53,7 @@ for arg in "$@"; do
 done
 if [[ -e "$launcher" ]]; then
   if ! sed -n 2p "$launcher/Contents/MacOS/Skua" 2>/dev/null | grep -qF "$launcher_mark"; then
-    ! $app || fail "$launcher exists and isn't one this script made; move it away first."
+    ! $app || fail "$launcher exists and isn't one this script made (a release of Skua.app, which updates itself?); move it away first, or set SKUA_APPS_DIR."
   elif grep -qF "$versions/" "$launcher/Contents/MacOS/Skua"; then
     # It opens a build of this install, so it moves to the build skua links to.
     app=true
@@ -103,7 +105,11 @@ fi
 # Once the build has the app, skua is the one inside it, so the two always share a build.
 if $app || [[ ! -e "$target/skua" ]]; then cli="$bundle/Contents/Helpers/skua"; else cli="$target/skua"; fi
 mkdir -p "$bin_dir"
+previous="$(readlink "$link" 2>/dev/null || true)"
 ln -sfn "$cli" "$link"
+if [[ -n "$previous" && "$previous" != "$versions/"* ]]; then
+  echo "$link linked to $previous; it now links to this build."
+fi
 
 if $app; then
   # The installed Skua.app only opens the build's, so reinstalling never changes a file a running app uses, and the Dock and Finder keep
