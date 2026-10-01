@@ -65,6 +65,8 @@ public class QueryTests
         AssertQuest(new QuestDto(1002, "Chest Hoarder", QuestStatus.Completable, true, 0, 0,
             [new QuestRequirementDto(3, "Treasure Chest", 5, 5, false)], []), loaded.Quests[1]);
         Assert.Equal(QuestStatus.NotAccepted, loaded.Quests[2].Status);
+        // Flash's order, which Scripts pair their monsters with (#152).
+        Assert.Equal([93556, 93555], loaded.Quests[2].Requirements.Select(r => r.ItemId));
         Assert.Equal([1001, 1002], active.Quests.Select(q => q.Id));
     }
 

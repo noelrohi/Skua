@@ -11,6 +11,7 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 * A windowless `skua-engine` now loads the plugins in its data folder's `plugins` folder as it starts, as the app does, so Butlerv4 works between windowless Engines. A plugin that fails to load is logged and skipped.
 
 ### Fixes
+* A quest's requirements now come in the same order as on Windows, so Scripts such as King's Echo hunt the right monster for each item (Wandering Light, Gilded Peace).
 * Skua no longer jumps in front of the app you're using while a Script runs. A window a Script opens, such as its options, waits until you click Skua, and a notification tells you it's there.
 * A Script that restarts itself after a relogin, as CoreBots' Scripts do, goes on with the options you saved instead of waiting on its options window.
 

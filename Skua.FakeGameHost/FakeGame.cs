@@ -625,21 +625,28 @@ internal sealed class FakeGame
 
     private static JsonObject QuestTree() => new()
     {
-        ["1001"] = Quest(1001, "Slime Time", "p", member: false, gold: 100, xp: 50, (Item(20, "Slime Sample", 1, 10, "Quest Item", temp: true), 5),
-            new JsonObject { ["itemsS"] = new JsonObject { ["3"] = Item(3, "Treasure Chest", 1, 1000, "Item") } }),
-        ["1002"] = Quest(1002, "Chest Hoarder", "c", member: true, gold: 0, xp: 0, (Item(3, "Treasure Chest", 1, 1000, "Item"), 5), new JsonObject()),
-        ["1003"] = Quest(1003, "Not Yet", null, member: false, gold: 10, xp: 10, (Item(3, "Treasure Chest", 1, 1000, "Item"), 1), new JsonObject()),
+        ["1001"] = Quest(1001, "Slime Time", "p", member: false, gold: 100, xp: 50,
+            new JsonObject { ["itemsS"] = new JsonObject { ["3"] = Item(3, "Treasure Chest", 1, 1000, "Item") } }, (Item(20, "Slime Sample", 1, 10, "Quest Item", temp: true), 5)),
+        ["1002"] = Quest(1002, "Chest Hoarder", "c", member: true, gold: 0, xp: 0, new JsonObject(), (Item(3, "Treasure Chest", 1, 1000, "Item"), 5)),
+        // Shaped like 10238: oItems in the order the server adds them, which Ruffle keeps and Flash doesn't.
+        ["1003"] = Quest(1003, "Not Yet", null, member: false, gold: 10, xp: 10, new JsonObject(),
+            (Item(93555, "Undead Vaughn", 1, 6, "Quest Item", temp: true), 6), (Item(93556, "Wraith's Loyalty", 1, 9, "Quest Item", temp: true), 9)),
     };
 
-    private static JsonObject Quest(int id, string name, string? status, bool member, int gold, int xp, (JsonObject Item, int Qty) requirement, JsonObject rewards)
+    private static JsonObject Quest(int id, string name, string? status, bool member, int gold, int xp, JsonObject rewards, params (JsonObject Item, int Qty)[] requirements)
     {
-        int itemId = (int)requirement.Item["ItemID"]!;
+        JsonObject items = [];
+        JsonArray turnin = [];
+        foreach ((JsonObject item, int qty) in requirements)
+        {
+            int itemId = (int)item["ItemID"]!;
+            items[itemId.ToString()] = item;
+            turnin.Add(new JsonObject { ["ItemID"] = itemId, ["iQty"] = qty });
+        }
         return new JsonObject
         {
             ["QuestID"] = id, ["sName"] = name, ["status"] = status, ["bUpg"] = member ? "1" : "0", ["iGold"] = gold, ["iExp"] = xp, ["bOnce"] = "0",
-            ["oItems"] = new JsonObject { [itemId.ToString()] = requirement.Item },
-            ["turnin"] = new JsonArray(new JsonObject { ["ItemID"] = itemId, ["iQty"] = requirement.Qty }),
-            ["oRewards"] = rewards,
+            ["oItems"] = items, ["turnin"] = turnin, ["oRewards"] = rewards,
         };
     }
 
