@@ -21,7 +21,6 @@ jobs:
       run:
         shell: bash
     env:
-      SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
       SPARKLE_ED_PUBLIC_KEY: ${{ vars.SPARKLE_ED_PUBLIC_KEY }}
     steps:
       - uses: actions/checkout@v4
@@ -29,6 +28,9 @@ jobs:
       # Before the long build: a release whose updates its users can't verify must never go out.
       - name: Check the tag and the signing keys
         id: check
+        # The private key is in only this step's environment and the signing step's.
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
         run: |
           version="$(Skua.App.Mac/Updates/release.sh version "$GITHUB_REF_NAME")"
           if [[ -z "$SPARKLE_ED_PRIVATE_KEY" ]]; then
@@ -85,6 +87,7 @@ jobs:
 
       - name: Zip, sign and write the appcast
         env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
           VERSION: ${{ steps.check.outputs.version }}
         run: |
           out="$RUNNER_TEMP/release"
