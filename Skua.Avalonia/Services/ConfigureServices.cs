@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Skua.Core.AppStartup;
 using Skua.Core.Interfaces;
-using Skua.Core.Plugins;
 using Skua.Core.ViewModels;
 using Skua.Engine;
 
@@ -32,9 +31,7 @@ public static class ConfigureServices
         services.AddSingleton<IThemeService, AvaloniaThemeService>();
         services.AddSingleton<GameOptionEdits>();
         services.AddSingleton<IHotKeyService, AvaloniaHotKeyService>();
-        // Plugins load into the Engine's container as on Windows; one that fails, such as one that needs WPF, logs why instead.
-        services.AddSingleton<PluginManager>();
-        services.AddSingleton<IPluginManager, AppPluginManager>();
+        // The Engine's plugin manager loads plugins; their menu items join the app's Plugins menu.
         services.AddSingleton<IPluginHelper, AppPluginHelper>();
 
         // The GitHub token goes to Keychain, not Skua.settings.json, and the app keeps its own settings beside Core's (#92).

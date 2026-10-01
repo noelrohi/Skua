@@ -4,6 +4,7 @@ using Skua.Engine.Logging;
 using Skua.Core.AppStartup;
 using Skua.Control;
 using Skua.Core.Interfaces;
+using Skua.Core.Plugins;
 using Skua.Core.Services;
 using Skua.MacOS;
 using Skua.MacOS.GameHost;
@@ -33,6 +34,8 @@ internal static class EngineServices
 
         services.AddSingleton<ILogService>(new EngineLogService(logs));
         services.AddSingleton<EngineScripts>();
+        services.AddSingleton<PluginManager>();
+        services.AddSingleton<IPluginManager, EnginePluginManager>();
 
         configure?.Invoke(services);
 

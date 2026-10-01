@@ -8,13 +8,13 @@ using Skua.Engine.Tests;
 namespace Skua.Avalonia.Tests;
 
 /// <summary>
-/// The Scripts' Butlerv4 ("Butlerv4 (TCP)", <c>Tools/Butlerv4</c>) between two Mac Apps, played by <c>fake-app</c> with the simulated game:
-/// its plugin, <c>LeaderButlerSyncv2.dll</c>, loads in each app, the leader's tells the butler its port through a port file, and the butler
-/// follows the leader. Each test runs over the Scripts checkout named by <c>SKUA_SCRIPTS_CHECKOUT</c>, whose DLL and Scripts it uses as
+/// The Scripts' Butlerv4 ("Butlerv4 (TCP)", <c>Tools/Butlerv4</c>) between two Mac Apps, played by <c>fake-app</c>, or two windowless
+/// Engines, each with the simulated game: its plugin, <c>LeaderButlerSyncv2.dll</c>, loads in each, the leader's tells the butler its port
+/// through a port file, and the butler follows the leader. Each test runs over the Scripts checkout named by <c>SKUA_SCRIPTS_CHECKOUT</c>, whose DLL and Scripts it uses as
 /// they are, and is skipped without one.
 /// </summary>
 /// <remarks>
-/// The apps run as a Mac user whose home is a throwaway folder (<c>CFFIXED_USER_HOME</c>), with that home's default data folder, so what
+/// The apps and Engines run as a Mac user whose home is a throwaway folder (<c>CFFIXED_USER_HOME</c>), with that home's default data folder, so what
 /// the Scripts and the plugin put in the Mac's application data folder stays there.
 /// </remarks>
 public sealed class Butlerv4Tests : IAsyncDisposable
@@ -42,7 +42,7 @@ public sealed class Butlerv4Tests : IAsyncDisposable
     {
         SkipWithoutCheckout();
         UseCheckout();
-        (_, EngineConnection app) = await StartAsync("installer", "InstallTester", plugins: false);
+        (_, EngineConnection app) = await StartAsync("installer", "InstallTester", Host.App);
         using (app)
         {
             await CheckApplicationDataAsync(app);
@@ -58,17 +58,22 @@ public sealed class Butlerv4Tests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Butlerv4_follows_its_leader_through_the_LeaderButlerSyncv2_plugin_in_two_apps()
+    public Task Butlerv4_follows_its_leader_through_the_LeaderButlerSyncv2_plugin_in_two_apps() => FollowsItsLeaderAsync(Host.AppWithPlugins);
+
+    [Fact]
+    public Task Butlerv4_follows_its_leader_through_the_LeaderButlerSyncv2_plugin_in_two_windowless_Engines() => FollowsItsLeaderAsync(Host.Engine);
+
+    private async Task FollowsItsLeaderAsync(Host host)
     {
         SkipWithoutCheckout();
         UseCheckout();
         InstallPluginOnLoopback();
-        (string leaderControl, EngineConnection leader) = await StartAsync("leader", "LeaderTester", plugins: true);
-        (_, EngineConnection butler) = await StartAsync("butler", "ButlerTester", plugins: true);
+        (string leaderControl, EngineConnection leader) = await StartAsync("leader", "LeaderTester", host);
+        (_, EngineConnection butler) = await StartAsync("butler", "ButlerTester", host);
         using (leader)
         using (butler)
         {
-            // Both apps loaded the plugin, which listens on a port of its own.
+            // Both loaded the plugin, which listens on a port of its own.
             int leaderPort = await ListeningPortAsync(leader);
             int butlerPort = await ListeningPortAsync(butler);
             Assert.NotEqual(leaderPort, butlerPort);
@@ -144,11 +149,21 @@ public sealed class Butlerv4Tests : IAsyncDisposable
     private static IEnumerable<TypeDefinition> AllTypes(IEnumerable<TypeDefinition> types) =>
         types.SelectMany(t => AllTypes(t.NestedTypes).Prepend(t));
 
+    private enum Host
+    {
+        /// <summary>A <c>fake-app</c> that loads no plugins.</summary>
+        App,
+        /// <summary>A <c>fake-app</c> that loads the plugins, as the Mac App does once its window is up.</summary>
+        AppWithPlugins,
+        /// <summary><c>skua-engine</c>, which loads the plugins as it starts.</summary>
+        Engine,
+    }
+
     /// <summary>
-    /// Starts an app for the Engine Name <paramref name="name"/>, whose Test Account is <paramref name="username"/> in a Keychain of its
-    /// own, and returns the file whose lines make its simulated game act, and a connection to its Engine.
+    /// Starts an app or a windowless Engine for the Engine Name <paramref name="name"/>, whose Test Account is <paramref name="username"/> in a
+    /// Keychain of its own, and returns the file whose lines make its simulated game act, and a connection to its Engine.
     /// </summary>
-    private async Task<(string Control, EngineConnection Connection)> StartAsync(string name, string username, bool plugins)
+    private async Task<(string Control, EngineConnection Connection)> StartAsync(string name, string username, Host host)
     {
         string dir = Directory.CreateDirectory(Path.Combine(_home, name)).FullName;
         FakeKeychain keychain = new(dir, username, $"{name}-Sekrit-3b9e");
@@ -164,14 +179,16 @@ public sealed class Butlerv4Tests : IAsyncDisposable
         ]);
 
         // The fake Game Host and its SWF are this process's, as AppEngine set them.
-        ProcessStartInfo start = new(Path.Combine(AppContext.BaseDirectory, "fake-app")) { RedirectStandardError = true, RedirectStandardOutput = true };
+        string executable = host == Host.Engine ? EngineSandbox.EngineExecutable : Path.Combine(AppContext.BaseDirectory, "fake-app");
+        ProcessStartInfo start = new(executable) { RedirectStandardError = true, RedirectStandardOutput = true };
         start.ArgumentList.Add("--name");
         start.ArgumentList.Add(name);
         start.Environment["CFFIXED_USER_HOME"] = _home;
         start.Environment[EngineEndpoint.SkuaDirVariable] = SkuaDir;
         start.Environment.Remove(EngineEndpoint.SocketVariable);
         start.Environment["SKUA_FAKE_APP_SCENARIO"] = scenario;
-        start.Environment["SKUA_FAKE_APP_PLUGINS"] = plugins ? "1" : "0";
+        start.Environment["SKUA_FAKE_GAMEHOST_SCENARIO"] = scenario;
+        start.Environment["SKUA_FAKE_APP_PLUGINS"] = host == Host.AppWithPlugins ? "1" : "0";
         foreach ((string key, string value) in keychain.Environment())
             start.Environment[key] = value;
         Process app = Process.Start(start)!;
@@ -186,10 +203,10 @@ public sealed class Butlerv4Tests : IAsyncDisposable
             if (await EngineClient.TryConnectAsync(endpoint, Ct) is { } connection)
                 return (control, connection);
             if (app.HasExited)
-                throw new InvalidOperationException($"fake-app {name} exited with {app.ExitCode}: {await errors}");
+                throw new InvalidOperationException($"{Path.GetFileName(executable)} {name} exited with {app.ExitCode}: {await errors}");
             await Task.Delay(50, Ct);
         }
-        throw new TimeoutException($"fake-app {name} didn't answer.");
+        throw new TimeoutException($"{Path.GetFileName(executable)} {name} didn't answer.");
     }
 
     /// <summary>Checks the app sees the throwaway home's application data folder, before anything is written to it.</summary>
@@ -227,7 +244,7 @@ public sealed class Butlerv4Tests : IAsyncDisposable
     [DllImport("libc", SetLastError = true)]
     private static extern int kill(int pid, int signal);
 
-    /// <summary>Quits each app as the Skua Manager's Stop does, with SIGTERM, and deletes the throwaway home.</summary>
+    /// <summary>Quits each app or Engine as the Skua Manager's Stop does, with SIGTERM, and deletes the throwaway home.</summary>
     public async ValueTask DisposeAsync()
     {
         try
