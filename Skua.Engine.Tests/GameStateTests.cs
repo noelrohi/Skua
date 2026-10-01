@@ -7,6 +7,8 @@ namespace Skua.Engine.Tests;
 /// <summary><c>status</c>'s game state and the <c>game.*</c> events, which one tracker in the Engine computes.</summary>
 public class GameStateTests
 {
+    private const string RespawnAfterVariable = "SKUA_RESPAWN_AFTER_MS";
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
@@ -190,6 +192,25 @@ public class GameStateTests
         Assert.Equal(["battleon Enter", "yulgar Enter"], joined.Select(e => $"{e.Data!.Value.GetProperty("map").GetString()} {e.Data!.Value.GetProperty("cell").GetString()}"));
         Assert.True(joined[1].Data!.Value.GetProperty("roomId").GetInt32() > joined[0].Data!.Value.GetProperty("roomId").GetInt32());
         Assert.Equal(("yulgar", "Upstairs"), (death.Data!.Value.GetProperty("map").GetString(), death.Data!.Value.GetProperty("cell").GetString()));
+    }
+
+    /// <summary>
+    /// The game's own respawn request can come before the game server allows one, which then ignores it (#153); the Engine asks again.
+    /// </summary>
+    [Fact]
+    public async Task A_player_the_game_server_left_dead_after_the_games_early_respawn_request_is_respawned()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox, environment: new Dictionary<string, string> { [RespawnAfterVariable] = "2500" });
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+
+        await session.GameHost.DoAsync("die");
+        await session.GameHost.DoAsync("respawn-request");
+        string[] calls = await session.GameHost.WaitForCallAsync("respawn");
+
+        Assert.Equal(["send %xt%zm%resPlayerTimed%1001%1%", "respawn ignored", "send %xt%zm%resPlayerTimed%1001%1%", "respawn"],
+            calls.Where(c => c.StartsWith("respawn", StringComparison.Ordinal) || c.Contains("resPlayerTimed", StringComparison.Ordinal)));
+        Assert.True((await session.Connection.StatusAsync(Ct)).Game.Player!.Alive);
     }
 
     [Fact]
