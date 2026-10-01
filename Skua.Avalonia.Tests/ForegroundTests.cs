@@ -3,6 +3,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Skua.Avalonia.Services;
 using Skua.Control;
+using Skua.Core.Interfaces;
 using Skua.Core.Models;
 using Skua.Core.ViewModels;
 using Skua.Engine;
@@ -156,6 +157,95 @@ public sealed class ForegroundTests(AppEngine app)
                 window.Close();
             (foreground.Frontmost, foreground.Notify, dialogs.WindowCreated) = (frontmost, notify, created);
             File.Delete(restarted);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Behind_another_app_a_Script_Core_restarts_after_an_auto_relogin_goes_on_with_its_saved_options_and_shows_no_window()
+    {
+        // script_start asks for the run, so only Core's auto-relogin restart keeps its options window shut (#146).
+        string id = Guid.NewGuid().ToString("N")[..8];
+        string path = $"Tests/Relogin{id}.cs";
+        string restarted = Path.Combine(ClientFileSources.SkuaDIR, $"Relogin{id}.started");
+        AppEngine.WriteScript(path, $$"""
+            using System.Collections.Generic;
+            using System.IO;
+            using System.Threading;
+            using Skua.Core.Interfaces;
+            using Skua.Core.Options;
+
+            public class TestScript
+            {
+                public string OptionsStorage = "Relogin{{id}}";
+
+                public bool DontPreconfigure = true;
+
+                public List<IOption> Options = new() { new Option<int>("count", "Count", "How many to farm.", 5) };
+
+                public void ScriptMain(IScriptInterface bot)
+                {
+                    if (!File.Exists(@"{{restarted}}"))
+                    {
+                        File.WriteAllText(@"{{restarted}}", "");
+                        bot.Log("running");
+                        while (!bot.ShouldExit)
+                            Thread.Sleep(50);
+                        return;
+                    }
+                    bot.Config.Configure();
+                    bot.Log($"restarted count={bot.Config.Get<int>("count")}");
+                }
+            }
+            """);
+        IScriptOption options = app.Get<IScriptOption>();
+        (bool autoRelogin, bool safeRelogin, int delay) = (options.AutoRelogin, options.SafeRelogin, options.ReloginTryDelay);
+        Foreground foreground = app.Get<Foreground>();
+        AvaloniaDialogService dialogs = app.Get<AvaloniaDialogService>();
+        (Func<bool> frontmost, Action<string, string> notify, Action<Window>? created) = (foreground.Frontmost, foreground.Notify, dialogs.WindowCreated);
+        List<Window> opened = [];
+        foreground.Frontmost = () => false;
+        foreground.Notify = (title, body) => _posted.Add((title, body));
+        dialogs.WindowCreated = w =>
+        {
+            created?.Invoke(w);
+            opened.Add(w);
+        };
+        using EngineConnection connection = await EngineClient.TryConnectAsync(EngineEndpoint.FromEnvironment(), Ct) ?? throw new InvalidOperationException("The app's Engine didn't answer.");
+        try
+        {
+            (options.AutoRelogin, options.SafeRelogin, options.ReloginTryDelay) = (true, false, 200);
+            await connection.LoginAsync("Galanoth", cancellationToken: Ct);
+            ScriptStartResult start = await connection.ScriptStartAsync(path, new Dictionary<string, string> { ["count"] = "7" }, cancellationToken: Ct);
+            await connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text == "running");
+
+            await AppEngine.DoAsync("lose-connection Your connection to the server has been lost.");
+            await connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text == "restarted count=7");
+            ScriptWaitResult ended = await connection.ScriptWaitAsync(60, Ct);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal((ScriptWaitReason.Ended, start.Run, 1), (ended.Reason, ended.Status.LastRun!.Number, ended.Status.LastRun.Relogins));
+            // A window is the only way a run takes focus.
+            Assert.Empty(opened);
+            Assert.Empty(_posted);
+        }
+        finally
+        {
+            try
+            {
+                await connection.ScriptStopAsync(Ct);
+                (options.AutoRelogin, options.SafeRelogin, options.ReloginTryDelay) = (autoRelogin, safeRelogin, delay);
+                await connection.LogoutAsync(Ct);
+            }
+            finally
+            {
+                (options.AutoRelogin, options.SafeRelogin, options.ReloginTryDelay) = (autoRelogin, safeRelogin, delay);
+                foreground.Frontmost = () => true;
+                foreground.BroughtForward();
+                Dispatcher.UIThread.RunJobs();
+                foreach (Window window in opened)
+                    window.Close();
+                (foreground.Frontmost, foreground.Notify, dialogs.WindowCreated) = (frontmost, notify, created);
+                File.Delete(restarted);
+            }
         }
     }
 
