@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Extensions.DependencyInjection;
 using Skua.Core.Interfaces;
@@ -10,16 +11,22 @@ namespace Skua.Avalonia.Services;
 /// Core's windows as Avalonia windows: managed windows by key, as <c>ManagedWindows</c> registers them, each shown in one
 /// <see cref="HostWindow"/> that a later show brings to the front, and made again once closed.
 /// </summary>
-/// <remarks>A view model without a view (<see cref="ViewLocator"/>) is never shown; its ticket brings the view.</remarks>
+/// <remarks>
+/// A view model without a view (<see cref="ViewLocator"/>) is never shown; its ticket brings the view. While another app is frontmost, a window
+/// waits for Skua to come forward (<see cref="Foreground"/>).
+/// </remarks>
 public sealed class AvaloniaWindowService : IWindowService
 {
     private readonly IServiceProvider _services;
+    private readonly Foreground _foreground;
     private readonly Dictionary<string, IManagedWindow> _managed = [];
     private readonly Dictionary<string, HostWindow> _open = [];
+    private readonly HashSet<string> _waiting = [];
 
-    public AvaloniaWindowService(IServiceProvider services)
+    public AvaloniaWindowService(IServiceProvider services, Foreground foreground)
     {
         _services = services;
+        _foreground = foreground;
     }
 
     /// <summary>Runs on each window this service makes, before it shows; the app gives each its native menu.</summary>
@@ -58,7 +65,17 @@ public sealed class AvaloniaWindowService : IWindowService
             Trace.WriteLine($"The Mac App has no view for '{key}' yet.");
             return;
         }
+        // Shown again while it waits, it waits once.
+        if (_waiting.Add(key))
+            WhenFrontmost(TitleOf(viewModel), () =>
+            {
+                _waiting.Remove(key);
+                ShowManaged(key, viewModel);
+            });
+    });
 
+    private void ShowManaged(string key, IManagedWindow viewModel)
+    {
         if (!_open.TryGetValue(key, out HostWindow? window))
         {
             window = Create(viewModel);
@@ -81,7 +98,7 @@ public sealed class AvaloniaWindowService : IWindowService
             window.WindowState = WindowState.Normal;
         }
         window.Activate();
-    });
+    }
 
     public void ShowWindow<TViewModel>() where TViewModel : class => Show(_services.GetService<TViewModel>(), null);
 
@@ -96,14 +113,30 @@ public sealed class AvaloniaWindowService : IWindowService
             Trace.WriteLine($"The Mac App has no view for {viewModel?.GetType().Name ?? "a missing view model"} yet.");
             return;
         }
-        HostWindow window = Create(viewModel);
-        if (size is { } s)
+        WhenFrontmost(TitleOf(viewModel), () =>
         {
-            window.Width = s.Width;
-            window.Height = s.Height;
-        }
-        window.Show();
+            HostWindow window = Create(viewModel);
+            if (size is { } s)
+            {
+                window.Width = s.Width;
+                window.Height = s.Height;
+            }
+            window.Show();
+        });
     });
+
+    /// <summary>The title its window shows, as <see cref="HostWindow"/> titles it.</summary>
+    private static string TitleOf(object viewModel) => (viewModel as IManagedWindow)?.Title ?? "Skua";
+
+    /// <summary>Runs <paramref name="show"/> now while the app is frontmost, else on the UI thread once it comes forward.</summary>
+    private void WhenFrontmost(string title, Action show)
+    {
+        Task front = _foreground.UntilFrontmostAsync(title);
+        if (front.IsCompleted)
+            show();
+        else
+            front.ContinueWith(_ => Dispatcher.UIThread.Post(show), TaskScheduler.Default);
+    }
 
     private HostWindow Create(object viewModel)
     {

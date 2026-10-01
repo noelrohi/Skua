@@ -193,6 +193,10 @@ internal sealed class App : Application
         window.Notices.WindowOpened = w => NativeMenu.SetMenu(w, MenuBar());
         engine.Services.GetRequiredService<AvaloniaDialogService>().WindowCreated = w => NativeMenu.SetMenu(w, MenuBar());
         bool Frontmost() => _desktop?.Windows.Any(w => w.IsActive) == true;
+        // What the app shows by itself waits while another app is frontmost (#142).
+        Foreground foreground = engine.Services.GetRequiredService<Foreground>();
+        foreground.Frontmost = Frontmost;
+        foreground.Notify = MacNotifications.Post;
         _ = new ScriptDialogAlerts(dialogs, window, Frontmost, MacNotifications.Post);
         // As the Windows tray's balloons: a Script's stop or error, and a relogin, while the window isn't in front.
         IScriptPlayer player = engine.Services.GetRequiredService<IScriptPlayer>();
