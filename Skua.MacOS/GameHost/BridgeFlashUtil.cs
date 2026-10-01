@@ -264,7 +264,8 @@ public sealed class BridgeFlashUtil : IFlashUtil
         try
         {
             GameHostProcess gameHost = _gameHost ?? throw new IOException("The Game Host hasn't started.");
-            return FlashXml.ReadReturn(gameHost.Call(FlashXml.Invoke(function, args)), type);
+            object? result = FlashXml.ReadReturn(gameHost.Call(FlashXml.Invoke(function, args)), type);
+            return result is string json ? FlashObjectOrder.Apply(json) : result;
         }
         catch (Exception e)
         {
