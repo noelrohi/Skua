@@ -8,7 +8,7 @@ using Skua.Core.ViewModels;
 namespace Skua.Avalonia;
 
 /// <summary>
-/// The Mac App's own items in the app menu, where macOS puts About: About and Change Logs, which the Windows Manager shows as tabs, and the
+/// The Mac App's own items in the app menu, where macOS puts About: About, a release's Check for Updates… and Change Logs, which the Windows Manager shows as tabs, and the
 /// GitHub sign-in. Each opens its window through the window service, once, as a managed window; its view model is made on the first click,
 /// since About and Change Logs fetch their pages as they are made.
 /// </summary>
@@ -23,16 +23,23 @@ public static class AppMenu
     public const string ChangeLogsKey = "Change Logs";
     public const string GitHubKey = "GitHub Login";
 
-    public static NativeMenu Create(IServiceProvider services, AvaloniaWindowService windows) => new()
+    /// <param name="checkForUpdates">A release's Check for Updates…, after About; a dev build has none.</param>
+    public static NativeMenu Create(IServiceProvider services, AvaloniaWindowService windows, Action? checkForUpdates = null)
     {
-        Items =
+        NativeMenu menu = new()
         {
-            Item<AboutViewModel>(AboutHeader, AboutKey, services, windows),
-            Item<ChangeLogsViewModel>(ChangeLogsHeader, ChangeLogsKey, services, windows),
-            new NativeMenuItemSeparator(),
-            Item<GitHubAuthViewModel>(GitHubHeader, GitHubKey, services, windows),
-        },
-    };
+            Items =
+            {
+                Item<AboutViewModel>(AboutHeader, AboutKey, services, windows),
+                Item<ChangeLogsViewModel>(ChangeLogsHeader, ChangeLogsKey, services, windows),
+                new NativeMenuItemSeparator(),
+                Item<GitHubAuthViewModel>(GitHubHeader, GitHubKey, services, windows),
+            },
+        };
+        if (checkForUpdates is not null)
+            menu.Items.Insert(1, new NativeMenuItem(AppUpdates.CheckHeader) { Command = new RelayCommand(checkForUpdates) });
+        return menu;
+    }
 
     /// <summary>Opens Change Logs as its menu item does; the app also opens it at its first start (<see cref="StartUpChecks"/>).</summary>
     public static void ShowChangeLogs(IServiceProvider services, AvaloniaWindowService windows) =>

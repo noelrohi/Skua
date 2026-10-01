@@ -6,6 +6,11 @@
       Contents/Info.plist, Contents/Resources/Skua.icns
       Contents/MacOS/    Skua, skua-gamehost, skua.swf and their runtime: this project's publish
       Contents/Helpers/  skua, skua-engine, skua-gamehost, skua.swf and their runtime: Skua.App.Engine's publish, from the same build
+      Contents/Frameworks/Sparkle.framework, the updater (Updates/sparkle.sh fetches it)
+
+    A release (.github/workflows/release-macos.yml) adds -p:SkuaReleaseVersion=X.Y.Z (its tag's), -p:SkuaBuildNumber=<CI run number> and
+    -p:SkuaUpdatePublicKey=<the public half of the key its updates are signed with>; only then does Info.plist name the update feed, so a dev
+    build never updates itself. A dev build's versions are both $(Version).
 
     The CLI has a folder of its own because Skua and skua (and Skua.dll and skua.dll) are one name on a case-insensitive disk. Its files that
     are the same as the app's are APFS clones of them, so the second runtime takes no space. The bundle is made afresh on every publish.
@@ -19,18 +24,60 @@
     <ValidateExecutableReferencesMatchSelfContained>false</ValidateExecutableReferencesMatchSelfContained>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <SkuaUpdateFeed Condition="'$(SkuaUpdateFeed)' == ''">https://github.com/noelrohi/Skua/releases/latest/download/appcast.xml</SkuaUpdateFeed>
+    <!-- How often a release checks for an update, in seconds: once a day. It asks before installing one. -->
+    <SkuaUpdateCheckInterval Condition="'$(SkuaUpdateCheckInterval)' == ''">86400</SkuaUpdateCheckInterval>
+  </PropertyGroup>
+
+  <!-- Writes the bundle's Info.plist to $(SkuaInfoPlistFile); the tests run it alone. -->
+  <Target Name="SkuaInfoPlist">
+    <Error Condition="'$(SkuaInfoPlistFile)' == ''" Text="-p:SkuaInfoPlistFile names the Info.plist to write." />
+    <Error Condition="'$(SkuaReleaseVersion)' == '' and ('$(SkuaBuildNumber)' != '' or '$(SkuaUpdatePublicKey)' != '')" Text="-p:SkuaBuildNumber and -p:SkuaUpdatePublicKey are for a release, which needs -p:SkuaReleaseVersion=X.Y.Z too." />
+    <Error Condition="'$(SkuaReleaseVersion)' != '' and !$([System.Text.RegularExpressions.Regex]::IsMatch('$(SkuaReleaseVersion)', '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'))" Text="-p:SkuaReleaseVersion must be X.Y.Z, not '$(SkuaReleaseVersion)'." />
+    <Error Condition="'$(SkuaReleaseVersion)' != '' and !$([System.Text.RegularExpressions.Regex]::IsMatch('$(SkuaBuildNumber)', '^[1-9][0-9]*$'))" Text="A release needs -p:SkuaBuildNumber=N, a whole number that grows with every release (CI's run number), not '$(SkuaBuildNumber)'." />
+    <Error Condition="'$(SkuaReleaseVersion)' != '' and !$([System.Text.RegularExpressions.Regex]::IsMatch('$(SkuaUpdatePublicKey)', '^[A-Za-z0-9+/]{43}=$'))" Text="A release needs -p:SkuaUpdatePublicKey=&lt;key&gt;, the public EdDSA key its updates are signed with, as Sparkle's generate_keys prints it (the SPARKLE_ED_PUBLIC_KEY variable in CI)." />
+    <PropertyGroup>
+      <_SkuaShortVersion>$(Version)</_SkuaShortVersion>
+      <_SkuaShortVersion Condition="'$(SkuaReleaseVersion)' != ''">$(SkuaReleaseVersion)</_SkuaShortVersion>
+      <_SkuaBundleVersion>$(Version)</_SkuaBundleVersion>
+      <_SkuaBundleVersion Condition="'$(SkuaReleaseVersion)' != ''">$(SkuaBuildNumber)</_SkuaBundleVersion>
+      <_SkuaUpdateKeys></_SkuaUpdateKeys>
+      <_SkuaUpdateKeys Condition="'$(SkuaReleaseVersion)' != ''">	&lt;key&gt;SUFeedURL&lt;/key&gt;
+	&lt;string&gt;$(SkuaUpdateFeed)&lt;/string&gt;
+	&lt;key&gt;SUPublicEDKey&lt;/key&gt;
+	&lt;string&gt;$(SkuaUpdatePublicKey)&lt;/string&gt;
+	&lt;key&gt;SUEnableAutomaticChecks&lt;/key&gt;
+	&lt;true/&gt;
+	&lt;key&gt;SUScheduledCheckInterval&lt;/key&gt;
+	&lt;integer&gt;$(SkuaUpdateCheckInterval)&lt;/integer&gt;
+	&lt;key&gt;SUAutomaticallyUpdate&lt;/key&gt;
+	&lt;false/&gt;
+</_SkuaUpdateKeys>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(SkuaInfoPlistFile)" Lines="$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)Info.plist').Replace('@SHORT_VERSION@', '$(_SkuaShortVersion)').Replace('@BUNDLE_VERSION@', '$(_SkuaBundleVersion)').Replace('@UPDATES@', '$(_SkuaUpdateKeys)'))" Overwrite="true" />
+  </Target>
+
   <Target Name="CheckSkuaAppBundle" BeforeTargets="PrepareForPublish" Condition="'$(SkuaAppBundle)' != ''">
     <Error Condition="'$(SkuaMacBuild)' != 'true'" Text="Skua.app can only be published on macOS." />
     <Error Condition="'$(RuntimeIdentifier)' == ''" Text="Skua.app is self-contained: publish it with a runtime, e.g. -r osx-arm64." />
     <Error Condition="'$(_CommandLineDefinedOutputPath)' == 'true'" Text="-p:SkuaAppBundle names the output; leave out --output." />
     <Error Condition="'$(_SkuaAppBundle.EndsWith(`.app/`))' != 'true'" Text="-p:SkuaAppBundle must name a folder ending in .app, not '$(SkuaAppBundle)'." />
+    <!-- A release's Info.plist is checked before the long build, not after. -->
+    <MSBuild Projects="$(MSBuildProjectFullPath)" Targets="SkuaInfoPlist" Properties="SkuaInfoPlistFile=$(IntermediateOutputPath)Info.plist" />
     <RemoveDir Directories="$(_SkuaAppBundle)" />
   </Target>
 
   <Target Name="PublishSkuaAppBundle" AfterTargets="Publish" Condition="'$(SkuaAppBundle)' != ''">
     <MSBuild Projects="..\Skua.App.Engine\Skua.App.Engine.csproj" Targets="Publish" Properties="RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=true;PublishDir=$(_SkuaAppBundle)Contents/Helpers/" />
-    <WriteLinesToFile File="$(_SkuaAppBundle)Contents/Info.plist" Lines="$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)Info.plist').Replace('@VERSION@', '$(Version)'))" Overwrite="true" />
+    <MSBuild Projects="$(MSBuildProjectFullPath)" Targets="SkuaInfoPlist" Properties="SkuaInfoPlistFile=$(_SkuaAppBundle)Contents/Info.plist" />
     <Copy SourceFiles="$(MSBuildThisFileDirectory)Skua.icns" DestinationFolder="$(_SkuaAppBundle)Contents/Resources" />
+    <Exec Command="&quot;$(MSBuildThisFileDirectory)Updates/sparkle.sh&quot;" ConsoleToMSBuild="true" StandardOutputImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_SkuaSparkle" />
+    </Exec>
+    <!-- ditto keeps the framework's symlinks. Ad-hoc signing below re-signs it with the rest; no Hardened Runtime, whose library validation
+         would refuse to load it. -->
+    <Exec Command="mkdir -p &quot;$(_SkuaAppBundle)Contents/Frameworks&quot; &amp;&amp; ditto &quot;$(_SkuaSparkle)/Sparkle.framework&quot; &quot;$(_SkuaAppBundle)Contents/Frameworks/Sparkle.framework&quot;" />
     <!-- Ad-hoc: macOS runs it without a Developer ID, and notarising is out of scope. Every file in MacOS and Helpers gets a signature. -->
     <Exec Command="codesign --force --deep --sign - &quot;$(_SkuaAppBundle)&quot;" />
     <!-- After signing, as a clone keeps the signature its source has in its extended attributes; a disk without clones keeps the copies. -->

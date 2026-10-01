@@ -164,7 +164,20 @@ dotnet build Skua.App.WPF\Skua.App.WPF.csproj --configuration Release
 
 Both scripts write `Skua.AS3/skua/bin/skua.swf` and print the SHA-256 of its `DoABC` tags. Compare builds by that hash, not the file hash: `mxmlc` writes a compile timestamp into every SWF.
 
+### Install a release on macOS
+
+A release is a ready-made `Skua.app` for Apple silicon (arm64) that updates itself.
+
+1. Download `Skua-<version>.zip` from the [latest release](https://github.com/noelrohi/Skua/releases/latest) and open it: Finder unzips `Skua.app`.
+2. Move `Skua.app` to `/Applications` (or `~/Applications`).
+3. Open it. The first time, macOS says it can't verify the app, since a release is ad-hoc signed, not notarised: open System Settings › Privacy & Security and click **Open Anyway** next to Skua (on macOS 14 and earlier, Control-click the app in Finder and choose **Open**). Updates don't ask again.
+4. For `skua` in a terminal, link the one inside the app: `mkdir -p ~/.local/bin && ln -sfn /Applications/Skua.app/Contents/Helpers/skua ~/.local/bin/skua`.
+
+Once a day the app checks the fork's GitHub Releases for a newer one and asks before installing it; **Skua › Check for Updates…** checks now. Installing replaces `Skua.app` where it is and reopens it, so the `skua` link keeps working. An update waits while anything else runs from the app (another Skua app, the Skua Manager, or an Engine or MCP server its `skua` started): quit those, then check again.
+
 ### Install on macOS
+
+From a checkout, for development. These builds never update themselves: pull and run the script again.
 
 ```sh
 ./install-macos.sh
@@ -194,7 +207,22 @@ open ~/Applications/Skua.app
 - **Keychain:** each build is a new binary to Keychain, so the first login from a newly installed app may make macOS ask whether `security` may read the account again: choose "Always Allow".
 - **Gatekeeper:** a build made on your Mac isn't quarantined, so it opens without a prompt. A `Skua.app` copied from another Mac or downloaded is quarantined, and an ad-hoc signed app isn't notarised, so its first open says macOS can't verify it. Open it once from System Settings › Privacy & Security › **Open Anyway** (on macOS 14 and earlier, Control-click it in Finder and choose **Open**), or remove the quarantine with `xattr -dr com.apple.quarantine <path>/Skua.app`.
 - **Dock:** to keep Skua in the Dock, drag `~/Applications/Skua.app` there from Finder. **Keep in Dock** on the running app may pin its build instead, which a later update removes.
-- `dotnet publish Skua.App.Mac -c Release -r osx-arm64 -p:SkuaAppBundle=<folder>/Skua.app` makes the bundle alone, afresh each time.
+- **A release installed too:** the script won't replace a release's `Skua.app` in `~/Applications`; set `SKUA_APPS_DIR` to put the dev one elsewhere. It does move the `skua` link to its build, and says so.
+- `dotnet publish Skua.App.Mac -c Release -r osx-arm64 -p:SkuaAppBundle=<folder>/Skua.app` makes the bundle alone, afresh each time. It embeds Sparkle, the updater, which `Skua.App.Mac/Updates/sparkle.sh` downloads at a pinned version and checksum into `~/Library/Caches/skua-sparkle`; only a release's `Info.plist` names the update feed, so this bundle never updates itself.
+
+#### Cutting a release
+
+`.github/workflows/release-macos.yml` runs on a pushed `vX.Y.Z` tag. It builds `Skua.app` with `X.Y.Z` as its version and the workflow's run number as its build number (`CFBundleVersion`, which Sparkle compares), zips it, signs the zip with the update key, and publishes a GitHub Release with the zip and `appcast.xml`, the feed every release checks (`https://github.com/noelrohi/Skua/releases/latest/download/appcast.xml`). The release notes are the newest section of `changelogs-mac.md`.
+
+Once, the update key:
+
+1. Make it with Sparkle's `generate_keys`, which keeps the private key in your login Keychain and prints the public one: `sparkle="$(Skua.App.Mac/Updates/sparkle.sh)/bin"` then `"$sparkle/generate_keys"`.
+2. Export the private key and add it as the repository secret `SPARKLE_ED_PRIVATE_KEY`, then delete the file: `"$sparkle/generate_keys" -x key.txt && gh secret set SPARKLE_ED_PRIVATE_KEY --repo noelrohi/Skua < key.txt && rm key.txt`.
+3. Add the public key as the repository variable `SPARKLE_ED_PUBLIC_KEY`: `gh variable set SPARKLE_ED_PUBLIC_KEY --repo noelrohi/Skua --body <public key>`.
+
+Keep the private key in Keychain (or another safe place): every installed release only accepts updates signed with it, so losing it means everyone downloads the next release by hand. The workflow fails before building if the secret or the variable is missing, or if the variable isn't the secret's public key.
+
+Each release: add its section to `changelogs-mac.md`, commit, then `git tag v1.0.0 && git push origin v1.0.0`. Versions only go up, and so do build numbers, since every run of the workflow has a higher one.
 
 ### Building the macOS Engine and CLI
 
@@ -244,7 +272,7 @@ Skua.App.Mac/bin/Debug/net10.0/Skua --manager   # the Skua Manager
 - **Tools** has the Windows panels: **Loader** loads a shop or quests by ID and lists the quests in `QuestData.json`; **Grabber** grabs the shop, quests, inventories, bank, monsters or map items and shows the selected one's properties (read-only); **Junk Items**, **Stats** and **Console**, which compiles and runs a line against the game as a Script would. **Bank** opens the game's bank panel.
 - **Packets** has the Windows panels. **Spammer** sends a packet to the server, or with **Send to Client** to the game as if the server had sent it, and **Start** sends its list's packets in turn with the delay between them until **Stop**. **Logger** lists the packets the game sends while **Enabled**; an unchecked filter's packets aren't logged. **Interceptor** reconnects the game to the picked server through a proxy on 127.0.0.1 at the server's port and lists every packet it relays, both ways, coloured by direction (blocked ones red); the filters and the search hide packets from the list. The Game Host's sockets are plain TCP, so the proxy works as on Windows. In the lists, ⌘C copies the selected packets.
 - Plugins load from `<SkuaDIR>/plugins` when the window opens, as on Windows, and **Plugins › View Plugins** loads, unloads and configures them; a plugin's own menu items join the Plugins menu. A plugin that needs WPF (Windows-only) fails to load, or its menu item fails, with a line in the `debug` log saying so; the app runs on.
-- The app menu (**Skua**) has **About Skua** and **Change Logs**, Skua's readme and change logs as the Windows Manager shows them, and **GitHub Login…**, GitHub's device-flow sign-in, whose token raises the Script Source's GitHub rate limits. The token is kept in Keychain (service `skua-github-token`), never in `Skua.settings.json` or a log, and the app reads it back at every start.
+- The app menu (**Skua**) has **About Skua**, a release's **Check for Updates…** ([Install a release](#install-a-release-on-macos)) and **Change Logs**, Skua's readme and change logs as the Windows Manager shows them, and **GitHub Login…**, GitHub's device-flow sign-in, whose token raises the Script Source's GitHub rate limits. The token is kept in Keychain (service `skua-github-token`), never in `Skua.settings.json` or a log, and the app reads it back at every start.
 - Once the window shows, the app runs the Windows app's start-up checks, each as **Options → Application** says: it updates the Scripts from the Script Source (as `skua scripts update` does, so never while a Script runs; a Manager launch's Script starts first, and the check then skips), and downloads the AdvanceSkill sets and junk items, reloading them. With an option's auto update off it asks first, on the sheet; each update then leaves a Notice. It always refreshes the quest data, and on the app's first start it opens **Change Logs**. `skua-engine` runs none of these.
 - Each window's **Window › Top Most** keeps it above other windows, as the Windows title bar's menu does; the app remembers it per window (the main window, and each panel) in `MacTopMostWindows` under `client` in `Skua.settings.json`.
 - The app is a new binary to Keychain, so its first login makes macOS ask whether `security` may read the account: choose "Always Allow". An unsigned rebuild may ask again.
@@ -262,7 +290,7 @@ The Skua Manager keeps your accounts and launches a Mac App per account, as `Sku
 - **Import Windows list…** reads the Windows Manager's `Skua.settings.json` (or an older `ManagerSettings.json`), moves each password into Keychain and removes it from the file. It keeps a copy of the file as it was, `<file>.<time>.bak`, readable only by you; that copy still holds the passwords, so delete it once you've checked the import.
 - **Launch** starts `Skua --name <account> --account <account>` for each account (selected, all shown, one, or a group), a second apart. Each app has the account's name as its Engine Name, logs that account in once its window shows (on the server picked with **On server**, or on one it picks), and starts the Script if **With Script** is on. No password is on a command line. That app's Engine always uses its own account, `skua login` against its socket included; an agent's login there gets the Test Account unless the account was added with `--allow-agents` (ADR 0005). Launching an account whose app is running brings it to the front.
 - **Running** lists every Skua app and Engine using the data folder, with its game and Script. **Bring to front** shows an app's window; **Stop** quits an app (or stops a headless Engine), asking first while a Script runs. Its game logs out; the others keep playing.
-- **Updates** shows the build `install-macos.sh` installed, the checkout this app was built from, and whether they match. To update, run the command it gives (`cd <checkout> && ./install-macos.sh`), then quit and reopen the apps. It downloads nothing.
+- **Updates** shows the build `install-macos.sh` installed, the checkout this app was built from, and whether they match. To update, run the command it gives (`cd <checkout> && ./install-macos.sh`), then quit and reopen the apps. It downloads nothing. In a release, it says the app updates itself instead.
 - **Goals** shows Skua's funding goals, as on Windows.
 
 The Manager's tests launch `fake-app` (`Skua.FakeApp`, set with `SKUA_APP_EXECUTABLE`) in place of the Mac App: it takes the same command line and hosts the same Engine, without a window.

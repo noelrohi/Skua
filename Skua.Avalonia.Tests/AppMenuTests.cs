@@ -80,6 +80,17 @@ public sealed class AppMenuTests(AppEngine app)
     }
 
     [AvaloniaFact]
+    public void A_releases_app_menu_has_Check_for_Updates_after_About_which_asks_Sparkle()
+    {
+        int checks = 0;
+        NativeMenu menu = AppMenu.Create(app.Engine.Services, Windows, () => checks++);
+        Assert.Equal([AppMenu.AboutHeader, AppUpdates.CheckHeader, AppMenu.ChangeLogsHeader, AppMenu.GitHubHeader],
+            menu.Items.OfType<NativeMenuItem>().Where(i => i is not NativeMenuItemSeparator).Select(i => i.Header));
+        Item(menu, AppUpdates.CheckHeader).Command!.Execute(null);
+        Assert.Equal(1, checks);
+    }
+
+    [AvaloniaFact]
     public async Task GitHub_login_completes_against_the_fake_device_flow_and_the_token_lands_in_Keychain_only()
     {
         string token = "gho_fake" + Guid.NewGuid().ToString("N");

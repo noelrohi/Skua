@@ -59,6 +59,11 @@
     <Content Include="..\changelogs-mac.md" Link="changelogs-mac.md" CopyToOutputDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 
+  <!-- AppUpdatesTests runs the release scripts and the build's Info.plist target from the checkout. -->
+  <ItemGroup>
+    <AssemblyMetadata Include="SkuaRepo" Value="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Skua.Avalonia\Skua.Avalonia.csproj" />
     <ProjectReference Include="..\Skua.Control\Skua.Control.csproj" />

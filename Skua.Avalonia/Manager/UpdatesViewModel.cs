@@ -9,7 +9,7 @@ namespace Skua.Avalonia.Manager;
 
 /// <summary>
 /// The Updates tab on macOS, in place of Windows' Client Updates, which downloads Skua release zips: whether the build <c>install-macos.sh</c>
-/// installed matches the checkout, and how to update. It downloads nothing.
+/// installed matches the checkout, and how to update. It downloads nothing; a release says it updates itself (<see cref="AppUpdates"/>).
 /// </summary>
 /// <remarks>
 /// A build is <c>&lt;Version&gt;+&lt;commit&gt;</c>, plus <c>.dirty.&lt;time&gt;</c> for uncommitted changes, as <c>install-macos.sh</c> names it.
@@ -23,12 +23,23 @@ public sealed partial class UpdatesViewModel : ObservableObject
     public const string CheckoutMetadata = "SkuaCheckout";
 
     private readonly IClipboardService _clipboard;
+    private readonly AppUpdates.Release? _release;
 
     public UpdatesViewModel(IClipboardService clipboard)
+        : this(clipboard, AppUpdates.Current())
+    {
+    }
+
+    /// <param name="release">The release this app is, or null for a dev build.</param>
+    public UpdatesViewModel(IClipboardService clipboard, AppUpdates.Release? release)
     {
         _clipboard = clipboard;
+        _release = release;
         Refresh();
     }
+
+    /// <summary>A release, which updates itself: the tab shows no command.</summary>
+    public bool IsRelease => _release is not null;
 
     /// <summary>This app's own build.</summary>
     public static string AppBuild =>
@@ -55,6 +66,15 @@ public sealed partial class UpdatesViewModel : ObservableObject
     [RelayCommand]
     public void Refresh()
     {
+        if (_release is { } release)
+        {
+            Installed = InstalledBuild(out string skua) ?? $"{skua} doesn't link to a build";
+            Checkout = "None: a release isn't built from a checkout";
+            UpdateCommand = "";
+            UpToDate = true;
+            Verdict = $"Skua {release.Version} is a release: it checks for updates by itself and asks before installing one. To check now, choose {AppUpdates.CheckHeader} in a Skua app's Skua menu.";
+            return;
+        }
         string? repo = CheckoutPath();
         string? installed = InstalledBuild(out string link);
         string? checkout = repo is null ? null : CheckoutBuild(repo, out bool dirty);
