@@ -127,6 +127,9 @@ internal sealed class Engine : IEngineRpc
             try
             {
                 engine = new(endpoint, gameHost, logs, services, options);
+                // Before the socket, so no command reaches an Engine without its plugins. The Mac App loads them once its menu can take their items.
+                if (options.IsHeadless)
+                    LoadPlugins(services);
                 listener = engine.Bind();
             }
             catch
@@ -142,6 +145,18 @@ internal sealed class Engine : IEngineRpc
             logs?.Dispose();
             engineLock.Dispose();
             throw;
+        }
+    }
+
+    private static void LoadPlugins(IServiceProvider services)
+    {
+        try
+        {
+            services.GetRequiredService<IPluginManager>().Initialize();
+        }
+        catch (Exception e)
+        {
+            EngineLog.Write($"Not loading plugins: {e.Message}");
         }
     }
 

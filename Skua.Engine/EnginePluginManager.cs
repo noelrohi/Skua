@@ -2,21 +2,22 @@ using Skua.Core.Interfaces;
 using Skua.Core.Models;
 using Skua.Core.Plugins;
 
-namespace Skua.Avalonia.Services;
+namespace Skua.Engine;
 
 /// <summary>
-/// Core's plugin manager in the Mac App: plugins load from the data folder's <c>plugins</c> folder into the Engine's container, as on
-/// Windows, and one that fails, such as one that needs WPF, is left out with an error in the debug log instead of taking the app down.
+/// Core's plugin manager in the Engine, windowless or in the Mac App: plugins load from the data folder's <c>plugins</c> folder into the
+/// Engine's container, as on Windows, and one that fails, such as one that needs WPF, is left out with an error in the debug log instead of
+/// taking the Engine down.
 /// </summary>
 /// <remarks>Core's manager returns a failed load's error, which its Plugins panel drops; this logs every one.</remarks>
-public sealed class AppPluginManager : IPluginManager
+public sealed class EnginePluginManager : IPluginManager
 {
     private static readonly string[] s_wpfAssemblies = ["PresentationFramework", "PresentationCore", "WindowsBase", "System.Xaml", "System.Windows"];
 
     private readonly PluginManager _plugins;
     private readonly ILogService _log;
 
-    public AppPluginManager(PluginManager plugins, ILogService log)
+    public EnginePluginManager(PluginManager plugins, ILogService log)
     {
         _plugins = plugins;
         _log = log;

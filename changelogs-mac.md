@@ -8,6 +8,7 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 
 ### New
 * Skua for Mac now comes as a release you download: it checks for a newer one once a day, asks before installing it, and reopens updated. **Skua › Check for Updates…** checks now. See [Install a release](./BUILD.md#install-a-release-on-macos).
+* A windowless `skua-engine` now loads the plugins in its data folder's `plugins` folder as it starts, as the app does, so Butlerv4 works between windowless Engines. A plugin that fails to load is logged and skipped.
 
 ### Fixes
 * Skua no longer jumps in front of the app you're using while a Script runs. A window a Script opens, such as its options, waits until you click Skua, and a notification tells you it's there.

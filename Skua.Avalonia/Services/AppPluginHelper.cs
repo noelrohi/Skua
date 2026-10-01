@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using Skua.Core.Interfaces;
 using Skua.Core.Messaging;
 using Skua.Core.ViewModels;
+using Skua.Engine;
 
 namespace Skua.Avalonia.Services;
 
@@ -50,7 +51,7 @@ public sealed class AppPluginHelper : IPluginHelper
         }
         catch (Exception e)
         {
-            _log.DebugLog($"The plugin menu item '{text}' failed: {AppPluginManager.Describe(e)}");
+            _log.DebugLog($"The plugin menu item '{text}' failed: {EnginePluginManager.Describe(e)}");
         }
     }
 }
