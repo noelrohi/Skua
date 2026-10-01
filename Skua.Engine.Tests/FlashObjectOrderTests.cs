@@ -34,6 +34,7 @@ public class FlashObjectOrderTests
         int checkedQuests = 0;
         List<string> wrong = [];
         List<int> unverified = [];
+        int notAscending = 0;
         using JsonDocument data = JsonDocument.Parse(File.ReadAllBytes(QuestDataPath()));
         foreach (JsonElement quest in data.RootElement.EnumerateArray())
         {
@@ -46,6 +47,7 @@ public class FlashObjectOrderTests
                 // The server mostly adds them in ascending order; where two share a slot, the order they were added in decides.
                 if (FlashObjectOrder.Order(windows.Order())!.SequenceEqual(windows))
                     continue;
+                notAscending++;
                 if (windows.Length > 6)
                     unverified.Add(quest.GetProperty("ID").GetInt32());
                 else if (!Permutations(windows).Any(added => FlashObjectOrder.Order(added)!.SequenceEqual(windows)))
@@ -55,6 +57,8 @@ public class FlashObjectOrderTests
 
         Assert.Empty(wrong);
         Assert.True(checkedQuests > 3000, $"only {checkedQuests} lists checked");
+        // Most need no search: added in ascending order, the rule gives Windows' order exactly.
+        Assert.True(notAscending < checkedQuests / 20, $"{notAscending} of {checkedQuests} lists weren't added in ascending order");
         // Quests with 7+ requirements, some sharing a slot, the server didn't add in ascending order: too many orders to try.
         Assert.True(unverified.Count < 20, $"{unverified.Count} unverified: {string.Join(", ", unverified)}");
     }
@@ -76,6 +80,7 @@ public class FlashObjectOrderTests
     [InlineData("""[{"7":1}]""")]
     [InlineData("not json {\"1")]
     [InlineData("\"input\"")]
+    [InlineData("""{"2":1,"1":2,"2":3}""")]
     public void What_Flash_doesnt_order_by_hash_or_already_is_in_order_comes_back_as_it_was(string json)
     {
         Assert.Same(json, FlashObjectOrder.Apply(json));

@@ -19,7 +19,7 @@ public static class FlashObjectOrder
     /// <summary>Flash keeps an integer name as an int atom only below 2^28 (29-bit atoms); a larger one is a string.</summary>
     private const long MaxIntKey = (1 << 28) - 1;
 
-    private static readonly JsonSerializerOptions Write = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+    private static readonly JsonSerializerOptions WriteOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     /// <summary>
     /// Returns <paramref name="json"/> with each object whose names are all integers in Flash's order; the same string when nothing moves
@@ -29,16 +29,15 @@ public static class FlashObjectOrder
     {
         if (!HasIntegerName(json))
             return json;
-        JsonNode? root;
         try
         {
-            root = JsonNode.Parse(json);
+            return JsonNode.Parse(json) is JsonNode root && Reorder(root) ? root.ToJsonString(WriteOptions) : json;
         }
-        catch (JsonException)
+        // A duplicate name throws ArgumentException only once the object is read.
+        catch (Exception e) when (e is JsonException or ArgumentException)
         {
             return json;
         }
-        return root is not null && Reorder(root) ? root.ToJsonString(Write) : json;
     }
 
     /// <summary>
@@ -115,9 +114,8 @@ public static class FlashObjectOrder
         List<int> added = [.. obj.Select(p => int.Parse(p.Key))];
         if (Order(added) is not List<int> order || order.SequenceEqual(added))
             return moved;
-        List<KeyValuePair<string, JsonNode?>> properties = [.. obj];
+        Dictionary<int, KeyValuePair<string, JsonNode?>> byKey = added.Zip(obj).ToDictionary(p => p.First, p => p.Second);
         obj.Clear();
-        Dictionary<int, KeyValuePair<string, JsonNode?>> byKey = properties.ToDictionary(p => int.Parse(p.Key));
         foreach (int key in order)
             obj.Add(byKey[key]);
         return true;
