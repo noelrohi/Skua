@@ -161,9 +161,9 @@ public sealed class ForegroundTests(AppEngine app)
     }
 
     [AvaloniaFact]
-    public async Task Behind_another_app_a_Script_Cores_auto_relogin_restarts_goes_on_with_its_saved_options_and_shows_no_window()
+    public async Task Behind_another_app_a_Script_Core_restarts_after_an_auto_relogin_goes_on_with_its_saved_options_and_shows_no_window()
     {
-        // The run was asked for, so only the relogin makes its restart unasked (#146).
+        // script_start asks for the run, so only Core's auto-relogin restart keeps its options window shut (#146).
         string id = Guid.NewGuid().ToString("N")[..8];
         string path = $"Tests/Relogin{id}.cs";
         string restarted = Path.Combine(ClientFileSources.SkuaDIR, $"Relogin{id}.started");
@@ -229,16 +229,23 @@ public sealed class ForegroundTests(AppEngine app)
         }
         finally
         {
-            await connection.ScriptStopAsync(Ct);
-            (options.AutoRelogin, options.SafeRelogin, options.ReloginTryDelay) = (autoRelogin, safeRelogin, delay);
-            await connection.LogoutAsync(Ct);
-            foreground.Frontmost = () => true;
-            foreground.BroughtForward();
-            Dispatcher.UIThread.RunJobs();
-            foreach (Window window in opened)
-                window.Close();
-            (foreground.Frontmost, foreground.Notify, dialogs.WindowCreated) = (frontmost, notify, created);
-            File.Delete(restarted);
+            try
+            {
+                await connection.ScriptStopAsync(Ct);
+                (options.AutoRelogin, options.SafeRelogin, options.ReloginTryDelay) = (autoRelogin, safeRelogin, delay);
+                await connection.LogoutAsync(Ct);
+            }
+            finally
+            {
+                (options.AutoRelogin, options.SafeRelogin, options.ReloginTryDelay) = (autoRelogin, safeRelogin, delay);
+                foreground.Frontmost = () => true;
+                foreground.BroughtForward();
+                Dispatcher.UIThread.RunJobs();
+                foreach (Window window in opened)
+                    window.Close();
+                (foreground.Frontmost, foreground.Notify, dialogs.WindowCreated) = (frontmost, notify, created);
+                File.Delete(restarted);
+            }
         }
     }
 
