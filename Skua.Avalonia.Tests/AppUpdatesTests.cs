@@ -43,7 +43,6 @@ public sealed class AppUpdatesTests : IDisposable
         AppUpdates.Release? read = AppUpdates.ReleaseOf(BundleWith(release, "Release.app"));
         Assert.Equal(("1.2.3", "42", "https://github.com/noelrohi/Skua/releases/latest/download/appcast.xml", publicKey),
             (read?.Version, read?.Build, read?.Feed, read?.PublicKey));
-        // Checks once a day, on its own, and asks before installing.
         Assert.Equal(("true", "86400", "false"), (PlistValue(release, "SUEnableAutomaticChecks"), PlistValue(release, "SUScheduledCheckInterval"), PlistValue(release, "SUAutomaticallyUpdate")));
     }
 
@@ -228,6 +227,34 @@ public sealed class AppUpdatesTests : IDisposable
         // Seen from another app: this one and its Game Host hold the update too.
         Assert.Equal(["Skua", "skua-gamehost", "skua-engine"], AppUpdates.OthersRunningFrom(bundle, 500, more));
         Assert.Null(AppUpdates.WhyNotNow(_dir));
+    }
+
+    [Fact]
+    public void A_skua_started_through_a_link_to_the_bundle_holds_an_update_as_it_runs_from_the_bundle()
+    {
+        string bundle = Path.Combine(_dir, "Skua.app");
+        string skua = Path.Combine(bundle, "Contents", "Helpers", "skua");
+        Directory.CreateDirectory(Path.GetDirectoryName(skua)!);
+        File.WriteAllText(Path.Combine(_dir, "wait.c"), "#include <unistd.h>\nint main(void) { sleep(60); return 0; }\n");
+        (int exit, string output) = Run("/usr/bin/clang", [Path.Combine(_dir, "wait.c"), "-o", skua]);
+        Assert.True(exit == 0, output);
+        string link = Path.Combine(_dir, "bin", "skua");
+        Directory.CreateDirectory(Path.GetDirectoryName(link)!);
+        File.CreateSymbolicLink(link, skua);
+        Assert.Null(AppUpdates.WhyNotNow(bundle));
+
+        // Detached through a shell that exits, as an MCP client starts it: not this process's child, which wouldn't count.
+        int pid = int.Parse(Run("/bin/sh", ["-c", "\"$0\" >/dev/null 2>&1 & echo $!", link]).Output.Trim());
+        using Process linked = Process.GetProcessById(pid);
+        try
+        {
+            Assert.Contains("Still running: skua.", AppUpdates.WhyNotNow(bundle));
+        }
+        finally
+        {
+            linked.Kill();
+            linked.WaitForExit(TimeSpan.FromSeconds(10));
+        }
     }
 
     /// <summary>Runs the probe against a bundle whose Info.plist the build wrote for a release of <paramref name="version"/> (<paramref name="build"/>).</summary>

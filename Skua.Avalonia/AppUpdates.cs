@@ -22,6 +22,9 @@ public sealed unsafe partial class AppUpdates
     /// <summary>The bundle Sparkle updates; read by its delegate, which runs on the main thread.</summary>
     private static string? s_bundle;
 
+    /// <summary>Whether a daily check that found an update it couldn't proceed with has said so; once per process.</summary>
+    private static bool s_toldHeld;
+
     private readonly IntPtr _controller;
 
     private AppUpdates(IntPtr controller) => _controller = controller;
@@ -48,9 +51,9 @@ public sealed unsafe partial class AppUpdates
     /// <summary>The <c>.app</c> this process runs from, e.g. <c>…/Skua.app</c> for <c>…/Skua.app/Contents/MacOS/Skua</c>; null outside one.</summary>
     public static string? CurrentBundle()
     {
-        string? macOS = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory));
-        string? bundle = Path.GetDirectoryName(macOS);
-        return bundle is not null && bundle.EndsWith(".app", StringComparison.Ordinal) && Path.GetFileName(macOS) == "Contents" ? bundle : null;
+        string? contents = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory));
+        string? bundle = Path.GetDirectoryName(contents);
+        return bundle is not null && bundle.EndsWith(".app", StringComparison.Ordinal) && Path.GetFileName(contents) == "Contents" ? bundle : null;
     }
 
     /// <summary>The release this process is, or null for a dev build.</summary>
@@ -70,8 +73,8 @@ public sealed unsafe partial class AppUpdates
                 throw new DllNotFoundException("Sparkle.framework has no SPUStandardUpdaterController.");
             s_bundle = release.Bundle;
             // Sparkle holds its delegate weakly; this one lives as long as the process.
-            IntPtr updaterDelegate = objc_msgSend(objc_msgSend(DelegateClass(), Selector("alloc")), Selector("init"));
-            IntPtr controller = objc_msgSend_start(objc_msgSend(type, Selector("alloc")), Selector("initWithStartingUpdater:updaterDelegate:userDriverDelegate:"), 1, updaterDelegate, IntPtr.Zero);
+            IntPtr updaterDelegate = objc_msgSend(objc_msgSend(DelegateClass(), sel_registerName("alloc")), sel_registerName("init"));
+            IntPtr controller = objc_msgSend_start(objc_msgSend(type, sel_registerName("alloc")), sel_registerName("initWithStartingUpdater:updaterDelegate:userDriverDelegate:"), 1, updaterDelegate, IntPtr.Zero);
             return new AppUpdates(controller);
         }
         catch (Exception e) when (e is DllNotFoundException or BadImageFormatException or EntryPointNotFoundException)
@@ -82,12 +85,12 @@ public sealed unsafe partial class AppUpdates
     }
 
     /// <summary>Check for Updates…: Sparkle's own window says what it finds.</summary>
-    public void Check() => objc_msgSend_id(_controller, Selector("checkForUpdates:"), IntPtr.Zero);
+    public void Check() => objc_msgSend_id(_controller, sel_registerName("checkForUpdates:"), IntPtr.Zero);
 
     /// <summary>Why an update can't proceed now, or null when nothing else runs from <paramref name="bundle"/>.</summary>
     public static string? WhyNotNow(string bundle)
     {
-        List<string> others = OthersRunningFrom(bundle, Environment.ProcessId, Processes());
+        List<string> others = OthersRunningFrom(RealPath(bundle), Environment.ProcessId, Processes());
         return others.Count == 0
             ? null
             : $"Quit the other Skua apps, the Skua Manager and any skua Engine or MCP server first, then choose {CheckHeader} again. Still running: {string.Join(", ", others.Distinct())}.";
@@ -111,16 +114,43 @@ public sealed unsafe partial class AppUpdates
 
     private static IEnumerable<(int Pid, int ParentPid, string Path)> Processes()
     {
-        ProcessStartInfo start = new("/bin/ps") { ArgumentList = { "-axo", "pid=,ppid=,comm=" }, RedirectStandardOutput = true, UseShellExecute = false };
+        ProcessStartInfo start = new("/bin/ps") { ArgumentList = { "-axo", "pid=,ppid=" }, RedirectStandardOutput = true, UseShellExecute = false };
         using Process ps = Process.Start(start)!;
         string output = ps.StandardOutput.ReadToEnd();
         ps.WaitForExit();
         foreach (string line in output.Split('\n'))
         {
-            string[] fields = line.Trim().Split(' ', 3, StringSplitOptions.RemoveEmptyEntries);
-            if (fields.Length == 3 && int.TryParse(fields[0], out int pid) && int.TryParse(fields[1], out int parent))
-                yield return (pid, parent, fields[2].Trim());
+            string[] fields = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (fields.Length == 2 && int.TryParse(fields[0], out int pid) && int.TryParse(fields[1], out int parent) && ExecutablePath(pid) is { } path)
+                yield return (pid, parent, path);
         }
+    }
+
+    /// <summary>The path with every symlink in it resolved, as <see cref="ExecutablePath"/> gives it (e.g. <c>/private/var</c> for <c>/var</c>).</summary>
+    private static string RealPath(string path)
+    {
+        IntPtr resolved = realpath(path, IntPtr.Zero);
+        if (resolved == IntPtr.Zero)
+            return path;
+        try
+        {
+            return Marshal.PtrToStringUTF8(resolved)!;
+        }
+        finally
+        {
+            NativeMemory.Free((void*)resolved);
+        }
+    }
+
+    /// <summary>
+    /// The file a process runs, with symlinks resolved: <c>ps</c> shows the path it was started by, so a <c>skua</c> started through
+    /// <c>~/.local/bin/skua</c> wouldn't look like it runs from the bundle. Null for a process that has gone or isn't ours to read.
+    /// </summary>
+    private static string? ExecutablePath(int pid)
+    {
+        byte* buffer = stackalloc byte[4096];
+        int length = proc_pidpath(pid, buffer, 4096);
+        return length > 0 ? System.Text.Encoding.UTF8.GetString(buffer, length) : null;
     }
 
     /// <summary>An NSObject subclass with the one <c>SPUUpdaterDelegate</c> method Skua needs; made once per process.</summary>
@@ -130,7 +160,7 @@ public sealed unsafe partial class AppUpdates
         if (cls != IntPtr.Zero)
             return cls;
         cls = objc_allocateClassPair(objc_getClass("NSObject"), DelegateClassName, 0);
-        class_addMethod(cls, Selector("updater:shouldProceedWithUpdate:updateCheck:error:"),
+        class_addMethod(cls, sel_registerName("updater:shouldProceedWithUpdate:updateCheck:error:"),
             (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, IntPtr, nint, IntPtr*, byte>)&ShouldProceed, "B@:@@q^@");
         objc_registerClassPair(cls);
         return cls;
@@ -147,10 +177,16 @@ public sealed unsafe partial class AppUpdates
         {
             if (s_bundle is null || WhyNotNow(s_bundle) is not { } why)
                 return 1;
+            // SPUUpdateCheckUpdatesInBackground: Sparkle shows nothing for a daily check it doesn't proceed with.
+            if (updateCheck == 1 && !s_toldHeld)
+            {
+                s_toldHeld = true;
+                Services.MacNotifications.Post("Skua update available", why);
+            }
             if (error != null)
             {
-                IntPtr info = objc_msgSend_id2(objc_getClass("NSDictionary"), Selector("dictionaryWithObject:forKey:"), NSString(why), NSString("NSLocalizedDescription"));
-                *error = objc_msgSend_error(objc_getClass("NSError"), Selector("errorWithDomain:code:userInfo:"), NSString("io.github.noelrohi.skua"), 1, info);
+                IntPtr info = objc_msgSend_id_id(objc_getClass("NSDictionary"), sel_registerName("dictionaryWithObject:forKey:"), NSString(why), NSString("NSLocalizedDescription"));
+                *error = objc_msgSend_error(objc_getClass("NSError"), sel_registerName("errorWithDomain:code:userInfo:"), NSString("io.github.noelrohi.skua"), 1, info);
             }
             return 0;
         }
@@ -161,9 +197,13 @@ public sealed unsafe partial class AppUpdates
         }
     }
 
-    private static IntPtr NSString(string value) => objc_msgSend_string(objc_getClass("NSString"), Selector("stringWithUTF8String:"), value);
+    private static IntPtr NSString(string value) => objc_msgSend_string(objc_getClass("NSString"), sel_registerName("stringWithUTF8String:"), value);
 
-    private static IntPtr Selector(string name) => sel_registerName(name);
+    [LibraryImport("libc", StringMarshalling = StringMarshalling.Utf8)]
+    private static partial IntPtr realpath(string path, IntPtr resolved);
+
+    [LibraryImport("libproc")]
+    private static partial int proc_pidpath(int pid, byte* buffer, uint size);
 
     [LibraryImport(ObjC, StringMarshalling = StringMarshalling.Utf8)]
     private static partial IntPtr sel_registerName(string name);
@@ -188,7 +228,7 @@ public sealed unsafe partial class AppUpdates
     private static partial IntPtr objc_msgSend_id(IntPtr receiver, IntPtr selector, IntPtr a);
 
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")]
-    private static partial IntPtr objc_msgSend_id2(IntPtr receiver, IntPtr selector, IntPtr a, IntPtr b);
+    private static partial IntPtr objc_msgSend_id_id(IntPtr receiver, IntPtr selector, IntPtr a, IntPtr b);
 
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend", StringMarshalling = StringMarshalling.Utf8)]
     private static partial IntPtr objc_msgSend_string(IntPtr receiver, IntPtr selector, string value);

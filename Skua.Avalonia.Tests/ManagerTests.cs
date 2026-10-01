@@ -372,7 +372,7 @@ public sealed class ManagerTests : IDisposable
         UpdatesViewModel updates = new(new NoClipboard(), release);
         Assert.True(updates.IsRelease);
         Assert.Equal(("", true), (updates.UpdateCommand, updates.UpToDate));
-        Assert.StartsWith("Skua 1.2.3 is a release: it checks for updates once a day", updates.Verdict);
+        Assert.StartsWith("Skua 1.2.3 is a release: it checks for updates by itself", updates.Verdict);
         Assert.Contains(AppUpdates.CheckHeader, updates.Verdict);
         using PanelTests.BindingErrors errors = new();
         HostWindow window = new(updates);

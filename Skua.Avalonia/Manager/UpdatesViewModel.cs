@@ -72,7 +72,7 @@ public sealed partial class UpdatesViewModel : ObservableObject
             Checkout = "None: a release isn't built from a checkout";
             UpdateCommand = "";
             UpToDate = true;
-            Verdict = $"Skua {release.Version} is a release: it checks for updates once a day and asks before installing one. To check now, choose {AppUpdates.CheckHeader} in a Skua app's Skua menu.";
+            Verdict = $"Skua {release.Version} is a release: it checks for updates by itself and asks before installing one. To check now, choose {AppUpdates.CheckHeader} in a Skua app's Skua menu.";
             return;
         }
         string? repo = CheckoutPath();

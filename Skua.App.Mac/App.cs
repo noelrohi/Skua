@@ -185,7 +185,7 @@ internal sealed class App : Application
             return bar;
         }
         windows.WindowCreated = w => NativeMenu.SetMenu(w, w.DataContext is { } shown ? MenuBar(w, TopMost.NameOf(shown)) : MenuBar());
-        // About, a release's Check for Updates…, Change Logs and the GitHub sign-in sit in the app menu, where macOS puts About.
+        // About, Change Logs and the GitHub sign-in sit in the app menu, where macOS puts About.
         NativeMenu.SetMenu(this, AppMenu.Create(engine.Services, windows, _updates is { } updates ? updates.Check : null));
         // The GitHub token signed in with before, from Keychain, as the Windows client reads its saved one at its start.
         _ = Task.Run(() => engine.Services.GetRequiredService<GitHubToken>().LoadAsync(CancellationToken.None));
