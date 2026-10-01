@@ -23,6 +23,7 @@ public static class ManagerServices
         services.AddSingleton<ISettingsService>(s => s.GetRequiredService<ManagerSettingsService>());
         services.AddSingleton<IDialogService, ManagerDialogService>();
         services.AddSingleton<IDispatcherService, AvaloniaDispatcherService>();
+        services.AddSingleton<Foreground>();
         services.AddSingleton<AvaloniaWindowService>();
         services.AddSingleton<IWindowService>(s => s.GetRequiredService<AvaloniaWindowService>());
         services.AddSingleton<IClipboardService, AvaloniaClipboardService>();

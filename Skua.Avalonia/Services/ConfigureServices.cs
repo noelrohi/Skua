@@ -17,6 +17,7 @@ public static class ConfigureServices
     public static IServiceCollection AddAvaloniaServices(this IServiceCollection services)
     {
         services.AddSingleton<IDispatcherService, AvaloniaDispatcherService>();
+        services.AddSingleton<Foreground>();
         services.AddSingleton<AvaloniaWindowService>();
         services.AddSingleton<IWindowService>(s => s.GetRequiredService<AvaloniaWindowService>());
         services.AddSingleton<IClipboardService, AvaloniaClipboardService>();

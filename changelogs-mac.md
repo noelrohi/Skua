@@ -4,6 +4,13 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 
 ---
 
+## October 1, 2026
+
+### Fixes
+* Skua no longer jumps in front of the app you're using while a Script runs. A window a Script opens, such as its options, waits until you click Skua, and a notification tells you it's there.
+
+---
+
 ## September 29, 2026
 
 ### Fixes

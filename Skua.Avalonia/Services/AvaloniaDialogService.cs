@@ -24,15 +24,17 @@ public sealed class AvaloniaDialogService : IDialogService
     private static readonly string[] YesNo = ["Yes", "No"];
 
     private readonly ScriptDialogBroker _broker;
+    private readonly Foreground _foreground;
 
     /// <summary>Cancelled as the app exits, so a Question the UI thread waits on gets the fallback and its nested frame ends.</summary>
     private readonly CancellationTokenSource _exiting = new();
 
     private bool _watchingExit;
 
-    public AvaloniaDialogService(ScriptDialogBroker broker)
+    public AvaloniaDialogService(ScriptDialogBroker broker, Foreground foreground)
     {
         _broker = broker;
+        _foreground = foreground;
     }
 
     /// <summary>Runs on each dialog this service makes, before it shows; the app gives each its native menu.</summary>
@@ -94,6 +96,7 @@ public sealed class AvaloniaDialogService : IDialogService
     /// <summary>
     /// Shows the view model's view in a dialog over the active window and waits until it closes; returns what the view closed it with
     /// (<see cref="DialogWindow.Close(global::Avalonia.Controls.Control, bool?)"/>), or null. A view model without a view isn't shown, as headless.
+    /// While another app is frontmost, it waits for Skua to come forward (<see cref="Foreground"/>), and returns null if the app exits first.
     /// </summary>
     private bool? Show(object viewModel, string? title, Action? closed)
     {
@@ -106,6 +109,15 @@ public sealed class AvaloniaDialogService : IDialogService
         {
             DialogWindow dialog = new(viewModel, title);
             WindowCreated?.Invoke(dialog);
+            WatchExit();
+            try
+            {
+                await _foreground.UntilFrontmostAsync($"Skua: {dialog.Title}", "Waiting for you in Skua.", _exiting.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return null;
+            }
             bool? result;
             if (Windows.Active() is { IsVisible: true } owner)
             {
