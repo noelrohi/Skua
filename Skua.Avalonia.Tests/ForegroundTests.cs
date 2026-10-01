@@ -3,8 +3,10 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Skua.Avalonia.Services;
 using Skua.Control;
+using Skua.Core.Models;
 using Skua.Core.ViewModels;
 using Skua.Engine;
+using Skua.Engine.Tests;
 
 namespace Skua.Avalonia.Tests;
 
@@ -84,6 +86,76 @@ public sealed class ForegroundTests(AppEngine app)
                 dialog.Close();
             back.Close();
             (foreground.Frontmost, foreground.Notify, dialogs.WindowCreated) = (frontmost, notify, created);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Behind_another_app_a_Script_restarted_after_a_relogin_goes_on_with_its_saved_options_and_shows_no_window()
+    {
+        // CoreBots restarts a Script through Core's RestartScriptAsync once a relogin has stopped it, and opens its options window again (#144).
+        string id = Guid.NewGuid().ToString("N")[..8];
+        string path = $"Tests/Restart{id}.cs";
+        string restarted = Path.Combine(ClientFileSources.SkuaDIR, $"Restart{id}.started");
+        AppEngine.WriteScript(path, $$"""
+            using System.Collections.Generic;
+            using System.IO;
+            using System.Threading.Tasks;
+            using Skua.Core.Interfaces;
+            using Skua.Core.Options;
+
+            public class TestScript
+            {
+                public string OptionsStorage = "Restart{{id}}";
+
+                public bool DontPreconfigure = true;
+
+                public List<IOption> Options = new() { new Option<int>("count", "Count", "How many to farm.", 5) };
+
+                public void ScriptMain(IScriptInterface bot)
+                {
+                    if (!File.Exists(@"{{restarted}}"))
+                    {
+                        File.WriteAllText(@"{{restarted}}", "");
+                        Task.Run(() => bot.Manager.RestartScriptAsync());
+                        return;
+                    }
+                    bot.Config.Configure();
+                    bot.Log($"restarted count={bot.Config.Get<int>("count")}");
+                }
+            }
+            """);
+        Foreground foreground = app.Get<Foreground>();
+        AvaloniaDialogService dialogs = app.Get<AvaloniaDialogService>();
+        (Func<bool> frontmost, Action<string, string> notify, Action<Window>? created) = (foreground.Frontmost, foreground.Notify, dialogs.WindowCreated);
+        List<Window> opened = [];
+        foreground.Frontmost = () => false;
+        foreground.Notify = (title, body) => _posted.Add((title, body));
+        dialogs.WindowCreated = w =>
+        {
+            created?.Invoke(w);
+            opened.Add(w);
+        };
+        using EngineConnection connection = await EngineClient.TryConnectAsync(EngineEndpoint.FromEnvironment(), Ct) ?? throw new InvalidOperationException("The app's Engine didn't answer.");
+        try
+        {
+            // An agent's start that stores the option, so the Script has saved options.
+            await connection.ScriptStartAsync(path, new Dictionary<string, string> { ["count"] = "7" }, cancellationToken: Ct);
+
+            await connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text == "restarted count=7");
+            Dispatcher.UIThread.RunJobs();
+            Assert.Empty(opened);
+            Assert.Empty(_posted);
+        }
+        finally
+        {
+            await connection.ScriptStopAsync(Ct);
+            foreground.Frontmost = () => true;
+            foreground.BroughtForward();
+            Dispatcher.UIThread.RunJobs();
+            foreach (Window window in opened)
+                window.Close();
+            (foreground.Frontmost, foreground.Notify, dialogs.WindowCreated) = (frontmost, notify, created);
+            File.Delete(restarted);
         }
     }
 

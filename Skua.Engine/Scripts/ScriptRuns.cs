@@ -42,6 +42,9 @@ internal sealed class ScriptRuns
     /// <summary>A stop timed out and the thread still runs, so the Engine stays <see cref="ScriptState.Stopping"/> until it ends.</summary>
     private bool _stuck;
 
+    /// <summary>The next start Core reports is the window's.</summary>
+    private bool _windowStarting;
+
     private TaskCompletionSource _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <param name="keepLagKillerOn">Turns the lag killer back on after each run, for an Engine that never shows the game.</param>
@@ -88,7 +91,7 @@ internal sealed class ScriptRuns
         {
             if (_state != ScriptState.Idle || _manager.ScriptRunning)
                 throw RpcErrors.Of(ErrorCode.ScriptRunning, $"Can't start {script} while {Running()}; stop it first with 'skua script stop'.");
-            _run = new Run(++_lastNumber, script, dialogs, dialogTimeoutSec);
+            _run = new Run(++_lastNumber, script, dialogs, dialogTimeoutSec) { Asked = true };
             _logs.Run = _run.Number;
             SetState(ScriptState.Compiling);
             return _run.Number;
@@ -116,6 +119,31 @@ internal sealed class ScriptRuns
             ended = StartOursLocked();
         if (ended)
             TurnLagKillerBackOn();
+    }
+
+    /// <summary>Marks the start Core reports next as the window's, until the lease is disposed.</summary>
+    public IDisposable WindowStart()
+    {
+        lock (_lock)
+            _windowStarting = true;
+        return new Lease(() =>
+        {
+            lock (_lock)
+                _windowStarting = false;
+        });
+    }
+
+    /// <summary>
+    /// Whether the Script thread running now started without anyone asking: Core's auto-relogin restarted it, or the Script itself (CoreBots,
+    /// after a relogin) or an <c>eval</c> started it. Not for a start the Scripts panel or <c>script_start</c> asked for.
+    /// </summary>
+    public bool Unasked
+    {
+        get
+        {
+            lock (_lock)
+                return _manager.ScriptRunning && _run is { ReloginPending: false } run && (!run.Asked || run.Relogins > 0);
+        }
     }
 
     /// <summary>
@@ -183,8 +211,9 @@ internal sealed class ScriptRuns
             }
             else if (_run is null && !_stuck)
             {
-                // Started outside script_start, e.g. by an eval.
-                _run = new Run(++_lastNumber, ScriptPaths.Name(_manager.LoadedScript), DialogMode.Ask, ScriptOperations.DefaultDialogTimeoutSec);
+                // Started outside script_start: by the window, or by an eval or the Script itself.
+                _run = new Run(++_lastNumber, ScriptPaths.Name(_manager.LoadedScript), DialogMode.Ask, ScriptOperations.DefaultDialogTimeoutSec) { Asked = _windowStarting };
+                _windowStarting = false;
                 _logs.Run = _run.Number;
                 ended = StartOursLocked();
             }
@@ -382,6 +411,11 @@ internal sealed class ScriptRuns
             : null,
         _lastRun);
 
+    private sealed class Lease(Action end) : IDisposable
+    {
+        public void Dispose() => end();
+    }
+
     private sealed class Run(int number, string script, DialogMode dialogs, int dialogTimeoutSec)
     {
         public int Number { get; } = number;
@@ -390,6 +424,7 @@ internal sealed class ScriptRuns
         public int DialogTimeoutSec { get; } = dialogTimeoutSec;
         public DateTimeOffset StartedAt { get; set; } = DateTimeOffset.UtcNow;
         public Stopwatch Clock { get; } = Stopwatch.StartNew();
+        public bool Asked { get; init; }
         public bool Started { get; set; }
         public bool ThreadEnded { get; set; }
         public bool StopRequested { get; set; }

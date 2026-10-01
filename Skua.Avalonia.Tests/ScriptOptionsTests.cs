@@ -70,6 +70,44 @@ public sealed class ScriptOptionsTests(AppEngine app)
     }
 
     [AvaloniaFact]
+    public async Task A_start_from_the_Scripts_panel_opens_the_editor_and_the_Scripts_own_restart_goes_on_with_what_was_saved_there()
+    {
+        // As CoreBots opens the options window at every start and restarts the Script after a relogin (#144).
+        string restarted = Path.Combine(ClientFileSources.SkuaDIR, $"Restart{Guid.NewGuid():N}.started");
+        (string path, _) = WriteFarm(before: $$"""
+            bot.Config.Configure();
+            if (!System.IO.File.Exists(@"{{restarted}}"))
+            {
+                System.IO.File.WriteAllText(@"{{restarted}}", "");
+                System.Threading.Tasks.Task.Run(() => bot.Manager.RestartScriptAsync());
+            }
+            else
+                bot.Log($"restarted with count={bot.Config.Get<int>("count")}");
+            """);
+        using EditorWindows editors = new(app);
+        using EngineConnection connection = await ConnectAsync();
+        try
+        {
+            // What the Scripts panel's Start Script calls.
+            IScriptManager manager = app.Get<EngineScripts>().ScriptManager;
+            manager.SetLoadedScript(Path.Combine(ClientFileSources.SkuaScriptsDIR, path));
+            Assert.Null(await manager.StartScript());
+            DialogWindow editor = await editors.NextAsync();
+            ((TextBox)await RowAsync(editor, "count")).Text = "21";
+            editor.Close();
+
+            await connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text == "count=21 mode=Fast_Farm flag=False once=1 name=nobody");
+            await connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text == "restarted with count=21");
+            Assert.Equal(1, editors.Opened);
+        }
+        finally
+        {
+            await connection.ScriptStopAsync(Ct);
+            File.Delete(restarted);
+        }
+    }
+
+    [AvaloniaFact]
     public async Task Options_set_with_the_CLI_show_in_the_editor_the_next_time_it_opens()
     {
         (string path, _) = WriteFarm();
@@ -232,7 +270,7 @@ public sealed class ScriptOptionsTests(AppEngine app)
         IScriptManager manager = app.Get<EngineScripts>().ScriptManager;
         manager.LoadScriptConfig(manager.Compile(File.ReadAllText(Path.Combine(ClientFileSources.SkuaScriptsDIR, path))));
         AvaloniaScriptOptionContainer loaded = Assert.IsType<AvaloniaScriptOptionContainer>(manager.Config);
-        AvaloniaScriptOptionContainer editor = new(dialogs) { Storage = loaded.Storage };
+        AvaloniaScriptOptionContainer editor = new(dialogs, app.Get<EngineScripts>()) { Storage = loaded.Storage };
         editor.Options.AddRange(loaded.Options);
         foreach ((string group, List<IOption> options) in loaded.MultipleOptions)
             editor.MultipleOptions.Add(group, options);
@@ -321,6 +359,9 @@ public sealed class ScriptOptionsTests(AppEngine app)
             await Ui.PumpUntilAsync(() => _opened.Count > _next && _opened[_next] is { IsVisible: true, DataContext: OptionContainerViewModel }, "the options editor");
             return _opened[_next++];
         }
+
+        /// <summary>How many editors have been made.</summary>
+        public int Opened => _opened.Count;
 
         public void Dispose() => _dialogs.WindowCreated = _previous;
     }

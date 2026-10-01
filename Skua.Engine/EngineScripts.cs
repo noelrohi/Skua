@@ -40,6 +40,9 @@ public sealed class EngineScripts
     /// <exception cref="IOException">A local Script couldn't be deleted.</exception>
     public Task<ScriptsUpdateResult> ResetAsync() => Operations.Source.ResetAsync();
 
+    /// <summary>Whether the Script running now started without anyone asking, such as CoreBots' restart after a relogin (#144).</summary>
+    public bool RunningUnasked => _attached?.Runs.Unasked ?? false;
+
     internal void Attach(
         ScriptOperations scripts, ScriptSourceOperations source, ScriptRuns runs, ActionSlot slot, ActionSlot scriptsSlot, SemaphoreSlim compiling) =>
         _attached = new Attached(scripts, source, runs, slot, scriptsSlot, compiling);
@@ -133,7 +136,8 @@ public sealed class EngineScripts
                 await engine.Compiling.WaitAsync();
                 try
                 {
-                    return await Core.StartScript();
+                    using (engine.Runs.WindowStart())
+                        return await Core.StartScript();
                 }
                 finally
                 {
