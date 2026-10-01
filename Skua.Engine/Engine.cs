@@ -154,7 +154,7 @@ internal sealed class Engine : IEngineRpc
         {
             services.GetRequiredService<IPluginManager>().Initialize();
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (Exception e)
         {
             EngineLog.Write($"Not loading plugins: {e.Message}");
         }

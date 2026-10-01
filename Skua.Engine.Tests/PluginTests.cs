@@ -1,7 +1,4 @@
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Skua.Control;
-using Skua.Core.Interfaces;
 
 namespace Skua.Engine.Tests;
 
@@ -34,6 +31,7 @@ public class PluginTests
     private static byte[] HelloPlugin()
     {
         const string source = """
+            #nullable disable
             using System;
             using System.Collections.Generic;
             using Skua.Core.Interfaces;
@@ -51,15 +49,6 @@ public class PluginTests
                 public void Unload() { }
             }
             """;
-        IEnumerable<MetadataReference> platform = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
-            .Where(p => Path.GetFileName(p).StartsWith("System.", StringComparison.Ordinal) || Path.GetFileName(p) is "netstandard.dll" or "mscorlib.dll")
-            .Select(p => MetadataReference.CreateFromFile(p));
-        CSharpCompilation compilation = CSharpCompilation.Create("Hello", [CSharpSyntaxTree.ParseText(source)],
-            [.. platform, MetadataReference.CreateFromFile(typeof(ISkuaPlugin).Assembly.Location)],
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-        using MemoryStream image = new();
-        Microsoft.CodeAnalysis.Emit.EmitResult result = compilation.Emit(image);
-        Assert.True(result.Success, string.Join("; ", result.Diagnostics));
-        return image.ToArray();
+        return PluginCompiler.Compile("Hello", source);
     }
 }

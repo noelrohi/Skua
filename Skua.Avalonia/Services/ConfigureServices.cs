@@ -31,7 +31,6 @@ public static class ConfigureServices
         services.AddSingleton<IThemeService, AvaloniaThemeService>();
         services.AddSingleton<GameOptionEdits>();
         services.AddSingleton<IHotKeyService, AvaloniaHotKeyService>();
-        // The Engine's plugin manager loads plugins; their menu items join the app's Plugins menu.
         services.AddSingleton<IPluginHelper, AppPluginHelper>();
 
         // The GitHub token goes to Keychain, not Skua.settings.json, and the app keeps its own settings beside Core's (#92).

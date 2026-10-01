@@ -1,7 +1,7 @@
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Skua.Core.Interfaces;
 using Skua.Core.Models;
+using Skua.Engine.Tests;
 
 namespace Skua.Avalonia.Tests;
 
@@ -18,7 +18,7 @@ internal static class TestPlugins
     public static void Write(string id)
     {
         Directory.CreateDirectory(ClientFileSources.SkuaPluginsDIR);
-        MetadataReference wpf = MetadataReference.CreateFromImage(Compile("PresentationFramework", """
+        MetadataReference wpf = MetadataReference.CreateFromImage(PluginCompiler.Compile("PresentationFramework", """
             namespace System.Windows
             {
                 public class Window
@@ -78,20 +78,5 @@ internal static class TestPlugins
         """;
 
     private static void Emit(string assembly, string source, MetadataReference[] references) =>
-        File.WriteAllBytes(Path.Combine(ClientFileSources.SkuaPluginsDIR, assembly + ".dll"), Compile(assembly, source, references));
-
-    private static byte[] Compile(string assembly, string source, MetadataReference[] references)
-    {
-        IEnumerable<MetadataReference> platform = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
-            .Where(p => Path.GetFileName(p).StartsWith("System.", StringComparison.Ordinal) || Path.GetFileName(p) is "netstandard.dll" or "mscorlib.dll")
-            .Select(p => MetadataReference.CreateFromFile(p));
-        CSharpCompilation compilation = CSharpCompilation.Create(assembly, [CSharpSyntaxTree.ParseText(source)],
-            [.. platform, MetadataReference.CreateFromFile(typeof(ISkuaPlugin).Assembly.Location), .. references],
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
-        using MemoryStream image = new();
-        Microsoft.CodeAnalysis.Emit.EmitResult result = compilation.Emit(image);
-        if (!result.Success)
-            throw new InvalidOperationException($"{assembly} didn't compile: {string.Join("; ", result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error))}");
-        return image.ToArray();
-    }
+        File.WriteAllBytes(Path.Combine(ClientFileSources.SkuaPluginsDIR, assembly + ".dll"), PluginCompiler.Compile(assembly, source, references));
 }

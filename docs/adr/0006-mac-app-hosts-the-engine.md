@@ -12,7 +12,7 @@ The Game Host writes each rendered frame into a shared-memory Frame Buffer that 
   - It holds the same flock lock, binds the same `<SkuaDIR>/engines/<name>.sock` (mode 0600), and answers every `IEngineRpc` method. ADR 0001's rule holds: one process, one Game Client.
   - The app's view models are registered into the Engine's container, so `Ioc.Default` is configured once, as in the WPF app.
 - **The Engine becomes a library.** The hosting code (`Engine`, `EngineServices`, the operations, the logs and the Game Host supervisor) moves from `Skua.App.Engine` into a `Skua.Engine` class library. The library takes host options:
-  - **Headless** (`skua-engine`): today's behaviour. It keeps the stderr logging, `--detach` and the SIGTERM/SIGINT handlers, forces LagKiller on at every login, and uses the headless dialog services.
+  - **Headless** (`skua-engine`): today's behaviour. It keeps the stderr logging, `--detach` and the SIGTERM/SIGINT handlers, forces LagKiller on at every login, uses the headless dialog services, and loads the data folder's plugins as it starts (#150), where the app loads them once its menu is up.
   - **App**: it skips all of the headless behaviour listed above. It logs only to the Engine's log files, quits through the app's lifetime, and leaves LagKiller to the user's Game Options, as on Windows. It also gets a hook that adds the app's services before the container is built.
   - The app starts its Engine, and binds the socket, before Avalonia's lifetime starts, so the process-wide `umask` around `bind` can't race the UI threads.
 - **The app owns its Engine.**

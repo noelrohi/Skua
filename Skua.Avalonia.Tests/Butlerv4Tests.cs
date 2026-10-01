@@ -186,9 +186,15 @@ public sealed class Butlerv4Tests : IAsyncDisposable
         start.Environment["CFFIXED_USER_HOME"] = _home;
         start.Environment[EngineEndpoint.SkuaDirVariable] = SkuaDir;
         start.Environment.Remove(EngineEndpoint.SocketVariable);
-        start.Environment["SKUA_FAKE_APP_SCENARIO"] = scenario;
-        start.Environment["SKUA_FAKE_GAMEHOST_SCENARIO"] = scenario;
-        start.Environment["SKUA_FAKE_APP_PLUGINS"] = host == Host.AppWithPlugins ? "1" : "0";
+        if (host == Host.Engine)
+        {
+            start.Environment["SKUA_FAKE_GAMEHOST_SCENARIO"] = scenario;
+        }
+        else
+        {
+            start.Environment["SKUA_FAKE_APP_SCENARIO"] = scenario;
+            start.Environment["SKUA_FAKE_APP_PLUGINS"] = host == Host.AppWithPlugins ? "1" : "0";
+        }
         foreach ((string key, string value) in keychain.Environment())
             start.Environment[key] = value;
         Process app = Process.Start(start)!;
