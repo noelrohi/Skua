@@ -121,23 +121,28 @@ internal sealed class ScriptRuns
             TurnLagKillerBackOn();
     }
 
-    /// <summary>Whether the next start Core reports is one the window's Scripts panel asked for.</summary>
-    public void WindowStarting(bool starting)
+    /// <summary>Marks the start Core reports next as the window's, until the lease is disposed.</summary>
+    public IDisposable WindowStart()
     {
         lock (_lock)
-            _windowStarting = starting;
+            _windowStarting = true;
+        return new Lease(() =>
+        {
+            lock (_lock)
+                _windowStarting = false;
+        });
     }
 
     /// <summary>
-    /// Whether the Script running now started without anyone asking: Core's auto-relogin restarted it, or the Script itself (CoreBots, after a
-    /// relogin) or an <c>eval</c> started it. Not for a start the Scripts panel or <c>script_start</c> asked for.
+    /// Whether the Script thread running now started without anyone asking: Core's auto-relogin restarted it, or the Script itself (CoreBots,
+    /// after a relogin) or an <c>eval</c> started it. Not for a start the Scripts panel or <c>script_start</c> asked for.
     /// </summary>
     public bool Unasked
     {
         get
         {
             lock (_lock)
-                return _run is { } run && (!run.Asked || run.Relogins > 0);
+                return _manager.ScriptRunning && _run is { ReloginPending: false } run && (!run.Asked || run.Relogins > 0);
         }
     }
 
@@ -405,6 +410,11 @@ internal sealed class ScriptRuns
             run.Number, run.Script, run.StartedAt, run.Relogins, run.ReloginPending, run.Dialogs, run.DialogTimeoutSec, Math.Round(run.Clock.Elapsed.TotalSeconds, 1))
             : null,
         _lastRun);
+
+    private sealed class Lease(Action end) : IDisposable
+    {
+        public void Dispose() => end();
+    }
 
     private sealed class Run(int number, string script, DialogMode dialogs, int dialogTimeoutSec)
     {

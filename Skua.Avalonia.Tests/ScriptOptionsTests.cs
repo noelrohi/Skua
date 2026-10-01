@@ -70,7 +70,7 @@ public sealed class ScriptOptionsTests(AppEngine app)
     }
 
     [AvaloniaFact]
-    public async Task A_start_from_the_Scripts_panel_opens_the_editor_and_a_restart_the_Script_makes_goes_on_with_what_was_saved_there()
+    public async Task A_start_from_the_Scripts_panel_opens_the_editor_and_the_Scripts_own_restart_goes_on_with_what_was_saved_there()
     {
         // As CoreBots opens the options window at every start and restarts the Script after a relogin (#144).
         string restarted = Path.Combine(ClientFileSources.SkuaDIR, $"Restart{Guid.NewGuid():N}.started");

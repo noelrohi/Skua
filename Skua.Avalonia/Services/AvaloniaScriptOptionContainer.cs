@@ -29,10 +29,7 @@ public sealed class AvaloniaScriptOptionContainer : ScriptOptionContainer, IScri
         _scripts = scripts;
     }
 
-    /// <summary>
-    /// Shows the options editor and waits until it closes; closing it, however it closes, saves what changed, as on Windows. In a run nobody
-    /// asked for it does nothing, so the Script keeps the values it loaded.
-    /// </summary>
+    /// <summary>Shows the options editor and waits until it closes; closing it, however it closes, saves what changed, as on Windows.</summary>
     public new void Configure()
     {
         if (_scripts.RunningUnasked)
