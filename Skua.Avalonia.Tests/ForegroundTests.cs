@@ -62,7 +62,8 @@ public sealed class ForegroundTests(AppEngine app)
             await Ui.PumpUntilAsync(() => opened.Count == 1, "the options window to be made");
             Dispatcher.UIThread.RunJobs();
             Assert.False(opened[0].IsVisible, "The options window showed while another app was frontmost.");
-            await connection.ScriptWaitAsync(60, Ct);
+            ScriptWaitResult ended = await connection.ScriptWaitAsync(60, Ct);
+            Assert.Equal(ScriptWaitReason.Ended, ended.Reason);
             Assert.False(opened[0].IsVisible, "The options window showed while another app was frontmost.");
             Assert.Equal([("Skua: Options", "Waiting for you in Skua.")], _posted);
 
@@ -75,6 +76,7 @@ public sealed class ForegroundTests(AppEngine app)
         }
         finally
         {
+            await connection.ScriptStopAsync(Ct);
             front = true;
             foreground.BroughtForward();
             Dispatcher.UIThread.RunJobs();
@@ -97,8 +99,10 @@ public sealed class ForegroundTests(AppEngine app)
         (Func<bool> frontmost, Action<string, string> notify) = (foreground.Frontmost, foreground.Notify);
         foreground.Frontmost = () => front;
         foreground.Notify = (title, body) => _posted.Add((title, body));
+        windows.OpenWindow("Console")?.Close();
         try
         {
+            windows.ShowManagedWindow("Console");
             windows.ShowManagedWindow("Console");
             Assert.Null(windows.OpenWindow("Console"));
             Assert.Equal([("Skua: Console", "Waiting for you in Skua.")], _posted);

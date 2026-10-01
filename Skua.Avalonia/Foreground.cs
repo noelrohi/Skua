@@ -28,22 +28,29 @@ public sealed class Foreground
     /// <summary>Posts a notification with a title and a body; the app sets it to the macOS poster.</summary>
     public Action<string, string> Notify { get; set; } = (_, _) => { };
 
-    public bool IsFrontmost => Frontmost();
-
     /// <summary>
-    /// Completes at once while the app is frontmost. Otherwise posts <paramref name="title"/> and <paramref name="body"/>, and completes once
+    /// Completes at once while the app is frontmost. Otherwise posts that the window titled <paramref name="title"/> waits, and completes once
     /// the app comes forward, or is cancelled with <paramref name="cancellationToken"/>. Called on the UI thread.
     /// </summary>
-    public Task UntilFrontmostAsync(string title, string body, CancellationToken cancellationToken = default)
+    public async Task UntilFrontmostAsync(string title, CancellationToken cancellationToken = default)
     {
         if (Frontmost())
-            return Task.CompletedTask;
+            return;
+        cancellationToken.ThrowIfCancellationRequested();
         TaskCompletionSource waiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_waiting)
             _waiting.Add(waiting);
-        cancellationToken.Register(() => waiting.TrySetCanceled(cancellationToken));
-        Notify(title, body);
-        return waiting.Task;
+        Notify($"Skua: {title}", "Waiting for you in Skua.");
+        try
+        {
+            using (cancellationToken.Register(() => waiting.TrySetCanceled(cancellationToken)))
+                await waiting.Task;
+        }
+        finally
+        {
+            lock (_waiting)
+                _waiting.Remove(waiting);
+        }
     }
 
     /// <summary>Lets what waits for the app to come forward show, if it is frontmost now.</summary>

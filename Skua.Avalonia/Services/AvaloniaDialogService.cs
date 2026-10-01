@@ -112,7 +112,7 @@ public sealed class AvaloniaDialogService : IDialogService
             WatchExit();
             try
             {
-                await _foreground.UntilFrontmostAsync($"Skua: {dialog.Title}", "Waiting for you in Skua.", _exiting.Token);
+                await _foreground.UntilFrontmostAsync(dialog.Title ?? "Skua", _exiting.Token);
             }
             catch (OperationCanceledException)
             {

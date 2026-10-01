@@ -21,6 +21,7 @@ public sealed class AvaloniaWindowService : IWindowService
     private readonly Foreground _foreground;
     private readonly Dictionary<string, IManagedWindow> _managed = [];
     private readonly Dictionary<string, HostWindow> _open = [];
+    private readonly HashSet<string> _waiting = [];
 
     public AvaloniaWindowService(IServiceProvider services, Foreground foreground)
     {
@@ -64,7 +65,13 @@ public sealed class AvaloniaWindowService : IWindowService
             Trace.WriteLine($"The Mac App has no view for '{key}' yet.");
             return;
         }
-        WhenFrontmost(key, () => ShowManaged(key, viewModel));
+        // Shown again while it waits, it waits once.
+        if (_waiting.Add(key))
+            WhenFrontmost(TitleOf(viewModel), () =>
+            {
+                _waiting.Remove(key);
+                ShowManaged(key, viewModel);
+            });
     });
 
     private void ShowManaged(string key, IManagedWindow viewModel)
@@ -106,19 +113,25 @@ public sealed class AvaloniaWindowService : IWindowService
             Trace.WriteLine($"The Mac App has no view for {viewModel?.GetType().Name ?? "a missing view model"} yet.");
             return;
         }
-        HostWindow window = Create(viewModel);
-        if (size is { } s)
+        WhenFrontmost(TitleOf(viewModel), () =>
         {
-            window.Width = s.Width;
-            window.Height = s.Height;
-        }
-        WhenFrontmost(window.Title ?? "Skua", window.Show);
+            HostWindow window = Create(viewModel);
+            if (size is { } s)
+            {
+                window.Width = s.Width;
+                window.Height = s.Height;
+            }
+            window.Show();
+        });
     });
+
+    /// <summary>The title its window shows, as <see cref="HostWindow"/> titles it.</summary>
+    private static string TitleOf(object viewModel) => (viewModel as IManagedWindow)?.Title ?? "Skua";
 
     /// <summary>Runs <paramref name="show"/> now while the app is frontmost, else on the UI thread once it comes forward.</summary>
     private void WhenFrontmost(string title, Action show)
     {
-        Task front = _foreground.UntilFrontmostAsync($"Skua: {title}", "Waiting for you in Skua.");
+        Task front = _foreground.UntilFrontmostAsync(title);
         if (front.IsCompleted)
             show();
         else
