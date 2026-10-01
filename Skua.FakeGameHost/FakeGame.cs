@@ -43,6 +43,7 @@ internal sealed class FakeGame
     private bool _loading;
     private int _hp = MaxHp;
     private int _state = 1;
+    private DateTime _diedAt;
     private int _level = 10;
     private int _xp = 1500;
     private int _gold = 5000;
@@ -59,6 +60,8 @@ internal sealed class FakeGame
 
     private const int MaxHp = 1000;
     private const int RequiredXp = 4000;
+    private const int PlayerId = 1;
+    private static readonly TimeSpan RespawnMinimum = TimeSpan.FromSeconds(2);
 
     /// <summary>Whether the lag killer hides the world, as <c>killLag</c> last set it.</summary>
     public bool LagKilled { get; private set; }
@@ -153,10 +156,18 @@ internal sealed class FakeGame
                 case ["die"]:
                     _hp = 0;
                     _state = 0;
+                    _diedAt = DateTime.UtcNow;
                     Pext(new JsonObject { ["cmd"] = "ct", ["p"] = new JsonObject { [_username.ToLowerInvariant()] = new JsonObject { ["intHP"] = 0 } } });
                     return true;
                 case ["afk"]:
                     PextStr(["uotls", "-1", _username, "afk:true"]);
+                    return true;
+                case ["respawn-request"]:
+                    // The Game Client's own request when its respawn countdown ends.
+                    string request = $"%xt%zm%resPlayerTimed%{_roomId}%{PlayerId}%";
+                    Packet(request);
+                    _note($"send {request}");
+                    RespawnRequested();
                     return true;
                 case ["combat"]:
                     _state = 2;
@@ -224,6 +235,7 @@ internal sealed class FakeGame
     {
         "world" => _world ? new JsonObject() : null,
         "world.myAvatar" => _world ? new JsonObject() : null,
+        "world.myAvatar.uid" => _world ? PlayerId : null,
         "sfc" => new JsonObject(),
         "sfc.isConnected" => _connected,
         "mcConnDetail.stage" => _connDetail is null ? null : new JsonObject(),
@@ -552,11 +564,35 @@ internal sealed class FakeGame
                     }
                 });
                 return;
+            case ["xt", "zm", "resPlayerTimed", ..]:
+                RespawnRequested();
+                return;
             case ["xt", "zm", "loadBank", ..]:
                 // The game server no longer answers it (#49).
                 _note("loadBank");
                 return;
         }
+    }
+
+    /// <summary>
+    /// The game server's <c>resPlayerTimed</c>: it respawns a dead player at the map's entrance with <c>resTimed</c>, and the game moves
+    /// them there; it ignores a request that comes too soon after the death (the real server's 8 s, scaled down here).
+    /// The call log records <c>respawn</c> or <c>respawn ignored</c>.
+    /// </summary>
+    private void RespawnRequested()
+    {
+        if (_state != 0 || DateTime.UtcNow - _diedAt < RespawnMinimum)
+        {
+            _note("respawn ignored");
+            return;
+        }
+        _note("respawn");
+        _state = 1;
+        _hp = MaxHp;
+        PextStr(["resTimed", "-1", "Enter", "Spawn"]);
+        _cell = "Enter";
+        _pad = "Spawn";
+        Packet($"%xt%zm%moveToCell%{_roomId}%Enter%Spawn%");
     }
 
     private void Join(string map, string cell, string pad)
@@ -600,7 +636,7 @@ internal sealed class FakeGame
             [me] = new JsonObject
             {
                 ["uoName"] = me, ["strUsername"] = _username, ["intLevel"] = _level, ["strFrame"] = _cell, ["strPad"] = _pad, ["intHP"] = _hp, ["intHPMax"] = MaxHp,
-                ["intMP"] = 80, ["afk"] = false, ["intState"] = _state, ["entID"] = 1,
+                ["intMP"] = 80, ["afk"] = false, ["intState"] = _state, ["entID"] = PlayerId,
             },
             ["artixfan"] = new JsonObject
             {

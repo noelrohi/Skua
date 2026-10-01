@@ -23,12 +23,14 @@ internal sealed class GameHostSupervisor : IDisposable
 
     private readonly BridgeFlashUtil _flash;
     private readonly GameStateTracker _tracker;
+    private readonly RespawnWatch _respawn;
     private readonly Timer? _stats;
 
-    private GameHostSupervisor(BridgeFlashUtil flash, GameStateTracker tracker, EngineLogs logs)
+    private GameHostSupervisor(BridgeFlashUtil flash, GameStateTracker tracker, RespawnWatch respawn, EngineLogs logs)
     {
         _flash = flash;
         _tracker = tracker;
+        _respawn = respawn;
         TimeSpan interval = TimeSpan.FromSeconds(
             int.TryParse(Environment.GetEnvironmentVariable(StatsIntervalVariable), out int seconds) && seconds >= 0 ? seconds : 60);
         if (interval > TimeSpan.Zero)
@@ -54,6 +56,8 @@ internal sealed class GameHostSupervisor : IDisposable
         if (keepLagKillerOn)
             tracker.Playing += () => options.LagKiller = true;
         GameEventRecorder.Start(services.GetRequiredService<IFlashUtil>(), options, services.GetRequiredService<IScriptPlayer>(), logs, tracker);
+        RespawnWatch respawn = new(services.GetRequiredService<IFlashUtil>(), services.GetRequiredService<IScriptPlayer>(),
+            services.GetRequiredService<IScriptMap>(), services.GetRequiredService<IScriptSend>(), tracker);
 
         BridgeFlashUtil flash = services.GetRequiredService<BridgeFlashUtil>();
         GameHostLaunch launch = services.GetRequiredService<GameHostLaunch>();
@@ -87,7 +91,7 @@ internal sealed class GameHostSupervisor : IDisposable
             }
         };
         flash.InitializeFlash();
-        return new GameHostSupervisor(flash, tracker, logs);
+        return new GameHostSupervisor(flash, tracker, respawn, logs);
     }
 
     /// <summary>
@@ -113,6 +117,7 @@ internal sealed class GameHostSupervisor : IDisposable
     public void Dispose()
     {
         _stats?.Dispose();
+        _respawn.Dispose();
         _flash.Dispose();
         _tracker.Dispose();
     }
