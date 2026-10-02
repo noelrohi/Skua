@@ -43,12 +43,13 @@ public sealed class ScriptStatusAlertsTests(AppEngine app)
             await Ui.PumpUntilAsync(() => _posted.Count == 2, "the error's notification");
             Assert.Equal(("Script Error", "Out of potions."), _posted[1]);
 
-            options.AutoRelogin = true;
-            options.SafeRelogin = false;
-            options.ReloginTryDelay = 200;
+            // Logged in first: an earlier test may leave a restarted Game Host logged out, which auto-relogin would relog at once.
             await connection.LoginAsync("Galanoth", cancellationToken: Ct);
             string username = app.Get<IScriptPlayer>().Username;
             Assert.False(string.IsNullOrEmpty(username));
+            options.AutoRelogin = true;
+            options.SafeRelogin = false;
+            options.ReloginTryDelay = 200;
             await AppEngine.DoAsync("lose-connection Your connection to the server has been lost.");
             await Ui.PumpUntilAsync(() => _posted.Count == 3, "the relogin's notification");
             // The error's stop wasn't posted again, before the relogin's.
