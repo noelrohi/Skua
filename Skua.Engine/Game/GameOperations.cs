@@ -241,20 +241,26 @@ internal sealed class GameOperations
     }
 
     /// <summary>
-    /// The Keychain service of the named account, once Keychain has it; an agent may name only the Test Account or one that carries
+    /// The Keychain service of the named account, once Keychain has it. An Engine whose host pinned its account logs in only that one (the
+    /// Skua Manager owns which account its app plays), and an agent may name only the Test Account or one that carries
     /// <see cref="AccountSetting.AllowAgentsComment"/>. Read without the password, so without asking macOS.
     /// </summary>
     /// <exception cref="StreamJsonRpc.LocalRpcException">
-    /// <see cref="ErrorCode.InvalidArgument"/> for an invalid name or an account an agent may not use, <see cref="ErrorCode.AccountNotFound"/>
-    /// when Keychain has none by that name, and <see cref="ErrorCode.LoginFailed"/> when Keychain can't be read.
+    /// <see cref="ErrorCode.InvalidArgument"/> for an invalid name, an account other than the pinned one, or one an agent may not use,
+    /// <see cref="ErrorCode.AccountNotFound"/> when Keychain has none by that name, and <see cref="ErrorCode.LoginFailed"/> when Keychain
+    /// can't be read.
     /// </exception>
-    private static async Task<string> NamedServiceAsync(string name, bool asAgent, CancellationToken cancellationToken)
+    private async Task<string> NamedServiceAsync(string name, bool asAgent, CancellationToken cancellationToken)
     {
         KeychainAttributes? attributes;
         string service;
         try
         {
             service = Accounts.ServiceOf(name);
+            if (_accountService is not null && service != _accountService)
+                throw RpcErrors.Of(ErrorCode.InvalidArgument,
+                    $"This Engine's app plays the account the Skua Manager launched it with, '{Accounts.NameOf(_accountService) ?? _accountService}', " +
+                    $"so it can't log in '{name}'; launch '{name}' from the Skua Manager.");
             attributes = await Keychain.FindAsync(service, cancellationToken);
         }
         catch (ControlException e)

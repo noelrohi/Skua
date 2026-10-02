@@ -268,11 +268,6 @@ public sealed class ManagerTests : IDisposable
             Assert.Equal(AppEngine.Keychain.Username, agent.Username);
             LoginResult human = await bobEngine.LoginAsync(cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal("BobTester", human.Username);
-            // A login naming another of the Manager's accounts uses it there, and one naming none goes back to the app's own.
-            LoginResult named = await bobEngine.LoginAsync(null, null, "alicetester", TestContext.Current.CancellationToken);
-            Assert.Equal(("AliceTester", false), (named.Username, named.AlreadyLoggedIn));
-            LoginResult own = await bobEngine.LoginAsync(cancellationToken: TestContext.Current.CancellationToken);
-            Assert.Equal(("BobTester", false), (own.Username, own.AlreadyLoggedIn));
         }
 
         await running.StopCommand.ExecuteAsync(alice);
@@ -283,6 +278,40 @@ public sealed class ManagerTests : IDisposable
 
         await running.StopCommand.ExecuteAsync(running.Engines.Single(e => e.Name == "bobtester"));
         await RemoveAllAsync();
+    }
+
+    [AvaloniaFact]
+    public async Task A_launched_app_refuses_a_login_naming_another_account_since_the_Manager_owns_which_account_it_plays()
+    {
+        AccountManagerViewModel list = Accounts.Accounts;
+        foreach ((string username, string password) in GameAccounts[..2])
+            Add(list, username, password, "");
+        RunningViewModel running = _services.GetRequiredService<RunningViewModel>();
+        try
+        {
+            // Another test's app may have left its login behind.
+            File.Delete(Path.Combine(AppEngine.SkuaDir, "engines", "bobtester.login"));
+            await Accounts.LaunchAsync([list.Accounts[1]], withScript: false);
+            Assert.Equal("Launched bobtester.", Accounts.Status);
+            await WaitForLoginAsync("bobtester", "BobTester");
+            using EngineConnection bob = (await EngineClient.TryConnectAsync(EngineEndpoint.Resolve("bobtester", AppEngine.SkuaDir), TestContext.Current.CancellationToken))!;
+
+            ControlException other = await Assert.ThrowsAsync<ControlException>(
+                () => bob.LoginAsync(null, null, "alicetester", TestContext.Current.CancellationToken));
+            LoginResult own = await bob.LoginAsync(null, null, "bobtester", TestContext.Current.CancellationToken);
+
+            Assert.Equal(ErrorCode.InvalidArgument, other.Code);
+            Assert.Contains("'bobtester'", other.Message);
+            Assert.Contains("can't log in 'alicetester'", other.Message);
+            Assert.Equal(("BobTester", true), (own.Username, own.AlreadyLoggedIn));
+        }
+        finally
+        {
+            await running.RefreshAsync();
+            foreach (RunningItemViewModel engine in running.Engines.Where(e => e.Name == "bobtester").ToList())
+                await running.StopCommand.ExecuteAsync(engine);
+            await RemoveAllAsync();
+        }
     }
 
     [AvaloniaFact]
