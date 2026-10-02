@@ -25,7 +25,7 @@ fn hello_carries_this_protocol_and_status_reads_the_engine() {
     let mut connection = Engine::connect(&engine.socket, TIMEOUT).unwrap();
     let status = connection.status().unwrap();
 
-    assert_eq!(engine.params_of("hello"), vec![json!([12])]);
+    assert_eq!(engine.params_of("hello"), vec![json!([13])]);
     assert_eq!(connection.hello.engine_name, "alice");
     assert_eq!(status.game.state, GameState::Playing);
     assert_eq!(status.game.player.unwrap().name, "alice");
@@ -45,7 +45,7 @@ fn an_engine_of_another_protocol_is_refused_after_hello_and_nothing_else_is_aske
     );
     let message = error.to_string();
     assert!(
-        message.contains("Engine 'bob'") && message.contains("speaks protocol 11") && message.contains("speaks 12"),
+        message.contains("Engine 'bob'") && message.contains("speaks protocol 11") && message.contains("speaks 13"),
         "{message}"
     );
     assert_eq!(engine.methods(), vec!["hello"]);

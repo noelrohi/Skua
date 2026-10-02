@@ -118,7 +118,7 @@ pub fn status(name: &str, playing: bool, script: Option<&str>) -> Value {
                 "dialogs": "ask", "dialogTimeoutSec": 300, "elapsedSec": 754.2 })
     });
     json!({
-        "engine": { "name": name, "build": "1.4.4.4+abc1234", "protocol": 12, "uptimeSec": 3725.0, "pid": 4242, "host": "engine" },
+        "engine": { "name": name, "build": "1.4.4.4+abc1234", "protocol": 13, "uptimeSec": 3725.0, "pid": 4242, "host": "engine" },
         "game": {
             "gameHostUp": true,
             "state": if playing { "playing" } else { "loginScreen" },
