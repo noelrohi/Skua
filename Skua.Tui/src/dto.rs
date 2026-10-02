@@ -231,3 +231,121 @@ pub struct Map {
     pub players: Vec<MapPlayer>,
     pub monsters: Vec<Monster>,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Server {
+    pub name: String,
+    pub online: bool,
+    pub player_count: i64,
+    pub max_players: i64,
+    pub member_only: bool,
+    pub language: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Servers {
+    pub servers: Vec<Server>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoginResult {
+    pub server: String,
+    pub already_logged_in: bool,
+    pub username: String,
+    pub is_test_account: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogoutResult {
+    pub was_logged_in: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptInfo {
+    pub path: String,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub downloaded: bool,
+    pub outdated: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptsSearch {
+    pub matched: i64,
+    pub scripts: Vec<ScriptInfo>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptOption {
+    pub key: String,
+    pub category: String,
+    pub display_name: String,
+    pub description: Option<String>,
+    /// One of `bool`, `int`, `number`, `string`, `enum`.
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub value: String,
+    pub default: String,
+    pub choices: Option<Vec<String>>,
+    pub transient: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptOptions {
+    pub script: String,
+    pub options: Vec<ScriptOption>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptStartResult {
+    pub run: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptStopResult {
+    pub was_running: bool,
+    pub ended: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Dialogs {
+    pub questions: Vec<Question>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DialogAnswer {
+    pub id: i64,
+    pub choice: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Location {
+    pub map: String,
+    pub cell: String,
+    pub pad: String,
+    pub already_there: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptsUpdate {
+    /// One of `full`, `incremental`, `upToDate`.
+    pub mode: String,
+    pub downloaded: i64,
+    pub failed: Vec<String>,
+    pub added: Vec<String>,
+    pub changed: Vec<String>,
+}

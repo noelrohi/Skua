@@ -448,7 +448,7 @@ SKUA_LIVE=smoke SKUA_SCRIPTS_CHECKOUT="$(realpath ../Scripts)" \
 
 ### The TUI (`skua-tui`)
 
-`skua-tui` is a terminal UI for windowless Engines (`Skua.Tui/`, a Rust crate on the Game Host's toolchain; `dotnet build` doesn't build it). It lists the Skua Manager's accounts by group, each with its Engine's state, and shows the selected one's Overview, Inventory, Quests, Logs and Game (the map). This first version only shows: its commands (start or stop an Engine, log in, Scripts, Questions) say they come in the next version.
+`skua-tui` is a terminal UI for windowless Engines (`Skua.Tui/`, a Rust crate on the Game Host's toolchain; `dotnet build` doesn't build it). It lists the Skua Manager's accounts by group, each with its Engine's state, shows the selected one's Overview, Inventory, Quests, Logs and Game (the map), and drives the Engines.
 
 ```sh
 cd Skua.Tui
@@ -456,7 +456,23 @@ cargo test --locked                    # against a fake Engine socket; no game, 
 cargo run --release                    # or target/release/skua-tui
 ```
 
-It reads the Engines under the data folder (`SKUA_DIR`, else `~/Library/Application Support/Skua`) from `engines/*.sock`, and the accounts from `Skua.manager.json`, which it never writes; it never reads Keychain. An Engine that speaks another protocol shows a red **Protocol mismatch** with what to do, and none of its data. Keys: `j`/`k` move, `space` marks, `a` marks a group, `tab` or `1`–`5` picks a tab, `:` opens the command palette, `/` filters, `?` lists the keys, `q` quits.
+It reads the Engines under the data folder (`SKUA_DIR`, else `~/Library/Application Support/Skua`) from `engines/*.sock`, and the accounts from `Skua.manager.json`, which it never writes; it never reads Keychain. An Engine that speaks another protocol shows a red **Protocol mismatch** with what to do, and none of its data; skua-tui never acts on it.
+
+Keys: `j`/`k` move, `space` marks, `a` marks a group, `esc` clears marks, the filter and finished notes, `tab` or `1`–`5` picks a tab, `:` opens the command palette, `/` filters, `?` lists the keys, `q` quits. The actions act on the marked accounts, else the selected one:
+
+| Key | Action | Control Surface op |
+|---|---|---|
+| `E` | Start a windowless Engine for each account that has none, named after the account | `skua-engine --name <account> --detach`, as `skua` auto-starts one |
+| `X` | Stop the Engine, after `y` to confirm; one running a Script or busy refuses and keeps running | `shutdown_if_idle` |
+| `L` | Log in, picking the server from a list; only an Engine whose account is the Active Account | `servers`, then `login` |
+| `O` | Log out | `logout` |
+| `s` | Start a Script: type to search, `enter` for its options (`←`/`→`/`space` change a choice, typing edits a number or text), `enter` to start | `scripts_search`, `script_options`, `script_start` |
+| `x` | Stop the Script | `script_stop` |
+| `d` | Answer the selected account's oldest Question: `1`–`9`, or `↑`/`↓` and `enter` | `dialogs`, `dialog_answer` |
+| `J` | Join a map: `map[-room] [cell] [pad]` | `join` |
+| `U` | Update the Scripts from the Script Source (once: every Engine of the data folder shares them) | `scripts_update` |
+
+Each result or error shows on the status line and stays on its account (a red `!` in the list for an error) until its next action or `esc`. `E` launches the `skua-engine` that `skua` would: `SKUA_ENGINE`, else the one next to the `skua` on `PATH`, with the same `SKUA_DIR`. It never starts one where an Engine answers or is starting, and never replaces or restarts one. A windowless Engine logs in its data folder's Active Account (`skua account use`), so `L` logs an Engine in only while the Active Account is the one named after it, and refuses the others before sending `login`. It reads the Active Account from `Skua.settings.json`, never from Keychain. It refuses a login on an Engine the Skua app hosts.
 
 ### Building the Installer
 

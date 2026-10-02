@@ -187,7 +187,7 @@ fn an_account_without_an_engine_says_so() {
         &[
             "No Engine",
             "carol is offline: no Engine runs for it.",
-            "start a windowless Engine for it (not yet)",
+            "start a windowless Engine for it (skua-engine)",
             "/carol",
         ],
     );
@@ -232,7 +232,7 @@ fn the_tabs_show_inventory_quests_logs_and_the_map_with_the_picture_not_yet() {
 }
 
 #[test]
-fn marks_and_the_command_palette_list_commands_whose_actions_come_next() {
+fn marks_and_the_command_palette_list_commands_and_run_them_on_the_marked_accounts() {
     let fleet = fleet();
     let mut app = App::new(fleet.dir.path().to_owned());
     screen(&fleet, &mut app, 120, 32);
@@ -259,8 +259,8 @@ fn marks_and_the_command_palette_list_commands_whose_actions_come_next() {
     }
     press(&mut app, KeyCode::Enter);
     let screen = screen(&fleet, &mut app, 120, 32);
-    assert_shows(&screen, &["start Script on 2 accounts: not in skua-tui yet"]);
-    assert!(app.modal.is_none());
+    assert_shows(&screen, &["Start a Script", "on 2 accounts", "reading from alice…"]);
+    assert_eq!(app.jobs.len(), 1, "one Engine searches the Scripts");
 }
 
 #[test]
@@ -277,7 +277,8 @@ fn the_keys_help_lists_every_key() {
             "Keys",
             "mark its whole group",
             "command palette",
-            "start / stop Engine (not yet)",
+            "start / stop Engine (stop asks first)",
+            "log in (server picker) / log out",
             "any key closes",
         ],
     );
