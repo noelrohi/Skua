@@ -11,6 +11,9 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 * Hooks: put an executable named after an event type in `<SkuaDIR>/hooks/` (say `hooks/inventory.full`) and `skua hooks` runs it on each such event of every windowless Engine, with the event on stdin. Each run is recorded as a `hook.ran` event, and `skua-tui`'s Hooks tab shows them; `H` starts the runner. See [Hooks](./BUILD.md#hooks).
 * `skua-tui` acts now: start a windowless Engine (`E`) or stop one (`X`, after a confirm), log in with a server picker (`L`; for now only the Engine whose account is the Active Account), log out (`O`), search a Script, set its options and start it (`s`) or stop it (`x`), answer a Question (`d`), join a map (`J`) and update the Scripts (`U`). Marked accounts all get the action. See [The TUI](./BUILD.md#the-tui-skua-tui).
 
+### Fixes
+* A long Script no longer crashes with `Could not load file or assembly 'Core…'` after a `skua eval` or a Console line runs while it plays (#177).
+
 ## October 2, 2026
 
 ### New

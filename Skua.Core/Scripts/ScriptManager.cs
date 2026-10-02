@@ -65,7 +65,9 @@ public partial class ScriptManager : ObservableObject, IScriptManager, IDisposab
     private readonly List<string> _refCache = new();
     private readonly ReaderWriterLockSlim _includedFilesLock = new();
     private readonly List<string> _includedFiles = new();
-    private ScriptLoadContext? _currentLoadContext;
+    private ScriptLoadContext? _compileLoadContext;
+    // Held for the whole run: a collectible context starts unloading once unreachable, and the run still loads includes lazily.
+    private ScriptLoadContext? _runLoadContext;
 
     [ObservableProperty]
     private bool _scriptRunning = false;
@@ -101,7 +103,7 @@ public partial class ScriptManager : ObservableObject, IScriptManager, IDisposab
             UnloadPreviousScript();
 
             string scriptContent = File.ReadAllText(LoadedScript);
-            object? script = await Task.Run(() => Compile(scriptContent));
+            object? script = await Task.Run(() => Compile(scriptContent, forRun: true));
 
             LoadScriptConfig(script);
 
@@ -322,7 +324,10 @@ public partial class ScriptManager : ObservableObject, IScriptManager, IDisposab
     }
 
     [RequiresUnreferencedCode("This method may require code that cannot be statically analyzed for trimming. Use with caution.")]
-    public object? Compile(string source)
+    public object? Compile(string source) => Compile(source, forRun: false);
+
+    [RequiresUnreferencedCode("This method may require code that cannot be statically analyzed for trimming. Use with caution.")]
+    private object? Compile(string source, bool forRun)
     {
         CheckScriptVersionRequirement(source);
 
@@ -364,7 +369,10 @@ public partial class ScriptManager : ObservableObject, IScriptManager, IDisposab
         ScriptLoadContext loadContext = new();
         lock (_stateLock)
         {
-            _currentLoadContext = loadContext;
+            if (forRun)
+                _runLoadContext = loadContext;
+            else
+                _compileLoadContext = loadContext;
         }
 
         List<string> compiledIncludes = CompileIncludedFiles(references, loadContext);
@@ -1305,15 +1313,23 @@ public partial class ScriptManager : ObservableObject, IScriptManager, IDisposab
 
     private void UnloadPreviousScript()
     {
-        ScriptLoadContext? context;
+        ScriptLoadContext? compile, run;
         lock (_stateLock)
         {
-            context = _currentLoadContext;
-            _currentLoadContext = null;
+            compile = _compileLoadContext;
+            run = _runLoadContext;
+            _compileLoadContext = null;
+            _runLoadContext = null;
         }
 
         Compiler.ClearSessionRegistries();
 
+        Unload(compile);
+        Unload(run);
+    }
+
+    private static void Unload(ScriptLoadContext? context)
+    {
         if (context is null)
             return;
 

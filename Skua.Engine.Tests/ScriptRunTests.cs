@@ -156,6 +156,47 @@ public class ScriptRunTests
     }
 
     [Fact]
+    public async Task A_Script_still_loads_an_include_it_first_uses_after_an_eval_mid_run()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture game = await GameFixture.StartAsync(sandbox);
+        string go = Path.Combine(sandbox.SkuaDir, "go");
+        TestScripts.Write(sandbox, "Tests/IncB.cs", """
+            public class IncB
+            {
+                public string Name() => "from IncB";
+            }
+            """);
+        TestScripts.Write(sandbox, "Tests/IncA.cs", """
+            //cs_include Scripts/Tests/IncB.cs
+            using System.Runtime.CompilerServices;
+            using Skua.Core.Interfaces;
+
+            public class IncA
+            {
+                [MethodImpl(MethodImplOptions.NoInlining)]
+                public void Late(IScriptInterface bot) => bot.Log(new IncB().Name());
+            }
+            """);
+        TestScripts.Write(sandbox, "Tests/Late.cs", "//cs_include Scripts/Tests/IncA.cs\n" + TestScripts.Main($$"""
+            while (!System.IO.File.Exists(@"{{go}}"))
+                Thread.Sleep(50);
+            new IncA().Late(bot);
+            """));
+        // Compiling once caches the includes, so the run loads them from Cached-Scripts only when first used, as on a farm.
+        await game.Connection.ScriptOptionsAsync("Tests/Late.cs", Ct);
+        await game.Connection.ScriptStartAsync("Tests/Late.cs", cancellationToken: Ct);
+
+        // The eval's own Compile is the mid-run compile; the collection then reclaims whatever it left unreferenced.
+        await game.Connection.EvalAsync("GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); GC.WaitForPendingFinalizers();", cancellationToken: Ct);
+        File.WriteAllText(go, "");
+        ScriptWaitResult wait = await game.Connection.ScriptWaitAsync(60, Ct);
+
+        Assert.Equal((ScriptOutcome.Completed, (string?)null), (wait.Status.LastRun!.Outcome, wait.Status.LastRun.Error));
+        Assert.Single(await game.Connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text == "from IncB"));
+    }
+
+    [Fact]
     public async Task A_Script_started_again_and_again_reports_each_run_in_order_however_short_it_is()
     {
         await using EngineSandbox sandbox = new();
