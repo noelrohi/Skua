@@ -353,6 +353,24 @@ public class CliTests
     }
 
     [Fact]
+    public async Task Logs_follow_says_the_connection_was_lost_when_the_Engine_stops()
+    {
+        await using EngineSandbox sandbox = new();
+        Process follow = sandbox.StartCli("logs", "events", "-f");
+        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(20));
+        await follow.StandardOutput.ReadLineAsync(timeout.Token);
+
+        await EngineClient.StopAsync(sandbox.Endpoint, EngineSandbox.StopTimeout, TestContext.Current.CancellationToken);
+        await follow.WaitForExitAsync(timeout.Token);
+
+        string stderr = await follow.StandardError.ReadToEndAsync(timeout.Token);
+        Assert.Equal(ExitCodes.For(ErrorCode.EngineUnavailable), follow.ExitCode);
+        Assert.Contains("connection to the Engine was lost", stderr);
+        Assert.DoesNotContain("Unhandled exception", stderr);
+    }
+
+    [Fact]
     public async Task Logs_follow_takes_several_kinds_but_a_page_takes_one()
     {
         await using EngineSandbox sandbox = new();

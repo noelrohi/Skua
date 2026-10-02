@@ -144,9 +144,23 @@ public sealed class EngineConnection : IDisposable
     public async IAsyncEnumerable<LogPage> SubscribeAsync(
         LogKind[] kinds, string? after = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await using IAsyncEnumerator<LogPage> pages = _proxy.SubscribeAsync(kinds, after, cancellationToken).GetAsyncEnumerator(cancellationToken);
-        while (await CallAsync(async _ => await pages.MoveNextAsync()))
-            yield return pages.Current;
+        IAsyncEnumerator<LogPage> pages = _proxy.SubscribeAsync(kinds, after, cancellationToken).GetAsyncEnumerator(cancellationToken);
+        try
+        {
+            while (await CallAsync(async _ => await pages.MoveNextAsync()))
+                yield return pages.Current;
+        }
+        finally
+        {
+            // Disposing tells the Engine to end the subscription, which a lost connection has already done.
+            try
+            {
+                await pages.DisposeAsync();
+            }
+            catch (ConnectionLostException)
+            {
+            }
+        }
     }
 
     public Task<ScreenshotResult> ScreenshotAsync(int? maxWidth = null, CancellationToken cancellationToken = default) =>
