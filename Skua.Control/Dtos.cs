@@ -269,3 +269,12 @@ public sealed record DropsResult(IReadOnlyList<DropDto> Drops);
 /// <param name="Channel"><c>zone</c> or <c>whisper</c>.</param>
 /// <param name="To">The whispered player, or null for zone chat.</param>
 public sealed record ChatSendResult(string Channel, string? To, string Text);
+
+/// <summary>One run of a Hook, as the Hook Runner reports it to <c>hook_ran</c> and the <c>hook.ran</c> event records it.</summary>
+/// <param name="Hook">The Hook's file name: the event type it ran for.</param>
+/// <param name="EventSeq">The seq of the event it ran for.</param>
+/// <param name="StartedAt">When it started, in UTC milliseconds since the Unix epoch.</param>
+/// <param name="DurationMs">How long it ran.</param>
+/// <param name="ExitCode">Its exit code; null when it couldn't be started.</param>
+/// <param name="Output">The tail of its stdout and stderr, interleaved; or why it couldn't be started.</param>
+public sealed record HookRunDto(string Hook, long EventSeq, long StartedAt, long DurationMs, int? ExitCode, string Output);

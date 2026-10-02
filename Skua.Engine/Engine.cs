@@ -293,6 +293,16 @@ internal sealed class Engine : IEngineRpc
     public Task<ChatSendResult> ChatSendAsync(string text, string? to, CancellationToken cancellationToken) =>
         _chat.SendAsync(text, to, cancellationToken);
 
+    public Task HookRanAsync(HookRunDto run, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(run.Hook))
+            throw RpcErrors.Of(ErrorCode.InvalidArgument, "A hook run needs the hook's name.");
+        if (run.DurationMs < 0)
+            throw RpcErrors.Of(ErrorCode.InvalidArgument, $"A hook run can't last {run.DurationMs} ms.");
+        _logs.Event(EventTypes.HookRan, run);
+        return Task.CompletedTask;
+    }
+
     public Task<InventoryResult> InventoryAsync(InventoryKind kind, CancellationToken cancellationToken) =>
         _queries.InventoryAsync(kind, cancellationToken);
 

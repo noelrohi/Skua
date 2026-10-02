@@ -118,6 +118,9 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
     public Task<ChatSendResult> ChatSendAsync(string text, string? to, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("A client called chat_send after a protocol mismatch.");
 
+    public Task HookRanAsync(HookRunDto run, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called hook_ran after a protocol mismatch.");
+
     public IAsyncEnumerable<LogPage> SubscribeAsync(LogKind[] kinds, string? after, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("A client called subscribe after a protocol mismatch.");
 

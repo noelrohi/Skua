@@ -407,6 +407,26 @@ The `game` entries are the game's chat, as the Game Client receives it: the mess
 
 The `events` entries are typed facts: `game.state`, `game.disconnected`, `map.joined`, `player.death`, `player.afk`, the runs' `script.*` and the Questions' `question.*`, among others. `inventory.full` (`{used, slots, drop}`) says the inventory is full: once as it fills, with `drop` null, and once for each item that drops while it stays full and isn't in the inventory already, with the drop's `id` and `name`, since it has no slot to go to. The Engine checks when an item drops, is added, picked up or bought, and when the player joins a map, not on a timer; a check that finds a free slot, or a new login, re-arms it. What to do about it is up to the Script or whoever reads the events.
 
+#### Hooks
+
+A Hook is an executable in `<SkuaDIR>/hooks/` named after an event type, as git names its hooks: `hooks/inventory.full`, `hooks/player.death`. `skua hooks` is the Hook Runner: it follows the `events` of every Engine in its data folder (or only `--engine <name>`'s) over `subscribe`, so nothing polls, and for each event runs the Hook named after its type, if there is one and it is executable; for any other event it does nothing. It picks up Engines that start while it runs, and drops those that stop. An Engine already running when it starts is followed from then on; one that starts later is followed from its start. It runs until `ctrl-c`, prints a line per run, and one data folder has one: a second `skua hooks` says so and exits with 1. It works with no TUI and no agent open.
+
+Each run is a process of its own, so a slow or failing Hook holds up neither the events nor the other Hooks; the runner never times one out or retries it. A Hook gets:
+
+- on stdin, the event as one line of JSON, as `skua logs events -f --json` prints it: `{seq, ts, kind, run, type, data}`;
+- in its environment, `SKUA_ENGINE_NAME` (the Engine the event came from), and `SKUA_DIR` and `SKUA_ENGINE_SOCKET`, so `skua` in the Hook talks to that Engine; its working directory is the data folder.
+
+When it exits, the runner records the run on that Engine as a `hook.ran` event (the `hook_ran` op): `{hook, eventSeq, startedAt, durationMs, exitCode, output}`, `exitCode` null when it couldn't start and `output` the tail of its stdout and stderr (4 KB). `skua logs events` reads them, and the TUI's Hooks tab shows them. No Hook runs for `hook.ran`. Filtering, delays and what to do all belong in the Hook; Skua ships none. For example, `hooks/player.death`:
+
+```sh
+#!/bin/sh
+event=$(cat)                      # {"seq":42,...,"type":"player.death","data":{"map":"battleon","cell":"Enter"}}
+osascript -e "display notification \"$SKUA_ENGINE_NAME died\" with title \"Skua\""
+skua status                       # the Engine that died: SKUA_DIR and SKUA_ENGINE_SOCKET point at it
+```
+
+`chmod +x` it, then run `skua hooks` (or `H` in the TUI). Agents may start the runner and read the Hooks, but add or change a Hook only when the developer asks.
+
 #### Compile check
 
 After each upstream merge into the Scripts fork, check that every Script still compiles on macOS. The check copies a Scripts checkout into a throwaway data folder, calls `script_options` for every Script its `scripts.json` lists, and fails with each failing Script and its diagnostics:
@@ -448,7 +468,7 @@ SKUA_LIVE=smoke SKUA_SCRIPTS_CHECKOUT="$(realpath ../Scripts)" \
 
 ### The TUI (`skua-tui`)
 
-`skua-tui` is a terminal UI for windowless Engines (`Skua.Tui/`, a Rust crate on the Game Host's toolchain; `dotnet build` doesn't build it). It lists the Skua Manager's accounts by group, each with its Engine's state, shows the selected one's Overview, Inventory, Quests, Logs, Game (the map) and Chat, and drives the Engines.
+`skua-tui` is a terminal UI for windowless Engines (`Skua.Tui/`, a Rust crate on the Game Host's toolchain; `dotnet build` doesn't build it). It lists the Skua Manager's accounts by group, each with its Engine's state, shows the selected one's Overview, Inventory, Quests, Logs, Game (the map), Chat and Hooks, and drives the Engines.
 
 ```sh
 cd Skua.Tui
@@ -458,7 +478,7 @@ cargo run --release                    # or target/release/skua-tui
 
 It reads the Engines under the data folder (`SKUA_DIR`, else `~/Library/Application Support/Skua`) from `engines/*.sock`, and the accounts from `Skua.manager.json`, which it never writes; it never reads Keychain. An Engine that speaks another protocol shows a red **Protocol mismatch** with what to do, and none of its data; skua-tui never acts on it.
 
-Keys: `j`/`k` move, `space` marks, `a` marks a group, `esc` clears marks, the filter and finished notes, `tab` or `1`–`6` picks a tab, `:` opens the command palette, `/` filters, `?` lists the keys, `q` quits. The actions act on the marked accounts, else the selected one:
+Keys: `j`/`k` move, `space` marks, `a` marks a group, `esc` clears marks, the filter and finished notes, `tab` or `1`–`7` picks a tab, `:` opens the command palette, `/` filters, `?` lists the keys, `q` quits. The actions act on the marked accounts, else the selected one:
 
 | Key | Action | Control Surface op |
 |---|---|---|
@@ -471,10 +491,13 @@ Keys: `j`/`k` move, `space` marks, `a` marks a group, `esc` clears marks, the fi
 | `d` | Answer the selected account's oldest Question: `1`–`9`, or `↑`/`↓` and `enter` | `dialogs`, `dialog_answer` |
 | `J` | Join a map: `map[-room] [cell] [pad]` | `join` |
 | `U` | Update the Scripts from the Script Source (once: every Engine of the data folder shares them) | `scripts_update` |
+| `H` | Start the Hook Runner, if none runs for the data folder | `skua hooks`, the `skua` on `PATH`, in the background with its output in `<SkuaDIR>/hooks.log` |
 
 Each result or error shows on the status line and stays on its account (a red `!` in the list for an error) until its next action or `esc`. `E` launches the `skua-engine` that `skua` would: `SKUA_ENGINE`, else the one next to the `skua` on `PATH`, with the same `SKUA_DIR`. It never starts one where an Engine answers or is starting, and never replaces or restarts one. A windowless Engine logs in its data folder's Active Account (`skua account use`), so `L` logs an Engine in only while the Active Account is the one named after it, and refuses the others before sending `login`. It reads the Active Account from `Skua.settings.json`, never from Keychain. It refuses a login on an Engine the Skua app hosts.
 
 The **Chat** tab shows the selected Engine's game messages (`skua logs game`): the newest 200, then each one as the Engine pushes it (`subscribe`, one connection while the tab is open), newest at the bottom, with its channel as a coloured `[zone]`, `[whisper]`, `[server]` … tag. It keeps the newest 500. `enter` opens the input line: `enter` sends the text as zone chat, `/w <name> <text>` whispers (`chat_send`; nothing else starting with `/` is sent), `esc` stops typing and keeps the draft. The Engine's refusal, such as not logged in, shows under the messages. If the follow breaks while the Engine still shows as up, the tab says the follow ended; it follows again when the Engine restarts or the tab is opened again.
+
+The header says whether the Hook Runner runs (`hooks running` or `hooks off`), and the Hooks tab lists the selected Engine's `hook.ran` events, newest first: when each Hook started, its event, exit code, how long it took and its last line of output, with the newest run's output below. skua-tui never runs a Hook itself; it only starts `skua hooks`, which keeps running after skua-tui quits. See [Hooks](#hooks).
 
 ### Building the Installer
 

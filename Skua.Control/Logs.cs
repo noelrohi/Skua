@@ -133,4 +133,10 @@ public static class EventTypes
     /// which the Script sees as null or <c>DialogResult.Cancelled</c>.
     /// </summary>
     public const string QuestionAnswered = "question.answered";
+
+    /// <summary>
+    /// The Hook Runner ran a Hook for one of this Engine's events: <c>{hook, eventSeq, startedAt, durationMs, exitCode, output}</c>, as
+    /// <see cref="HookRunDto"/>. No Hook runs for it.
+    /// </summary>
+    public const string HookRan = "hook.ran";
 }
