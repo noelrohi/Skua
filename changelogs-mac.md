@@ -4,6 +4,13 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 
 ---
 
+## October 2, 2026
+
+### Fixes
+* A lost connection now starts one relogin instead of several at once, so a farming Script with auto-relogin on comes back on one server instead of logging in again and again.
+
+---
+
 ## October 1, 2026
 
 ### New
