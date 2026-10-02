@@ -177,8 +177,9 @@ internal sealed class EngineTools(Func<EngineClientOptions> options)
         [Description("script, debug, flash, events, or all (merged by seq).")] LogKind kind = LogKind.All,
         [Description("Return entries after this cursor: the 'next' of an earlier reply. Omit it to start from the oldest entry held.")] string? after = null,
         [Description("Entries per page: 200 by default, at most 1000. A reply also stays within 1 MB.")] int? max = null,
+        [Description("Instead of max: the newest this many entries after the cursor, still oldest first, at most 1000; 'next' is then after the newest entry recorded.")] int? tail = null,
         CancellationToken cancellationToken = default) =>
-        CallAsync(connection => connection.LogsAsync(kind, after, max, cancellationToken), cancellationToken);
+        CallAsync(connection => connection.LogsAsync(kind, after, max, tail, cancellationToken), cancellationToken);
 
     [McpServerTool(Name = "screenshot", ReadOnly = true)]
     [Description("See the game: render a frame of the Game Client and return it as a PNG image, at the stage's native size (958x550) unless maxWidth scales it down. Calls made while a capture of the same size is in flight share it. Fails with GameHostDown when there is no Game Host, and with Timeout after 10 s.")]

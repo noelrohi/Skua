@@ -243,8 +243,8 @@ internal sealed class Engine : IEngineRpc
     public Task<ScriptSourceResult> ScriptsSourceSetAsync(string? source, CancellationToken cancellationToken) =>
         Task.FromResult(_scriptSource.SetSource(source));
 
-    public Task<LogPage> LogsAsync(LogKind kind, string? after, int? max, CancellationToken cancellationToken) =>
-        Task.FromResult(_logs.Read([kind], after, max));
+    public Task<LogPage> LogsAsync(LogKind kind, string? after, int? max, int? tail, CancellationToken cancellationToken) =>
+        Task.FromResult(_logs.Read([kind], after, max, tail));
 
     public async IAsyncEnumerable<LogPage> SubscribeAsync(
         LogKind[] kinds, string? after, [EnumeratorCancellation] CancellationToken cancellationToken)

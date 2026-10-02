@@ -51,6 +51,7 @@ internal sealed class FakeGame
     private bool _bankOpen;
     private DateTime _inventoryAt;
     private int _inventoryDelay = 500;
+    private int _bagSlots = 40;
     private readonly HashSet<string> _lockedMaps = new(StringComparer.OrdinalIgnoreCase);
     private bool _brokenLogin;
     /// <summary>The type of the text field the stage's focus is on (<c>input</c> for chat's), or null when it isn't on one.</summary>
@@ -193,6 +194,9 @@ internal sealed class FakeGame
                     JsonObject item = Item(int.Parse(id), name, int.Parse(qty), 10, "Item");
                     Pext(new JsonObject { ["cmd"] = "dropItem", ["items"] = new JsonObject { [id] = item } });
                     return true;
+                case ["bag-slots", string slots]:
+                    _bagSlots = int.Parse(slots);
+                    return true;
                 case ["pickup", string id]:
                     Pext(new JsonObject { ["cmd"] = "getDrop", ["ItemID"] = int.Parse(id), ["bSuccess"] = 1, ["iQty"] = 1, ["iQtyNow"] = 1, ["bBank"] = false });
                     return true;
@@ -269,7 +273,7 @@ internal sealed class FakeGame
         "world.myAvatar.objData.strUsername" => _world ? _username : null,
         "world.myAvatar.items" => _world ? (InventoryLoaded ? Inventory() : []) : null,
         "world.myAvatar.items.length" => _world ? (InventoryLoaded ? Inventory().Count : 0) : null,
-        "world.myAvatar.objData.iBagSlots" => _world ? 40 : null,
+        "world.myAvatar.objData.iBagSlots" => _world ? _bagSlots : null,
         "world.bankinfo.items" => _world ? (_bankLoaded ? Bank() : []) : null,
         "world.bankinfo.BankArray.length" => _world ? (_bankLoaded ? Bank().Count : 0) : null,
         "world.myAvatar.invLoaded" => InventoryLoaded,

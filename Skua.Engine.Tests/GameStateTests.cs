@@ -195,6 +195,37 @@ public class GameStateTests
     }
 
     /// <summary>
+    /// A full inventory is one event as it fills, and one per item that drops while it stays full and can't stack onto one in it (#158);
+    /// a check that finds a free slot re-arms both.
+    /// </summary>
+    [Fact]
+    public async Task A_full_inventory_is_an_event_as_it_fills_and_for_each_new_drop_it_has_no_room_for()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+
+        // The fake inventory holds 3 items, among them Treasure Chest (3). The game's calls reach the Engine in order, and after the fake game has
+        // changed its slots, so each slot change waits until an AFK sent after the drops before it is an event.
+        int afks = 0;
+        foreach (string directive in (string[])["bag-slots 3", "pickup 40", "drop 41 1 Dragon Egg", "drop 41 1 Dragon Egg", "drop 3 1 Treasure Chest",
+                     "drop 42 1 Moglin Egg", "afk", "bag-slots 4", "drop 42 1 Moglin Egg", "afk", "bag-slots 3", "drop 41 1 Dragon Egg", "afk"])
+        {
+            await session.GameHost.DoAsync(directive);
+            if (directive == "afk")
+                await session.Connection.WaitForLogsAsync(LogKind.Events, ++afks, e => e.Type == EventTypes.PlayerAfk);
+        }
+
+        List<LogEntryDto> full = (await session.Connection.WaitForLogsAsync(LogKind.Events, 0)).Where(e => e.Type == EventTypes.InventoryFull).ToList();
+        Assert.Equal(["3/3", "3/3 41 Dragon Egg", "3/3 42 Moglin Egg", "3/3 41 Dragon Egg"], full.Select(e =>
+        {
+            JsonElement data = e.Data!.Value;
+            string slots = $"{data.GetProperty("used").GetInt32()}/{data.GetProperty("slots").GetInt32()}";
+            return data.GetProperty("drop") is { ValueKind: JsonValueKind.Object } drop ? $"{slots} {drop.GetProperty("id").GetInt32()} {drop.GetProperty("name").GetString()}" : slots;
+        }));
+    }
+
+    /// <summary>
     /// The game's own respawn request can come before the game server allows one, which then ignores it (#153); the Engine asks again.
     /// </summary>
     [Fact]

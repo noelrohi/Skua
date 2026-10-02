@@ -7,10 +7,21 @@ namespace Skua.App.Cli;
 /// <summary>Runs one command against the Engine and turns its result or failure into output and an exit code.</summary>
 internal static class Cli
 {
+    /// <summary>The Engine Name given with <c>--engine</c>, or null.</summary>
+    public static string? EngineName { get; set; }
+
+    /// <summary>
+    /// The Engine every command talks to: the one <c>--engine</c> names, at its own socket even when <c>SKUA_ENGINE_SOCKET</c> is set, or else
+    /// the default one, at that socket if set.
+    /// </summary>
+    public static EngineEndpoint Endpoint() => EngineName is { } name
+        ? EngineEndpoint.Resolve(name, EngineEndpoint.DefaultSkuaDir())
+        : EngineEndpoint.FromEnvironment();
+
     /// <summary>How every command connects: it replaces an idle Engine from another build, and says so on stderr.</summary>
     public static EngineClientOptions Options() => new()
     {
-        Endpoint = EngineEndpoint.FromEnvironment(),
+        Endpoint = Endpoint(),
         ReplaceStale = true,
         Notice = line => Console.Error.WriteLine($"skua: {line}"),
     };

@@ -12,6 +12,18 @@ Option<bool> json = new("--json")
     Recursive = true,
 };
 
+Option<string?> engineName = new("--engine")
+{
+    Description = "The Engine Name of the Engine to talk to (or auto-start): default by default. It wins over SKUA_ENGINE_SOCKET.",
+    HelpName = "name",
+    Recursive = true,
+};
+engineName.Validators.Add(result =>
+{
+    if (result.GetValueOrDefault<string?>() is { } name && !EngineName.IsValid(name))
+        result.AddError($"Engine Name '{name}' is invalid; it must match [a-z0-9-]{{1,16}}.");
+});
+
 Command status = new("status", "Show the Engine, its game and the running Script; auto-starts the Engine.");
 status.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
 {
@@ -96,14 +108,17 @@ Argument<LogKind[]> logKinds = new("kind")
 };
 Option<string?> logsAfter = new("--after") { Description = "Start after this cursor: the 'next' of an earlier reply." };
 Option<int?> logsMax = new("--max") { Description = "Entries per page: 200 by default, at most 1000." };
+Option<int?> logsTail = new("--tail") { Description = "Instead of --max: the newest N entries (after --after's cursor, if given), still oldest first; at most 1000." };
 Option<bool> follow = new("--follow", "-f") { Description = "Replay from the cursor, then print new entries as they arrive, until interrupted." };
-Command logs = new("logs", "Page through the Engine's logs and events, or follow them with -f.") { logKinds, logsAfter, logsMax, follow };
+Command logs = new("logs", "Page through the Engine's logs and events, or follow them with -f.") { logKinds, logsAfter, logsMax, logsTail, follow };
 logs.Validators.Add(result =>
 {
     if (!result.GetValue(follow) && result.GetValue(logKinds)!.Length > 1)
         result.AddError("A page takes one kind; follow several with -f.");
     if (result.GetValue(follow) && result.GetValue(logsMax) is not null)
         result.AddError("--max applies to one page, not to -f.");
+    if (result.GetValue(logsTail) is not null && (result.GetValue(follow) || result.GetValue(logsMax) is not null))
+        result.AddError("--tail reads one page, without --max; to follow on from it, pass its 'next' to -f --after.");
 });
 logs.SetAction((parse, ct) =>
 {
@@ -113,7 +128,7 @@ logs.SetAction((parse, ct) =>
         : Cli.RunAsync(parse.GetValue(json), async options =>
         {
             using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
-            return await connection.LogsAsync(kinds[0], parse.GetValue(logsAfter), parse.GetValue(logsMax), ct);
+            return await connection.LogsAsync(kinds[0], parse.GetValue(logsAfter), parse.GetValue(logsMax), parse.GetValue(logsTail), ct);
         }, Output.Logs);
 });
 
@@ -384,6 +399,8 @@ mcp.SetAction((_, ct) => McpServer.RunAsync(ct));
 
 RootCommand root = new("Drive a Skua Engine.")
 {
-    json, status, account, servers, login, logout, join, jump, inventory, quests, map, drops, scripts, script, watch, dialogs, eval, logs, screenshot, engine, mcp,
+    json, engineName, status, account, servers, login, logout, join, jump, inventory, quests, map, drops, scripts, script, watch, dialogs, eval, logs, screenshot, engine, mcp,
 };
-return await root.Parse(args).InvokeAsync();
+ParseResult parsed = root.Parse(args);
+Cli.EngineName = parsed.GetValue(engineName);
+return await parsed.InvokeAsync();

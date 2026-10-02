@@ -107,7 +107,7 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
         return ShutdownAsync(cancellationToken);
     }
 
-    public Task<LogPage> LogsAsync(LogKind kind, string? after, int? max, CancellationToken cancellationToken) =>
+    public Task<LogPage> LogsAsync(LogKind kind, string? after, int? max, int? tail, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("A client called logs after a protocol mismatch.");
 
     public IAsyncEnumerable<LogPage> SubscribeAsync(LogKind[] kinds, string? after, CancellationToken cancellationToken) =>

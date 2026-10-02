@@ -87,6 +87,13 @@ public static class EventTypes
     public const string PlayerAfk = "player.afk";
 
     /// <summary>
+    /// The inventory is full: <c>{used, slots, drop}</c>, drop null as it fills, or the <c>{id, name}</c> of a drop it has no slot for (one that
+    /// isn't in the inventory already). It is checked when an item drops or is added; while it stays full, each item dropping is recorded once.
+    /// A check that finds a free slot, or a login, re-arms it.
+    /// </summary>
+    public const string InventoryFull = "inventory.full";
+
+    /// <summary>
     /// A run started: <c>{run, script, restart}</c>. A restart by Core's auto-relogin is the same run, with <c>restart</c> true.
     /// </summary>
     public const string ScriptStarted = "script.started";

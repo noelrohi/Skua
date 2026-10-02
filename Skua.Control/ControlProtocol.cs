@@ -11,7 +11,7 @@ namespace Skua.Control;
 /// </remarks>
 public static class ControlProtocol
 {
-    public const int Version = 11;
+    public const int Version = 12;
 
     /// <summary>This build: the version and the commit it was built from, which the Engine and its CLI share when built together.</summary>
     public static string Build { get; } =

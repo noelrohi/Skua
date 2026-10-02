@@ -75,7 +75,11 @@ public sealed class EngineConnection : IDisposable
         CallAsync(rpc => rpc.ScriptsSourceSetAsync(source, cancellationToken));
 
     public Task<LogPage> LogsAsync(LogKind kind = LogKind.All, string? after = null, int? max = null, CancellationToken cancellationToken = default) =>
-        CallAsync(rpc => rpc.LogsAsync(kind, after, max, cancellationToken));
+        LogsAsync(kind, after, max, null, cancellationToken);
+
+    /// <summary>A page as above, or with <paramref name="tail"/> the newest entries after the cursor; see <see cref="IEngineRpc.LogsAsync"/>.</summary>
+    public Task<LogPage> LogsAsync(LogKind kind, string? after, int? max, int? tail, CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.LogsAsync(kind, after, max, tail, cancellationToken));
 
     public Task<ServersResult> ServersAsync(CancellationToken cancellationToken = default) =>
         CallAsync(rpc => rpc.ServersAsync(cancellationToken));
