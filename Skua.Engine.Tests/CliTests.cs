@@ -135,11 +135,11 @@ public class CliTests
 
         try
         {
-            await session.GameHost.DoAsync("delay getGameObject 4000");
+            await session.GameHost.DoAsync("delay getGameObject 6000");
             ProcessResult unknown = await sandbox.RunCliAsync("status");
             await session.GameHost.DoAsync("delay getGameObject 0");
             Assert.Null((await QueryTests.FreshStatusAsync(session.Connection)).PlayerAgeSec);
-            await session.GameHost.DoAsync("delay getGameObject 4000");
+            await session.GameHost.DoAsync("delay getGameObject 6000");
             ProcessResult stale = await sandbox.RunCliAsync("status");
 
             Assert.Contains("Player  unknown: the game didn't answer in time", unknown.Stdout);

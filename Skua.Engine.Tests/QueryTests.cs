@@ -173,11 +173,11 @@ public class QueryTests
 
         try
         {
-            await session.GameHost.DoAsync("delay getGameObject 4000");
+            await session.GameHost.DoAsync("delay getGameObject 6000");
             GameStatusDto unknown = (await session.Connection.StatusAsync(Ct)).Game;
             await session.GameHost.DoAsync("delay getGameObject 0");
             GameStatusDto fresh = await FreshStatusAsync(session.Connection);
-            await session.GameHost.DoAsync("delay getGameObject 4000");
+            await session.GameHost.DoAsync("delay getGameObject 6000");
             GameStatusDto stale = (await session.Connection.StatusAsync(Ct)).Game;
 
             Assert.Equal((GameState.Playing, null, null), (unknown.State, unknown.Player, unknown.PlayerAgeSec));
@@ -226,12 +226,13 @@ public class QueryTests
     /// <summary>Waits out a player read that answers late, until <c>status</c> has a fresh reading.</summary>
     internal static async Task<GameStatusDto> FreshStatusAsync(EngineConnection connection)
     {
-        for (int i = 0; ; i++)
+        for (int i = 0; i < 10; i++)
         {
             GameStatusDto game = (await connection.StatusAsync(Ct)).Game;
-            if (game is { Player: not null, PlayerAgeSec: null } || i == 10)
+            if (game is { Player: not null, PlayerAgeSec: null })
                 return game;
         }
+        throw new TimeoutException("status never had a fresh player reading.");
     }
 
     private static void AssertQuest(QuestDto expected, QuestDto actual)
