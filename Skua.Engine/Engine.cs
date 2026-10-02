@@ -278,8 +278,8 @@ internal sealed class Engine : IEngineRpc
 
     public Task<ServersResult> ServersAsync(CancellationToken cancellationToken) => _game.ServersAsync();
 
-    public Task<LoginResult> LoginAsync(string? server, int? timeoutSec, bool asAgent, CancellationToken cancellationToken) =>
-        _game.LoginAsync(server, timeoutSec, asAgent, cancellationToken);
+    public Task<LoginResult> LoginAsync(string? server, int? timeoutSec, bool asAgent, string? account, CancellationToken cancellationToken) =>
+        _game.LoginAsync(server, timeoutSec, asAgent, account, cancellationToken);
 
     public Task<LogoutResult> LogoutAsync(CancellationToken cancellationToken) =>
         _game.LogoutAsync(cancellationToken);

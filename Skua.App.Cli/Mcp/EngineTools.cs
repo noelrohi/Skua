@@ -24,12 +24,13 @@ internal sealed class EngineTools(Func<EngineClientOptions> options)
         CallAsync(connection => connection.ServersAsync(cancellationToken), cancellationToken);
 
     [McpServerTool(Name = "login", Idempotent = true, UseStructuredContent = true, OutputSchemaType = typeof(LoginResult))]
-    [Description("Log the Test Account in; the Engine reads its credentials from Keychain, so none are passed. A developer may instead have made an account active with 'skua account add --allow-agents', which this then uses. Returns once it is playing with the world loaded, with the server it plays on, the account's username and whether it is the Test Account, and a sentence naming them. Already playing on the server (or on any, when none is named) it does nothing; playing elsewhere, it relogs. Fails with LoginFailed and the game's reason (e.g. a full server), Timeout, InvalidArgument for an unknown server, Busy during another login, logout, join or jump, or ScriptRunning.")]
+    [Description("Log the Test Account in; the Engine reads its credentials from Keychain, so none are passed. A developer may instead have made an account active with 'skua account add --allow-agents', which this then uses; or name an account, which must be test or one added with --allow-agents. Returns once it is playing with the world loaded, with the server it plays on, the account's username and whether it is the Test Account, and a sentence naming them. Already playing on the server (or on any, when none is named) it does nothing; playing elsewhere, it relogs. Fails with LoginFailed and the game's reason (e.g. a full server), Timeout, InvalidArgument for an unknown server or an account agents may not use, AccountNotFound, Busy during another login, logout, join or jump, or ScriptRunning.")]
     public Task<CallToolResult> Login(
         [Description("A server name from the servers tool; omit it to let the Engine pick an online, non-member server with room.")] string? server = null,
         [Description("Seconds to wait for the world: 120 by default.")] int? timeoutSec = null,
+        [Description("An account name to log in, e.g. \"test\"; omit it for the Test Account or the allowed active one.")] string? account = null,
         CancellationToken cancellationToken = default) =>
-        CallAsync(connection => connection.AgentLoginAsync(server, timeoutSec, cancellationToken), result =>
+        CallAsync(connection => connection.AgentLoginAsync(server, timeoutSec, account, cancellationToken), result =>
         {
             CallToolResult reply = Structured(result);
             reply.Content.Add(new TextContentBlock { Text = Output.Login(result) });

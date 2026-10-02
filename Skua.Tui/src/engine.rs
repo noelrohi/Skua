@@ -18,7 +18,7 @@ use crate::dto::{
 use crate::rpc::{CallError, Rpc};
 
 /// The Control Surface protocol this build speaks (`ControlProtocol.Version`).
-pub const PROTOCOL: i64 = 15;
+pub const PROTOCOL: i64 = 16;
 
 /// `ErrorCode.NotLoggedIn` on the wire: `ErrorCodes.ToWire` adds 1000.
 pub const NOT_LOGGED_IN: i64 = 1001;
@@ -177,9 +177,9 @@ impl Engine {
         self.call("servers", json!([]))
     }
 
-    /// Logs the Engine's Active Account in, as a developer (not an agent); without a server, the Engine picks one.
-    pub fn login(&mut self, server: Option<&str>) -> Result<LoginResult, Error> {
-        self.call("login", json!([server, null, false]))
+    /// Logs the named account in, or else the Engine's Active Account, as a developer (not an agent); without a server, the Engine picks one.
+    pub fn login(&mut self, server: Option<&str>, account: Option<&str>) -> Result<LoginResult, Error> {
+        self.call("login", json!([server, null, false, account]))
     }
 
     pub fn logout(&mut self) -> Result<LogoutResult, Error> {

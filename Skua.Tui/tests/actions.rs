@@ -82,9 +82,9 @@ fn engine(
             }
             "logs" => Ok(json!({ "entries": [], "next": "0", "gap": false })),
             "servers" => Ok(servers()),
-            "login" => {
-                Ok(json!({ "server": params[0], "alreadyLoggedIn": false, "username": name, "isTestAccount": false }))
-            }
+            "login" => Ok(
+                json!({ "server": params[0], "alreadyLoggedIn": false, "username": params[3], "isTestAccount": false }),
+            ),
             "logout" => Ok(json!({ "wasLoggedIn": true })),
             "scripts_search" => Ok(scripts(params[0].as_str().unwrap())),
             "script_options" => Ok(options()),
@@ -137,10 +137,6 @@ impl Tui {
                 ],
                 "groups": [{ "name": "Farm", "usernames": ["alice", "bob"] }]
             }),
-        );
-        write_settings(
-            dir.path(),
-            json!({ "client": { "TestAccountService": "skua-account-alice" } }),
         );
         let alice = FakeEngine::start(dir.path(), "alice", engine("alice", alice_refuses));
         let bob = FakeEngine::start(dir.path(), "bob", engine("bob", bob_refuses));
@@ -212,10 +208,6 @@ impl Tui {
     }
 }
 
-fn write_settings(skua_dir: &std::path::Path, contents: Value) {
-    std::fs::write(skua_dir.join("Skua.settings.json"), contents.to_string()).unwrap();
-}
-
 fn assert_shows(screen: &str, texts: &[&str]) {
     for text in texts {
         assert!(screen.contains(text), "expected {text:?} on screen:\n{screen}");
@@ -223,7 +215,7 @@ fn assert_shows(screen: &str, texts: &[&str]) {
 }
 
 #[test]
-fn log_in_picks_a_server_from_the_picker_and_logs_in_the_marked_engine_whose_account_is_active() {
+fn log_in_picks_a_server_from_the_picker_and_logs_each_marked_engine_in_as_its_own_account() {
     let mut tui = Tui::new();
     tui.key(KeyCode::Char('a'));
     tui.key(KeyCode::Char('L'));
@@ -253,24 +245,25 @@ fn log_in_picks_a_server_from_the_picker_and_logs_in_the_marked_engine_whose_acc
     assert_shows(&tui.screen(), &["logging in to Twilly…"]);
     tui.run_jobs();
 
-    assert_eq!(tui.alice.params_of("login"), vec![json!(["Twilly", null, false])]);
-    assert!(tui.bob.params_of("login").is_empty(), "bob's Engine would log in alice");
-    assert_shows(
-        &tui.screen(),
-        &["bob: not logged in: its Engine would log in the Active Account 'alice', not bob."],
+    // Whichever account is active, each Engine logs in the account named after it.
+    assert_eq!(
+        tui.alice.params_of("login"),
+        vec![json!(["Twilly", null, false, "alice"])]
     );
+    assert_eq!(tui.bob.params_of("login"), vec![json!(["Twilly", null, false, "bob"])]);
     assert_eq!(tui.app.activity["alice"].text, "logged in as alice on Twilly");
+    assert_eq!(tui.app.activity["bob"].text, "logged in as bob on Twilly");
 }
 
 #[test]
 fn a_refused_login_shows_the_engines_reason_on_its_account() {
     let mut tui = Tui::with(Some(("login", LOGIN_FAILED, "Artix is full.")), None);
-    tui.key(KeyCode::Char('L'));
-    tui.run_jobs();
-    tui.key(KeyCode::Enter);
-    tui.run_jobs();
+    log_in(&mut tui);
 
-    assert_eq!(tui.alice.params_of("login"), vec![json!(["Artix", null, false])]);
+    assert_eq!(
+        tui.alice.params_of("login"),
+        vec![json!(["Artix", null, false, "alice"])]
+    );
     assert_shows(&tui.screen(), &["alice: Artix is full."]);
     assert_eq!(tui.app.activity["alice"].tone, skua_tui::app::Tone::Failed);
 }
@@ -284,65 +277,11 @@ fn log_in(tui: &mut Tui) {
 }
 
 #[test]
-fn a_login_is_refused_before_it_is_sent_while_the_test_account_is_active() {
-    let mut tui = Tui::new();
-    std::fs::remove_file(tui.dir.path().join("Skua.settings.json")).unwrap();
-    log_in(&mut tui);
-
-    assert!(tui.alice.params_of("login").is_empty());
-    assert_shows(
-        &tui.screen(),
-        &["alice: not logged in: its Engine would log in the Active Account 'test', not alice."],
-    );
-    assert!(
-        tui.app.activity["alice"]
-            .text
-            .ends_with("'skua account use alice' makes alice the Active Account"),
-        "{:?}",
-        tui.app.activity["alice"]
-    );
-}
-
-#[test]
-fn a_login_is_refused_while_the_active_account_is_a_keychain_service_set_by_hand() {
-    let mut tui = Tui::new();
-    write_settings(
-        tui.dir.path(),
-        json!({ "client": { "TestAccountService": "my-aqw-login" } }),
-    );
-    log_in(&mut tui);
-
-    assert!(tui.alice.params_of("login").is_empty());
-    assert_shows(
-        &tui.screen(),
-        &["alice: not logged in: the Active Account is the Keychain service 'my-aqw-login', which is no account's."],
-    );
-}
-
-#[test]
-fn the_active_account_is_read_afresh_and_its_keys_ignoring_case_as_core_reads_them() {
-    let mut tui = Tui::new();
-    tui.select("bob");
-    write_settings(
-        tui.dir.path(),
-        json!({ "Client": { "testaccountservice": "skua-account-bob" } }),
-    );
-    log_in(&mut tui);
-
-    assert_eq!(tui.bob.params_of("login"), vec![json!(["Artix", null, false])]);
-    assert_shows(&tui.screen(), &["bob: logged in as bob on Artix"]);
-}
-
-#[test]
-fn a_login_on_an_engine_the_skua_app_hosts_is_refused() {
+fn a_login_on_an_engine_the_skua_app_hosts_names_its_account_too() {
     let dir = skua_dir();
     write_manager_file(
         dir.path(),
         json!({ "accounts": [{ "name": "erin", "username": "erin", "tags": [] }], "groups": [] }),
-    );
-    write_settings(
-        dir.path(),
-        json!({ "client": { "TestAccountService": "skua-account-erin" } }),
     );
     let windowless = engine("erin", None);
     let erin = FakeEngine::start(dir.path(), "erin", move |method, params| match method {
@@ -361,11 +300,8 @@ fn a_login_on_an_engine_the_skua_app_hosts_is_refused() {
         }
     }
 
-    assert!(erin.params_of("login").is_empty());
-    assert_eq!(
-        app.activity["erin"].text,
-        "not logged in: the Skua app hosts this Engine, with an account skua-tui can't see; log in from the app"
-    );
+    assert_eq!(erin.params_of("login"), vec![json!(["Artix", null, false, "erin"])]);
+    assert_eq!(app.activity["erin"].text, "logged in as erin on Artix");
 }
 
 #[test]

@@ -121,7 +121,7 @@ public sealed class FakeEngine : IEngineRpc, IAsyncDisposable
 
     public Task<ServersResult> ServersAsync(CancellationToken cancellationToken) => Unexpected<ServersResult>("servers");
 
-    public Task<LoginResult> LoginAsync(string? server, int? timeoutSec, bool asAgent, CancellationToken cancellationToken) =>
+    public Task<LoginResult> LoginAsync(string? server, int? timeoutSec, bool asAgent, string? account, CancellationToken cancellationToken) =>
         Unexpected<LoginResult>("login");
 
     public Task<LogoutResult> LogoutAsync(CancellationToken cancellationToken) => Unexpected<LogoutResult>("logout");

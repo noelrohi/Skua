@@ -124,21 +124,28 @@ public partial interface IEngineRpc
     Task<ServersResult> ServersAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Logs the active account in (see <c>skua account</c>), reading its credentials from Keychain, and returns once it is playing with the world
-    /// and its inventory loaded. An agent's login uses the Test Account instead, unless the active account was added with <c>--allow-agents</c>.
-    /// Already playing on the requested server (or on any, when none is named), it does nothing; playing elsewhere, it relogs.
+    /// Logs the named account in, or else the active one (see <c>skua account</c>), reading its credentials from Keychain, and returns once it is
+    /// playing with the world and its inventory loaded. An agent's login without a name uses the Test Account instead, unless the active account
+    /// was added with <c>--allow-agents</c>. Already playing on the requested server (or on any, when none is named) with that account, it does
+    /// nothing; otherwise it relogs.
     /// </summary>
     /// <param name="server">A server name from <c>servers</c>; without one, the Engine picks an online, non-member server with room.</param>
     /// <param name="timeoutSec">How long to wait for the world: 120 s by default.</param>
     /// <param name="asAgent">Whether an agent asks, as MCP's <c>login</c> does, rather than a developer at the CLI.</param>
+    /// <param name="account">
+    /// An account name (<see cref="Accounts"/>), such as a Skua Manager account's or <c>test</c>, without making it active. An agent
+    /// may name only the Test Account or one added with <c>--allow-agents</c>, and an app the Skua Manager launched only its own account.
+    /// </param>
     /// <param name="cancellationToken">Cancels the call.</param>
     /// <remarks>
     /// Fails with <see cref="ErrorCode.LoginFailed"/> and the game's reason (a full or offline server, a rejected account),
-    /// <see cref="ErrorCode.Timeout"/>, <see cref="ErrorCode.InvalidArgument"/> for an unknown server, <see cref="ErrorCode.GameHostDown"/>
+    /// <see cref="ErrorCode.Timeout"/>, <see cref="ErrorCode.InvalidArgument"/> for an unknown server, an invalid account name or an account an
+    /// agent or a Manager-launched app may not use, <see cref="ErrorCode.AccountNotFound"/> when Keychain has no account by that name, <see cref="ErrorCode.GameHostDown"/>
     /// before the Game Client has loaded, and <see cref="ErrorCode.Busy"/> while another login, logout, join or jump runs.
     /// </remarks>
     [JsonRpcMethod("login")]
-    Task<LoginResult> LoginAsync(string? server = null, int? timeoutSec = null, bool asAgent = false, CancellationToken cancellationToken = default);
+    Task<LoginResult> LoginAsync(
+        string? server = null, int? timeoutSec = null, bool asAgent = false, string? account = null, CancellationToken cancellationToken = default);
 
     /// <summary>Logs out to the login screen; a deliberate logout, so the game isn't reported disconnected. Does nothing when not logged in.</summary>
     [JsonRpcMethod("logout")]

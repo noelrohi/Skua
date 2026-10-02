@@ -127,7 +127,7 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
     public Task<ServersResult> ServersAsync(CancellationToken cancellationToken) =>
         throw new InvalidOperationException("A client called servers after a protocol mismatch.");
 
-    public Task<LoginResult> LoginAsync(string? server, int? timeoutSec, bool asAgent, CancellationToken cancellationToken) =>
+    public Task<LoginResult> LoginAsync(string? server, int? timeoutSec, bool asAgent, string? account, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("A client called login after a protocol mismatch.");
 
     public Task<LogoutResult> LogoutAsync(CancellationToken cancellationToken) =>

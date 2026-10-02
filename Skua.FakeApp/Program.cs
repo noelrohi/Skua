@@ -65,7 +65,7 @@ if (arguments.Account is not null)
 {
     try
     {
-        LoginResult login = await engine.Rpc.LoginAsync(arguments.Server, null, asAgent: false, CancellationToken.None);
+        LoginResult login = await engine.Rpc.LoginAsync(arguments.Server, null, asAgent: false, account: null, CancellationToken.None);
         if (arguments.Script is { } script)
             await engine.Rpc.ScriptStartAsync(script, cancellationToken: CancellationToken.None);
         File.WriteAllText(Output("login"), $"ok {login.Username} {login.Server}");

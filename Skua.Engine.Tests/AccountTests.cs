@@ -186,9 +186,12 @@ public class AccountTests
     }
 
     /// <returns>The reply's sentence, which names the account.</returns>
-    private static async Task<string> McpLoginAsync(McpClient client)
+    private static async Task<string> McpLoginAsync(McpClient client, string? account = null)
     {
-        CallToolResult login = await client.CallToolAsync("login", new Dictionary<string, object?> { ["server"] = "Galanoth" }, cancellationToken: Ct);
+        Dictionary<string, object?> arguments = new() { ["server"] = "Galanoth" };
+        if (account is not null)
+            arguments["account"] = account;
+        CallToolResult login = await client.CallToolAsync("login", arguments, cancellationToken: Ct);
         Assert.NotEqual(true, login.IsError);
         string text = ((TextContentBlock)login.Content[1]).Text;
         Assert.Contains(login.StructuredContent!.Value.GetProperty("username").GetString()!, text);
@@ -283,6 +286,93 @@ public class AccountTests
         Assert.Equal(new LoginResult("Galanoth", AlreadyLoggedIn: false, MainUser, IsTestAccount: false), switched);
         Assert.Equal(new LoginResult("Galanoth", AlreadyLoggedIn: true, MainUser, IsTestAccount: false), again);
         Assert.Equal(MainUser, after);
+    }
+
+    [Fact]
+    public async Task A_login_naming_an_account_uses_its_credentials_and_one_without_still_uses_the_active_account()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox, fake => fake.Account("AliceUser", "alice-pw").Account("BobUser", "bob-pw"));
+        session.Keychain.Add("skua-account-alice", "AliceUser", "alice-pw");
+        session.Keychain.Add("skua-account-bob", "BobUser", "bob-pw");
+
+        LoginResult alice = await session.Connection.LoginAsync("Galanoth", null, "alice", Ct);
+        LoginResult bob = await session.Connection.LoginAsync("Galanoth", null, "bob", Ct);
+        LoginResult bobAgain = await session.Connection.LoginAsync(null, null, "bob", Ct);
+        LoginResult active = await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        LoginResult test = await session.Connection.LoginAsync("Galanoth", null, "test", Ct);
+
+        Assert.Equal(new LoginResult("Galanoth", AlreadyLoggedIn: false, "AliceUser", IsTestAccount: false), alice);
+        Assert.Equal(new LoginResult("Galanoth", AlreadyLoggedIn: false, "BobUser", IsTestAccount: false), bob);
+        Assert.Equal(new LoginResult("Galanoth", AlreadyLoggedIn: true, "BobUser", IsTestAccount: false), bobAgain);
+        Assert.Equal(new LoginResult("Galanoth", AlreadyLoggedIn: false, "SkuaTester", IsTestAccount: true), active);
+        Assert.Equal(new LoginResult("Galanoth", AlreadyLoggedIn: true, "SkuaTester", IsTestAccount: true), test);
+        // Naming an account doesn't make it the Active Account.
+        Assert.Equal(AccountSetting.DefaultService, AccountSetting.Read(sandbox.SkuaDir));
+    }
+
+    [Theory]
+    [InlineData("nobody", ErrorCode.AccountNotFound, "No account is named 'nobody'")]
+    [InlineData("Not A Name", ErrorCode.InvalidArgument, "Account name 'Not A Name' is invalid")]
+    public async Task A_login_naming_an_unknown_account_fails_before_reading_a_password(string account, ErrorCode code, string message)
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+
+        ControlException e = await Assert.ThrowsAsync<ControlException>(() => session.Connection.LoginAsync("Galanoth", null, account, Ct));
+
+        Assert.Equal(code, e.Code);
+        Assert.Contains(message, e.Message);
+        Assert.Equal(0, session.Keychain.Reads);
+        Assert.Equal(GameState.LoginScreen, (await session.Connection.StatusAsync(Ct)).Game.State);
+    }
+
+    [Fact]
+    public async Task An_agent_naming_an_account_gets_only_the_Test_Account_or_one_that_allows_agents()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox, fake => fake.Account(MainUser, MainPassword).Account("AltUser", "alt-password"));
+        session.Keychain.Add("skua-account-main", MainUser, MainPassword);
+        session.Keychain.Add("skua-account-alt", "AltUser", "alt-password", AccountSetting.AllowAgentsComment);
+        // Even while it is active, an agent may not name it.
+        AccountSetting.Write(sandbox.SkuaDir, "skua-account-main");
+
+        ControlException refused = await Assert.ThrowsAsync<ControlException>(() => session.Connection.AgentLoginAsync("Galanoth", null, "main", Ct));
+        int readsAfterRefusal = session.Keychain.Reads;
+        LoginResult alt = await session.Connection.AgentLoginAsync("Galanoth", null, "alt", Ct);
+        LoginResult test = await session.Connection.AgentLoginAsync("Galanoth", null, "test", Ct);
+
+        Assert.Equal(ErrorCode.InvalidArgument, refused.Code);
+        Assert.Contains("'main'", refused.Message);
+        Assert.Contains("--allow-agents", refused.Message);
+        Assert.Equal(0, readsAfterRefusal);
+        Assert.Equal(new LoginResult("Galanoth", AlreadyLoggedIn: false, "AltUser", IsTestAccount: false), alt);
+        Assert.Equal(new LoginResult("Galanoth", AlreadyLoggedIn: false, "SkuaTester", IsTestAccount: true), test);
+    }
+
+    [Fact]
+    public async Task Skua_login_and_the_MCP_login_tool_take_an_account()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeAqApi api = new(GameFixture.Servers);
+        FakeKeychain keychain = new(sandbox);
+        keychain.Add("skua-account-main", MainUser, MainPassword);
+        Dictionary<string, string> environment = GameFixture.Environment(
+            new FakeGameHost(sandbox).Game(keychain, GameFixture.Servers).Account(MainUser, MainPassword), api, keychain);
+        await using McpClient client = await McpTests.ConnectAsync(sandbox, environment);
+
+        ProcessResult cli = await sandbox.RunCliAsync(environment, "login", "Galanoth", "--account", "main");
+        ProcessResult unknown = await sandbox.RunCliAsync(environment, "login", "--account", "nobody");
+        CallToolResult agent = await client.CallToolAsync(
+            "login", new Dictionary<string, object?> { ["server"] = "Galanoth", ["account"] = "main" }, cancellationToken: Ct);
+        string agentTest = await McpLoginAsync(client, "test");
+
+        Assert.Equal((0, "Logged in as MainUser on Galanoth."), (cli.ExitCode, cli.Stdout.Trim()));
+        Assert.Equal(ExitCodes.For(ErrorCode.AccountNotFound), unknown.ExitCode);
+        Assert.Contains("'nobody'", unknown.Stderr);
+        Assert.True(agent.IsError);
+        Assert.Contains("--allow-agents", ((TextContentBlock)agent.Content[0]).Text);
+        Assert.Equal("Logged in as SkuaTester (the Test Account) on Galanoth.", agentTest);
     }
 
     private static AccountDto Account(ProcessResult result) => JsonSerializer.Deserialize<AccountDto>(result.Stdout, ControlJson.Options)!;

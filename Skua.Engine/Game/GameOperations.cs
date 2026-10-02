@@ -57,7 +57,8 @@ internal sealed class GameOperations
     }
 
     /// <param name="asAgent">Whether an agent asks, whose login uses the Test Account unless the active account allows agents.</param>
-    public async Task<LoginResult> LoginAsync(string? serverName, int? timeoutSec, bool asAgent, CancellationToken cancellationToken)
+    /// <param name="accountName">The account to log in instead of this Engine's own or the active one; or null.</param>
+    public async Task<LoginResult> LoginAsync(string? serverName, int? timeoutSec, bool asAgent, string? accountName, CancellationToken cancellationToken)
     {
         if (timeoutSec < 1)
             throw RpcErrors.Of(ErrorCode.InvalidArgument, $"timeoutSec must be at least 1, not {timeoutSec}.");
@@ -66,8 +67,8 @@ internal sealed class GameOperations
         // Straight after an Engine start, the Game Client may still be loading.
         await _tracker.WaitReadyAsync(LoadWait, cancellationToken);
         using IDisposable lease = await _slot.BeginAsync("log in");
-        // Playing with another account than the one to use relogs, since 'skua account' may have switched it.
-        string service = await ServiceAsync(asAgent, cancellationToken);
+        // Playing with another account than the one to use relogs, since 'skua account' or a named login may have switched it.
+        string service = await ServiceAsync(accountName, asAgent, cancellationToken);
         bool sameAccount = service == _loggedInService;
         if (serverName is null && sameAccount && _tracker is { State: GameState.Playing, Server: { } current })
             return new LoginResult(current, AlreadyLoggedIn: true, _loggedInUsername!, IsTestAccount(service));
@@ -215,12 +216,14 @@ internal sealed class GameOperations
     private static bool IsTestAccount(string service) => service == AccountSetting.DefaultService;
 
     /// <summary>
-    /// The Keychain service of the account to log in: this Engine's own account when its host gave one, else the active one; except that an
-    /// agent gets the Test Account unless that account's Keychain item carries <see cref="AccountSetting.AllowAgentsComment"/>. The comment is
-    /// read without the password, so without asking macOS.
+    /// The Keychain service of the account to log in: the named one, else this Engine's own account when its host gave one, else the active
+    /// one; except that an agent gets the Test Account unless that account's Keychain item carries <see cref="AccountSetting.AllowAgentsComment"/>.
+    /// The comment is read without the password, so without asking macOS.
     /// </summary>
-    private async Task<string> ServiceAsync(bool asAgent, CancellationToken cancellationToken)
+    private async Task<string> ServiceAsync(string? accountName, bool asAgent, CancellationToken cancellationToken)
     {
+        if (accountName is not null)
+            return await NamedServiceAsync(accountName, asAgent, cancellationToken);
         string active = _accountService ?? _settings.Get<string>(TestAccount.ServiceSetting)!;
         if (!asAgent || active == AccountSetting.DefaultService)
             return active;
@@ -235,6 +238,42 @@ internal sealed class GameOperations
             return AccountSetting.DefaultService;
         }
         return attributes?.Comment == AccountSetting.AllowAgentsComment ? active : AccountSetting.DefaultService;
+    }
+
+    /// <summary>
+    /// The Keychain service of the named account, once Keychain has it. An Engine whose host pinned its account logs in only that one (the
+    /// Skua Manager owns which account its app plays), and an agent may name only the Test Account or one that carries
+    /// <see cref="AccountSetting.AllowAgentsComment"/>. Read without the password, so without asking macOS.
+    /// </summary>
+    /// <exception cref="StreamJsonRpc.LocalRpcException">
+    /// <see cref="ErrorCode.InvalidArgument"/> for an invalid name, an account other than the pinned one, or one an agent may not use,
+    /// <see cref="ErrorCode.AccountNotFound"/> when Keychain has none by that name, and <see cref="ErrorCode.LoginFailed"/> when Keychain
+    /// can't be read.
+    /// </exception>
+    private async Task<string> NamedServiceAsync(string name, bool asAgent, CancellationToken cancellationToken)
+    {
+        KeychainAttributes? attributes;
+        string service;
+        try
+        {
+            service = Accounts.ServiceOf(name);
+            if (_accountService is not null && service != _accountService)
+                throw RpcErrors.Of(ErrorCode.InvalidArgument,
+                    $"This Engine's app plays the account the Skua Manager launched it with, '{Accounts.NameOf(_accountService) ?? _accountService}', " +
+                    $"so it can't log in '{name}'; launch '{name}' from the Skua Manager.");
+            attributes = await Keychain.FindAsync(service, cancellationToken);
+        }
+        catch (ControlException e)
+        {
+            throw RpcErrors.Of(e.Code == ErrorCode.KeychainFailed ? ErrorCode.LoginFailed : e.Code, e.Message);
+        }
+        if (attributes is null)
+            throw RpcErrors.Of(ErrorCode.AccountNotFound,
+                $"No account is named '{name}' in Keychain: name one of the Skua Manager's accounts, or add it with 'skua account add --name {name}'.");
+        if (asAgent && !IsTestAccount(service) && attributes.Comment != AccountSetting.AllowAgentsComment)
+            throw RpcErrors.Of(ErrorCode.InvalidArgument,
+                $"An agent may log in only the Test Account or an account added with --allow-agents, and '{name}' wasn't; log in without naming one.");
+        return service;
     }
 
     /// <summary>

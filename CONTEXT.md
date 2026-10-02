@@ -77,9 +77,9 @@ A Script Dialog offering a choice (yes/no or named buttons) that waits for a Con
 _Avoid_: prompt, confirm, pending dialog
 
 **Test Account**:
-An AQW account reserved for automated sessions; agents never log in with any other account.
+An AQW account reserved for automated sessions; agents log in with no other account unless a developer added it with `--allow-agents`.
 _Avoid_: alt, bot account
 
 **Active Account**:
-The account in Keychain that a developer's login uses, chosen with `skua account`; by default the Test Account. An agent's login uses it only if it was added with `--allow-agents`, and the Test Account otherwise.
+The account in Keychain that a developer's login uses when it names none, chosen with `skua account`; by default the Test Account. An agent's login uses it only if it was added with `--allow-agents`, and the Test Account otherwise. A login may name another account, such as a Skua Manager account, without making it active.
 _Avoid_: profile, current user
