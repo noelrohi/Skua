@@ -75,11 +75,13 @@ public class GameMessageTests
         LogPage page;
         try
         {
-            await using IAsyncEnumerator<LogPage> pages = follower.SubscribeAsync([LogKind.Game], after, Ct).GetAsyncEnumerator(Ct);
+            // Never disposed, so the subscription isn't ended by the client but by its connection closing.
+            IAsyncEnumerator<LogPage> pages = follower.SubscribeAsync([LogKind.Game], after, Ct).GetAsyncEnumerator(Ct);
             ValueTask<bool> next = pages.MoveNextAsync();
             await session.GameHost.DoAsync("server-packet %xt%chatm%-1%zone~live%Bob%");
             Assert.True(await next.AsTask().WaitAsync(TimeSpan.FromSeconds(20), Ct));
             page = pages.Current;
+            _ = pages.MoveNextAsync();
         }
         finally
         {
@@ -87,6 +89,7 @@ public class GameMessageTests
         }
 
         Assert.Equal(["zone Bob: live"], page.Entries.Select(Describe));
+        // Nothing is recorded after the disconnect, so the subscription ends on the closed connection, not on a new entry.
         await session.Connection.WaitForLogsAsync(LogKind.Debug, 1, e => e.Text!.Contains("A subscribe to game ended", StringComparison.Ordinal));
     }
 

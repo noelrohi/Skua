@@ -174,7 +174,7 @@ public partial interface IEngineRpc
     /// Sends zone chat, or with <paramref name="to"/> a whisper, as the player; the game server's reply arrives as <see cref="LogKind.Game"/> entries.
     /// Allowed while a Script runs: it doesn't move the player. CLI-only.
     /// </summary>
-    /// <param name="text">The message; it can't be blank or contain <c>%</c>, which ends a packet field.</param>
+    /// <param name="text">The message; it can't be blank, span lines or contain <c>%</c>, which ends a packet field.</param>
     /// <param name="to">The player to whisper; null for zone chat.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
     /// <remarks>Fails with <see cref="ErrorCode.NotLoggedIn"/> unless playing, and <see cref="ErrorCode.InvalidArgument"/> for a text or name it can't send.</remarks>

@@ -22,7 +22,7 @@ internal sealed class ChatOperations
     {
         if (string.IsNullOrWhiteSpace(text) || text.Contains('%') || text.Contains('\n'))
             throw RpcErrors.Of(ErrorCode.InvalidArgument, "A message can't be blank, span lines or contain '%'.");
-        if (to is not null && (string.IsNullOrWhiteSpace(to) || to.Contains('%')))
+        if (to is not null && (string.IsNullOrWhiteSpace(to) || to.Contains('%') || to.Contains('\n')))
             throw RpcErrors.Of(ErrorCode.InvalidArgument, $"'{to}' isn't a player name.");
         _slot.EnsurePlaying(to is null ? "chat" : "whisper");
         return Task.Run(() =>

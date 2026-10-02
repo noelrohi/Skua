@@ -371,7 +371,7 @@ dialogAnswer.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async o
 }, Output.DialogAnswer));
 dialogs.Subcommands.Add(dialogAnswer);
 
-Argument<string> chatText = new("text") { Description = "The message; it can't contain '%'." };
+Argument<string> chatText = new("text") { Description = "The message, on one line and without '%'." };
 Command chatSend = new("send", "Send zone chat as the player.") { chatText };
 chatSend.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
 {

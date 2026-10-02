@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Skua.Engine.Game;
 using Skua.Engine.Logging;
@@ -268,12 +269,9 @@ internal sealed class Engine : IEngineRpc
         finally
         {
             // A client that disconnects cancels the wait, so this runs and nothing is left waiting for it.
-            EngineLog.Write($"A subscribe to {string.Join(", ", kinds.Select(kind => kind.ToString().ToLowerInvariant()))} ended.");
+            EngineLog.Write($"A subscribe to {string.Join(", ", kinds.Select(kind => JsonNamingPolicy.CamelCase.ConvertName(kind.ToString())))} ended.");
         }
     }
-
-    public Task<ChatSendResult> ChatSendAsync(string text, string? to, CancellationToken cancellationToken) =>
-        _chat.SendAsync(text, to, cancellationToken);
 
     public Task<ScreenshotResult> ScreenshotAsync(int? maxWidth, CancellationToken cancellationToken) =>
         _screenshots.TakeAsync(maxWidth, cancellationToken);
@@ -291,6 +289,9 @@ internal sealed class Engine : IEngineRpc
 
     public Task<LocationResult> JumpAsync(string cell, string? pad, int? timeoutSec, CancellationToken cancellationToken) =>
         _moves.JumpAsync(cell, pad, timeoutSec, cancellationToken);
+
+    public Task<ChatSendResult> ChatSendAsync(string text, string? to, CancellationToken cancellationToken) =>
+        _chat.SendAsync(text, to, cancellationToken);
 
     public Task<InventoryResult> InventoryAsync(InventoryKind kind, CancellationToken cancellationToken) =>
         _queries.InventoryAsync(kind, cancellationToken);
@@ -423,6 +424,8 @@ internal sealed class Engine : IEngineRpc
             }
 
             JsonRpc rpc = ControlJson.CreateRpc(socket);
+            // A client that goes away cancels its calls as a cancel request would, so a subscribe stops waiting for it.
+            rpc.CancelLocallyInvokedMethodsWhenConnectionIsClosed = true;
             rpc.AddLocalRpcTarget<IEngineRpc>(this, null);
             rpc.Disconnected += (_, _) => _connections.TryRemove(rpc, out _);
             _connections[rpc] = 0;
