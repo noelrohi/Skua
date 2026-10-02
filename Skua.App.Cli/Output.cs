@@ -25,6 +25,8 @@ internal static class Output
             text += $"\nPlayer  {Player(player)}{(game.PlayerAgeSec is { } age ? $" (stale, read {age:0} s ago)" : "")}";
         else if (game.State == GameState.Playing)
             text += "\nPlayer  unknown: the game didn't answer in time";
+        else
+            text += "\nPlayer  none (not playing)";
         return status.PendingDialogs.Count > 0
             ? $"{text}\nDialogs {status.PendingDialogs.Count} Question{(status.PendingDialogs.Count == 1 ? "" : "s")} pending; see 'skua dialogs'"
             : text;
