@@ -215,6 +215,37 @@ public class ScriptRunTests
     }
 
     [Fact]
+    public async Task A_lost_connection_seen_again_while_a_slow_Script_stops_is_still_one_relogin_and_a_later_one_relogins_again()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture game = await GameFixture.StartAsync(sandbox);
+        await game.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        // Core checks the connection message every 100ms; this Script takes about a second to stop.
+        TestScripts.Write(sandbox, "Tests/SlowStop.cs", TestScripts.Main("""
+            bot.Options.SafeRelogin = false;
+            bot.Options.ReloginTryDelay = 200;
+            bot.Options.AutoRelogin = true;
+            bot.Log("running");
+            while (!bot.ShouldExit)
+                Thread.Sleep(50);
+            Thread.Sleep(1000);
+            """));
+        await game.Connection.ScriptStartAsync("Tests/SlowStop.cs", cancellationToken: Ct);
+
+        for (int disconnect = 1; disconnect <= 2; disconnect++)
+        {
+            await game.Connection.WaitForLogsAsync(LogKind.Script, disconnect, e => e.Text == "running");
+            await game.GameHost.DoAsync("lose-connection Your connection to the server has been lost.");
+            await game.Connection.WaitForLogsAsync(LogKind.Events, disconnect, e => e.Type == EventTypes.ScriptStarted && ScriptEvents.Get(e, "restart") == "True");
+            await Task.Delay(1500, Ct);
+        }
+        await game.Connection.ScriptStopAsync(Ct);
+
+        Assert.Equal(["triggered", "finished", "triggered", "finished"],
+            (await GameEvents.AllAsync(game.Connection)).Where(e => e.Type == EventTypes.GameRelogin).Select(e => ScriptEvents.Get(e, "phase")));
+    }
+
+    [Fact]
     public async Task Stopping_a_run_while_Cores_auto_relogin_waits_to_restart_it_ends_the_run_and_the_restart_never_runs_the_Script()
     {
         await using EngineSandbox sandbox = new();
