@@ -1,18 +1,18 @@
 #!/bin/bash
-# Installs Skua's macOS Engine and CLI from this checkout: builds skua, skua-engine, skua-gamehost and skua.swf, publishes them side
-# by side as a self-contained build, and links skua into a directory on PATH. Re-run it to update; the next skua command replaces a
-# running Engine of another build once no Script runs in it.
+# Installs Skua's macOS Engine, CLI and TUI from this checkout: builds skua, skua-engine, skua-gamehost, skua.swf and skua-tui,
+# publishes them side by side as a self-contained build, and links skua and skua-tui into a directory on PATH. Re-run it to update; the
+# next skua command replaces a running Engine of another build once no Script runs in it.
 #
-# With --app, the build is a Skua.app instead, with that same skua inside it, which the link points to; a small Skua.app in the apps
-# folder opens it. Once that is installed, a plain re-run updates the app too, so the app and skua always share a build. A running app
-# keeps its own build, whose folder is kept, until it's reopened.
+# With --app, the build is a Skua.app instead, with that same skua and skua-tui inside it, which the links point to; a small Skua.app in
+# the apps folder opens it. Once that is installed, a plain re-run updates the app too, so the app and skua always share a build. A
+# running app keeps its own build, whose folder is kept, until it's reopened.
 #
 # These dev builds never update themselves; a release of Skua.app does (BUILD.md, "Install a release"), and this script leaves one alone.
 #
 # Usage: ./install-macos.sh [--app] [dotnet publish arguments, e.g. -p:SkuaGameHostPath=<file>]
 #
 #   SKUA_INSTALL_DIR  where builds go, each in versions/<build> (default ~/.local/share/skua)
-#   SKUA_BIN_DIR      where the skua link goes (default ~/.local/bin)
+#   SKUA_BIN_DIR      where the skua and skua-tui links go (default ~/.local/bin)
 #   SKUA_APPS_DIR     where Skua.app goes (default ~/Applications)
 set -euo pipefail
 
@@ -22,6 +22,7 @@ bin_dir="${SKUA_BIN_DIR:-$HOME/.local/bin}"
 apps_dir="${SKUA_APPS_DIR:-$HOME/Applications}"
 versions="$install_dir/versions"
 link="$bin_dir/skua"
+tui_link="$bin_dir/skua-tui"
 launcher="$apps_dir/Skua.app"
 # Starts the line after the shebang of the Skua.app this script makes, which tells it from any other.
 launcher_mark="# Made by install-macos.sh."
@@ -35,12 +36,14 @@ fail() {
 
 [[ "$(uname -s)" == Darwin ]] || fail "this installs Skua on macOS; for Windows, see BUILD.md."
 command -v dotnet >/dev/null || fail "the .NET 10 SDK was not found. Install it: brew install dotnet"
+command -v cargo >/dev/null || fail "cargo was not found. Install Rust: https://rustup.rs"
 case "$(uname -m)" in
   arm64) rid=osx-arm64 ;;
   x86_64) rid=osx-x64 ;;
   *) fail "unsupported CPU '$(uname -m)'." ;;
 esac
 [[ ! -e "$link" || -L "$link" ]] || fail "$link exists and isn't a link; move it away first."
+[[ ! -e "$tui_link" || -L "$tui_link" ]] || fail "$tui_link exists and isn't a link; move it away first."
 
 app=false
 publish_args=()
@@ -77,6 +80,12 @@ if [[ -e "$built" ]]; then
   echo "Skua $build is already built."
   touch "$target"
 else
+  echo "Building skua-tui..."
+  # From its folder, so rustup picks the crate's rust-toolchain.toml.
+  cd "$repo/Skua.Tui"
+  cargo build --release --locked || fail "couldn't build skua-tui."
+  tui="$(cargo metadata --format-version 1 --no-deps | sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p')/release/skua-tui"
+  cd - >/dev/null
   mkdir -p "$versions"
   # Published into a staging folder and moved into place, so a build folder is always complete and never changes under a running Engine.
   staging="$(mktemp -d "$versions/.staging.XXXXXX")"
@@ -90,6 +99,15 @@ else
   else
     dotnet publish "$repo/Skua.App.Engine/Skua.App.Engine.csproj" --configuration Release --runtime "$rid" --self-contained \
       --output "$staging" "-p:InformationalVersion=$build" -p:IncludeSourceRevisionInInformationalVersion=false ${publish_args[@]+"${publish_args[@]}"}
+  fi
+  if $app; then
+    cp "$tui" "$staging/Skua.app/Contents/Helpers/"
+    # Re-sealed, as the bundle was signed without it.
+    codesign --force --sign - "$staging/Skua.app/Contents/Helpers/skua-tui" || fail "couldn't sign skua-tui."
+    codesign --force --sign - "$staging/Skua.app" || fail "couldn't sign $staging/Skua.app."
+    codesign --verify --deep --strict "$staging/Skua.app" || fail "$staging/Skua.app's signature doesn't verify."
+  else
+    cp "$tui" "$staging/"
   fi
   [[ ! -e "$built" ]] || fail "$built appeared during the build; is another install running?"
   if [[ -d "$target" ]]; then
@@ -107,6 +125,7 @@ if $app || [[ ! -e "$target/skua" ]]; then cli="$bundle/Contents/Helpers/skua"; 
 mkdir -p "$bin_dir"
 previous="$(readlink "$link" 2>/dev/null || true)"
 ln -sfn "$cli" "$link"
+ln -sfn "$(dirname "$cli")/skua-tui" "$tui_link"
 if [[ -n "$previous" && "$previous" != "$versions/"* ]]; then
   echo "$link linked to $previous; it now links to this build."
 fi
@@ -156,7 +175,7 @@ done
 
 echo "Installed skua $build"
 echo "  in $target"
-echo "  linked from $link"
+echo "  linked from $link, and skua-tui from $tui_link"
 if $app; then
   echo "  with the Mac App, opened by $launcher"
   if ps -axo command= | grep -F "$versions/" | grep -F "/Skua.app/Contents/MacOS/Skua" | grep -qvF "$bundle/"; then

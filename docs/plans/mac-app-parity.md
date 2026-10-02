@@ -127,7 +127,7 @@ Every item above that opens a window also opens it through the window service in
 | The server list is fetched at start | The login bar's server picker | works | `StatusTests.Log_in_reaches_logged_in_with_the_account_map_and_server_shown_and_Log_out_returns_to_the_login_screen` |
 | Client animation frame rate (`AnimationFrameRate`) | None | deliberate | WPF's `Timeline` setting has no Avalonia counterpart. [#114](https://github.com/noelrohi/Skua/issues/114) hides the option. |
 | Exit: stop the Script, the capture proxy and the Game Client | Quitting stops the Engine | works | `CloseAndQuitTests.A_quit_without_asking_as_on_SIGTERM_never_asks_and_ends_a_question_on_screen` |
-| Installer (`Skua.Installer`) | `Skua.app` and `install-macos.sh --app` | present | [#88](https://github.com/noelrohi/Skua/issues/88). CI's Package Skua.app step publishes the bundle and verifies its signature; no test runs `install-macos.sh --app`. |
+| Installer (`Skua.Installer`) | `Skua.app` and `install-macos.sh --app` | present | [#88](https://github.com/noelrohi/Skua/issues/88). CI's Package Skua.app step publishes the bundle and verifies its signature. `InstallScriptTests` runs `install-macos.sh` (with and without `--app`) with stub `dotnet` and `cargo`; no test runs its real publish. |
 
 ## Skua Manager (`Skua.Manager`)
 

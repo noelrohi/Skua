@@ -184,7 +184,7 @@ From a checkout, for development. These builds never update themselves: pull and
 skua status
 ```
 
-The script needs the .NET 10 SDK (`brew install dotnet`), [Rust](https://rustup.rs) and Java (17 works). It builds everything (the first run takes about 5 minutes, for the Game Host) and publishes `skua`, `skua-engine`, `skua-gamehost` and `skua.swf` side by side in `~/.local/share/skua/versions/<build>/`. The publish is self-contained, so they start without `DOTNET_ROOT`. It links `~/.local/bin/skua` to that build, and says so if `~/.local/bin` isn't on PATH yet. `SKUA_INSTALL_DIR` and `SKUA_BIN_DIR` change the two folders, and any arguments go to `dotnet publish`, such as the escape hatches in the next section.
+The script needs the .NET 10 SDK (`brew install dotnet`), [Rust](https://rustup.rs) and Java (17 works). It builds everything (the first run takes about 5 minutes, for the Game Host) and publishes `skua`, `skua-engine`, `skua-gamehost`, `skua.swf` and [`skua-tui`](#the-tui-skua-tui) side by side in `~/.local/share/skua/versions/<build>/`. The publish is self-contained, so they start without `DOTNET_ROOT`. It links `~/.local/bin/skua` and `~/.local/bin/skua-tui` to that build, and says so if `~/.local/bin` isn't on PATH yet; without `cargo` it fails before changing anything. `SKUA_INSTALL_DIR` and `SKUA_BIN_DIR` change the two folders, and any arguments go to `dotnet publish`, such as the escape hatches in the next section.
 
 To update, `git pull` and run it again. A build is the version and the commit, plus the time for uncommitted changes. The script keeps the two builds before the new one, and any build a process still runs from. The next `skua` command finds the old build's Engine and replaces it with one of the same Engine Name, saying so on one line. It never stops an Engine whose Script is running:
 
@@ -201,7 +201,7 @@ To update, `git pull` and run it again. A build is the version and the commit, p
 open ~/Applications/Skua.app
 ```
 
-`--app` builds the Mac App too, as `versions/<build>/Skua.app`: a self-contained, ad-hoc signed bundle with `skua`, `skua-engine`, `skua-gamehost` and `skua.swf` from the same build inside it. The app is in `Contents/MacOS` and the CLI in `Contents/Helpers`, as `Skua` and `skua` are one name on a case-insensitive disk. `~/.local/bin/skua` links to the `skua` inside the bundle, so the app and the CLI never disagree on the build. `~/Applications/Skua.app` (`SKUA_APPS_DIR` changes the folder) is a small app with the same name and icon that opens that build: open it from Finder, Launchpad, Spotlight or the Dock, or with `open -a Skua --args --name <engine-name>`.
+`--app` builds the Mac App too, as `versions/<build>/Skua.app`: a self-contained, ad-hoc signed bundle with `skua`, `skua-engine`, `skua-gamehost`, `skua.swf` and `skua-tui` from the same build inside it. The app is in `Contents/MacOS` and the CLI in `Contents/Helpers`, as `Skua` and `skua` are one name on a case-insensitive disk. `~/.local/bin/skua` and `~/.local/bin/skua-tui` link to the ones inside the bundle, so the app and the CLI never disagree on the build. `~/Applications/Skua.app` (`SKUA_APPS_DIR` changes the folder) is a small app with the same name and icon that opens that build: open it from Finder, Launchpad, Spotlight or the Dock, or with `open -a Skua --args --name <engine-name>`.
 
 - **Updating:** run `./install-macos.sh` again, with or without `--app`: once the app is installed, it updates both. A running app keeps its build, and the build's folder, until you quit and reopen it; the script says when one is running. Until then, a `skua` from the new build reaches it as described above.
 - **Keychain:** each build is a new binary to Keychain, so the first login from a newly installed app may make macOS ask whether `security` may read the account again: choose "Always Allow".
@@ -469,6 +469,8 @@ SKUA_LIVE=smoke SKUA_SCRIPTS_CHECKOUT="$(realpath ../Scripts)" \
 ### The TUI (`skua-tui`)
 
 `skua-tui` is a terminal UI for windowless Engines (`Skua.Tui/`, a Rust crate on the Game Host's toolchain; `dotnet build` doesn't build it). It lists the Skua Manager's accounts by group, each with its Engine's state, shows the selected one's Overview, Inventory, Quests, Logs, Game (the map), Chat and Hooks, and drives the Engines.
+
+[`./install-macos.sh`](#install-on-macos) builds it in release and links `skua-tui` next to `skua`, from the same build, so one update covers both. For development, build it by hand:
 
 ```sh
 cd Skua.Tui
