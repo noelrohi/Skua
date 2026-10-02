@@ -7,7 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 use serde_json::Value;
 
-use crate::app::{App, KEYS, Modal, Row, Tab};
+use crate::app::{App, Field, KEYS, Modal, Note, Row, Tab, Tone, first_line};
 use crate::discovery::MANAGER_FILE;
 use crate::dto::{GameState, Hello, LogEntry, Player, Status};
 use crate::engine::{Error, NOT_LOGGED_IN, PROTOCOL};
@@ -50,6 +50,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     );
     footer(
         frame,
+        app,
         Rect {
             y: area.height - 1,
             height: 1,
@@ -135,9 +136,12 @@ fn account_line(app: &App, row: &Row, selected: bool, width: u16) -> Line<'stati
     let marked = app.marks.contains(&row.name);
     let view = app.engine(&row.name);
     let (state, color) = row_state(view);
+    let tone = app.activity.get(&row.name).map(|n| n.tone);
     let flag = match view {
         Some(EngineView::Up { status, .. }) if !status.pending_dialogs.is_empty() => "?".yellow().bold(),
+        _ if tone == Some(Tone::Failed) => "!".red().bold(),
         Some(v) if is_alert(v) => "▲".red().bold(),
+        _ if tone == Some(Tone::Pending) => "…".blue(),
         _ => " ".into(),
     };
     let up = matches!(view, Some(EngineView::Up { .. }));
@@ -299,10 +303,10 @@ fn no_engine(frame: &mut Frame, name: &str, area: Rect) {
         Line::raw(""),
     ];
     for (key, what) in [
-        ("E", "start a windowless Engine for it (not yet)"),
-        ("L", "then log in, picking a server (not yet)"),
-        ("s", "then start a Script, with its options (not yet)"),
-        ("space", "mark several accounts to act on them all"),
+        ("E", "start a windowless Engine for it (skua-engine)"),
+        ("L", "then log in, picking a server"),
+        ("s", "then start a Script, with its options"),
+        ("space", "mark several accounts to do any of this to all of them"),
     ] {
         lines.push(Line::from(vec![format!("{key:<6} ").blue().bold(), what.fg(DIM)]));
     }
@@ -358,10 +362,9 @@ fn overview(frame: &mut Frame, hello: &Hello, status: &Status, detail: Option<&D
                 Line::styled(engine_summary(hello, status), Style::new().fg(DIM)),
                 Line::raw(""),
                 match status.game.state {
-                    GameState::LoginScreen => Line::from(vec![
-                        "L  ".blue().bold(),
-                        "log in, with a server picker (not yet)".fg(DIM),
-                    ]),
+                    GameState::LoginScreen => {
+                        Line::from(vec!["L  ".blue().bold(), "log in, with a server picker".fg(DIM)])
+                    }
                     GameState::NotStarted if !status.game.game_host_up => {
                         Line::styled("… starting the Game Host", Style::new().fg(DIM))
                     }
@@ -393,7 +396,7 @@ fn overview(frame: &mut Frame, hello: &Hello, status: &Status, detail: Option<&D
     }
     if let Some(question) = status.pending_dialogs.first() {
         let height = (question.choices.len() as u16 + 3).min(rest.height);
-        let block = panel(&format!("Question · {} · answering: not yet", question.caption))
+        let block = panel(&format!("Question · {} · d to answer", question.caption))
             .border_style(Style::new().yellow())
             .title_style(Style::new().yellow().bold());
         let mut lines = vec![Line::styled(question.text.clone(), Style::new().yellow().bold())];
@@ -753,9 +756,13 @@ fn fields(data: &Value) -> String {
 }
 
 fn status_line(frame: &mut Frame, app: &App, area: Rect) {
-    let line = match &app.toast {
-        Some(toast) => Line::styled(format!(" {toast}"), Style::new().yellow().bold()),
-        None => Line::styled(
+    let selected = app
+        .selected_row()
+        .and_then(|row| Some((app.activity.get(&row.name)?, row.name)));
+    let line = match (&app.toast, selected) {
+        (Some(toast), _) => note_line(String::new(), toast),
+        (None, Some((note, name))) => note_line(format!("{name}: "), note),
+        (None, None) => Line::styled(
             format!(
                 " acting on: {}   ·   space mark  a mark group  : commands  / filter  ? keys",
                 app.targets_label()
@@ -766,17 +773,56 @@ fn status_line(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(Paragraph::new(line), area);
 }
 
-fn footer(frame: &mut Frame, area: Rect) {
+fn note_line(prefix: String, note: &Note) -> Line<'static> {
+    let style = match note.tone {
+        Tone::Info => Style::new(),
+        Tone::Pending => Style::new().blue(),
+        Tone::Done => Style::new().green(),
+        Tone::Failed => Style::new().red().bold(),
+    };
+    Line::styled(format!(" {prefix}{}", first_line(&note.text)), style)
+}
+
+/// The keys for the selected account's state, as layout E shows them.
+fn footer(frame: &mut Frame, app: &App, area: Rect) {
+    let view = app.selected_row().and_then(|r| app.engine(&r.name));
+    let keys: &[(&str, &str)] = match view {
+        None | Some(EngineView::Offline) => &[
+            ("E", "start Engine"),
+            ("space", "mark"),
+            (":", "commands"),
+            ("tab", "tab"),
+            ("?", "keys"),
+            ("q", "quit"),
+        ],
+        Some(EngineView::Up { status, .. }) if playing(status).is_some() => &[
+            ("s", "Script"),
+            ("x", "stop"),
+            ("J", "join"),
+            ("d", "answer"),
+            ("O", "log out"),
+            ("X", "stop Engine"),
+            (":", "commands"),
+            ("?", "keys"),
+        ],
+        Some(EngineView::Up { .. }) => &[
+            ("L", "log in"),
+            ("X", "stop Engine"),
+            ("U", "update Scripts"),
+            (":", "commands"),
+            ("?", "keys"),
+            ("q", "quit"),
+        ],
+        Some(EngineView::Failed(_)) => &[
+            ("j/k", "move"),
+            ("space", "mark"),
+            (":", "commands"),
+            ("?", "keys"),
+            ("q", "quit"),
+        ],
+    };
     let mut spans = vec![Span::raw(" ")];
-    for (key, what) in [
-        ("j/k", "move"),
-        ("space", "mark"),
-        ("tab", "tab"),
-        (":", "commands"),
-        ("/", "filter"),
-        ("?", "keys"),
-        ("q", "quit"),
-    ] {
+    for &(key, what) in keys {
         spans.push(key.blue().bold());
         spans.push(format!(" {what}  ").fg(DIM));
     }
@@ -785,7 +831,10 @@ fn footer(frame: &mut Frame, area: Rect) {
 
 fn draw_modal(frame: &mut Frame, app: &App, modal: &Modal) {
     let screen = frame.area();
-    let (title, lines, hint): (String, Vec<Line>, &str) = match modal {
+    let width = 72.min(screen.width.saturating_sub(6));
+    let inner = width.saturating_sub(2) as usize;
+    let on = format!("on {}", app.targets_label());
+    let (title, right, lines, hint): (String, String, Vec<Line>, &str) = match modal {
         Modal::Palette { query, selected } => {
             let mut lines = vec![Line::from(format!("> {query}▏").bold()), Line::raw("")];
             let matches = App::palette_matches(query);
@@ -794,20 +843,18 @@ fn draw_modal(frame: &mut Frame, app: &App, modal: &Modal) {
             }
             for (i, command) in matches.iter().enumerate() {
                 let line = Line::raw(format!("{:<40}{}", command.title, command.key));
-                lines.push(if i == *selected {
-                    line.black().on_blue().bold()
-                } else {
-                    line
-                });
+                lines.push(highlight(line, i == *selected));
             }
             (
-                format!("Commands · on {}", app.targets_label()),
+                format!("Commands · {on}"),
+                String::new(),
                 lines,
                 "type to search · ↑↓ · enter run · esc",
             )
         }
         Modal::Filter { query } => (
             "Filter accounts".into(),
+            String::new(),
             vec![
                 Line::from(format!("> {query}▏").bold()),
                 Line::styled("part of a name; empty clears", Style::new().fg(DIM)),
@@ -816,13 +863,167 @@ fn draw_modal(frame: &mut Frame, app: &App, modal: &Modal) {
         ),
         Modal::Help => (
             "Keys".into(),
+            String::new(),
             KEYS.iter()
                 .map(|(key, what)| Line::from(vec![format!("{key:<10}").blue().bold(), Span::raw(*what)]))
                 .collect(),
             "any key closes",
         ),
+        Modal::Confirm { text, .. } => (
+            "Confirm".into(),
+            String::new(),
+            wrap(text, inner).into_iter().map(Line::raw).collect(),
+            "y yes · n no",
+        ),
+        Modal::Servers {
+            engine,
+            servers,
+            selected,
+        } => {
+            let lines = match servers {
+                None => vec![reading_from(engine)],
+                Some(Err(e)) => error_lines(e, inner),
+                Some(Ok(list)) if list.is_empty() => vec![Line::styled("no servers", Style::new().fg(DIM))],
+                Some(Ok(list)) => window(list.len(), *selected, 12)
+                    .map(|i| {
+                        let server = &list[i];
+                        let fill = (ratio(server.player_count, server.max_players) * 12.0).round() as usize;
+                        let line = Line::raw(format!(
+                            "{:<14}{:>11}  {:·<12}{}{}",
+                            server.name,
+                            format!("{}/{}", server.player_count, server.max_players),
+                            "█".repeat(fill.min(12)),
+                            if server.member_only { "  member" } else { "" },
+                            if server.online { "" } else { "  offline" },
+                        ));
+                        highlight(if server.online { line } else { line.fg(DIM) }, i == *selected)
+                    })
+                    .collect(),
+            };
+            ("Log in to".into(), on, lines, "↑↓ · enter log in · esc")
+        }
+        Modal::Scripts {
+            engine,
+            query,
+            found,
+            selected,
+        } => {
+            let mut lines = vec![Line::from(format!("> {query}▏").bold()), Line::raw("")];
+            match found {
+                None => lines.push(reading_from(engine)),
+                Some(Err(e)) => lines.extend(error_lines(e, inner)),
+                Some(Ok(found)) if found.scripts.is_empty() => {
+                    lines.push(Line::styled("no Script matches", Style::new().fg(DIM)))
+                }
+                Some(Ok(found)) => {
+                    for i in window(found.scripts.len(), *selected, 10) {
+                        let script = &found.scripts[i];
+                        let mut spans = vec![Span::raw(script.path.clone())];
+                        if !script.downloaded {
+                            spans.push("  not downloaded: U".fg(DIM));
+                        } else if script.outdated {
+                            spans.push("  outdated: U".fg(DIM));
+                        }
+                        lines.push(highlight(Line::from(spans), i == *selected));
+                    }
+                    if found.matched as usize > found.scripts.len() {
+                        lines.push(Line::styled(
+                            format!("… {} matched; type to narrow", found.matched),
+                            Style::new().fg(DIM),
+                        ));
+                    }
+                }
+            }
+            (
+                "Start a Script".into(),
+                on,
+                lines,
+                "type to search · ↑↓ · enter options · esc",
+            )
+        }
+        Modal::Options {
+            engine,
+            script,
+            fields,
+            selected,
+        } => {
+            let lines = match fields {
+                None => vec![Line::styled(
+                    format!("compiling {script} in {engine} to read its options…"),
+                    Style::new().fg(DIM),
+                )],
+                Some(Err(e)) => error_lines(e, inner),
+                Some(Ok(fields)) => {
+                    let mut lines: Vec<Line> = if fields.is_empty() {
+                        vec![Line::styled("This Script has no options.", Style::new().fg(DIM))]
+                    } else {
+                        window(fields.len(), *selected, 12)
+                            .map(|i| option_line(&fields[i], i == *selected))
+                            .collect()
+                    };
+                    if let Some(description) = fields.get(*selected).and_then(|f| f.option.description.as_deref()) {
+                        lines.push(Line::styled(truncate(description, inner), Style::new().fg(DIM)));
+                    }
+                    lines.push(Line::raw(""));
+                    lines.push(Line::styled(
+                        format!("starts {on}; changed values are stored as its options"),
+                        Style::new().fg(DIM),
+                    ));
+                    lines
+                }
+            };
+            (
+                format!("Options · {}", base_name(script)),
+                on,
+                lines,
+                "↑↓ field · ←→ space value · type to edit · enter start · esc",
+            )
+        }
+        Modal::Join { query } => (
+            "Join a map".into(),
+            on,
+            vec![
+                Line::from(format!("> {query}▏").bold()),
+                Line::styled(
+                    "map[-room] [cell] [pad], e.g. battleon-9999 Enter Spawn",
+                    Style::new().fg(DIM),
+                ),
+            ],
+            "enter join · esc cancel",
+        ),
+        Modal::Question {
+            engine,
+            questions,
+            selected,
+        } => {
+            let (title, lines) = match questions {
+                None => (format!("Question · {engine}"), vec![reading_from(engine)]),
+                Some(Err(e)) => (format!("Question · {engine}"), error_lines(e, inner)),
+                Some(Ok(list)) => {
+                    let question = &list[0];
+                    let mut lines: Vec<Line> = wrap(&question.text, inner)
+                        .into_iter()
+                        .map(|l| Line::styled(l, Style::new().yellow().bold()))
+                        .collect();
+                    lines.push(Line::raw(""));
+                    for (i, choice) in question.choices.iter().enumerate() {
+                        lines.push(highlight(Line::raw(format!("{}  {choice}", i + 1)), i == *selected));
+                    }
+                    if let Some(script) = &question.script {
+                        lines.push(Line::raw(""));
+                        lines.push(Line::styled(format!("from {script}"), Style::new().fg(DIM)));
+                    }
+                    let more = if list.len() > 1 {
+                        format!(" · 1 of {}", list.len())
+                    } else {
+                        String::new()
+                    };
+                    (format!("Question · {engine} · {}{more}", question.caption), lines)
+                }
+            };
+            (title, String::new(), lines, "1–9 or ↑↓ enter · esc later")
+        }
     };
-    let width = 64.min(screen.width.saturating_sub(6));
     let height = (lines.len() as u16 + 4).min(screen.height.saturating_sub(2));
     let area = Rect {
         x: (screen.width - width) / 2,
@@ -830,11 +1031,78 @@ fn draw_modal(frame: &mut Frame, app: &App, modal: &Modal) {
         width,
         height,
     };
-    let block = panel(&title)
+    let mut block = panel(&title)
         .border_style(Style::new().blue())
         .title_bottom(Line::styled(format!(" {hint} "), Style::new().fg(DIM)));
+    if !right.is_empty() {
+        block = block.title_top(Line::styled(format!(" {right} "), Style::new().blue()).right_aligned());
+    }
     frame.render_widget(Clear, area);
     frame.render_widget(Paragraph::new(lines).block(block), area);
+}
+
+fn option_line(field: &Field, selected: bool) -> Line<'static> {
+    let name = format!("{:<28}", truncate(&field.option.display_name, 27));
+    let value = match field.option.kind.as_str() {
+        "bool" | "enum" => format!("‹ {} ›", field.value),
+        _ if selected => format!("{}▏", field.value),
+        _ => field.value.clone(),
+    };
+    let changed = if field.value != field.option.value { " *" } else { "" };
+    let line = if field.editable() {
+        Line::raw(format!("{name}{value}{changed}"))
+    } else {
+        Line::styled(format!("{name}{value}  (resets each start)"), Style::new().fg(DIM))
+    };
+    highlight(line, selected)
+}
+
+fn highlight(line: Line<'static>, selected: bool) -> Line<'static> {
+    if selected { line.black().on_blue().bold() } else { line }
+}
+
+/// The indices of a list of `len` to show in `rows`, keeping `selected` in view.
+fn window(len: usize, selected: usize, rows: usize) -> std::ops::Range<usize> {
+    let start = (selected + 1).saturating_sub(rows);
+    start..len.min(start + rows)
+}
+
+fn reading_from(engine: &str) -> Line<'static> {
+    Line::styled(format!("reading from {engine}…"), Style::new().fg(DIM))
+}
+
+fn error_lines(error: &Error, width: usize) -> Vec<Line<'static>> {
+    error
+        .to_string()
+        .lines()
+        .flat_map(|l| wrap(l, width))
+        .map(|l| Line::styled(l, Style::new().red().bold()))
+        .collect()
+}
+
+/// `text` in lines of at most `width` characters, broken at spaces where it can be.
+fn wrap(text: &str, width: usize) -> Vec<String> {
+    let width = width.max(1);
+    let mut lines = Vec::new();
+    for paragraph in text.lines() {
+        let mut line = String::new();
+        for word in paragraph.split(' ') {
+            if !line.is_empty() && line.chars().count() + 1 + word.chars().count() > width {
+                lines.push(std::mem::take(&mut line));
+            }
+            if !line.is_empty() {
+                line.push(' ');
+            }
+            line.push_str(word);
+            while line.chars().count() > width {
+                let rest: String = line.chars().skip(width).collect();
+                lines.push(line.chars().take(width).collect());
+                line = rest;
+            }
+        }
+        lines.push(line);
+    }
+    lines
 }
 
 fn panel(title: &str) -> Block<'static> {

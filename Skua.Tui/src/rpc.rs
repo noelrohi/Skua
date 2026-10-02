@@ -72,6 +72,11 @@ impl Rpc {
         })
     }
 
+    pub fn set_timeout(&mut self, timeout: Duration) -> io::Result<()> {
+        self.writer.set_read_timeout(Some(timeout))?;
+        self.writer.set_write_timeout(Some(timeout))
+    }
+
     /// Calls `method` with positional `params`, as the C# client's proxy does, and returns its result.
     pub fn call(&mut self, method: &str, params: Value) -> Result<Value, CallError> {
         self.next_id += 1;

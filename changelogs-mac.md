@@ -4,6 +4,11 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 
 ---
 
+## October 3, 2026
+
+### New
+* `skua-tui` acts now: start a windowless Engine (`E`) or stop one (`X`, after a confirm), log in with a server picker (`L`; for now only the Engine whose account is the Active Account), log out (`O`), search a Script, set its options and start it (`s`) or stop it (`x`), answer a Question (`d`), join a map (`J`) and update the Scripts (`U`). Marked accounts all get the action. See [The TUI](./BUILD.md#the-tui-skua-tui).
+
 ## October 2, 2026
 
 ### New

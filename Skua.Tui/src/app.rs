@@ -1,10 +1,14 @@
-//! The shell's state and keys: accounts by group, selection, marks, tabs and the command palette. It does no I/O.
+//! skua-tui's state and keys: accounts by group, selection, marks, tabs, the command palette and the actions' pickers. It does no I/O: an
+//! action queues [`Job`]s in [`App::jobs`], and their [`Outcome`]s come back through [`App::on_outcome`].
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::PathBuf;
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
+use crate::actions::{Job, Op, Outcome, Reply};
+use crate::dto::{Question, ScriptOption, ScriptsSearch, Server};
+use crate::engine::{Error, SCRIPT_RUNNING};
 use crate::poller::{EngineView, Focus, Snapshot};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -110,19 +114,6 @@ pub const COMMANDS: &[Command] = &[
     },
 ];
 
-/// The keys of actions skua-tui doesn't have yet.
-const ACTIONS: &[(char, &str)] = &[
-    ('E', "start Engine"),
-    ('X', "stop Engine"),
-    ('L', "log in"),
-    ('O', "log out"),
-    ('s', "start Script"),
-    ('x', "stop Script"),
-    ('J', "join map"),
-    ('d', "answer Question"),
-    ('U', "update Scripts"),
-];
-
 pub const KEYS: &[(&str, &str)] = &[
     ("j/k ↑/↓", "move"),
     ("space", "mark account"),
@@ -132,17 +123,118 @@ pub const KEYS: &[(&str, &str)] = &[
     ("1–5", "pick a tab"),
     (":", "command palette"),
     ("/", "filter accounts"),
-    ("E / X", "start / stop Engine (not yet)"),
-    ("L / O", "log in / log out (not yet)"),
-    ("s / x", "start / stop Script (not yet)"),
-    ("J d U", "join, answer, update Scripts (not yet)"),
+    ("E / X", "start / stop Engine (stop asks first)"),
+    ("L / O", "log in (server picker) / log out"),
+    ("s / x", "start Script (search, options) / stop"),
+    ("J", "join a map: map[-room] [cell] [pad]"),
+    ("d", "answer the selected account's Question"),
+    ("U", "update the Scripts from the Script Source"),
     ("q", "quit"),
 ];
 
+/// What a picker shows until its Engine answers: None while it reads.
+pub type Reading<T> = Option<Result<T, Error>>;
+
 pub enum Modal {
-    Palette { query: String, selected: usize },
-    Filter { query: String },
+    Palette {
+        query: String,
+        selected: usize,
+    },
+    Filter {
+        query: String,
+    },
     Help,
+    /// Runs `jobs` on `y`.
+    Confirm {
+        text: String,
+        jobs: Vec<Job>,
+    },
+    /// The servers, read from `engine`, to log the targets in to.
+    Servers {
+        engine: String,
+        servers: Reading<Vec<Server>>,
+        selected: usize,
+    },
+    /// The Script Source's Scripts matching `query`, searched in `engine`.
+    Scripts {
+        engine: String,
+        query: String,
+        found: Reading<ScriptsSearch>,
+        selected: usize,
+    },
+    /// `script`'s options, read from `engine`, to start it on the targets with.
+    Options {
+        engine: String,
+        script: String,
+        fields: Reading<Vec<Field>>,
+        selected: usize,
+    },
+    Join {
+        query: String,
+    },
+    /// The pending Questions of one Engine; the oldest is answered first.
+    Question {
+        engine: String,
+        questions: Reading<Vec<Question>>,
+        selected: usize,
+    },
+}
+
+/// One Script option in the options form, with its value as edited.
+#[derive(Debug, Clone)]
+pub struct Field {
+    pub option: ScriptOption,
+    pub value: String,
+}
+
+impl Field {
+    pub fn editable(&self) -> bool {
+        !self.option.transient
+    }
+
+    fn is_text(&self) -> bool {
+        !matches!(self.option.kind.as_str(), "bool" | "enum")
+    }
+
+    fn cycle(&mut self, by: isize) {
+        let choices: Vec<String> = match self.option.kind.as_str() {
+            "bool" => vec!["True".into(), "False".into()],
+            "enum" => self.option.choices.clone().unwrap_or_default(),
+            _ => return,
+        };
+        if choices.is_empty() {
+            return;
+        }
+        let at = choices
+            .iter()
+            .position(|c| c.eq_ignore_ascii_case(&self.value))
+            .unwrap_or(0);
+        self.value = choices[(at as isize + by).rem_euclid(choices.len() as isize) as usize].clone();
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tone {
+    Info,
+    Pending,
+    Done,
+    Failed,
+}
+
+/// A line about what an action did, or is doing, to an account's Engine.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Note {
+    pub text: String,
+    pub tone: Tone,
+}
+
+impl Note {
+    fn new(text: impl Into<String>, tone: Tone) -> Note {
+        Note {
+            text: text.into(),
+            tone,
+        }
+    }
 }
 
 pub struct App {
@@ -155,7 +247,11 @@ pub struct App {
     pub filter: String,
     pub modal: Option<Modal>,
     /// Shown until the next key.
-    pub toast: Option<String>,
+    pub toast: Option<Note>,
+    /// The last action on each account's Engine, until the next one or esc.
+    pub activity: BTreeMap<String, Note>,
+    /// The jobs the actions queued, for the caller to run.
+    pub jobs: Vec<Job>,
     pub quit: bool,
 }
 
@@ -170,6 +266,8 @@ impl App {
             filter: String::new(),
             modal: None,
             toast: None,
+            activity: BTreeMap::new(),
+            jobs: Vec::new(),
             quit: false,
         }
     }
@@ -286,6 +384,7 @@ impl App {
             KeyCode::Esc => {
                 self.marks.clear();
                 self.filter.clear();
+                self.activity.retain(|_, note| note.tone == Tone::Pending);
             }
             KeyCode::Char(c) => self.press(c),
             _ => {}
@@ -318,22 +417,499 @@ impl App {
             '?' => self.modal = Some(Modal::Help),
             'S' => self.tab = Tab::Game,
             '1'..='5' => self.tab = Tab::ALL[c as usize - '1' as usize],
-            _ => {
-                if let Some((_, name)) = ACTIONS.iter().find(|(key, _)| *key == c) {
-                    self.toast = Some(format!(
-                        "{name} on {}: not in skua-tui yet; it only shows for now",
-                        self.targets_label()
-                    ));
+            'E' => self.start_engines(),
+            'X' => self.confirm_stop_engines(),
+            'L' => {
+                if let Some(engine) = self.source("log in") {
+                    self.jobs.push(Job {
+                        engine: engine.clone(),
+                        op: Op::Servers,
+                    });
+                    self.modal = Some(Modal::Servers {
+                        engine,
+                        servers: None,
+                        selected: 0,
+                    });
+                }
+            }
+            'O' => self.act(Op::Logout, "logging out…"),
+            's' => {
+                if let Some(engine) = self.source("start a Script") {
+                    self.search(&engine, String::new());
+                    self.modal = Some(Modal::Scripts {
+                        engine,
+                        query: String::new(),
+                        found: None,
+                        selected: 0,
+                    });
+                }
+            }
+            'x' => self.act(Op::ScriptStop, "stopping the Script…"),
+            'J' => {
+                if self.source("join a map").is_some() {
+                    self.modal = Some(Modal::Join { query: String::new() });
+                }
+            }
+            'd' => {
+                let engine = self.selected_row().map(|r| r.name);
+                match engine.filter(|name| matches!(self.engine(name), Some(EngineView::Up { .. }))) {
+                    Some(engine) => {
+                        self.jobs.push(Job {
+                            engine: engine.clone(),
+                            op: Op::Dialogs,
+                        });
+                        self.modal = Some(Modal::Question {
+                            engine,
+                            questions: None,
+                            selected: 0,
+                        });
+                    }
+                    None => self.toast = Some(Note::new("answer: the selected account has no Engine up", Tone::Failed)),
+                }
+            }
+            'U' => {
+                // Every Engine of this data folder shares its Scripts, so one update serves them all.
+                if let Some(engine) = self.source("update Scripts") {
+                    self.queue(engine, Op::ScriptsUpdate, "updating the Scripts…");
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// The first target whose Engine is up, for a picker to read from; else says so.
+    fn source(&mut self, what: &str) -> Option<String> {
+        let up = self
+            .targets()
+            .into_iter()
+            .find(|name| matches!(self.engine(name), Some(EngineView::Up { .. })));
+        if up.is_none() {
+            self.toast = Some(Note::new(
+                format!("{what}: no Engine is up for {}", self.targets_label()),
+                Tone::Failed,
+            ));
+        }
+        up
+    }
+
+    /// Queues `op` for each target whose Engine is up, and notes why the others are left alone.
+    fn act(&mut self, op: Op, pending: &str) {
+        let mut queued = 0;
+        for name in self.targets() {
+            match self.engine(&name) {
+                Some(EngineView::Up { .. }) => {
+                    self.queue(name, op.clone(), pending);
+                    queued += 1;
+                }
+                view => {
+                    let reason = left_alone(view);
+                    self.fail(name, reason);
+                }
+            }
+        }
+        if queued > 1 {
+            self.toast = Some(Note::new(format!("{pending} {queued} accounts"), Tone::Pending));
+        }
+    }
+
+    fn fail(&mut self, engine: String, text: String) {
+        self.toast = Some(Note::new(format!("{engine}: {text}"), Tone::Failed));
+        self.activity.insert(engine, Note::new(text, Tone::Failed));
+    }
+
+    fn queue(&mut self, engine: String, op: Op, pending: &str) {
+        self.activity.insert(engine.clone(), Note::new(pending, Tone::Pending));
+        self.toast = Some(Note::new(format!("{engine}: {pending}"), Tone::Pending));
+        self.jobs.push(Job { engine, op });
+    }
+
+    fn search(&mut self, engine: &str, query: String) {
+        self.jobs.push(Job {
+            engine: engine.to_owned(),
+            op: Op::ScriptsSearch { query },
+        });
+    }
+
+    /// Starts an Engine for each target that has none; one that answers, or is of another protocol, is left as it is.
+    fn start_engines(&mut self) {
+        for name in self.targets() {
+            match self.engine(&name) {
+                None | Some(EngineView::Offline) => self.queue(name, Op::StartEngine, "starting a windowless Engine…"),
+                Some(EngineView::Up { .. }) => {
+                    self.toast = Some(Note::new(format!("{name}: its Engine already runs"), Tone::Info));
+                }
+                view => {
+                    let reason = left_alone(view);
+                    self.fail(name, reason);
                 }
             }
         }
     }
 
+    fn confirm_stop_engines(&mut self) {
+        let mut names = Vec::new();
+        for name in self.targets() {
+            match self.engine(&name) {
+                Some(EngineView::Up { .. }) => names.push(name),
+                None | Some(EngineView::Offline) => {}
+                view => {
+                    let reason = left_alone(view);
+                    self.fail(name, reason);
+                }
+            }
+        }
+        if names.is_empty() {
+            if self.toast.is_none() {
+                self.toast = Some(Note::new(
+                    format!("stop Engine: no Engine runs for {}", self.targets_label()),
+                    Tone::Info,
+                ));
+            }
+            return;
+        }
+        let text = format!(
+            "Stop the Engine of {}? Its game closes. An Engine running a Script or a command refuses; x stops the Script first.",
+            names.join(", ")
+        );
+        let jobs = names
+            .into_iter()
+            .map(|engine| Job {
+                engine,
+                op: Op::StopEngine,
+            })
+            .collect();
+        self.modal = Some(Modal::Confirm { text, jobs });
+    }
+
+    /// Applies what an Engine answered: a picker's data, or an action's result on its account.
+    pub fn on_outcome(&mut self, outcome: Outcome) {
+        let Outcome { job, result } = outcome;
+        let engine = job.engine;
+        match (&mut self.modal, &job.op, result) {
+            (Some(Modal::Servers { engine: e, servers, .. }), Op::Servers, result) if *e == engine => {
+                *servers = Some(result.and_then(|r| match r {
+                    Reply::Servers(list) => Ok(list),
+                    r => Err(unexpected(r)),
+                }));
+            }
+            (_, Op::Servers, _) => {}
+            (
+                Some(Modal::Scripts {
+                    engine: e,
+                    query,
+                    found,
+                    selected,
+                }),
+                Op::ScriptsSearch { query: asked },
+                result,
+            ) if *e == engine && query == asked => {
+                *selected = 0;
+                *found = Some(result.and_then(|r| match r {
+                    Reply::Scripts(found) => Ok(found),
+                    r => Err(unexpected(r)),
+                }));
+            }
+            (_, Op::ScriptsSearch { .. }, _) => {}
+            (
+                Some(Modal::Options {
+                    engine: e,
+                    script,
+                    fields,
+                    ..
+                }),
+                Op::ScriptOptions { script: asked },
+                result,
+            ) if *e == engine && script == asked => {
+                *fields = Some(result.and_then(|r| {
+                    match r {
+                        Reply::Options(options) => Ok(options
+                            .options
+                            .into_iter()
+                            .map(|option| Field {
+                                value: option.value.clone(),
+                                option,
+                            })
+                            .collect()),
+                        r => Err(unexpected(r)),
+                    }
+                }));
+            }
+            (_, Op::ScriptOptions { .. }, _) => {}
+            (
+                Some(Modal::Question {
+                    engine: e, questions, ..
+                }),
+                Op::Dialogs,
+                result,
+            ) if *e == engine => match result {
+                Ok(Reply::Dialogs(list)) if list.is_empty() => {
+                    self.modal = None;
+                    self.toast = Some(Note::new(format!("{engine}: no pending Questions"), Tone::Info));
+                }
+                result => {
+                    *questions = Some(result.and_then(|r| match r {
+                        Reply::Dialogs(list) => Ok(list),
+                        r => Err(unexpected(r)),
+                    }))
+                }
+            },
+            (_, Op::Dialogs, _) => {}
+            (_, op, result) => {
+                let note = match result {
+                    Ok(reply) => App::done(reply),
+                    Err(e) => Note::new(failed(op, &e), Tone::Failed),
+                };
+                self.toast = Some(Note::new(format!("{engine}: {}", first_line(&note.text)), note.tone));
+                self.activity.insert(engine, note);
+            }
+        }
+    }
+
+    fn done(reply: Reply) -> Note {
+        let ok = |text: String| Note::new(text, Tone::Done);
+        match reply {
+            Reply::Started(hello) => ok(format!("Engine started (build {}, pid {})", hello.build, hello.pid)),
+            Reply::Stopping => ok("Engine stopping".into()),
+            Reply::LoggedIn(login) if login.already_logged_in => {
+                ok(format!("already playing as {} on {}", login.username, login.server))
+            }
+            Reply::LoggedIn(login) => ok(format!("logged in as {} on {}", login.username, login.server)),
+            Reply::LoggedOut(logout) if logout.was_logged_in => ok("logged out".into()),
+            Reply::LoggedOut(_) => ok("wasn't logged in".into()),
+            Reply::ScriptStarted(start) => ok(format!("Script started, run {}", start.run)),
+            Reply::ScriptStopped(stop) if !stop.was_running => ok("no Script was running".into()),
+            Reply::ScriptStopped(stop) if !stop.ended => {
+                Note::new("the Script didn't stop in time (stopTimedOut)", Tone::Failed)
+            }
+            Reply::ScriptStopped(_) => ok("Script stopped".into()),
+            Reply::Answered(answer) => ok(format!("answered Question {}: {}", answer.id, answer.choice)),
+            Reply::Joined(at) => ok(format!(
+                "{} {} · {} · {}",
+                if at.already_there { "already in" } else { "joined" },
+                at.map,
+                at.cell,
+                at.pad
+            )),
+            Reply::Updated(update) => Note::new(
+                format!(
+                    "Scripts updated ({}): {} downloaded, {} new, {} changed{}",
+                    update.mode,
+                    update.downloaded,
+                    update.added.len(),
+                    update.changed.len(),
+                    if update.failed.is_empty() {
+                        String::new()
+                    } else {
+                        format!(", {} failed: {}", update.failed.len(), update.failed.join(", "))
+                    }
+                ),
+                if update.failed.is_empty() {
+                    Tone::Done
+                } else {
+                    Tone::Failed
+                },
+            ),
+            r => Note::new(unexpected(r).to_string(), Tone::Failed),
+        }
+    }
+
     fn on_modal_key(&mut self, modal: Modal, key: KeyEvent) {
+        if key.code == KeyCode::Esc {
+            return;
+        }
         match modal {
             Modal::Help => {}
+            Modal::Confirm { text, jobs } => match key.code {
+                KeyCode::Char('y') | KeyCode::Enter => {
+                    for job in jobs {
+                        self.queue(job.engine, job.op, "stopping its Engine…");
+                    }
+                }
+                KeyCode::Char('n') => {}
+                _ => self.modal = Some(Modal::Confirm { text, jobs }),
+            },
+            Modal::Servers {
+                engine,
+                servers,
+                mut selected,
+            } => {
+                let count = servers.as_ref().and_then(|s| s.as_ref().ok()).map_or(0, Vec::len);
+                match key.code {
+                    KeyCode::Enter => {
+                        if let Some(Ok(list)) = &servers
+                            && let Some(server) = list.get(selected)
+                        {
+                            let server = server.name.clone();
+                            self.act(
+                                Op::Login { server: server.clone() },
+                                &format!("logging in to {server}…"),
+                            );
+                            return;
+                        }
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => selected = step(selected, 1, count),
+                    KeyCode::Up | KeyCode::Char('k') => selected = step(selected, -1, count),
+                    _ => {}
+                }
+                self.modal = Some(Modal::Servers {
+                    engine,
+                    servers,
+                    selected,
+                });
+            }
+            Modal::Scripts {
+                engine,
+                mut query,
+                mut found,
+                mut selected,
+            } => {
+                let count = found
+                    .as_ref()
+                    .and_then(|f| f.as_ref().ok())
+                    .map_or(0, |f| f.scripts.len());
+                match key.code {
+                    KeyCode::Enter => {
+                        if let Some(Ok(found)) = &found
+                            && let Some(script) = found.scripts.get(selected)
+                        {
+                            let script = script.path.clone();
+                            self.jobs.push(Job {
+                                engine: engine.clone(),
+                                op: Op::ScriptOptions { script: script.clone() },
+                            });
+                            self.modal = Some(Modal::Options {
+                                engine,
+                                script,
+                                fields: None,
+                                selected: 0,
+                            });
+                            return;
+                        }
+                    }
+                    KeyCode::Down => selected = step(selected, 1, count),
+                    KeyCode::Up => selected = step(selected, -1, count),
+                    KeyCode::Backspace | KeyCode::Char(_) => {
+                        match key.code {
+                            KeyCode::Char(c) => query.push(c),
+                            _ => _ = query.pop(),
+                        }
+                        found = None;
+                        selected = 0;
+                        self.search(&engine, query.clone());
+                    }
+                    _ => {}
+                }
+                self.modal = Some(Modal::Scripts {
+                    engine,
+                    query,
+                    found,
+                    selected,
+                });
+            }
+            Modal::Options {
+                engine,
+                script,
+                mut fields,
+                mut selected,
+            } => {
+                if let Some(Ok(fields)) = &mut fields {
+                    let count = fields.len();
+                    match key.code {
+                        KeyCode::Enter => {
+                            let options: BTreeMap<String, String> = fields
+                                .iter()
+                                .filter(|f| f.editable() && f.value != f.option.value)
+                                .map(|f| (f.option.key.clone(), f.value.clone()))
+                                .collect();
+                            self.act(
+                                Op::ScriptStart {
+                                    script: script.clone(),
+                                    options,
+                                },
+                                &format!("starting {script}…"),
+                            );
+                            return;
+                        }
+                        KeyCode::Down => selected = step(selected, 1, count),
+                        KeyCode::Up => selected = step(selected, -1, count),
+                        code => {
+                            if let Some(field) = fields.get_mut(selected).filter(|f| f.editable()) {
+                                match code {
+                                    KeyCode::Left if !field.is_text() => field.cycle(-1),
+                                    KeyCode::Right if !field.is_text() => field.cycle(1),
+                                    KeyCode::Char(' ') if !field.is_text() => field.cycle(1),
+                                    KeyCode::Char(c) if field.is_text() => field.value.push(c),
+                                    KeyCode::Backspace if field.is_text() => _ = field.value.pop(),
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                }
+                self.modal = Some(Modal::Options {
+                    engine,
+                    script,
+                    fields,
+                    selected,
+                });
+            }
+            Modal::Join { mut query } => match key.code {
+                KeyCode::Enter => {
+                    let mut words = query.split_whitespace().map(str::to_owned);
+                    if let Some(map) = words.next() {
+                        let (cell, pad) = (words.next(), words.next());
+                        self.act(
+                            Op::Join {
+                                map: map.clone(),
+                                cell,
+                                pad,
+                            },
+                            &format!("joining {map}…"),
+                        );
+                    }
+                }
+                KeyCode::Backspace => {
+                    query.pop();
+                    self.modal = Some(Modal::Join { query });
+                }
+                KeyCode::Char(c) => {
+                    query.push(c);
+                    self.modal = Some(Modal::Join { query });
+                }
+                _ => self.modal = Some(Modal::Join { query }),
+            },
+            Modal::Question {
+                engine,
+                questions,
+                mut selected,
+            } => {
+                let question = questions.as_ref().and_then(|q| q.as_ref().ok()).and_then(|q| q.first());
+                let choices = question.map_or(0, |q| q.choices.len());
+                let choice = match key.code {
+                    KeyCode::Char(c @ '1'..='9') => question.and_then(|q| q.choices.get(c as usize - '1' as usize)),
+                    KeyCode::Enter => question.and_then(|q| q.choices.get(selected)),
+                    _ => None,
+                };
+                if let (Some(question), Some(choice)) = (question, choice) {
+                    let op = Op::DialogAnswer {
+                        id: question.id,
+                        choice: choice.clone(),
+                    };
+                    self.queue(engine, op, &format!("answering {choice}…"));
+                    return;
+                }
+                match key.code {
+                    KeyCode::Down | KeyCode::Char('j') => selected = step(selected, 1, choices),
+                    KeyCode::Up | KeyCode::Char('k') => selected = step(selected, -1, choices),
+                    _ => {}
+                }
+                self.modal = Some(Modal::Question {
+                    engine,
+                    questions,
+                    selected,
+                });
+            }
             Modal::Filter { mut query } => match key.code {
-                KeyCode::Esc => {}
                 KeyCode::Enter => {
                     self.filter = query;
                     self.selected = 0;
@@ -354,15 +930,14 @@ impl App {
             } => {
                 let count = App::palette_matches(&query).len();
                 match key.code {
-                    KeyCode::Esc => return,
                     KeyCode::Enter => {
                         if let Some(command) = App::palette_matches(&query).get(selected) {
                             self.press(command.key);
                         }
                         return;
                     }
-                    KeyCode::Down => selected = (selected + 1).min(count.saturating_sub(1)),
-                    KeyCode::Up => selected = selected.saturating_sub(1),
+                    KeyCode::Down => selected = step(selected, 1, count),
+                    KeyCode::Up => selected = step(selected, -1, count),
                     KeyCode::Backspace => {
                         query.pop();
                         selected = 0;
@@ -401,6 +976,44 @@ impl App {
             self.marks.extend(group);
         }
     }
+}
+
+/// Why an action leaves an account's Engine alone.
+fn left_alone(view: Option<&EngineView>) -> String {
+    match view {
+        None | Some(EngineView::Offline) => "no Engine runs; E starts one".into(),
+        Some(EngineView::Failed(e)) => format!("left alone: {e}"),
+        Some(EngineView::Up { .. }) => unreachable!("an Engine that is up is acted on"),
+    }
+}
+
+/// An action's error, with what to do for the usual refusals.
+fn failed(op: &Op, error: &Error) -> String {
+    match (op, error) {
+        (
+            Op::StopEngine,
+            Error::Remote {
+                code: SCRIPT_RUNNING,
+                message,
+            },
+        ) => {
+            format!("{message} The Engine keeps running; x stops the Script first.")
+        }
+        _ => error.to_string(),
+    }
+}
+
+fn unexpected(reply: Reply) -> Error {
+    Error::Malformed(format!("an answer to another op: {reply:?}"))
+}
+
+pub fn first_line(text: &str) -> &str {
+    text.lines().next().unwrap_or("")
+}
+
+/// A picker's selection moved `by`, within its `count` rows.
+fn step(selected: usize, by: isize, count: usize) -> usize {
+    selected.saturating_add_signed(by).min(count.saturating_sub(1))
 }
 
 /// Whether `query`'s characters appear in `text` in order, ignoring case.
