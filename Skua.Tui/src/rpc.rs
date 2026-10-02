@@ -72,6 +72,16 @@ impl Rpc {
         })
     }
 
+    /// Waits for each answer however long it takes, as a subscription waits for what is pushed.
+    pub fn wait_forever(&mut self) -> io::Result<()> {
+        self.writer.set_read_timeout(None)
+    }
+
+    /// A handle that closes this connection from another thread, ending a call that waits.
+    pub fn closer(&self) -> io::Result<UnixStream> {
+        self.writer.try_clone()
+    }
+
     pub fn set_timeout(&mut self, timeout: Duration) -> io::Result<()> {
         self.writer.set_read_timeout(Some(timeout))?;
         self.writer.set_write_timeout(Some(timeout))

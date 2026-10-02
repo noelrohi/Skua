@@ -12,8 +12,8 @@ use std::time::{Duration, Instant};
 
 use crate::discovery;
 use crate::dto::{
-    DialogAnswer, EngineHost, Hello, Location, LoginResult, LogoutResult, Question, ScriptOptions, ScriptStartResult,
-    ScriptStopResult, ScriptsSearch, ScriptsUpdate, Server,
+    ChatSendResult, DialogAnswer, EngineHost, Hello, Location, LoginResult, LogoutResult, Question, ScriptOptions,
+    ScriptStartResult, ScriptStopResult, ScriptsSearch, ScriptsUpdate, Server,
 };
 use crate::engine::{Engine, Error};
 
@@ -59,6 +59,11 @@ pub enum Op {
         pad: Option<String>,
     },
     ScriptsUpdate,
+    /// Zone chat, or with `to` a whisper.
+    ChatSend {
+        text: String,
+        to: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -82,6 +87,7 @@ pub enum Reply {
     Answered(DialogAnswer),
     Joined(Location),
     Updated(ScriptsUpdate),
+    ChatSent(ChatSendResult),
 }
 
 #[derive(Debug, Clone)]
@@ -143,6 +149,7 @@ impl Runner {
             Op::DialogAnswer { id, choice } => Reply::Answered(engine.dialog_answer(*id, choice)?),
             Op::Join { map, cell, pad } => Reply::Joined(engine.join(map, cell.as_deref(), pad.as_deref())?),
             Op::ScriptsUpdate => Reply::Updated(engine.scripts_update()?),
+            Op::ChatSend { text, to } => Reply::ChatSent(engine.chat_send(text, to.as_deref())?),
         })
     }
 

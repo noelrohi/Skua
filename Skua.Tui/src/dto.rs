@@ -349,3 +349,10 @@ pub struct ScriptsUpdate {
     pub added: Vec<String>,
     pub changed: Vec<String>,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatSendResult {
+    pub channel: String,
+    pub to: Option<String>,
+}

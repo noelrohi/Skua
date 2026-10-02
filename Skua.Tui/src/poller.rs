@@ -138,13 +138,13 @@ impl Poller {
             Tab::Inventory => self.detail.inventory = Some(engine.inventory()),
             Tab::Quests => self.detail.quests = Some(engine.quests()),
             Tab::Game => self.detail.map = Some(engine.map()),
-            Tab::Overview | Tab::Logs => {}
+            Tab::Overview | Tab::Logs | Tab::Chat => {}
         }
     }
 }
 
 /// Marks where entries were missed: evicted from the Engine's buffer, or lost to a restart.
-fn gap_entry() -> LogEntry {
+pub fn gap_entry() -> LogEntry {
     LogEntry {
         seq: 0,
         ts: 0,

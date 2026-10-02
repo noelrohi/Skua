@@ -3,6 +3,7 @@
 
 pub mod actions;
 pub mod app;
+pub mod chat;
 pub mod discovery;
 pub mod dto;
 pub mod engine;

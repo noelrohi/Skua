@@ -13,6 +13,9 @@ use skua_tui::rpc::{read_message, write_message};
 
 pub type Handler = dyn Fn(&str, &Value) -> Result<Value, (i64, String)> + Send + Sync;
 
+/// A handler's error code that closes the connection instead of answering, as an Engine that stops does.
+pub const DROP_CONNECTION: i64 = i64::MIN;
+
 /// A Skua data folder of its own, removed on drop.
 pub fn skua_dir() -> tempfile::TempDir {
     // macOS's sun_path holds 104 bytes, so the folder sits in /tmp rather than the long per-user TMPDIR.
@@ -56,6 +59,7 @@ impl FakeEngine {
                         recorded.lock().unwrap().push((method.clone(), params.clone()));
                         let reply = match handler(&method, &params) {
                             Ok(result) => json!({ "jsonrpc": "2.0", "id": request["id"], "result": result }),
+                            Err((DROP_CONNECTION, _)) => return,
                             Err((code, message)) => {
                                 json!({ "jsonrpc": "2.0", "id": request["id"], "error": { "code": code, "message": message } })
                             }
@@ -137,4 +141,12 @@ pub fn log_entry(seq: i64, text: &str) -> Value {
 
 pub fn event(seq: i64, event_type: &str, data: Value) -> Value {
     json!({ "seq": seq, "ts": 1_791_036_000_000i64 + seq * 1000, "kind": "events", "run": null, "type": event_type, "data": data })
+}
+
+pub fn game_message(seq: i64, channel: &str, from: Option<&str>, to: Option<&str>, text: &str) -> Value {
+    let mut data = json!({ "channel": channel, "from": from });
+    if let Some(to) = to {
+        data["to"] = json!(to);
+    }
+    json!({ "seq": seq, "ts": 1_791_036_000_000i64 + seq * 1000, "kind": "game", "run": null, "text": text, "data": data })
 }

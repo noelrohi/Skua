@@ -5,6 +5,7 @@ use std::time::Duration;
 use ratatui::crossterm::event::{self, Event};
 use skua_tui::actions::{self, Runner};
 use skua_tui::app::App;
+use skua_tui::chat::Follower;
 use skua_tui::discovery;
 use skua_tui::poller;
 
@@ -28,6 +29,7 @@ fn main() -> io::Result<()> {
     let mut app = App::new(discovery::default_skua_dir());
     let (focus_tx, snapshots) = poller::spawn(app.skua_dir.clone(), Duration::from_secs(1));
     let runner = Runner::new(app.skua_dir.clone());
+    let mut follower = Follower::new(app.skua_dir.clone());
     let (outcome_tx, outcomes) = mpsc::channel();
     let mut terminal = ratatui::init();
     let result = (|| -> io::Result<()> {
@@ -39,6 +41,7 @@ fn main() -> io::Result<()> {
             for outcome in outcomes.try_iter() {
                 app.on_outcome(outcome);
             }
+            follower.sync(&mut app);
             if app.focus() != focus {
                 focus = app.focus();
                 _ = focus_tx.send(focus.clone());

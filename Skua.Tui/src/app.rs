@@ -1,15 +1,16 @@
 //! skua-tui's state and keys: accounts by group, selection, marks, tabs, the command palette and the actions' pickers. It does no I/O: an
 //! action queues [`Job`]s in [`App::jobs`], and their [`Outcome`]s come back through [`App::on_outcome`].
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::PathBuf;
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use crate::actions::{Job, Op, Outcome, Reply};
-use crate::dto::{Question, ScriptOption, ScriptsSearch, Server};
+use crate::chat::{ChatUpdate, MAX_CHAT_ENTRIES, Update};
+use crate::dto::{LogEntry, Question, ScriptOption, ScriptsSearch, Server};
 use crate::engine::{Error, SCRIPT_RUNNING};
-use crate::poller::{EngineView, Focus, Snapshot};
+use crate::poller::{EngineView, Focus, Snapshot, gap_entry};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Tab {
@@ -19,10 +20,18 @@ pub enum Tab {
     Quests,
     Logs,
     Game,
+    Chat,
 }
 
 impl Tab {
-    pub const ALL: [Tab; 5] = [Tab::Overview, Tab::Inventory, Tab::Quests, Tab::Logs, Tab::Game];
+    pub const ALL: [Tab; 6] = [
+        Tab::Overview,
+        Tab::Inventory,
+        Tab::Quests,
+        Tab::Logs,
+        Tab::Game,
+        Tab::Chat,
+    ];
 
     pub fn title(self) -> &'static str {
         match self {
@@ -31,6 +40,7 @@ impl Tab {
             Tab::Quests => "Quests",
             Tab::Logs => "Logs",
             Tab::Game => "Game",
+            Tab::Chat => "Chat",
         }
     }
 
@@ -119,8 +129,9 @@ pub const KEYS: &[(&str, &str)] = &[
     ("space", "mark account"),
     ("a", "mark its whole group"),
     ("esc", "clear marks and filter"),
-    ("tab ⇧tab", "Overview, Inventory, Quests, Logs, Game"),
-    ("1–5", "pick a tab"),
+    ("tab ⇧tab", "Overview, Inventory, Quests, Logs, Game, Chat"),
+    ("1–6", "pick a tab"),
+    ("enter", "Chat: type, then enter sends; /w name text whispers"),
     (":", "command palette"),
     ("/", "filter accounts"),
     ("E / X", "start / stop Engine (stop asks first)"),
@@ -131,6 +142,60 @@ pub const KEYS: &[(&str, &str)] = &[
     ("U", "update the Scripts from the Script Source"),
     ("q", "quit"),
 ];
+
+/// The Chat tab: the followed Engine's game messages, oldest first, and the input line.
+#[derive(Debug, Default)]
+pub struct Chat {
+    /// The Engine followed, and which follow.
+    following: Option<(String, u64)>,
+    pub entries: VecDeque<LogEntry>,
+    /// Why the follow ended, once it has.
+    pub ended: Option<String>,
+    pub typing: bool,
+    pub input: String,
+    /// What became of the last message sent, or why it wasn't.
+    pub note: Option<Note>,
+}
+
+impl Chat {
+    pub fn engine(&self) -> Option<&str> {
+        self.following.as_ref().map(|(engine, _)| engine.as_str())
+    }
+
+    pub fn follow(&mut self, engine: String, id: u64) {
+        if self.engine() != Some(engine.as_str()) {
+            self.note = None;
+        }
+        self.following = Some((engine, id));
+        self.entries.clear();
+        self.ended = None;
+    }
+
+    /// Applies what the follow `id` read; a replaced follow's updates are dropped.
+    fn apply(&mut self, id: u64, update: Update) {
+        if self.following.as_ref().map(|(_, following)| *following) != Some(id) {
+            return;
+        }
+        match update {
+            Update::Page { entries, gap } => {
+                if gap {
+                    self.entries.push_back(gap_entry());
+                }
+                self.entries.extend(entries);
+                let excess = self.entries.len().saturating_sub(MAX_CHAT_ENTRIES);
+                self.entries.drain(..excess);
+            }
+            Update::Ended(why) => self.ended = Some(why),
+        }
+    }
+
+    pub fn unfollow(&mut self) {
+        self.following = None;
+        self.entries.clear();
+        self.ended = None;
+        self.typing = false;
+    }
+}
 
 /// What a picker shows until its Engine answers: None while it reads.
 pub type Reading<T> = Option<Result<T, Error>>;
@@ -252,6 +317,7 @@ pub struct App {
     pub activity: BTreeMap<String, Note>,
     /// The jobs the actions queued, for the caller to run.
     pub jobs: Vec<Job>,
+    pub chat: Chat,
     pub quit: bool,
 }
 
@@ -268,6 +334,7 @@ impl App {
             toast: None,
             activity: BTreeMap::new(),
             jobs: Vec::new(),
+            chat: Chat::default(),
             quit: false,
         }
     }
@@ -339,6 +406,22 @@ impl App {
         Focus { engine, tab: self.tab }
     }
 
+    /// The Engine whose game messages the Chat tab follows, by name and pid: the selected one while it is up and the tab is shown.
+    pub fn chat_target(&self) -> Option<(String, i64)> {
+        if self.tab != Tab::Chat {
+            return None;
+        }
+        let name = self.selected_row()?.name;
+        match self.engine(&name)? {
+            EngineView::Up { hello, .. } => Some((name, hello.pid)),
+            _ => None,
+        }
+    }
+
+    pub fn on_chat(&mut self, update: ChatUpdate) {
+        self.chat.apply(update.follow, update.update);
+    }
+
     /// The marked accounts, else the selected one: what an action acts on.
     pub fn targets(&self) -> Vec<String> {
         if self.marks.is_empty() {
@@ -371,7 +454,37 @@ impl App {
         self.toast = None;
         match self.modal.take() {
             Some(modal) => self.on_modal_key(modal, key),
+            None if self.chat.typing && self.tab == Tab::Chat => self.on_chat_key(key),
             None => self.on_main_key(key),
+        }
+    }
+
+    fn on_chat_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Esc => self.chat.typing = false,
+            KeyCode::Enter => self.send_chat(),
+            KeyCode::Backspace => _ = self.chat.input.pop(),
+            KeyCode::Char(c) => self.chat.input.push(c),
+            _ => {}
+        }
+    }
+
+    /// Sends the input line to the followed Engine; an empty one stops typing.
+    fn send_chat(&mut self) {
+        let Some(engine) = self.chat.engine().map(str::to_owned) else {
+            return;
+        };
+        if self.chat.input.trim().is_empty() {
+            self.chat.typing = false;
+            return;
+        }
+        match chat_op(&self.chat.input) {
+            Ok(op) => {
+                self.chat.input.clear();
+                self.chat.note = Some(Note::new("sending…", Tone::Pending));
+                self.jobs.push(Job { engine, op });
+            }
+            Err(why) => self.chat.note = Some(Note::new(format!("not sent: {why}"), Tone::Failed)),
         }
     }
 
@@ -379,6 +492,7 @@ impl App {
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => self.move_selection(1),
             KeyCode::Char('k') | KeyCode::Up => self.move_selection(-1),
+            KeyCode::Enter if self.tab == Tab::Chat && self.chat.engine().is_some() => self.chat.typing = true,
             KeyCode::Tab => self.tab = Tab::ALL[(self.tab.index() + 1) % Tab::ALL.len()],
             KeyCode::BackTab => self.tab = Tab::ALL[(self.tab.index() + Tab::ALL.len() - 1) % Tab::ALL.len()],
             KeyCode::Esc => {
@@ -416,7 +530,7 @@ impl App {
             }
             '?' => self.modal = Some(Modal::Help),
             'S' => self.tab = Tab::Game,
-            '1'..='5' => self.tab = Tab::ALL[c as usize - '1' as usize],
+            '1'..='6' => self.tab = Tab::ALL[c as usize - '1' as usize],
             'E' => self.start_engines(),
             'X' => self.confirm_stop_engines(),
             'L' => {
@@ -654,6 +768,12 @@ impl App {
                 }
             },
             (_, Op::Dialogs, _) => {}
+            (_, Op::ChatSend { .. }, result) if self.chat.engine() == Some(engine.as_str()) => {
+                self.chat.note = Some(match result {
+                    Ok(reply) => App::done(reply),
+                    Err(e) => Note::new(format!("not sent: {e}"), Tone::Failed),
+                });
+            }
             (_, op, result) => {
                 let note = match result {
                     Ok(reply) => App::done(reply),
@@ -690,6 +810,10 @@ impl App {
                 at.cell,
                 at.pad
             )),
+            Reply::ChatSent(sent) => ok(match sent.to {
+                Some(to) => format!("whispered {to}"),
+                None => format!("sent to {} chat", sent.channel),
+            }),
             Reply::Updated(update) => Note::new(
                 format!(
                     "Scripts updated ({}): {} downloaded, {} new, {} changed{}",
@@ -984,6 +1108,27 @@ fn left_alone(view: Option<&EngineView>) -> String {
         None | Some(EngineView::Offline) => "no Engine runs; E starts one".into(),
         Some(EngineView::Failed(e)) => format!("left alone: {e}"),
         Some(EngineView::Up { .. }) => unreachable!("an Engine that is up is acted on"),
+    }
+}
+
+/// What a chat line sends: `/w <name> <text>` whispers, and other text is zone chat. Nothing else starting with `/` is sent, so a
+/// mistyped command never goes out as zone chat.
+fn chat_op(input: &str) -> Result<Op, String> {
+    if !input.starts_with('/') {
+        return Ok(Op::ChatSend {
+            text: input.to_owned(),
+            to: None,
+        });
+    }
+    match input
+        .strip_prefix("/w ")
+        .and_then(|rest| rest.trim_start().split_once(' '))
+    {
+        Some((name, text)) if !text.trim().is_empty() => Ok(Op::ChatSend {
+            text: text.trim_start().to_owned(),
+            to: Some(name.to_owned()),
+        }),
+        _ => Err("/w <name> <text> whispers; nothing else starting with / is sent".into()),
     }
 }
 
