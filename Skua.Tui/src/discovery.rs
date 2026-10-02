@@ -22,44 +22,6 @@ pub fn default_skua_dir() -> PathBuf {
     }
 }
 
-/// Core's settings, where `client.TestAccountService` names the Active Account's Keychain service.
-pub const SETTINGS_FILE: &str = "Skua.settings.json";
-
-/// The Test Account's Keychain service, the setting's default (`AccountSetting.DefaultService`).
-const TEST_ACCOUNT_SERVICE: &str = "skua-test-account";
-
-/// A named account's Keychain service is this and its name (`Accounts.ServicePrefix`).
-const ACCOUNT_SERVICE_PREFIX: &str = "skua-account-";
-
-/// The Keychain service a windowless Engine's login reads its account from, as `AccountSetting.Read` reads it: the setting, else the
-/// Test Account's. Core reads the file's keys ignoring case. Keychain itself is never read.
-pub fn active_account_service(skua_dir: &Path) -> String {
-    fn get<'a>(value: &'a serde_json::Value, key: &str) -> Option<&'a serde_json::Value> {
-        value
-            .as_object()?
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case(key))
-            .map(|(_, v)| v)
-    }
-    std::fs::read_to_string(skua_dir.join(SETTINGS_FILE))
-        .ok()
-        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
-        .and_then(|root| Some(get(get(&root, "client")?, "TestAccountService")?.as_str()?.to_owned()))
-        .filter(|service| !service.trim().is_empty())
-        .unwrap_or_else(|| TEST_ACCOUNT_SERVICE.into())
-}
-
-/// The name of the account stored under `service`, as `Accounts.NameOf`: `test` for the Test Account, None for a service set by hand.
-pub fn account_of_service(service: &str) -> Option<String> {
-    if service == TEST_ACCOUNT_SERVICE {
-        return Some("test".into());
-    }
-    service
-        .strip_prefix(ACCOUNT_SERVICE_PREFIX)
-        .filter(|name| is_valid_name(name))
-        .map(str::to_owned)
-}
-
 /// `[a-z0-9-]{1,16}`, as `EngineName.IsValid` and `Accounts.IsValidName`.
 pub fn is_valid_name(name: &str) -> bool {
     (1..=16).contains(&name.len())

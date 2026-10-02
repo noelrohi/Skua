@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use crate::discovery;
 use crate::dto::{
-    ChatSendResult, DialogAnswer, EngineHost, Hello, Location, LoginResult, LogoutResult, Question, ScriptOptions,
+    ChatSendResult, DialogAnswer, Hello, Location, LoginResult, LogoutResult, Question, ScriptOptions,
     ScriptStartResult, ScriptStopResult, ScriptsSearch, ScriptsUpdate, Server,
 };
 use crate::engine::{Engine, Error};
@@ -142,10 +142,8 @@ impl Runner {
             Op::StartEngine | Op::StartHookRunner => unreachable!("not a call"),
             Op::StopEngine => engine.shutdown_if_idle().map(|()| Reply::Stopping)?,
             Op::Servers => Reply::Servers(engine.servers()?.servers),
-            Op::Login { server } => {
-                self.check_login_account(name, &engine.hello)?;
-                Reply::LoggedIn(engine.login(Some(server))?)
-            }
+            // An Engine's own account is the one named after it, which the Skua Manager also launches its app with.
+            Op::Login { server } => Reply::LoggedIn(engine.login(Some(server), Some(name))?),
             Op::Logout => Reply::LoggedOut(engine.logout()?),
             Op::ScriptsSearch { query } => Reply::Scripts(engine.scripts_search(query)?),
             Op::ScriptOptions { script } => Reply::Options(engine.script_options(script)?),
@@ -157,29 +155,6 @@ impl Runner {
             Op::ScriptsUpdate => Reply::Updated(engine.scripts_update()?),
             Op::ChatSend { text, to } => Reply::ChatSent(engine.chat_send(text, to.as_deref())?),
         })
-    }
-
-    /// Refuses a login that wouldn't log the Engine in as its own account. A windowless Engine logs in its data folder's Active Account,
-    /// read afresh at every login, so it must be the account named after the Engine. Until `login` takes an account, an app-hosted Engine
-    /// is refused too: it logs in the account its Skua Manager launched it with, which skua-tui can't see.
-    fn check_login_account(&self, name: &str, hello: &Hello) -> Result<(), Error> {
-        if hello.host != Some(EngineHost::Engine) {
-            return Err(Error::Refused(
-                "not logged in: the Skua app hosts this Engine, with an account skua-tui can't see; log in from the app".into(),
-            ));
-        }
-        let service = discovery::active_account_service(&self.skua_dir);
-        match discovery::account_of_service(&service) {
-            Some(account) if account == name => Ok(()),
-            Some(account) => Err(Error::Refused(format!(
-                "not logged in: its Engine would log in the Active Account '{account}', not {name}. skua-tui logs an Engine in only as \
-                 its own account; 'skua account use {name}' makes {name} the Active Account"
-            ))),
-            None => Err(Error::Refused(format!(
-                "not logged in: the Active Account is the Keychain service '{service}', which is no account's. skua-tui logs an Engine \
-                 in only as its own account; 'skua account use {name}' makes {name} the Active Account"
-            ))),
-        }
     }
 
     /// Starts `skua-engine --name <name> --detach` as `EngineClient.ConnectOrStartAsync` does, and waits for it to answer `hello`. An Engine
