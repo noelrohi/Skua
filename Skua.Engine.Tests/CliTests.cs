@@ -152,6 +152,27 @@ public class CliTests
     }
 
     [Fact]
+    public async Task Status_has_a_Player_line_saying_none_at_the_login_screen_and_with_the_Game_Host_down()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+
+        ProcessResult loginScreen = await sandbox.RunCliAsync("status");
+        using (Process gameHost = Process.GetProcessById(await session.GameHost.PidAsync()))
+            gameHost.Kill();
+        await session.Connection.WaitForEventAsync(EventTypes.GameState, e => GameEvents.To(e) == "notStarted");
+        ProcessResult down = await sandbox.RunCliAsync("status");
+        ProcessResult downJson = await sandbox.RunCliAsync("status", "--json");
+
+        Assert.Contains("Game Host up, loginScreen", loginScreen.Stdout);
+        Assert.Contains("Player  none (not playing)", loginScreen.Stdout);
+        Assert.Contains("Game Host down", down.Stdout);
+        Assert.Contains("Player  none (not playing)", down.Stdout);
+        using JsonDocument json = JsonDocument.Parse(downJson.Stdout);
+        Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty("game").GetProperty("player").ValueKind);
+    }
+
+    [Fact]
     public async Task A_protocol_mismatch_with_an_Engine_it_cant_replace_exits_with_its_code_and_a_stop_hint()
     {
         await using EngineSandbox sandbox = new();
