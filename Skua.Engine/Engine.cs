@@ -181,7 +181,8 @@ internal sealed class Engine : IEngineRpc
     public async Task<StatusDto> StatusAsync(CancellationToken cancellationToken)
     {
         EngineInfoDto engine = new(_endpoint.Name, Build, ControlProtocol.Version, Math.Round(_uptime.Elapsed.TotalSeconds, 1), Environment.ProcessId, Host);
-        return new StatusDto(engine, _gameHost.Status() with { Player = await _queries.PlayerAsync() }, _scripts.Status(), _dialogs.Pending());
+        (PlayerDto? player, double? playerAgeSec) = await _queries.PlayerAsync();
+        return new StatusDto(engine, _gameHost.Status() with { Player = player, PlayerAgeSec = playerAgeSec }, _scripts.Status(), _dialogs.Pending());
     }
 
     public Task ShutdownAsync(CancellationToken cancellationToken)

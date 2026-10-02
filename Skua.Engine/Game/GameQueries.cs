@@ -14,7 +14,7 @@ internal sealed class GameQueries
     private static readonly TimeSpan BankLoadTimeout = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan BankPollInterval = TimeSpan.FromMilliseconds(250);
 
-    /// <summary>How long <c>status</c> waits for the player summary before leaving it out, since <c>status</c> never fails.</summary>
+    /// <summary>How long <c>status</c> waits for the player summary before falling back to the last one, since <c>status</c> never fails.</summary>
     private static readonly TimeSpan PlayerTimeout = TimeSpan.FromSeconds(3);
 
     private readonly IScriptInterface _api;
@@ -29,6 +29,11 @@ internal sealed class GameQueries
 
     /// <summary>The world whose bank the game server has sent, or 0 for none; worlds count from 1.</summary>
     private int _bankWorld;
+
+    private readonly object _playerLock = new();
+    private Task<PlayerReading>? _playerRead;
+    private int _playerReadWorld;
+    private PlayerReading? _lastPlayer;
 
     public GameQueries(IScriptInterface api, IFlashUtil flash, GameStateTracker tracker, GameActionSlot slot)
     {
@@ -89,21 +94,50 @@ internal sealed class GameQueries
         return Task.FromResult(new DropsResult(_drops.Drops));
     }
 
-    /// <summary>The player while playing, else null; also null when the game doesn't answer in time or the reading fails.</summary>
-    public async Task<PlayerDto?> PlayerAsync()
+    /// <summary>
+    /// The player while playing, and how old the reading is in seconds when it isn't fresh. When the game doesn't answer in time it is the
+    /// last reading of this login with its age, or none; a read that answers late still becomes the last reading.
+    /// </summary>
+    public async Task<(PlayerDto? Player, double? AgeSec)> PlayerAsync()
     {
         if (_tracker.State != GameState.Playing)
-            return null;
+            return (null, null);
+        int world = Volatile.Read(ref _world);
+        Task<PlayerReading> read;
+        lock (_playerLock)
+        {
+            // Under load reads queue behind each other in the Game Client, so a status joins the read still running rather than adding one.
+            if (_playerRead is not { IsCompleted: false } || _playerReadWorld != world)
+            {
+                _playerReadWorld = world;
+                _playerRead = Task.Run(() => Remember(world, ReadPlayer()));
+            }
+            read = _playerRead;
+        }
         try
         {
-            return await Task.Run(ReadPlayer).WaitAsync(PlayerTimeout);
+            return ((await read.WaitAsync(PlayerTimeout)).Player, null);
         }
         catch (Exception e)
         {
             EngineLog.Write($"Couldn't read the player for status: {e.Message}");
-            return null;
+            lock (_playerLock)
+                return _lastPlayer is { } last && last.World == world ? (last.Player, Math.Round((DateTimeOffset.UtcNow - last.At).TotalSeconds, 1)) : (null, null);
         }
     }
+
+    private PlayerReading Remember(int world, PlayerDto player)
+    {
+        PlayerReading reading = new(world, player, DateTimeOffset.UtcNow);
+        lock (_playerLock)
+        {
+            if (world == Volatile.Read(ref _world))
+                _lastPlayer = reading;
+        }
+        return reading;
+    }
+
+    private sealed record PlayerReading(int World, PlayerDto Player, DateTimeOffset At);
 
     private PlayerDto ReadPlayer()
     {

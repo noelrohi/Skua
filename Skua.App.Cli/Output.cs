@@ -22,7 +22,9 @@ internal static class Output
             Script  {ScriptLine(status.Script)}
             """;
         if (game.Player is { } player)
-            text += $"\nPlayer  {Player(player)}";
+            text += $"\nPlayer  {Player(player)}{(game.PlayerAgeSec is { } age ? $" (stale, read {age:0} s ago)" : "")}";
+        else if (game.State == GameState.Playing)
+            text += "\nPlayer  unknown: the game didn't answer in time";
         return status.PendingDialogs.Count > 0
             ? $"{text}\nDialogs {status.PendingDialogs.Count} Question{(status.PendingDialogs.Count == 1 ? "" : "s")} pending; see 'skua dialogs'"
             : text;

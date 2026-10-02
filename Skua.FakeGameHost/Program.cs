@@ -10,7 +10,7 @@
 //   corrupt               send a frame header declaring a length of 0
 //   reply <name> <xml>    answer every C call to <name> with <xml> (unscripted calls get <undefined/>)
 //   delay <name> <ms>     answer C calls to <name> after <ms>, so later calls are answered first;
-//                         the name `screenshot` delays S requests the same way
+//                         the name `screenshot` delays S requests the same way; through `control` it changes the delay mid-run
 //   noimage               answer S requests with no image (w = h = 0), as when the Game Host can't capture
 //   stats <json>          answer Q requests with <json> ({} unless set); {n} in it is replaced by the number of Q requests so far
 //   sleep <ms>            pause
@@ -49,6 +49,7 @@
 //   K   with `selection <text>`, a Copy or Cut text control sends <text> as the game's clipboard
 //   Q   its stats gain "live", "framesWritten", "inputEvents", "viewportWidth" and "viewportHeight"
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -57,7 +58,7 @@ Stream stdin = Console.OpenStandardInput();
 Stream stdout = Console.OpenStandardOutput();
 object writeLock = new();
 Dictionary<string, string> replies = new();
-Dictionary<string, int> delays = new();
+ConcurrentDictionary<string, int> delays = new();
 string? callLog = null;
 object callLogLock = new();
 bool noImage = false;
@@ -302,6 +303,9 @@ void Run(string line)
             break;
         case ["note", ..]:
             Record([line["note ".Length..]]);
+            break;
+        case ["delay", string name, string ms]:
+            delays[name] = int.Parse(ms);
             break;
         case ["exit", string code]:
             Environment.Exit(int.Parse(code));
