@@ -5,8 +5,8 @@ using Skua.Control;
 namespace Skua.Engine.Logging;
 
 /// <summary>
-/// Everything the Engine records: one seq counter across the <c>script</c>, <c>debug</c>, <c>flash</c> and <c>events</c> kinds,
-/// a ring of the latest entries per kind, this start's JSONL file, and cursor-based reads.
+/// Everything the Engine records: one seq counter across the <c>script</c>, <c>debug</c>, <c>flash</c>, <c>events</c> and <c>game</c> kinds,
+/// a ring of the latest <see cref="RingCapacity"/> entries per kind (a full ring drops its oldest), this start's JSONL file, and cursor-based reads.
 /// </summary>
 /// <remarks>
 /// One lock orders every append, so a reader never sees a seq before every lower seq is in place and a cursor never skips an entry.
@@ -26,7 +26,7 @@ internal sealed class EngineLogs : IDisposable
     /// <summary>An entry whose data serializes larger loses its data, so one entry always fits a reply.</summary>
     private const int MaxEntryBytes = 512 * 1024;
 
-    private static readonly LogKind[] AllKinds = [LogKind.Script, LogKind.Debug, LogKind.Flash, LogKind.Events];
+    private static readonly LogKind[] AllKinds = [LogKind.Script, LogKind.Debug, LogKind.Flash, LogKind.Events, LogKind.Game];
 
     private readonly object _lock = new();
     private readonly LogScrubber _scrubber = new();
@@ -88,6 +88,16 @@ internal sealed class EngineLogs : IDisposable
         _scrubber.Data(node, ref truncated);
         Append(LogKind.Events, null, type, JsonSerializer.SerializeToElement(node, ControlJson.Options), truncated);
         EventRecorded?.Invoke();
+    }
+
+    /// <summary>Records a game message: its text, with its channel, sender and, for a whisper, recipient as data.</summary>
+    public void Game(string channel, string? from, string? to, string text)
+    {
+        bool truncated = false;
+        string stored = _scrubber.Text(text, ref truncated);
+        JsonNode? node = JsonSerializer.SerializeToNode<object>(to is null ? new { channel, from } : new { channel, from, to }, ControlJson.Options);
+        _scrubber.Data(node, ref truncated);
+        Append(LogKind.Game, stored, null, JsonSerializer.SerializeToElement(node, ControlJson.Options), truncated);
     }
 
     /// <summary>

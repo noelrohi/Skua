@@ -7,7 +7,8 @@ namespace Skua.Control;
 /// </summary>
 /// <remarks>
 /// Each method other than <c>hello</c>, <c>shutdown</c> and <c>shutdown_if_idle</c> is one snake_case MCP tool and one <c>skua</c> subcommand with the same arguments and DTOs,
-/// except the CLI-only <c>subscribe</c> and <c>scripts_source_set</c>: agents follow logs by paging, and only a developer changes the Script Source.
+/// except the CLI-only <c>subscribe</c>, <c>scripts_source_set</c> and <c>chat_send</c>: agents follow logs by paging, and only a developer changes the
+/// Script Source or chats in the game.
 /// Failures are JSON-RPC errors whose code maps to an <see cref="ErrorCode"/> through <see cref="ErrorCodes"/>.
 /// </remarks>
 [JsonRpcContract]
@@ -101,7 +102,10 @@ public partial interface IEngineRpc
     [JsonRpcMethod("logs")]
     Task<LogPage> LogsAsync(LogKind kind = LogKind.All, string? after = null, int? max = null, int? tail = null, CancellationToken cancellationToken = default);
 
-    /// <summary>Replays the entries of the given kinds after the cursor, then follows new ones until cancelled. CLI-only.</summary>
+    /// <summary>
+    /// Replays the entries of the given kinds after the cursor, then pushes new ones as they are recorded until cancelled or the client disconnects.
+    /// CLI-only.
+    /// </summary>
     [JsonRpcMethod("subscribe")]
     IAsyncEnumerable<LogPage> SubscribeAsync(LogKind[] kinds, string? after = null, CancellationToken cancellationToken = default);
 
@@ -165,6 +169,17 @@ public partial interface IEngineRpc
     /// <remarks>Fails as <c>join</c> does.</remarks>
     [JsonRpcMethod("jump")]
     Task<LocationResult> JumpAsync(string cell, string? pad = null, int? timeoutSec = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sends zone chat, or with <paramref name="to"/> a whisper, as the player; the game server's reply arrives as <see cref="LogKind.Game"/> entries.
+    /// Allowed while a Script runs: it doesn't move the player. CLI-only.
+    /// </summary>
+    /// <param name="text">The message; it can't be blank or contain <c>%</c>, which ends a packet field.</param>
+    /// <param name="to">The player to whisper; null for zone chat.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    /// <remarks>Fails with <see cref="ErrorCode.NotLoggedIn"/> unless playing, and <see cref="ErrorCode.InvalidArgument"/> for a text or name it can't send.</remarks>
+    [JsonRpcMethod("chat_send")]
+    Task<ChatSendResult> ChatSendAsync(string text, string? to = null, CancellationToken cancellationToken = default);
 
     /// <summary>The items in one of the player's item stores, with its used and total slots. Fails with <see cref="ErrorCode.NotLoggedIn"/> unless playing.</summary>
     [JsonRpcMethod("inventory")]

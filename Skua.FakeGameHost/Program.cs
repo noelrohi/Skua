@@ -24,8 +24,9 @@
 // `kick`, `logout-button`, `die`, `respawn-request` (the game's own resPlayerTimed; the game server ignores one within 2 s of the death,
 // and respawns the player otherwise, as it does for the Engine's), `combat`, `afk`, `join <map>`, `cell <cell>`, `gain <xp> <gold>` (a level up sends `levelUp`), `blip` (the connection reads as dropped until the Engine's game state tracker has read it, i.e. asked isKicked; the call log records `blip read <n>`, from 1), `connection-message <message>`, `broken-login`,
 // `login-response` (the last login's response again), `lock-map <map>` (transfers to it are ignored), `drop <id> <qty> <name>`,
-// `pickup <id>`, `focus <input|dynamic|none>` (the text field the stage's focus is on, e.g. chat's input) and `packet <text>` (the game's
-// packet call, as for a packet it sends) act in it.
+// `pickup <id>`, `focus <input|dynamic|none>` (the text field the stage's focus is on, e.g. chat's input), `packet <text>` (the game's
+// packet call, as for a packet it sends) and `server-packet <packet>` (a string packet from the game server, e.g. `%xt%chatm%-1%zone~hi%Bob%`,
+// handed to the game as SmartFox does) act in it.
 // The call log adds ` lag-killed` to a screenshot taken while the game's lag killer hides the world, and records what the game did:
 // `tfer <map> <cell> <pad>` for each map transfer, `jump <cell> <pad>`, `getBank` and `loadBank` (which the game server ignores),
 // `respawn` or `respawn ignored` for each resPlayerTimed, `toggleBank open` or `toggleBank closed` for the bank panel, `loadShop <id>`, `showQuests <ids>`, `send <packet>` and

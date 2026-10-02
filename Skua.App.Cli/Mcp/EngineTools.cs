@@ -172,9 +172,9 @@ internal sealed class EngineTools(Func<EngineClientOptions> options)
         CallAsync(connection => connection.EvalAsync(code, timeoutSec, cancellationToken), cancellationToken);
 
     [McpServerTool(Name = "logs", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(LogPage))]
-    [Description("A page of the Engine's log entries in seq order, with the cursor for the next page and whether entries after the given cursor are gone (evicted, or the Engine restarted). Each entry has seq, ts (UTC ms), kind and run, then text or type + data.")]
+    [Description("A page of the Engine's log entries in seq order, with the cursor for the next page and whether entries after the given cursor are gone (evicted, or the Engine restarted). Each entry has seq, ts (UTC ms), kind and run, then text or type + data; a game entry has text + data.")]
     public Task<CallToolResult> Logs(
-        [Description("script, debug, flash, events, or all (merged by seq).")] LogKind kind = LogKind.All,
+        [Description("script, debug, flash, events, game (the game's chat: text, with data {channel, from, to?}), or all (merged by seq).")] LogKind kind = LogKind.All,
         [Description("Return entries after this cursor: the 'next' of an earlier reply. Omit it to start from the oldest entry held.")] string? after = null,
         [Description("Entries per page: 200 by default, at most 1000. A reply also stays within 1 MB.")] int? max = null,
         [Description("Instead of max: the newest this many entries after the cursor, still oldest first, at most 1000; 'next' is then after the newest entry recorded.")] int? tail = null,

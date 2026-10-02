@@ -264,3 +264,8 @@ public sealed record DropDto(int Id, string Name, int Qty);
 
 /// <summary>The reply to <c>drops</c>.</summary>
 public sealed record DropsResult(IReadOnlyList<DropDto> Drops);
+
+/// <summary>The reply to <c>chat_send</c>: what was sent.</summary>
+/// <param name="Channel"><c>zone</c> or <c>whisper</c>.</param>
+/// <param name="To">The whispered player, or null for zone chat.</param>
+public sealed record ChatSendResult(string Channel, string? To, string Text);

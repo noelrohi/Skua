@@ -50,6 +50,8 @@ internal static class Output
 
     public static string DialogAnswer(DialogAnswerResult result) => $"Answered Question {result.Id}: {result.Choice}.";
 
+    public static string ChatSend(ChatSendResult result) => $"Sent to {result.To ?? result.Channel}: {result.Text}";
+
     private static string Player(PlayerDto player)
     {
         string state = !player.Alive ? ", dead" : player.InCombat ? ", in combat" : "";
@@ -349,13 +351,23 @@ internal static class Output
         return text.Append($"-- next {page.Next}").ToString();
     }
 
-    /// <summary>One line: seq, UTC time, kind and run, then the text or the event type and its data.</summary>
+    /// <summary>
+    /// One line: seq, UTC time, kind and run, then the text, the event type and its data, or a game message as <c>[channel] from→to: text</c>.
+    /// </summary>
     public static string Entry(LogEntryDto entry)
     {
         string time = DateTimeOffset.FromUnixTimeMilliseconds(entry.Ts).UtcDateTime.ToString("HH:mm:ss.fff");
         string run = entry.Run is { } number ? $" run {number}" : "";
-        string body = entry.Text ?? $"{entry.Type} {JsonSerializer.Serialize(entry.Data, ControlJson.Options)}";
+        string body = entry.Kind == LogKind.Game && entry.Data is { } message ? GameMessage(message, entry.Text)
+            : entry.Text ?? $"{entry.Type} {JsonSerializer.Serialize(entry.Data, ControlJson.Options)}";
         return $"{entry.Seq} {time} {Name(entry.Kind)}{run}{(entry.Truncated ? " (truncated)" : "")} {body}";
+    }
+
+    private static string GameMessage(JsonElement data, string? text)
+    {
+        string? Field(string name) => data.TryGetProperty(name, out JsonElement value) ? value.GetString() : null;
+        string sender = Field("from") is { } from ? $" {from}{(Field("to") is { } to ? $"→{to}" : "")}:" : "";
+        return $"[{Field("channel")}]{sender} {text}";
     }
 
     internal static string Name<TEnum>(TEnum value) where TEnum : struct, Enum => JsonNamingPolicy.CamelCase.ConvertName(value.ToString());

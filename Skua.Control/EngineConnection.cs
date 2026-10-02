@@ -137,6 +137,9 @@ public sealed class EngineConnection : IDisposable
     public Task<EvalResult> EvalAsync(string code, int? timeoutSec = null, CancellationToken cancellationToken = default) =>
         CallAsync(rpc => rpc.EvalAsync(code, timeoutSec, cancellationToken));
 
+    public Task<ChatSendResult> ChatSendAsync(string text, string? to = null, CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.ChatSendAsync(text, to, cancellationToken));
+
     /// <summary>Replays the entries after the cursor, then follows new ones until cancelled.</summary>
     public async IAsyncEnumerable<LogPage> SubscribeAsync(
         LogKind[] kinds, string? after = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)

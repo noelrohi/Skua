@@ -9,7 +9,7 @@ namespace Skua.Engine.Game;
 
 /// <summary>
 /// Turns what the game reports into events and tracker edges, all the time and not only while a Script runs: the Game Client's
-/// <c>pext</c> and <c>packet</c> calls, and Core's game-event messages.
+/// <c>pext</c> and <c>packet</c> calls, and Core's game-event messages; and records the game's chat as game messages.
 /// </summary>
 internal sealed class GameEventRecorder
 {
@@ -99,6 +99,19 @@ internal sealed class GameEventRecorder
             case ("json", JObject json) when (string?)json["cmd"] is "addItems"
                 || ((string?)json["cmd"] == "getDrop" && (int?)json["bSuccess"] == 1) || ((string?)json["cmd"] == "buyItem" && (int?)json["bitSuccess"] == 1):
                 CheckInventory(null, null);
+                break;
+            // String packets are their fields after xt: [cmd, room, …].
+            // [chatm, room, "<channel>~<text>", from, …]: zone, party, guild and the other chat channels.
+            case ("str", JArray { Count: > 3 } parts) when (string?)parts[0] == "chatm" && ((string?)parts[2])?.Split('~', 2) is [string channel, string text]:
+                _logs.Game(channel, (string?)parts[3], null, text);
+                break;
+            // [whisper, room, text, from, to, …]
+            case ("str", JArray { Count: > 4 } parts) when (string?)parts[0] == "whisper":
+                _logs.Game("whisper", (string?)parts[3], (string?)parts[4], (string?)parts[2] ?? "");
+                break;
+            // [server|warning, room, text]
+            case ("str", JArray { Count: > 2 } parts) when (string?)parts[0] is "server" or "warning":
+                _logs.Game((string)parts[0]!, null, null, (string?)parts[2] ?? "");
                 break;
             case ("str", JArray { Count: > 2 } parts) when (string?)parts[0] == "loginResponse":
                 // Accepted: [cmd, -1, "true", id, username, …]; refused: [cmd, -1, "false", …, message].
