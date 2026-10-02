@@ -14,7 +14,8 @@ const USAGE: &str = "usage: skua-tui
 A terminal UI for the windowless Engines under the Skua data folder (SKUA_DIR, else ~/Library/Application Support/Skua),
 with the Skua Manager's accounts by group. It reads the accounts and never changes them.
 
-E starts a windowless Engine as skua auto-starts one: SKUA_ENGINE, else the skua-engine next to the skua on PATH.";
+E starts a windowless Engine as skua auto-starts one: SKUA_ENGINE, else the skua-engine next to the skua on PATH.
+H starts the Hook Runner, the skua on PATH's `skua hooks`; skua-tui never runs a hook itself.";
 
 fn main() -> io::Result<()> {
     if let Some(arg) = std::env::args().nth(1) {

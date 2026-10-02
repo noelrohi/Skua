@@ -356,3 +356,26 @@ pub struct ChatSendResult {
     pub channel: String,
     pub to: Option<String>,
 }
+
+/// A `hook.ran` event's data (`HookRunDto`): one run of a Hook.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct HookRun {
+    pub hook: String,
+    pub event_seq: i64,
+    pub started_at: i64,
+    pub duration_ms: i64,
+    /// None when it couldn't be started.
+    pub exit_code: Option<i64>,
+    pub output: String,
+}
+
+impl HookRun {
+    pub fn of(entry: &LogEntry) -> HookRun {
+        entry
+            .data
+            .clone()
+            .and_then(|data| serde_json::from_value(data).ok())
+            .unwrap_or_default()
+    }
+}

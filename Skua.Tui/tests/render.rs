@@ -36,6 +36,16 @@ fn fleet() -> Fleet {
     let alice = FakeEngine::start(dir.path(), "alice", |method, params| match method {
         "hello" => Ok(hello(PROTOCOL, "alice")),
         "status" => Ok(status("alice", true, Some("Farm/AtlasGold.cs"))),
+        "logs" if params[0] == "events" => Ok(json!({
+            "entries": [
+                event(2, "inventory.full", json!({ "used": 120, "slots": 120, "drop": null })),
+                event(3, "hook.ran", json!({ "hook": "player.death", "eventSeq": 1, "startedAt": 1_791_036_000_000i64,
+                    "durationMs": 1200, "exitCode": 0, "output": "respawned\n" })),
+                event(4, "hook.ran", json!({ "hook": "inventory.full", "eventSeq": 2, "startedAt": 1_791_036_002_000i64,
+                    "durationMs": 300, "exitCode": 2, "output": "banking…\nbank full\n" })),
+            ],
+            "next": "c4", "gap": false
+        })),
         "logs" if params[1].is_null() => Ok(json!({
             "entries": [
                 log_entry(1, "Farming Atlas Gold"),
@@ -111,7 +121,7 @@ fn the_screen_shows_accounts_by_group_with_their_engines_and_the_selected_ones_o
         &screen,
         &[
             " skua  windowless Engines",
-            "3 Engines · 1 alert · protocol 13",
+            "3 Engines · 1 alert · hooks off · protocol 15",
             "Accounts",
             "▾ Farm · 2",
             "▾ Butler · 1",
@@ -162,7 +172,7 @@ fn an_engine_of_another_protocol_fails_loudly_on_every_tab_and_shows_none_of_its
                 "Protocol mismatch",
                 "Engine 'bob'",
                 "speaks protocol 11, but",
-                "this skua-tui speaks 13. Nothing it reports is shown.",
+                "this skua-tui speaks 15. Nothing it reports is shown.",
             ],
         );
         assert!(!screen.contains("Player") && !screen.contains("Artix"), "{screen}");
@@ -227,6 +237,52 @@ fn the_tabs_show_inventory_quests_logs_and_the_map_with_the_picture_not_yet() {
             "cells: Enter, r2",
             "Frogzard",
             "The game's picture: not yet",
+        ],
+    );
+}
+
+#[test]
+fn the_hooks_tab_shows_the_hook_runner_and_the_engines_hook_runs_newest_first() {
+    let fleet = fleet();
+    let mut app = App::new(fleet.dir.path().to_owned());
+    press(&mut app, KeyCode::Char('7'));
+
+    let off = screen(&fleet, &mut app, 120, 32);
+    assert_shows(
+        &off,
+        &[
+            "hooks off · protocol",
+            " Hooks │",
+            "skua hooks: not running · H starts it",
+            "STARTED  HOOK               EXIT     TOOK  OUTPUT",
+            "inventory.full     2        0.3s  bank full",
+            "player.death       0        1.2s  respawned",
+            "Output · inventory.full",
+            "banking…",
+        ],
+    );
+    assert!(off.find("inventory.full     2").unwrap() < off.find("player.death       0").unwrap());
+
+    // A Hook Runner holds its lock as .NET does.
+    let lock = std::fs::File::create(fleet.dir.path().join("hooks.lock")).unwrap();
+    assert_eq!(
+        unsafe { libc::flock(std::os::fd::AsRawFd::as_raw_fd(&lock), libc::LOCK_EX) },
+        0
+    );
+    assert_shows(
+        &screen(&fleet, &mut app, 120, 32),
+        &["hooks running · protocol", "skua hooks: running"],
+    );
+
+    while app.selected_row().unwrap().name != "default" {
+        press(&mut app, KeyCode::Down);
+    }
+    assert_shows(
+        &screen(&fleet, &mut app, 120, 32),
+        &[
+            "No hook has run for default yet.",
+            "named after an event type,",
+            "such as inventory.full. The Hook Runner runs it",
         ],
     );
 }

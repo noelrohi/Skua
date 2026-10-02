@@ -36,6 +36,14 @@ _Avoid_: frontend, UI, client
 The terminal Control Surface for windowless Engines: the Skua Manager's accounts by group, each with its Engine. It reads the accounts and never changes them.
 _Avoid_: dashboard, console, terminal manager
 
+**Hook**:
+An executable in `<SkuaDIR>/hooks/` named after an event type (`inventory.full`), which the Hook Runner runs on each such event with the event's JSON on stdin; what to do about the event is up to it.
+_Avoid_: trigger, handler, callback, rule
+
+**Hook Runner**:
+`skua hooks`: the process that follows the events of a data folder's Engines and runs their Hooks, recording each run as a `hook.ran` event. One per data folder; it needs no TUI or agent.
+_Avoid_: watcher, daemon, hook server
+
 **Mac App**:
 Skua's desktop app on macOS: the Game View and Skua's panels, with its own Engine inside it. It is not a Control Surface, but Control Surfaces reach its Engine.
 _Avoid_: GUI, viewer, frontend, desktop client

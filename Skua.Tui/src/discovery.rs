@@ -1,5 +1,6 @@
 //! Where the Engines and the Skua Manager's accounts are, by the same rules as `Skua.Control`'s `EngineEndpoint` and `ManagerAccounts`.
 
+use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
@@ -65,6 +66,31 @@ pub fn is_valid_name(name: &str) -> bool {
         && name
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+/// The lock a Hook Runner holds while it runs (`HookRunner.LockPath`).
+pub fn hook_runner_lock(skua_dir: &Path) -> PathBuf {
+    skua_dir.join("hooks.lock")
+}
+
+/// The folder of Hooks: executables named after the event type each runs for (`HookRunner.HooksDir`).
+pub fn hooks_dir(skua_dir: &Path) -> PathBuf {
+    skua_dir.join("hooks")
+}
+
+/// Whether a Hook Runner (`skua hooks`) runs for this data folder.
+pub fn hook_runner_running(skua_dir: &Path) -> bool {
+    lock_held(&hook_runner_lock(skua_dir))
+}
+
+/// Whether a process holds `lock`: .NET takes it with `flock(LOCK_EX | LOCK_NB)`, as `EngineLock.IsHeld` probes it.
+pub fn lock_held(lock: &Path) -> bool {
+    let Ok(file) = std::fs::File::open(lock) else {
+        return false;
+    };
+    // SAFETY: flock only acts on the descriptor, which `file` keeps open; closing it releases the probe's lock.
+    let taken = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0;
+    !taken && std::io::Error::last_os_error().raw_os_error() == Some(libc::EWOULDBLOCK)
 }
 
 pub fn socket_path(skua_dir: &Path, name: &str) -> PathBuf {

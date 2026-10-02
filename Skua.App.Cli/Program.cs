@@ -412,12 +412,16 @@ engineStatus.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), options
 
 Command engine = new("engine", "Control the Engine's lifetime.") { engineStart, engineStop, engineStatus };
 
+Command hooks = new("hooks",
+    "Run the Hook Runner: follow every Engine's events (or --engine's) and run <SKUA_DIR>/hooks/<event type> for each, with the event's JSON on stdin; one per data folder.");
+hooks.SetAction((parse, ct) => HookRunner.RunAsync(parse.GetValue(json), parse.GetValue(engineName), ct));
+
 Command mcp = new("mcp", "Serve the Control Surface as an MCP server over stdio.");
 mcp.SetAction((_, ct) => McpServer.RunAsync(ct));
 
 RootCommand root = new("Drive a Skua Engine.")
 {
-    json, engineName, status, account, servers, login, logout, join, jump, inventory, quests, map, drops, scripts, script, watch, dialogs, chat, eval, logs, screenshot, engine, mcp,
+    json, engineName, status, account, servers, login, logout, join, jump, inventory, quests, map, drops, scripts, script, watch, dialogs, chat, eval, logs, screenshot, engine, hooks, mcp,
 };
 ParseResult parsed = root.Parse(args);
 Cli.EngineName = parsed.GetValue(engineName);

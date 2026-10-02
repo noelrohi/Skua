@@ -2,8 +2,7 @@
 //! holds up the poller or another Engine. [`spawn`] runs each job on its own thread; [`Runner::run`] runs one where it is called.
 
 use std::collections::BTreeMap;
-use std::io;
-use std::os::fd::AsRawFd;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::Sender;
@@ -64,6 +63,8 @@ pub enum Op {
         text: String,
         to: Option<String>,
     },
+    /// Launches `skua hooks` for the data folder, unless a Hook Runner holds its lock; its job's `engine` is empty.
+    StartHookRunner,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -88,6 +89,7 @@ pub enum Reply {
     Joined(Location),
     Updated(ScriptsUpdate),
     ChatSent(ChatSendResult),
+    HookRunnerStarted,
 }
 
 #[derive(Debug, Clone)]
@@ -101,8 +103,10 @@ pub struct Runner {
     pub skua_dir: PathBuf,
     /// The `skua-engine` to launch; None finds it as [`engine_executable`] does.
     pub engine_executable: Option<PathBuf>,
-    /// How long a starting Engine has to answer, as `skua` waits.
+    /// How long a starting Engine has to answer, as `skua` waits; and a starting Hook Runner to take its lock.
     pub start_timeout: Duration,
+    /// The `skua` that runs the Hook Runner; None is the one on `PATH`.
+    pub skua_executable: Option<PathBuf>,
 }
 
 impl Runner {
@@ -111,12 +115,14 @@ impl Runner {
             skua_dir,
             engine_executable: None,
             start_timeout: Duration::from_secs(30),
+            skua_executable: None,
         }
     }
 
     pub fn run(&self, job: Job) -> Outcome {
         let result = match &job.op {
             Op::StartEngine => self.start_engine(&job.engine).map(Reply::Started),
+            Op::StartHookRunner => self.start_hook_runner().map(|()| Reply::HookRunnerStarted),
             op => self.call(&job.engine, op),
         };
         Outcome { job, result }
@@ -133,7 +139,7 @@ impl Runner {
             _ => 30,
         }))?;
         Ok(match op {
-            Op::StartEngine => unreachable!("not a call"),
+            Op::StartEngine | Op::StartHookRunner => unreachable!("not a call"),
             Op::StopEngine => engine.shutdown_if_idle().map(|()| Reply::Stopping)?,
             Op::Servers => Reply::Servers(engine.servers()?.servers),
             Op::Login { server } => {
@@ -195,7 +201,7 @@ impl Runner {
         let engines = self.skua_dir.join("engines");
         let lock = engines.join(format!("{name}.lock"));
         let log = engines.join(format!("{name}.log"));
-        let mut started = if lock_held(&lock) {
+        let mut started = if discovery::lock_held(&lock) {
             None
         } else {
             let executable = match &self.engine_executable {
@@ -246,6 +252,54 @@ impl Runner {
         }
         result
     }
+
+    /// Launches `skua hooks` in its own process group, so it outlives skua-tui, with its output in `<SkuaDIR>/hooks.log`; and waits for it to
+    /// take its lock. skua-tui never runs a Hook itself.
+    fn start_hook_runner(&self) -> Result<(), Error> {
+        let lock = discovery::hook_runner_lock(&self.skua_dir);
+        if discovery::lock_held(&lock) {
+            return Err(Error::Refused("a Hook Runner already runs; nothing was started".into()));
+        }
+        let skua = match &self.skua_executable {
+            Some(path) => path.clone(),
+            None => skua_on_path().map_err(Error::Refused)?,
+        };
+        let log = self.skua_dir.join("hooks.log");
+        let mut child = Command::new("/bin/sh")
+            .args(["-c", "exec \"$0\" hooks </dev/null >>\"$1\" 2>&1"])
+            .arg(&skua)
+            .arg(&log)
+            .env(discovery::SKUA_DIR_VARIABLE, &self.skua_dir)
+            .env_remove("SKUA_ENGINE_SOCKET")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .process_group(0)
+            .spawn()
+            .map_err(|e| Error::Refused(format!("couldn't start {}: {e}", skua.display())))?;
+        let waited = Instant::now();
+        let result = loop {
+            if discovery::lock_held(&lock) {
+                break Ok(());
+            }
+            if let Ok(Some(status)) = child.try_wait() {
+                break Err(Error::Refused(format!(
+                    "skua hooks exited during start with {status}; see {}",
+                    log.display()
+                )));
+            }
+            if waited.elapsed() > self.start_timeout {
+                break Err(Error::Refused(format!(
+                    "skua hooks didn't take {} in time; see {}",
+                    lock.display(),
+                    log.display()
+                )));
+            }
+            thread::sleep(Duration::from_millis(50));
+        };
+        thread::spawn(move || _ = child.wait());
+        result
+    }
 }
 
 /// The `hello` of an Engine answering on `socket`, of any protocol; None when nothing answers.
@@ -257,31 +311,14 @@ fn answering(socket: &Path) -> Result<Option<Hello>, Error> {
     }
 }
 
-/// Whether a process holds the Engine's lock: .NET takes it with `flock(LOCK_EX | LOCK_NB)`, as `EngineLock.IsHeld` probes it.
-fn lock_held(lock: &Path) -> bool {
-    let Ok(file) = std::fs::File::open(lock) else {
-        return false;
-    };
-    // SAFETY: flock only acts on the descriptor, which `file` keeps open; closing it releases the probe's lock.
-    let taken = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0;
-    !taken && io::Error::last_os_error().raw_os_error() == Some(libc::EWOULDBLOCK)
-}
-
 /// The `skua-engine` that `skua` auto-starts: `SKUA_ENGINE`, else the one next to the `skua` on `PATH` (which `install-macos.sh` links).
 pub fn engine_executable() -> Result<PathBuf, String> {
     if let Some(path) = std::env::var_os(ENGINE_EXECUTABLE_VARIABLE).filter(|p| !p.is_empty()) {
         return Ok(std::path::absolute(&path).unwrap_or_else(|_| path.into()));
     }
-    let skua = std::env::var_os("PATH")
-        .into_iter()
-        .flat_map(|paths| std::env::split_paths(&paths).collect::<Vec<_>>())
-        .map(|dir| dir.join("skua"))
-        .find(|path| path.is_file())
-        .ok_or_else(|| {
-            format!(
-                "no skua on PATH to find skua-engine by; set {ENGINE_EXECUTABLE_VARIABLE} to the skua-engine executable"
-            )
-        })?;
+    let skua = skua_on_path().map_err(|e| {
+        format!("{e} to find skua-engine by; set {ENGINE_EXECUTABLE_VARIABLE} to the skua-engine executable")
+    })?;
     let engine = std::fs::canonicalize(&skua)
         .map_err(|e| format!("{}: {e}", skua.display()))?
         .with_file_name("skua-engine");
@@ -293,6 +330,16 @@ pub fn engine_executable() -> Result<PathBuf, String> {
             engine.display()
         ))
     }
+}
+
+/// The `skua` on `PATH`, which `install-macos.sh` links.
+fn skua_on_path() -> Result<PathBuf, String> {
+    std::env::var_os("PATH")
+        .into_iter()
+        .flat_map(|paths| std::env::split_paths(&paths).collect::<Vec<_>>())
+        .map(|dir| dir.join("skua"))
+        .find(|path| path.is_file())
+        .ok_or_else(|| "no skua on PATH".to_owned())
 }
 
 pub fn spawn(runner: &Runner, job: Job, outcomes: Sender<Outcome>) {

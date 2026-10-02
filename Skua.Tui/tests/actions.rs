@@ -778,3 +778,68 @@ fn the_command_palette_runs_an_action() {
     tui.run_jobs();
     assert_shows(&tui.screen(), &["Log in to", "Artix"]);
 }
+
+/// A fake `skua` that records how it was started, then holds the Hook Runner's lock as `skua hooks` does, until the data folder goes.
+fn fake_skua(dir: &std::path::Path) -> std::path::PathBuf {
+    let fake = dir.join("skua");
+    std::fs::write(
+        &fake,
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" \"$SKUA_DIR\" > \"$SKUA_DIR/started\"\n\
+         exec perl -e 'use Fcntl qw(:flock); my $p = \"$ENV{SKUA_DIR}/hooks.lock\"; open(my $f, \">>\", $p) or die; \
+         flock($f, LOCK_EX) or die; select(undef, undef, undef, 0.1) while -e $p;'\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    fake
+}
+
+#[test]
+fn start_hook_runner_launches_skua_hooks_for_the_data_folder_and_waits_for_its_lock() {
+    let mut tui = Tui::new();
+    tui.runner.skua_executable = Some(fake_skua(tui.dir.path()));
+    assert_shows(&tui.screen(), &["hooks off"]);
+
+    tui.key(KeyCode::Char(':'));
+    tui.keys("hook runner");
+    tui.key(KeyCode::Enter);
+    tui.run_jobs();
+    tui.refresh();
+
+    let started = std::fs::read_to_string(tui.dir.path().join("started")).unwrap();
+    assert_eq!(
+        started.lines().collect::<Vec<_>>(),
+        ["hooks", tui.dir.path().to_str().unwrap()]
+    );
+    assert_shows(&tui.screen(), &["the Hook Runner started", "hooks running"]);
+    assert!(
+        Tui::calls_but_reads(&tui.alice).is_empty(),
+        "skua-tui runs no hook and calls no Engine for it"
+    );
+
+    tui.key(KeyCode::Char('H'));
+    assert!(tui.app.jobs.is_empty());
+    assert_shows(&tui.screen(), &["the Hook Runner already runs"]);
+}
+
+#[test]
+fn start_hook_runner_reports_a_runner_that_exits_during_start() {
+    let mut tui = Tui::new();
+    let fake = tui.dir.path().join("skua");
+    std::fs::write(
+        &fake,
+        "#!/bin/sh\necho 'skua: a Hook Runner already runs' >&2\nexit 1\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    tui.runner.skua_executable = Some(fake);
+
+    tui.key(KeyCode::Char('H'));
+    tui.run_jobs();
+
+    assert_shows(
+        &tui.screen(),
+        &["Hook Runner: skua hooks exited during start with exit status: 1; see"],
+    );
+    let log = std::fs::read_to_string(tui.dir.path().join("hooks.log")).unwrap();
+    assert!(log.contains("already runs"), "{log}");
+}

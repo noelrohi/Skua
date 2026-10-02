@@ -18,7 +18,7 @@ use crate::dto::{
 use crate::rpc::{CallError, Rpc};
 
 /// The Control Surface protocol this build speaks (`ControlProtocol.Version`).
-pub const PROTOCOL: i64 = 13;
+pub const PROTOCOL: i64 = 15;
 
 /// `ErrorCode.NotLoggedIn` on the wire: `ErrorCodes.ToWire` adds 1000.
 pub const NOT_LOGGED_IN: i64 = 1001;
@@ -141,6 +141,11 @@ impl Engine {
     /// A handle that closes this connection from another thread.
     pub fn closer(&self) -> Result<UnixStream, Error> {
         self.rpc.closer().map_err(|e| Error::Unavailable(e.to_string()))
+    }
+
+    /// The newest `tail` events, as `logs events --tail`.
+    pub fn events(&mut self, tail: u32) -> Result<LogPage, Error> {
+        self.call("logs", json!(["events", null, null, tail]))
     }
 
     pub fn inventory(&mut self) -> Result<Inventory, Error> {

@@ -9,7 +9,7 @@ use serde_json::Value;
 
 use crate::app::{App, Field, KEYS, Modal, Note, Row, Tab, Tone, first_line};
 use crate::discovery::MANAGER_FILE;
-use crate::dto::{GameState, Hello, LogEntry, Player, Status};
+use crate::dto::{GameState, Hello, HookRun, LogEntry, Player, Status};
 use crate::engine::{Error, NOT_LOGGED_IN, PROTOCOL};
 use crate::poller::{Detail, EngineView, LOG_TAIL};
 
@@ -79,10 +79,13 @@ fn header(frame: &mut Frame, app: &App, area: Rect) {
                 Style::new()
             },
         ),
-        Span::raw(format!(
-            " alert{} · protocol {PROTOCOL} ",
-            if alerts == 1 { "" } else { "s" }
-        )),
+        Span::raw(format!(" alert{} · ", if alerts == 1 { "" } else { "s" })),
+        if hook_runner(app) {
+            Span::raw("hooks running")
+        } else {
+            Span::styled("hooks off", Style::new().yellow())
+        },
+        Span::raw(format!(" · protocol {PROTOCOL} ")),
     ])
     .fg(DIM)
     .alignment(Alignment::Right);
@@ -270,6 +273,7 @@ fn right(frame: &mut Frame, app: &App, area: Rect) {
                 }
                 Tab::Game => game(frame, status, detail, content),
                 Tab::Chat => chat(frame, app, &row.name, content),
+                Tab::Hooks => hooks(frame, app, &row.name, detail, content),
             }
         }
     }
@@ -802,6 +806,99 @@ fn logs(frame: &mut Frame, block: Block, detail: Option<&Detail>, area: Rect) {
         }
     };
     frame.render_widget(Paragraph::new(lines).block(block), area);
+}
+
+fn hook_runner(app: &App) -> bool {
+    app.snapshot.as_ref().is_some_and(|s| s.hook_runner)
+}
+
+/// The Hook Runner's state, and the selected Engine's Hook runs, newest first, with the newest one's output below.
+fn hooks(frame: &mut Frame, app: &App, name: &str, detail: Option<&Detail>, area: Rect) {
+    let runner = if hook_runner(app) {
+        Line::styled(" skua hooks: running ", Style::new().green()).right_aligned()
+    } else {
+        Line::styled(" skua hooks: not running · H starts it ", Style::new().yellow().bold()).right_aligned()
+    };
+    let runs: &[LogEntry] = detail.map_or(&[], |d| &d.hook_runs);
+    let output_height = if runs.is_empty() {
+        0
+    } else {
+        (area.height / 3).max(4).min(area.height)
+    };
+    let list_area = Rect {
+        height: area.height - output_height,
+        ..area
+    };
+    let mut lines = Vec::new();
+    match detail {
+        None => lines.push(loading()),
+        Some(_) if runs.is_empty() => {
+            lines.push(Line::from(format!("No hook has run for {name} yet.")));
+            lines.push(Line::raw(""));
+            lines.push(Line::styled(
+                format!(
+                    "A hook is an executable in {} named after an event type, such as inventory.full. The Hook Runner runs it on \
+                     each such event, with the event's JSON on stdin.",
+                    crate::discovery::hooks_dir(&app.skua_dir).display()
+                ),
+                Style::new().fg(DIM),
+            ));
+        }
+        Some(_) => {
+            lines.push(Line::styled(
+                format!(
+                    "{:<8} {:<18} {:<5} {:>7}  {}",
+                    "STARTED", "HOOK", "EXIT", "TOOK", "OUTPUT"
+                ),
+                Style::new().fg(DIM).bold(),
+            ));
+            lines.extend(runs.iter().rev().map(|entry| hook_run_line(&HookRun::of(entry))));
+        }
+    }
+    let mut list = Paragraph::new(lines).block(panel("Hooks").title_top(runner));
+    if runs.is_empty() {
+        list = list.wrap(Wrap { trim: true });
+    }
+    frame.render_widget(list, list_area);
+
+    if let Some(newest) = runs.last().map(HookRun::of) {
+        let output_area = Rect {
+            y: area.y + list_area.height,
+            height: output_height,
+            ..area
+        };
+        let block = panel(&format!("Output · {}", newest.hook));
+        let lines: Vec<&str> = newest.output.lines().collect();
+        let skip = lines.len().saturating_sub(block.inner(output_area).height as usize);
+        let text: Vec<Line> = lines[skip..].iter().map(|l| Line::raw(l.to_string())).collect();
+        frame.render_widget(Paragraph::new(text).block(block), output_area);
+    }
+}
+
+/// One `hook.ran`: when it started, the hook, its exit code (none when it couldn't start), how long it took and its last line of output.
+fn hook_run_line(run: &HookRun) -> Line<'static> {
+    let (exit, color) = match run.exit_code {
+        Some(0) => ("0".to_owned(), Color::Green),
+        Some(code) => (code.to_string(), Color::Red),
+        None => ("—".to_owned(), Color::Red),
+    };
+    let took = run.duration_ms as f64 / 1000.0;
+    let last = run.output.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("");
+    Line::from(vec![
+        format!("{} ", local_time(run.started_at)).fg(DIM),
+        format!("{:<18} ", run.hook).bold(),
+        Span::styled(format!("{exit:<5} "), Style::new().fg(color).bold()),
+        format!(
+            "{:>7}  ",
+            if took < 60.0 {
+                format!("{took:.1}s")
+            } else {
+                duration(took)
+            }
+        )
+        .fg(DIM),
+        Span::raw(last.to_owned()),
+    ])
 }
 
 fn log_line(entry: &LogEntry) -> Line<'static> {

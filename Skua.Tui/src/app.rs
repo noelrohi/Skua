@@ -21,16 +21,18 @@ pub enum Tab {
     Logs,
     Game,
     Chat,
+    Hooks,
 }
 
 impl Tab {
-    pub const ALL: [Tab; 6] = [
+    pub const ALL: [Tab; 7] = [
         Tab::Overview,
         Tab::Inventory,
         Tab::Quests,
         Tab::Logs,
         Tab::Game,
         Tab::Chat,
+        Tab::Hooks,
     ];
 
     pub fn title(self) -> &'static str {
@@ -41,6 +43,7 @@ impl Tab {
             Tab::Logs => "Logs",
             Tab::Game => "Game",
             Tab::Chat => "Chat",
+            Tab::Hooks => "Hooks",
         }
     }
 
@@ -103,6 +106,10 @@ pub const COMMANDS: &[Command] = &[
         key: 'U',
     },
     Command {
+        title: "start Hook Runner",
+        key: 'H',
+    },
+    Command {
         title: "mark whole group",
         key: 'a',
     },
@@ -129,8 +136,8 @@ pub const KEYS: &[(&str, &str)] = &[
     ("space", "mark account"),
     ("a", "mark its whole group"),
     ("esc", "clear marks and filter"),
-    ("tab ⇧tab", "Overview, Inventory, Quests, Logs, Game, Chat"),
-    ("1–6", "pick a tab"),
+    ("tab ⇧tab", "Overview, Inventory, Quests, Logs, Game, Chat, Hooks"),
+    ("1–7", "pick a tab"),
     ("enter", "Chat: type, then enter sends; /w name text whispers"),
     (":", "command palette"),
     ("/", "filter accounts"),
@@ -140,6 +147,7 @@ pub const KEYS: &[(&str, &str)] = &[
     ("J", "join a map: map[-room] [cell] [pad]"),
     ("d", "answer the selected account's Question"),
     ("U", "update the Scripts from the Script Source"),
+    ("H", "start the Hook Runner (skua hooks), which runs the hooks"),
     ("q", "quit"),
 ];
 
@@ -530,7 +538,7 @@ impl App {
             }
             '?' => self.modal = Some(Modal::Help),
             'S' => self.tab = Tab::Game,
-            '1'..='6' => self.tab = Tab::ALL[c as usize - '1' as usize],
+            '1'..='7' => self.tab = Tab::ALL[c as usize - '1' as usize],
             'E' => self.start_engines(),
             'X' => self.confirm_stop_engines(),
             'L' => {
@@ -579,6 +587,17 @@ impl App {
                         });
                     }
                     None => self.toast = Some(Note::new("answer: the selected account has no Engine up", Tone::Failed)),
+                }
+            }
+            'H' => {
+                if self.snapshot.as_ref().is_some_and(|s| s.hook_runner) {
+                    self.toast = Some(Note::new("the Hook Runner already runs", Tone::Info));
+                } else {
+                    self.jobs.push(Job {
+                        engine: String::new(),
+                        op: Op::StartHookRunner,
+                    });
+                    self.toast = Some(Note::new("starting the Hook Runner…", Tone::Pending));
                 }
             }
             'U' => {
@@ -772,6 +791,12 @@ impl App {
                 self.chat.note = Some(match result {
                     Ok(reply) => App::done(reply),
                     Err(e) => Note::new(format!("not sent: {e}"), Tone::Failed),
+                });
+            }
+            (_, Op::StartHookRunner, result) => {
+                self.toast = Some(match result {
+                    Ok(_) => Note::new("the Hook Runner started", Tone::Done),
+                    Err(e) => Note::new(format!("Hook Runner: {e}"), Tone::Failed),
                 });
             }
             (_, op, result) => {

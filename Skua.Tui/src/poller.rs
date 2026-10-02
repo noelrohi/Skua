@@ -16,6 +16,11 @@ use crate::engine::{Engine, Error};
 pub const LOG_TAIL: u32 = 200;
 const MAX_LOG_LINES: usize = 2000;
 
+/// The event that records a Hook's run (`EventTypes.HookRan`).
+pub const HOOK_RAN: &str = "hook.ran";
+/// How many of the latest Hook runs the Hooks tab keeps.
+const MAX_HOOK_RUNS: usize = 200;
+
 #[derive(Debug, Clone)]
 pub enum EngineView {
     Offline,
@@ -35,6 +40,8 @@ pub struct Focus {
 pub struct Detail {
     pub engine: Option<String>,
     pub logs: Vec<LogEntry>,
+    /// Its `hook.ran` events, oldest first: those among its newest events, then each that arrives in its logs.
+    pub hook_runs: Vec<LogEntry>,
     pub inventory: Option<Result<Inventory, Error>>,
     pub quests: Option<Result<Quests, Error>>,
     pub map: Option<Result<Map, Error>>,
@@ -43,6 +50,8 @@ pub struct Detail {
 #[derive(Debug, Clone)]
 pub struct Snapshot {
     pub accounts: Result<ManagerAccounts, String>,
+    /// Whether a Hook Runner (`skua hooks`) runs for this data folder.
+    pub hook_runner: bool,
     pub engines: BTreeMap<String, EngineView>,
     pub detail: Detail,
 }
@@ -84,6 +93,7 @@ impl Poller {
         }
         Snapshot {
             accounts,
+            hook_runner: discovery::hook_runner_running(&self.skua_dir),
             engines,
             detail: self.detail.clone(),
         }
@@ -115,7 +125,10 @@ impl Poller {
             return;
         };
         let page = match &self.cursor {
-            None => engine.logs(None, Some(LOG_TAIL)),
+            None => engine.events(LOG_TAIL).and_then(|events| {
+                self.detail.hook_runs = events.entries.into_iter().filter(is_hook_run).collect();
+                engine.logs(None, Some(LOG_TAIL))
+            }),
             Some(cursor) => engine.logs(Some(cursor), None),
         };
         match page {
@@ -123,6 +136,14 @@ impl Poller {
                 if page.gap && self.cursor.is_some() {
                     self.detail.logs.push(gap_entry());
                 }
+                let newest = self.detail.hook_runs.last().map_or(0, |run| run.seq);
+                let arrived = page
+                    .entries
+                    .iter()
+                    .filter(|e| is_hook_run(e) && (e.seq > newest || page.gap));
+                self.detail.hook_runs.extend(arrived.cloned());
+                let excess = self.detail.hook_runs.len().saturating_sub(MAX_HOOK_RUNS);
+                self.detail.hook_runs.drain(..excess);
                 self.detail.logs.extend(page.entries);
                 let excess = self.detail.logs.len().saturating_sub(MAX_LOG_LINES);
                 self.detail.logs.drain(..excess);
@@ -138,9 +159,13 @@ impl Poller {
             Tab::Inventory => self.detail.inventory = Some(engine.inventory()),
             Tab::Quests => self.detail.quests = Some(engine.quests()),
             Tab::Game => self.detail.map = Some(engine.map()),
-            Tab::Overview | Tab::Logs | Tab::Chat => {}
+            Tab::Overview | Tab::Logs | Tab::Chat | Tab::Hooks => {}
         }
     }
+}
+
+fn is_hook_run(entry: &LogEntry) -> bool {
+    entry.event_type.as_deref() == Some(HOOK_RAN)
 }
 
 /// Marks where entries were missed: evicted from the Engine's buffer, or lost to a restart.

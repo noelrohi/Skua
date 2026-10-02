@@ -25,7 +25,7 @@ fn hello_carries_this_protocol_and_status_reads_the_engine() {
     let mut connection = Engine::connect(&engine.socket, TIMEOUT).unwrap();
     let status = connection.status().unwrap();
 
-    assert_eq!(engine.params_of("hello"), vec![json!([13])]);
+    assert_eq!(engine.params_of("hello"), vec![json!([PROTOCOL])]);
     assert_eq!(connection.hello.engine_name, "alice");
     assert_eq!(status.game.state, GameState::Playing);
     assert_eq!(status.game.player.unwrap().name, "alice");
@@ -45,7 +45,7 @@ fn an_engine_of_another_protocol_is_refused_after_hello_and_nothing_else_is_aske
     );
     let message = error.to_string();
     assert!(
-        message.contains("Engine 'bob'") && message.contains("speaks protocol 11") && message.contains("speaks 13"),
+        message.contains("Engine 'bob'") && message.contains("speaks protocol 11") && message.contains("speaks 15"),
         "{message}"
     );
     assert_eq!(engine.methods(), vec!["hello"]);
@@ -170,7 +170,11 @@ fn logs_start_with_the_tail_then_follow_from_the_cursor() {
 
     assert_eq!(
         engine.params_of("logs"),
-        vec![json!(["all", null, null, LOG_TAIL]), json!(["all", "c2", null, null])]
+        vec![
+            json!(["events", null, null, LOG_TAIL]),
+            json!(["all", null, null, LOG_TAIL]),
+            json!(["all", "c2", null, null])
+        ]
     );
     let texts: Vec<_> = snapshot
         .detail
@@ -180,6 +184,43 @@ fn logs_start_with_the_tail_then_follow_from_the_cursor() {
         .collect();
     assert_eq!(texts, ["first", "second", "map.joined"]);
     assert_eq!(snapshot.detail.inventory.unwrap().unwrap().total_slots, Some(120));
+}
+
+#[test]
+fn hook_runs_come_from_the_newest_events_then_from_the_logs_as_they_arrive() {
+    let dir = skua_dir();
+    let ran = |seq, hook: &str| {
+        event(
+            seq,
+            "hook.ran",
+            json!({ "hook": hook, "eventSeq": seq - 1, "startedAt": 0, "durationMs": 5, "exitCode": 0, "output": "" }),
+        )
+    };
+    let (first, second, third) = (ran(5, "player.death"), ran(9, "inventory.full"), ran(12, "player.afk"));
+    let _engine = FakeEngine::start(dir.path(), "alice", move |method, params| match method {
+        "hello" => Ok(hello(PROTOCOL, "alice")),
+        "status" => Ok(status("alice", true, None)),
+        "logs" if params[0] == "events" => {
+            Ok(json!({ "entries": [event(4, "player.death", json!({})), first, second], "next": "c9", "gap": false }))
+        }
+        "logs" if params[1].is_null() => {
+            Ok(json!({ "entries": [log_entry(8, "farming"), second], "next": "c9", "gap": false }))
+        }
+        "logs" => Ok(json!({ "entries": [log_entry(10, "banked"), third], "next": "c12", "gap": false })),
+        _ => Err((-32601, "no".into())),
+    });
+    let mut poller = Poller::new(dir.path().to_owned(), TIMEOUT);
+    let focus = Focus {
+        engine: Some("alice".into()),
+        tab: Tab::Hooks,
+    };
+
+    poller.poll(&focus);
+    let snapshot = poller.poll(&focus);
+
+    let runs: Vec<_> = snapshot.detail.hook_runs.iter().map(|e| e.seq).collect();
+    assert_eq!(runs, [5, 9, 12]);
+    assert!(!snapshot.hook_runner);
 }
 
 #[test]

@@ -8,7 +8,7 @@ namespace Skua.Control;
 /// <remarks>
 /// Each method other than <c>hello</c>, <c>shutdown</c> and <c>shutdown_if_idle</c> is one snake_case MCP tool and one <c>skua</c> subcommand with the same arguments and DTOs,
 /// except the CLI-only <c>subscribe</c>, <c>scripts_source_set</c> and <c>chat_send</c>: agents follow logs by paging, and only a developer changes the
-/// Script Source or chats in the game.
+/// Script Source or chats in the game. <c>hook_ran</c> is the Hook Runner's own, with no subcommand or tool.
 /// Failures are JSON-RPC errors whose code maps to an <see cref="ErrorCode"/> through <see cref="ErrorCodes"/>.
 /// </remarks>
 [JsonRpcContract]
@@ -180,6 +180,11 @@ public partial interface IEngineRpc
     /// <remarks>Fails with <see cref="ErrorCode.NotLoggedIn"/> unless playing, and <see cref="ErrorCode.InvalidArgument"/> for a text or name it can't send.</remarks>
     [JsonRpcMethod("chat_send")]
     Task<ChatSendResult> ChatSendAsync(string text, string? to = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Records that a Hook ran for one of this Engine's events, as a <see cref="EventTypes.HookRan"/> event. The Hook Runner's own.</summary>
+    /// <remarks>Fails with <see cref="ErrorCode.InvalidArgument"/> for a blank hook name or a negative duration.</remarks>
+    [JsonRpcMethod("hook_ran")]
+    Task HookRanAsync(HookRunDto run, CancellationToken cancellationToken = default);
 
     /// <summary>The items in one of the player's item stores, with its used and total slots. Fails with <see cref="ErrorCode.NotLoggedIn"/> unless playing.</summary>
     [JsonRpcMethod("inventory")]
