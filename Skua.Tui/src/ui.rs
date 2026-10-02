@@ -269,6 +269,7 @@ fn right(frame: &mut Frame, app: &App, area: Rect) {
                     logs(frame, block, detail, content)
                 }
                 Tab::Game => game(frame, status, detail, content),
+                Tab::Chat => chat(frame, app, &row.name, content),
             }
         }
     }
@@ -675,6 +676,121 @@ fn game(frame: &mut Frame, status: &Status, detail: Option<&Detail>, area: Rect)
     frame.render_widget(Paragraph::new(lines).block(panel(&title)), area);
 }
 
+fn chat(frame: &mut Frame, app: &App, name: &str, area: Rect) {
+    let following = app.chat.engine() == Some(name);
+    let state = match &app.chat.ended {
+        Some(why) if following => Line::styled(format!(" follow ended: {why} "), Style::new().red()).right_aligned(),
+        _ => dim_right("game messages, following"),
+    };
+    let block = panel("Chat").title_top(state);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let bottom = 2.min(inner.height);
+    let messages = Rect {
+        height: inner.height - bottom,
+        ..inner
+    };
+    let mut lines: Vec<Line> = Vec::new();
+    if !following {
+        lines.push(loading());
+    } else if app.chat.entries.is_empty() {
+        lines.push(Line::styled("no game messages yet", Style::new().fg(DIM)));
+    } else {
+        // The newest at the bottom: only as many as fit are laid out.
+        for entry in app.chat.entries.iter().rev() {
+            let mut entry_lines = chat_lines(entry, inner.width as usize);
+            entry_lines.append(&mut lines);
+            lines = entry_lines;
+            if lines.len() >= messages.height as usize {
+                break;
+            }
+        }
+        lines.drain(..lines.len().saturating_sub(messages.height as usize));
+    }
+    frame.render_widget(Paragraph::new(lines), messages);
+
+    let mut footer = Vec::new();
+    footer.push(
+        app.chat
+            .note
+            .as_ref()
+            .map_or(Line::raw(""), |note| note_line(String::new(), note)),
+    );
+    footer.push(if app.chat.typing {
+        Line::from(format!("> {}▏", app.chat.input).bold())
+    } else {
+        Line::styled(
+            format!(
+                "enter to chat · /w <name> <text> whispers{}",
+                if app.chat.input.is_empty() {
+                    ""
+                } else {
+                    " · a draft waits"
+                }
+            ),
+            Style::new().fg(DIM),
+        )
+    });
+    footer.drain(..footer.len() - bottom as usize);
+    frame.render_widget(
+        Paragraph::new(footer),
+        Rect {
+            y: messages.y + messages.height,
+            height: bottom,
+            ..inner
+        },
+    );
+}
+
+/// A game message as `time [channel] from → to: text`, wrapped under its text.
+fn chat_lines(entry: &LogEntry, width: usize) -> Vec<Line<'static>> {
+    if entry.kind == "gap" {
+        return vec![Line::styled(
+            "… messages missed here: evicted, or the Engine restarted",
+            Style::new().yellow(),
+        )];
+    }
+    let field = |key: &str| entry.data.as_ref().and_then(|d| d.get(key)).and_then(Value::as_str);
+    let channel = field("channel").unwrap_or("?");
+    let color = match channel {
+        "whisper" => Color::Magenta,
+        "party" => Color::Cyan,
+        "guild" => Color::Green,
+        "server" => Color::Yellow,
+        "warning" => Color::Red,
+        "zone" => Color::Reset,
+        _ => Color::Blue,
+    };
+    let text = entry.text.clone().unwrap_or_default();
+    let body = match (field("from"), field("to")) {
+        (Some(from), Some(to)) => format!("{from} → {to}: {text}"),
+        (Some(from), None) => format!("{from}: {text}"),
+        (None, _) => text,
+    };
+    let tag = format!("{:<9} ", format!("[{channel}]"));
+    let indent = 9 + tag.chars().count();
+    let body_style = if channel == "zone" {
+        Style::new()
+    } else {
+        Style::new().fg(color)
+    };
+    wrap(&body, width.saturating_sub(indent))
+        .into_iter()
+        .enumerate()
+        .map(|(i, part)| {
+            let lead = if i == 0 {
+                vec![
+                    format!("{} ", local_time(entry.ts)).fg(DIM),
+                    Span::styled(tag.clone(), Style::new().fg(color).bold()),
+                ]
+            } else {
+                vec![Span::raw(" ".repeat(indent))]
+            };
+            Line::from([lead, vec![Span::styled(part, body_style)]].concat())
+        })
+        .collect()
+}
+
 fn logs(frame: &mut Frame, block: Block, detail: Option<&Detail>, area: Rect) {
     let inner = block.inner(area);
     let lines: Vec<Line> = match detail {
@@ -787,6 +903,16 @@ fn note_line(prefix: String, note: &Note) -> Line<'static> {
 fn footer(frame: &mut Frame, app: &App, area: Rect) {
     let view = app.selected_row().and_then(|r| app.engine(&r.name));
     let keys: &[(&str, &str)] = match view {
+        Some(EngineView::Up { .. }) if app.tab == Tab::Chat && app.chat.typing => {
+            &[("enter", "send"), ("/w name text", "whisper"), ("esc", "stop typing")]
+        }
+        Some(EngineView::Up { .. }) if app.tab == Tab::Chat => &[
+            ("enter", "chat"),
+            ("tab", "tab"),
+            (":", "commands"),
+            ("?", "keys"),
+            ("q", "quit"),
+        ],
         None | Some(EngineView::Offline) => &[
             ("E", "start Engine"),
             ("space", "mark"),

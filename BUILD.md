@@ -448,7 +448,7 @@ SKUA_LIVE=smoke SKUA_SCRIPTS_CHECKOUT="$(realpath ../Scripts)" \
 
 ### The TUI (`skua-tui`)
 
-`skua-tui` is a terminal UI for windowless Engines (`Skua.Tui/`, a Rust crate on the Game Host's toolchain; `dotnet build` doesn't build it). It lists the Skua Manager's accounts by group, each with its Engine's state, shows the selected one's Overview, Inventory, Quests, Logs and Game (the map), and drives the Engines.
+`skua-tui` is a terminal UI for windowless Engines (`Skua.Tui/`, a Rust crate on the Game Host's toolchain; `dotnet build` doesn't build it). It lists the Skua Manager's accounts by group, each with its Engine's state, shows the selected one's Overview, Inventory, Quests, Logs, Game (the map) and Chat, and drives the Engines.
 
 ```sh
 cd Skua.Tui
@@ -458,7 +458,7 @@ cargo run --release                    # or target/release/skua-tui
 
 It reads the Engines under the data folder (`SKUA_DIR`, else `~/Library/Application Support/Skua`) from `engines/*.sock`, and the accounts from `Skua.manager.json`, which it never writes; it never reads Keychain. An Engine that speaks another protocol shows a red **Protocol mismatch** with what to do, and none of its data; skua-tui never acts on it.
 
-Keys: `j`/`k` move, `space` marks, `a` marks a group, `esc` clears marks, the filter and finished notes, `tab` or `1`–`5` picks a tab, `:` opens the command palette, `/` filters, `?` lists the keys, `q` quits. The actions act on the marked accounts, else the selected one:
+Keys: `j`/`k` move, `space` marks, `a` marks a group, `esc` clears marks, the filter and finished notes, `tab` or `1`–`6` picks a tab, `:` opens the command palette, `/` filters, `?` lists the keys, `q` quits. The actions act on the marked accounts, else the selected one:
 
 | Key | Action | Control Surface op |
 |---|---|---|
@@ -473,6 +473,8 @@ Keys: `j`/`k` move, `space` marks, `a` marks a group, `esc` clears marks, the fi
 | `U` | Update the Scripts from the Script Source (once: every Engine of the data folder shares them) | `scripts_update` |
 
 Each result or error shows on the status line and stays on its account (a red `!` in the list for an error) until its next action or `esc`. `E` launches the `skua-engine` that `skua` would: `SKUA_ENGINE`, else the one next to the `skua` on `PATH`, with the same `SKUA_DIR`. It never starts one where an Engine answers or is starting, and never replaces or restarts one. A windowless Engine logs in its data folder's Active Account (`skua account use`), so `L` logs an Engine in only while the Active Account is the one named after it, and refuses the others before sending `login`. It reads the Active Account from `Skua.settings.json`, never from Keychain. It refuses a login on an Engine the Skua app hosts.
+
+The **Chat** tab shows the selected Engine's game messages (`skua logs game`): the newest 200, then each one as the Engine pushes it (`subscribe`, one connection while the tab is open), newest at the bottom, with its channel as a coloured `[zone]`, `[whisper]`, `[server]` … tag. It keeps the newest 500. `enter` opens the input line: `enter` sends the text as zone chat, `/w <name> <text>` whispers (`chat_send`; nothing else starting with `/` is sent), `esc` stops typing and keeps the draft. The Engine's refusal, such as not logged in, shows under the messages. If the Engine stops answering, the tab says the follow ended; it follows again when the Engine restarts or the tab is opened again.
 
 ### Building the Installer
 

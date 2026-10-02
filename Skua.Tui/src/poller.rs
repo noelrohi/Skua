@@ -138,7 +138,7 @@ impl Poller {
             Tab::Inventory => self.detail.inventory = Some(engine.inventory()),
             Tab::Quests => self.detail.quests = Some(engine.quests()),
             Tab::Game => self.detail.map = Some(engine.map()),
-            Tab::Overview | Tab::Logs => {}
+            Tab::Overview | Tab::Logs | Tab::Chat => {}
         }
     }
 }

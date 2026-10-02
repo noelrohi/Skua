@@ -1,17 +1,19 @@
 //! A connection to one Engine, after `hello`, with typed calls for what skua-tui shows and does.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 use std::io;
+use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::Duration;
 
+use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
 use crate::dto::{
-    DialogAnswer, Dialogs, EngineHost, Hello, Inventory, Location, LogPage, LoginResult, LogoutResult, Map, Quests,
-    ScriptOptions, ScriptStartResult, ScriptStopResult, ScriptsSearch, ScriptsUpdate, Servers, Status,
+    ChatSendResult, DialogAnswer, Dialogs, EngineHost, Hello, Inventory, Location, LogPage, LoginResult, LogoutResult,
+    Map, Quests, ScriptOptions, ScriptStartResult, ScriptStopResult, ScriptsSearch, ScriptsUpdate, Servers, Status,
 };
 use crate::rpc::{CallError, Rpc};
 
@@ -115,7 +117,30 @@ impl Engine {
 
     /// Every kind of entry: with `tail`, the newest `tail` after the cursor; without, the page after it.
     pub fn logs(&mut self, after: Option<&str>, tail: Option<u32>) -> Result<LogPage, Error> {
-        self.call("logs", json!(["all", after, null, tail]))
+        self.logs_of("all", after, tail)
+    }
+
+    /// The entries of one `kind`, as [`Engine::logs`] reads them.
+    pub fn logs_of(&mut self, kind: &str, after: Option<&str>, tail: Option<u32>) -> Result<LogPage, Error> {
+        self.call("logs", json!([kind, after, null, tail]))
+    }
+
+    /// Follows the entries of `kinds` after the cursor on this connection, which then only waits for what the Engine pushes.
+    pub fn subscribe(mut self, kinds: &[&str], after: Option<&str>) -> Result<Subscription, Error> {
+        let reply = self.rpc.call("subscribe", json!([kinds, after]))?;
+        self.rpc.wait_forever().map_err(|e| Error::Unavailable(e.to_string()))?;
+        let mut subscription = Subscription {
+            rpc: self.rpc,
+            token: None,
+            pages: VecDeque::new(),
+        };
+        subscription.take(reply)?;
+        Ok(subscription)
+    }
+
+    /// A handle that closes this connection from another thread.
+    pub fn closer(&self) -> Result<UnixStream, Error> {
+        self.rpc.closer().map_err(|e| Error::Unavailable(e.to_string()))
     }
 
     pub fn inventory(&mut self) -> Result<Inventory, Error> {
@@ -189,12 +214,64 @@ impl Engine {
         self.call("join", json!([map, cell, pad, null]))
     }
 
+    /// Sends zone chat, or with `to` a whisper, as the player.
+    pub fn chat_send(&mut self, text: &str, to: Option<&str>) -> Result<ChatSendResult, Error> {
+        self.call("chat_send", json!([text, to]))
+    }
+
     pub fn scripts_update(&mut self) -> Result<ScriptsUpdate, Error> {
         self.call("scripts_update", json!([]))
     }
 
     fn call<T: DeserializeOwned>(&mut self, method: &str, params: Value) -> Result<T, Error> {
         decode(self.rpc.call(method, params)?)
+    }
+}
+
+/// The pages a `subscribe` pushes, read as StreamJsonRpc streams an `IAsyncEnumerable`: the call answers with a token, and each
+/// `$/enumerator/next` with that token waits for the next values.
+pub struct Subscription {
+    rpc: Rpc,
+    /// None once the Engine has said the stream is finished.
+    token: Option<Value>,
+    pages: VecDeque<LogPage>,
+}
+
+#[derive(Deserialize)]
+struct Batch {
+    #[serde(default)]
+    token: Option<Value>,
+    #[serde(default)]
+    values: Vec<LogPage>,
+    #[serde(default)]
+    finished: bool,
+}
+
+impl Subscription {
+    /// The next page, waiting for the Engine to push one; None when it ended the stream.
+    pub fn next_page(&mut self) -> Result<Option<LogPage>, Error> {
+        loop {
+            if let Some(page) = self.pages.pop_front() {
+                return Ok(Some(page));
+            }
+            let Some(token) = &self.token else {
+                return Ok(None);
+            };
+            let reply = self.rpc.call("$/enumerator/next", json!([token]))?;
+            self.take(reply)?;
+        }
+    }
+
+    /// Queues a batch's pages. The first batch carries the token, unless the stream finished before it was answered.
+    fn take(&mut self, reply: Value) -> Result<(), Error> {
+        let batch: Batch = decode(reply)?;
+        self.pages.extend(batch.values);
+        if batch.finished {
+            self.token = None;
+        } else if batch.token.is_some() {
+            self.token = batch.token;
+        }
+        Ok(())
     }
 }
 
