@@ -23,8 +23,14 @@ public sealed record EngineInfoDto(string Name, string Build, int Protocol, doub
 /// <param name="GameHostUp">Whether the Game Host process is running.</param>
 /// <param name="State">The game state, as the <c>game.state</c> events report it.</param>
 /// <param name="Server">The server the player is on, or null when not playing.</param>
-/// <param name="Player">A summary of the player, or null when not playing or when the game didn't answer in time.</param>
-public sealed record GameStatusDto(bool GameHostUp, GameState State, string? Server, PlayerDto? Player = null);
+/// <param name="Player">
+/// A summary of the player, or null when not playing; while playing, null when the game didn't answer in time and there is no earlier
+/// reading of this login.
+/// </param>
+/// <param name="PlayerAgeSec">
+/// How many seconds ago <paramref name="Player"/> was read, when the game didn't answer in time and it is the last reading; null when it is fresh.
+/// </param>
+public sealed record GameStatusDto(bool GameHostUp, GameState State, string? Server, PlayerDto? Player = null, double? PlayerAgeSec = null);
 
 /// <summary>The player, as <c>status</c> summarises it.</summary>
 /// <param name="Class">The equipped class, or null when none is.</param>

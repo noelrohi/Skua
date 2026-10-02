@@ -127,6 +127,31 @@ public class CliTests
     }
 
     [Fact]
+    public async Task Status_always_has_a_Player_line_while_playing_unknown_or_stale_with_its_age_when_the_game_doesnt_answer_in_time()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: TestContext.Current.CancellationToken);
+
+        try
+        {
+            await session.GameHost.DoAsync("delay getGameObject 4000");
+            ProcessResult unknown = await sandbox.RunCliAsync("status");
+            await session.GameHost.DoAsync("delay getGameObject 0");
+            Assert.Null((await QueryTests.FreshStatusAsync(session.Connection)).PlayerAgeSec);
+            await session.GameHost.DoAsync("delay getGameObject 4000");
+            ProcessResult stale = await sandbox.RunCliAsync("status");
+
+            Assert.Contains("Player  unknown: the game didn't answer in time", unknown.Stdout);
+            Assert.Matches(@"Player  SkuaTester, level 10 Healer, .*, on battleon in Enter \(Spawn\) \(stale, read \d+ s ago\)", stale.Stdout);
+        }
+        finally
+        {
+            await session.GameHost.DoAsync("delay getGameObject 0");
+        }
+    }
+
+    [Fact]
     public async Task A_protocol_mismatch_with_an_Engine_it_cant_replace_exits_with_its_code_and_a_stop_hint()
     {
         await using EngineSandbox sandbox = new();

@@ -165,6 +165,32 @@ public class QueryTests
     }
 
     [Fact]
+    public async Task Status_keeps_the_player_unknown_or_stale_with_its_age_when_the_game_doesnt_answer_in_time()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+
+        try
+        {
+            await session.GameHost.DoAsync("delay getGameObject 4000");
+            GameStatusDto unknown = (await session.Connection.StatusAsync(Ct)).Game;
+            await session.GameHost.DoAsync("delay getGameObject 0");
+            GameStatusDto fresh = await FreshStatusAsync(session.Connection);
+            await session.GameHost.DoAsync("delay getGameObject 4000");
+            GameStatusDto stale = (await session.Connection.StatusAsync(Ct)).Game;
+
+            Assert.Equal((GameState.Playing, null, null), (unknown.State, unknown.Player, unknown.PlayerAgeSec));
+            Assert.Equal(fresh.Player, stale.Player);
+            Assert.InRange(stale.PlayerAgeSec!.Value, 3, 10);
+        }
+        finally
+        {
+            await session.GameHost.DoAsync("delay getGameObject 0");
+        }
+    }
+
+    [Fact]
     public async Task Status_reports_death_and_combat()
     {
         await using EngineSandbox sandbox = new();
@@ -195,6 +221,17 @@ public class QueryTests
         Assert.Equal((1750, 4000, 43.8, 6200), (gained.Xp, gained.RequiredXp, gained.XpPercent, gained.Gold));
         // Reaching the required XP levels up and starts the next level's XP from zero.
         Assert.Equal((11, 0, 0.0), (levelled.Level, levelled.Xp, levelled.XpPercent));
+    }
+
+    /// <summary>Waits out a player read that answers late, until <c>status</c> has a fresh reading.</summary>
+    internal static async Task<GameStatusDto> FreshStatusAsync(EngineConnection connection)
+    {
+        for (int i = 0; ; i++)
+        {
+            GameStatusDto game = (await connection.StatusAsync(Ct)).Game;
+            if (game is { Player: not null, PlayerAgeSec: null } || i == 10)
+                return game;
+        }
     }
 
     private static void AssertQuest(QuestDto expected, QuestDto actual)
