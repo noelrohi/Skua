@@ -186,7 +186,7 @@ skua status
 
 The script needs the .NET 10 SDK (`brew install dotnet`), [Rust](https://rustup.rs) and Java (17 works). It builds everything (the first run takes about 5 minutes, for the Game Host) and publishes `skua`, `skua-engine`, `skua-gamehost` and `skua.swf` side by side in `~/.local/share/skua/versions/<build>/`. The publish is self-contained, so they start without `DOTNET_ROOT`. It links `~/.local/bin/skua` to that build, and says so if `~/.local/bin` isn't on PATH yet. `SKUA_INSTALL_DIR` and `SKUA_BIN_DIR` change the two folders, and any arguments go to `dotnet publish`, such as the escape hatches in the next section.
 
-To update, `git pull` and run it again. A build is the version and the commit, plus the time for uncommitted changes. The script keeps the two builds before the new one, and any build a process still runs from. The next `skua` command finds the old build's Engine and replaces it, saying so on one line. It never stops an Engine whose Script is running:
+To update, `git pull` and run it again. A build is the version and the commit, plus the time for uncommitted changes. The script keeps the two builds before the new one, and any build a process still runs from. The next `skua` command finds the old build's Engine and replaces it with one of the same Engine Name, saying so on one line. It never stops an Engine whose Script is running:
 
 - If that Engine speaks the same protocol version, the command still runs against it, with a notice on stderr, and a later command replaces it once the Script ends.
 - If it speaks another protocol version, the command fails with `ScriptRunning` (exit 12). Wait for the Script to end, or run `skua engine stop`, which stops the Script too.
@@ -299,7 +299,7 @@ The Manager's tests launch `fake-app` (`Skua.FakeApp`, set with `SKUA_APP_EXECUT
 
 The tests never run the real Game Host, read the real Keychain or reach AQW: they point `SKUA_GAMEHOST` at a fake that speaks the Bridge frames and simulates the game, `SKUA_SECURITY_TOOL` at a fake `security`, and `SKUA_AQ_SERVERS_URL` at a fake servers API.
 
-Every `skua` command, `skua mcp` included, takes `--engine <name>`: it talks to the Engine with that Engine Name, at `<SkuaDIR>/engines/<name>.sock`, and auto-starts one under that name when none runs. It wins over `SKUA_ENGINE_SOCKET`. Without it, a command talks to `default`, at `SKUA_ENGINE_SOCKET` when that is set.
+Every `skua` command, `skua mcp` included, takes `--engine <name>`: it talks to the Engine with that Engine Name, at `<SkuaDIR>/engines/<name>.sock`, and auto-starts one under that name when none runs. It wins over `SKUA_ENGINE_SOCKET`. Without it, a command talks to the Engine at `SKUA_ENGINE_SOCKET` when that is set, named after the socket's file (`supermovie1.sock` names `supermovie1`; `default` when the file name isn't a valid Engine Name), and otherwise to `default`. An Engine a command replaces keeps the Engine Name it gave, at the same socket.
 
 Environment overrides:
 

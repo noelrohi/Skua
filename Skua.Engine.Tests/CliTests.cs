@@ -285,6 +285,29 @@ public class CliTests
     }
 
     [Fact]
+    public async Task Without_the_engine_option_an_auto_started_Engine_is_named_after_SKUA_ENGINE_SOCKETs_file()
+    {
+        await using EngineSandbox sandbox = new();
+        string socket = Path.Combine(sandbox.SkuaDir, "supermovie1.sock");
+        EngineEndpoint named = EngineEndpoint.Resolve("supermovie1", sandbox.SkuaDir, socket);
+        try
+        {
+            ProcessResult status = await sandbox.RunCliAsync(
+                new Dictionary<string, string> { [EngineEndpoint.SocketVariable] = socket }, "status", "--json");
+
+            Assert.Equal(0, status.ExitCode);
+            using (JsonDocument json = JsonDocument.Parse(status.Stdout))
+                Assert.Equal("supermovie1", json.RootElement.GetProperty("engine").GetProperty("name").GetString());
+            Assert.True(EngineLock.IsHeld(named.LockPath));
+            Assert.False(File.Exists(sandbox.Endpoint.LockPath));
+        }
+        finally
+        {
+            await EngineClient.StopAsync(named, EngineSandbox.StopTimeout);
+        }
+    }
+
+    [Fact]
     public async Task Logs_follow_streams_entries_after_the_cursor_as_JSON_lines()
     {
         await using EngineSandbox sandbox = new();

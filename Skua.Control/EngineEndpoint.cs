@@ -55,9 +55,17 @@ public sealed record EngineEndpoint
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Skua");
 
     /// <summary>Resolves the endpoint from this process's environment.</summary>
+    /// <param name="name">
+    /// The Engine Name; without one, the file name of <c>SKUA_ENGINE_SOCKET</c> (<c>farm.sock</c> names <c>farm</c>) when it is a valid
+    /// Engine Name, and <see cref="EngineName.Default"/> otherwise.
+    /// </param>
     /// <exception cref="ControlException"><see cref="ErrorCode.InvalidArgument"/> for a bad name or an over-long socket path.</exception>
-    public static EngineEndpoint FromEnvironment(string name = EngineName.Default) =>
-        Resolve(name, DefaultSkuaDir(), Environment.GetEnvironmentVariable(SocketVariable));
+    public static EngineEndpoint FromEnvironment(string? name = null)
+    {
+        string? socket = Environment.GetEnvironmentVariable(SocketVariable);
+        name ??= Path.GetFileNameWithoutExtension(socket) is { } stem && EngineName.IsValid(stem) ? stem : EngineName.Default;
+        return Resolve(name, DefaultSkuaDir(), socket);
+    }
 
     /// <exception cref="ControlException"><see cref="ErrorCode.InvalidArgument"/> for a bad name or an over-long socket path.</exception>
     public static EngineEndpoint Resolve(string name, string skuaDir, string? socketOverride = null)
@@ -75,6 +83,10 @@ public sealed record EngineEndpoint
 
         return new EngineEndpoint(name, skuaDir, socketPath);
     }
+
+    /// <summary>The endpoint of the Engine with another name at this socket, with that name's lock and log.</summary>
+    /// <exception cref="ControlException"><see cref="ErrorCode.InvalidArgument"/> for a bad name.</exception>
+    public EngineEndpoint WithName(string name) => name == Name ? this : Resolve(name, SkuaDir, SocketPath);
 
     /// <summary>
     /// The environment an Engine for this endpoint must be started with, so that it computes the same paths.

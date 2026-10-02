@@ -41,7 +41,7 @@ internal static class EngineCommands
     }
 
     private static EngineStateDto Running(EngineEndpoint endpoint, EngineConnection connection) =>
-        new(endpoint.Name, EngineState.Running, connection.Hello.Pid, connection.Hello.Build, connection.Hello.Protocol, connection.IsCompatible, endpoint.SocketPath,
+        new(connection.Hello.EngineName, EngineState.Running, connection.Hello.Pid, connection.Hello.Build, connection.Hello.Protocol, connection.IsCompatible, endpoint.SocketPath,
             connection.Hello.Host);
 
     private static EngineStateDto NotRunning(EngineEndpoint endpoint, EngineState state) =>

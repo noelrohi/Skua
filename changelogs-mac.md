@@ -12,6 +12,7 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 * A full inventory is now an `inventory.full` event: once as it fills, and once for each new item that drops with no room for it.
 
 ### Fixes
+* A `skua` command no longer renames an Engine "default": an Engine it replaces after an update keeps its name, and one it starts at `SKUA_ENGINE_SOCKET` is named after the socket's file.
 * A lost connection now starts one relogin instead of several at once, so a farming Script with auto-relogin on comes back on one server instead of logging in again and again.
 * `skua status` always has a `Player` line while playing. When the game is too busy to answer in time, as in heavy combat, it shows the last reading marked stale with its age (`playerAgeSec` in `--json`), or the player as unknown.
 
