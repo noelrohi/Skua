@@ -125,6 +125,9 @@ public class LogTests
             Assert.EndsWith("line 10049", held[^1].Text);
             Assert.EndsWith("line 50", held[0].Text);
             Assert.True((await connection.LogsAsync(LogKind.Debug, cancellationToken: Ct)).Gap);
+            LogPage tail = await connection.LogsAsync(LogKind.Debug, null, null, 5, Ct);
+            Assert.False(tail.Gap);
+            Assert.EndsWith("line 10049", tail.Entries[^1].Text);
         }
     }
 

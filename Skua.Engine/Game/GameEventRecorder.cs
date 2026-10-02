@@ -22,8 +22,11 @@ internal sealed class GameEventRecorder
     private string? _map;
     private string? _cell;
 
-    /// <summary>The drops recorded as having no slot while the inventory stays full; null once it has been recorded as full.</summary>
-    private HashSet<int>? _noSlotDrops;
+    /// <summary>Whether the inventory has been recorded as full since a check last found a free slot.</summary>
+    private bool _recordedFull;
+
+    /// <summary>The drops recorded as having no slot since then.</summary>
+    private readonly HashSet<int> _noSlotDrops = [];
 
     private GameEventRecorder(EngineLogs logs, GameStateTracker tracker, IScriptOption options, IScriptPlayer player, IScriptInventory inventory)
     {
@@ -44,7 +47,7 @@ internal sealed class GameEventRecorder
         tracker.Playing += () =>
         {
             lock (recorder._lock)
-                recorder._noSlotDrops = null;
+                recorder.Rearm();
         };
 
         IMessenger messenger = StrongReferenceMessenger.Default;
@@ -85,13 +88,16 @@ internal sealed class GameEventRecorder
         {
             case ("json", JObject json) when (string?)json["cmd"] == "moveToArea":
                 OnMapJoined(json);
+                CheckInventory(null, null);
                 break;
             // items: { "<id>": { ItemID, sName, … } }
             case ("json", JObject json) when (string?)json["cmd"] == "dropItem" && json["items"] is JObject items:
                 foreach (JObject item in items.Properties().Select(p => p.Value).OfType<JObject>())
-                    CheckInventory((int)item["ItemID"]!, ((string?)item["sName"])?.Trim() ?? "");
+                    if ((int?)item["ItemID"] is { } id)
+                        CheckInventory(id, ((string?)item["sName"])?.Trim() ?? "");
                 break;
-            case ("json", JObject json) when (string?)json["cmd"] is "addItems" || ((string?)json["cmd"] == "getDrop" && (int?)json["bSuccess"] == 1):
+            case ("json", JObject json) when (string?)json["cmd"] is "addItems"
+                || ((string?)json["cmd"] == "getDrop" && (int?)json["bSuccess"] == 1) || ((string?)json["cmd"] == "buyItem" && (int?)json["bitSuccess"] == 1):
                 CheckInventory(null, null);
                 break;
             case ("str", JArray { Count: > 2 } parts) when (string?)parts[0] == "loginResponse":
@@ -127,15 +133,22 @@ internal sealed class GameEventRecorder
         {
             if (!full)
             {
-                _noSlotDrops = null;
+                Rearm();
                 return;
             }
-            bool filled = _noSlotDrops is null;
-            _noSlotDrops ??= [];
-            if (!(noSlot ? _noSlotDrops.Add(dropId!.Value) : filled))
+            bool filled = !_recordedFull;
+            _recordedFull = true;
+            bool newDrop = noSlot && _noSlotDrops.Add(dropId!.Value);
+            if (!filled && !newDrop)
                 return;
         }
         _logs.Event(EventTypes.InventoryFull, new { used, slots, drop = noSlot ? new { id = dropId, name = dropName } : null });
+    }
+
+    private void Rearm()
+    {
+        _recordedFull = false;
+        _noSlotDrops.Clear();
     }
 
     private void OnCellChanged(string cell)

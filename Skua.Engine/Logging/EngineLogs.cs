@@ -133,7 +133,7 @@ internal sealed class EngineLogs : IDisposable
 
         lock (_lock)
         {
-            bool gap = restarted || kinds.Any(k => _rings[k].EvictedThrough > afterSeq);
+            bool evicted = kinds.Any(k => _rings[k].EvictedThrough > afterSeq);
             List<LogEntryDto> entries = [];
             int budget = MaxReplyBytes - ReplyOverheadBytes;
             bool more = false;
@@ -150,6 +150,8 @@ internal sealed class EngineLogs : IDisposable
             if (newestFirst)
                 entries.Reverse();
             long next = more && !newestFirst ? entries[^1].Seq : _seq;
+            // A tail that stopped at its limit never reached the entries that are gone.
+            bool gap = restarted || (evicted && !(newestFirst && more));
             return new LogPage(entries, Cursor(next), gap);
         }
     }

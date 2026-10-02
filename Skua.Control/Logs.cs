@@ -88,7 +88,8 @@ public static class EventTypes
 
     /// <summary>
     /// The inventory is full: <c>{used, slots, drop}</c>, drop null as it fills, or the <c>{id, name}</c> of a drop it has no slot for (one that
-    /// isn't in the inventory already). It is checked when an item drops or is added; while it stays full, each item dropping is recorded once.
+    /// isn't in the inventory already). It is checked when an item drops, is added, picked up or bought, and when the player joins a map; while it stays
+    /// full, each item dropping is recorded once.
     /// A check that finds a free slot, or a login, re-arms it.
     /// </summary>
     public const string InventoryFull = "inventory.full";

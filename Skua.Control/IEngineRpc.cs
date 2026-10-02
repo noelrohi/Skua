@@ -94,7 +94,8 @@ public partial interface IEngineRpc
     /// <param name="max">Entries per page: 200 by default, capped at 1000. A reply also stays within 1 MB.</param>
     /// <param name="tail">
     /// Instead of <paramref name="max"/>: the newest this many entries after the cursor, still in seq order, capped at 1000 and 1 MB. The page's
-    /// <see cref="LogPage.Next"/> is then after the newest entry recorded.
+    /// <see cref="LogPage.Next"/> is then after the newest entry recorded, and <see cref="LogPage.Gap"/> is set only when the tail reaches back
+    /// to entries no longer held.
     /// </param>
     /// <param name="cancellationToken">Cancels the call.</param>
     [JsonRpcMethod("logs")]
