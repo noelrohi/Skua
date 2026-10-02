@@ -32,6 +32,10 @@ _Avoid_: bot, core, daemon, backend
 Anything that drives the Engine from outside its process, such as a CLI, an MCP server or a GUI.
 _Avoid_: frontend, UI, client
 
+**TUI**:
+The terminal Control Surface for windowless Engines: the Skua Manager's accounts by group, each with its Engine. It reads the accounts and never changes them.
+_Avoid_: dashboard, console, terminal manager
+
 **Mac App**:
 Skua's desktop app on macOS: the Game View and Skua's panels, with its own Engine inside it. It is not a Control Surface, but Control Surfaces reach its Engine.
 _Avoid_: GUI, viewer, frontend, desktop client

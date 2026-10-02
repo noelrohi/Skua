@@ -442,6 +442,18 @@ SKUA_LIVE=smoke SKUA_SCRIPTS_CHECKOUT="$(realpath ../Scripts)" \
 
 `SKUA_LIVE_SERVER` picks the server (Galanoth by default). A login failure, a disconnect, a relogin or the Game Host exiting ends the run at once, and it stops the Script so Core's auto-relogin can't log in again. Every minute the run records the Game Host's and the Engine's footprint (Activity Monitor's Memory, the gate metric) and RSS, and the round trips of `Bot.Player.Cell` measured by an `eval` loop. It writes them to `report.txt` in `Skua.Engine.Tests/bin/<Configuration>/net10.0/live-results/<time>-<run>/` (or `SKUA_LIVE_OUT`), with its screenshots. A failed run also leaves `failure-screenshot.png`, `logs-all.jsonl` (`logs(all)` since its start) and the Engine's JSONL log files there. `LiveRunTests` dry-run the same scenarios against the fake Game Host in CI.
 
+### The TUI (`skua-tui`)
+
+`skua-tui` is a terminal UI for windowless Engines (`Skua.Tui/`, a Rust crate on the Game Host's toolchain; `dotnet build` doesn't build it). It lists the Skua Manager's accounts by group, each with its Engine's state, and shows the selected one's Overview, Inventory, Quests, Logs and Game (the map). This first version only shows: its commands (start or stop an Engine, log in, Scripts, Questions) say they come in the next version.
+
+```sh
+cd Skua.Tui
+cargo test --locked                    # against a fake Engine socket; no game, no Keychain
+cargo run --release                    # or target/release/skua-tui
+```
+
+It reads the Engines under the data folder (`SKUA_DIR`, else `~/Library/Application Support/Skua`) from `engines/*.sock`, and the accounts from `Skua.manager.json`, which it never writes; it never reads Keychain. An Engine that speaks another protocol shows a red **Protocol mismatch** with what to do, and none of its data. Keys: `j`/`k` move, `space` marks, `a` marks a group, `tab` or `1`–`5` picks a tab, `:` opens the command palette, `/` filters, `?` lists the keys, `q` quits.
+
 ### Building the Installer
 
 Requires WiX CLI and MSBuild:

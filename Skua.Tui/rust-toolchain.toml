@@ -1,0 +1,4 @@
+# Matches Skua.GameHost's, so one toolchain builds both.
+[toolchain]
+channel = "1.98.1"
+targets = ["aarch64-apple-darwin"]
