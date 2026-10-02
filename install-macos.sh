@@ -14,6 +14,7 @@
 #   SKUA_INSTALL_DIR  where builds go, each in versions/<build> (default ~/.local/share/skua)
 #   SKUA_BIN_DIR      where the skua and skua-tui links go (default ~/.local/bin)
 #   SKUA_APPS_DIR     where Skua.app goes (default ~/Applications)
+#   SKUA_NO_TUI=1     installs everything but skua-tui, so it needs no cargo, and removes a skua-tui link into its builds
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,16 +35,38 @@ fail() {
   exit 1
 }
 
+# Builds skua-tui in release, into $tui.
+build_tui() {
+  echo "Building skua-tui..."
+  # From its folder, so rustup picks the crate's rust-toolchain.toml.
+  cd "$repo/Skua.Tui"
+  cargo build --release --locked || fail "couldn't build skua-tui."
+  tui="$(cargo metadata --format-version 1 --no-deps | sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p')/release/skua-tui"
+  cd - >/dev/null
+}
+
+# Whether a process runs from the folder $1: it has files open there. lsof's exit code also counts processes it may not inspect, so only
+# its output says whether one does.
+running_from() {
+  [[ -n "$(/usr/sbin/lsof -t +D "$1" 2>/dev/null)" ]]
+}
+
+if [[ "${SKUA_NO_TUI:-}" == 1 ]]; then with_tui=false; else with_tui=true; fi
+
 [[ "$(uname -s)" == Darwin ]] || fail "this installs Skua on macOS; for Windows, see BUILD.md."
 command -v dotnet >/dev/null || fail "the .NET 10 SDK was not found. Install it: brew install dotnet"
-command -v cargo >/dev/null || fail "cargo was not found. Install Rust: https://rustup.rs"
+if $with_tui; then
+  command -v cargo >/dev/null || fail "cargo was not found. Install Rust: https://rustup.rs, or set SKUA_NO_TUI=1 to install without skua-tui."
+fi
 case "$(uname -m)" in
   arm64) rid=osx-arm64 ;;
   x86_64) rid=osx-x64 ;;
   *) fail "unsupported CPU '$(uname -m)'." ;;
 esac
 [[ ! -e "$link" || -L "$link" ]] || fail "$link exists and isn't a link; move it away first."
-[[ ! -e "$tui_link" || -L "$tui_link" ]] || fail "$tui_link exists and isn't a link; move it away first."
+if $with_tui; then
+  [[ ! -e "$tui_link" || -L "$tui_link" ]] || fail "$tui_link exists and isn't a link; move it away first."
+fi
 
 app=false
 publish_args=()
@@ -75,17 +98,20 @@ fi
 target="$versions/$build"
 bundle="$target/Skua.app"
 if $app; then built="$bundle"; else built="$target"; fi
+# A Skua.app made with SKUA_NO_TUI=1 lacks skua-tui, so it is built again, as one an app or Engine runs from never changes.
+rebuild=false
+if $app && $with_tui && [[ -e "$bundle" && ! -e "$bundle/Contents/Helpers/skua-tui" ]]; then
+  if running_from "$bundle"; then
+    fail "Skua $build's Skua.app was built without skua-tui and is running; quit it and its Engines, then run this again."
+  fi
+  rebuild=true
+fi
 
-if [[ -e "$built" ]]; then
+if [[ -e "$built" ]] && ! $rebuild; then
   echo "Skua $build is already built."
   touch "$target"
 else
-  echo "Building skua-tui..."
-  # From its folder, so rustup picks the crate's rust-toolchain.toml.
-  cd "$repo/Skua.Tui"
-  cargo build --release --locked || fail "couldn't build skua-tui."
-  tui="$(cargo metadata --format-version 1 --no-deps | sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p')/release/skua-tui"
-  cd - >/dev/null
+  if $with_tui; then build_tui; fi
   mkdir -p "$versions"
   # Published into a staging folder and moved into place, so a build folder is always complete and never changes under a running Engine.
   staging="$(mktemp -d "$versions/.staging.XXXXXX")"
@@ -100,18 +126,23 @@ else
     dotnet publish "$repo/Skua.App.Engine/Skua.App.Engine.csproj" --configuration Release --runtime "$rid" --self-contained \
       --output "$staging" "-p:InformationalVersion=$build" -p:IncludeSourceRevisionInInformationalVersion=false ${publish_args[@]+"${publish_args[@]}"}
   fi
-  if $app; then
+  if $with_tui && $app; then
     cp "$tui" "$staging/Skua.app/Contents/Helpers/"
     # Re-sealed, as the bundle was signed without it.
     codesign --force --sign - "$staging/Skua.app/Contents/Helpers/skua-tui" || fail "couldn't sign skua-tui."
     codesign --force --sign - "$staging/Skua.app" || fail "couldn't sign $staging/Skua.app."
     codesign --verify --deep --strict "$staging/Skua.app" || fail "$staging/Skua.app's signature doesn't verify."
-  else
+  elif $with_tui; then
     cp "$tui" "$staging/"
   fi
-  [[ ! -e "$built" ]] || fail "$built appeared during the build; is another install running?"
+  $rebuild || [[ ! -e "$built" ]] || fail "$built appeared during the build; is another install running?"
   if [[ -d "$target" ]]; then
-    # The build was installed before without the app; adding the bundle changes no file an Engine runs from.
+    # The build was installed before without the app, or with one made without skua-tui; adding the bundle changes no file an Engine
+    # runs from.
+    if $rebuild; then
+      if running_from "$bundle"; then fail "$bundle started running during the build; quit it and its Engines, then run this again."; fi
+      rm -rf "$bundle"
+    fi
     mv "$staging/Skua.app" "$bundle"
     rm -rf "$staging"
   else
@@ -122,10 +153,22 @@ fi
 
 # Once the build has the app, skua is the one inside it, so the two always share a build.
 if $app || [[ ! -e "$target/skua" ]]; then cli="$bundle/Contents/Helpers/skua"; else cli="$target/skua"; fi
+if $with_tui && [[ ! -e "$(dirname "$cli")/skua-tui" ]]; then
+  # The build was made with SKUA_NO_TUI=1. skua-tui is added beside its files, whole, and changes none of them.
+  [[ "$cli" == "$target/skua" ]] || fail "Skua $build's Skua.app was built without skua-tui; run ./install-macos.sh --app to build it again."
+  build_tui
+  cp "$tui" "$target/.skua-tui.$$"
+  mv "$target/.skua-tui.$$" "$target/skua-tui"
+fi
 mkdir -p "$bin_dir"
 previous="$(readlink "$link" 2>/dev/null || true)"
 ln -sfn "$cli" "$link"
-ln -sfn "$(dirname "$cli")/skua-tui" "$tui_link"
+if $with_tui; then
+  ln -sfn "$(dirname "$cli")/skua-tui" "$tui_link"
+elif [[ "$(readlink "$tui_link" 2>/dev/null)" == "$versions/"* ]]; then
+  # It would keep an older build's skua-tui, and dangle once that build is removed.
+  rm "$tui_link"
+fi
 if [[ -n "$previous" && "$previous" != "$versions/"* ]]; then
   echo "$link linked to $previous; it now links to this build."
 fi
@@ -163,19 +206,17 @@ EOF
   trap - EXIT
 fi
 
-# Older builds go, newest first, except those an Engine, an MCP server or an app still runs from.
+# Older builds go, newest first, except those an Engine, an MCP server or an app still runs from (in its folder, or in its Skua.app).
 # shellcheck disable=SC2012 # this script names the build folders, and ls sorts them by time
 ls -1t "$versions" | { grep -vxF -- "$build" || true; } | tail -n +$((keep + 1)) | while IFS= read -r old; do
-  # A process running from a build has files open in its folder, or in its Skua.app. lsof's exit code also counts processes it may not
-  # inspect, so only its output says whether one does.
-  if [[ -z "$(/usr/sbin/lsof -t +D "$versions/$old" 2>/dev/null)" ]]; then
+  if ! running_from "$versions/$old"; then
     rm -rf "${versions:?}/$old"
   fi
 done
 
 echo "Installed skua $build"
 echo "  in $target"
-echo "  linked from $link, and skua-tui from $tui_link"
+if $with_tui; then echo "  linked from $link, and skua-tui from $tui_link"; else echo "  linked from $link, without skua-tui"; fi
 if $app; then
   echo "  with the Mac App, opened by $launcher"
   if ps -axo command= | grep -F "$versions/" | grep -F "/Skua.app/Contents/MacOS/Skua" | grep -qvF "$bundle/"; then
