@@ -1,4 +1,4 @@
-# Bumped only together with the Ruffle pin (README.md, "Changing Ruffle").
+# Bumped only together with the Ruffle pin (README.md, "Changing Ruffle"), and with Skua.Tui/rust-toolchain.toml.
 [toolchain]
 channel = "1.98.1"
 targets = ["aarch64-apple-darwin"]

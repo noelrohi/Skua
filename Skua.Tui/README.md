@@ -1,0 +1,15 @@
+# Skua.Tui
+
+`skua-tui` is a terminal UI (Ratatui) for windowless Engines, over the Control Surface ([ADR 0002](../docs/adr/0002-control-surface-typed-ops-plus-eval.md)): the Skua Manager's accounts by group, each with its Engine, and the selected Engine's Overview, Inventory, Quests, Logs and Game tabs. How to run it: `BUILD.md`, "The TUI".
+
+This Cargo project is not in `Skua.sln`, and `dotnet build` doesn't build it. It shares the Game Host's toolchain (`rust-toolchain.toml`).
+
+```
+cargo build --release --locked   # target/release/skua-tui
+cargo test --locked              # a fake Engine on a Unix socket in a temp folder, and TestBackend renders of the screen
+```
+
+- `src/rpc.rs` speaks JSON-RPC as StreamJsonRpc frames it (`Content-Length` headers), with positional params as the C# client sends them.
+- `src/engine.rs` says `hello` with `PROTOCOL`, which must equal `ControlProtocol.Version`; bump both together. An Engine of another protocol is an error, so nothing it says is shown.
+- `src/dto.rs` mirrors only the `Skua.Control` DTOs the TUI shows.
+- `src/poller.rs` reads every Engine's `status` once a second on its own thread, and the selected one's logs (`logs --tail 200`, then from the cursor) and its tab's data.

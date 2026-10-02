@@ -28,7 +28,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: Skua.GameHost
+          workspaces: |
+            Skua.GameHost
+            Skua.Tui
           save-if: ${{ github.ref == 'refs/heads/master' }}
 
       # The Flex SDK and playerglobal downloads; their SHA-256 pins live in the script, so a pin change is a new key.
@@ -51,6 +53,11 @@ jobs:
       - name: Test the Game Host
         working-directory: Skua.GameHost
         run: cargo test --release --locked
+
+      # The TUI's own crate, on the Game Host's toolchain: its tests run against a fake Engine socket.
+      - name: Test the TUI
+        working-directory: Skua.Tui
+        run: cargo test --locked
 
       - name: Test
         run: dotnet test Skua.MacOS.slnf --configuration Release --no-build --blame-hang-timeout 5m
