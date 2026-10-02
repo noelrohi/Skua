@@ -11,5 +11,5 @@ The v1 Control Surface exposes a deliberately small set of typed operations (sta
 ## Consequences
 
 - State DTOs live in Skua.Control and are mapped by hand in the Engine; the Core models never cross the wire.
-- `eval` is allowed while a Script runs (for inspection), but the typed game actions are not.
+- `eval` is allowed while a Script runs (for inspection), but the typed game actions are not. The exception is `chat_send` (#171), which doesn't move the player.
 - The first Keychain read prompts macOS for access once ("Always Allow"), possibly again after unsigned rebuilds.

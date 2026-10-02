@@ -214,6 +214,10 @@ internal sealed class FakeGame
                     // The game's packet call, as for each packet it sends.
                     Packet(packet);
                     return true;
+                case ["server-packet", string packet]:
+                    // A string packet from the game server, e.g. %xt%chatm%-1%zone~hi%Bob%, as SmartFox hands it to the game: its fields after xt.
+                    PextStr(packet.Trim('%').Split('%')[1..]);
+                    return true;
                 default:
                     return false;
             }

@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Skua.Engine.Game;
 using Skua.Engine.Logging;
@@ -38,6 +39,7 @@ internal sealed class Engine : IEngineRpc
 
     private readonly GameOperations _game;
     private readonly MoveOperations _moves;
+    private readonly ChatOperations _chat;
     private readonly GameQueries _queries;
     private readonly ScriptOperations _scripts;
     private readonly EvalOperations _eval;
@@ -67,6 +69,7 @@ internal sealed class Engine : IEngineRpc
             gameHost.Tracker, gameSlot, options.AccountService);
         _moves = new MoveOperations(
             services.GetRequiredService<IScriptMap>(), services.GetRequiredService<IScriptPlayer>(), services.GetRequiredService<IScriptWait>(), gameHost.Tracker, gameSlot);
+        _chat = new ChatOperations(services.GetRequiredService<IScriptSend>(), services.GetRequiredService<IScriptMap>(), gameSlot);
         _queries = new GameQueries(services.GetRequiredService<IScriptInterface>(), services.GetRequiredService<IFlashUtil>(), gameHost.Tracker, gameSlot);
         _scripts = new ScriptOperations(manager, _runs, broker, _slot, _scriptsSlot, compiling);
         _eval = new EvalOperations(manager, services.GetRequiredService<IScriptInterface>(), logs, compiling);
@@ -250,15 +253,23 @@ internal sealed class Engine : IEngineRpc
         LogKind[] kinds, string? after, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         string? cursor = after;
-        while (true)
+        try
         {
-            Task appended = _logs.NextAppend;
-            LogPage page = _logs.Read(kinds, cursor, EngineLogs.MaxMax);
-            cursor = page.Next;
-            if (page.Entries.Count > 0 || page.Gap)
-                yield return page;
-            else
-                await appended.WaitAsync(cancellationToken);
+            while (true)
+            {
+                Task appended = _logs.NextAppend;
+                LogPage page = _logs.Read(kinds, cursor, EngineLogs.MaxMax);
+                cursor = page.Next;
+                if (page.Entries.Count > 0 || page.Gap)
+                    yield return page;
+                else
+                    await appended.WaitAsync(cancellationToken);
+            }
+        }
+        finally
+        {
+            // A client that disconnects cancels the wait, so this runs and nothing is left waiting for it.
+            EngineLog.Write($"A subscribe to {string.Join(", ", kinds.Select(kind => JsonNamingPolicy.CamelCase.ConvertName(kind.ToString())))} ended.");
         }
     }
 
@@ -278,6 +289,9 @@ internal sealed class Engine : IEngineRpc
 
     public Task<LocationResult> JumpAsync(string cell, string? pad, int? timeoutSec, CancellationToken cancellationToken) =>
         _moves.JumpAsync(cell, pad, timeoutSec, cancellationToken);
+
+    public Task<ChatSendResult> ChatSendAsync(string text, string? to, CancellationToken cancellationToken) =>
+        _chat.SendAsync(text, to, cancellationToken);
 
     public Task<InventoryResult> InventoryAsync(InventoryKind kind, CancellationToken cancellationToken) =>
         _queries.InventoryAsync(kind, cancellationToken);
@@ -410,6 +424,8 @@ internal sealed class Engine : IEngineRpc
             }
 
             JsonRpc rpc = ControlJson.CreateRpc(socket);
+            // A client that goes away cancels its calls as a cancel request would, so a subscribe stops waiting for it.
+            rpc.CancelLocallyInvokedMethodsWhenConnectionIsClosed = true;
             rpc.AddLocalRpcTarget<IEngineRpc>(this, null);
             rpc.Disconnected += (_, _) => _connections.TryRemove(rpc, out _);
             _connections[rpc] = 0;

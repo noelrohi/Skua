@@ -102,7 +102,7 @@ Command scripts = new("scripts", "Find, browse and sync Scripts from the Script 
 
 Argument<LogKind[]> logKinds = new("kind")
 {
-    Description = "script, debug, flash, events, or all (merged by seq); several kinds with -f.",
+    Description = "script, debug, flash, events, game, or all (merged by seq); several kinds with -f.",
     HelpName = "kind",
     Arity = ArgumentArity.ZeroOrMore,
 };
@@ -371,6 +371,24 @@ dialogAnswer.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async o
 }, Output.DialogAnswer));
 dialogs.Subcommands.Add(dialogAnswer);
 
+Argument<string> chatText = new("text") { Description = "The message, on one line and without '%'." };
+Command chatSend = new("send", "Send zone chat as the player.") { chatText };
+chatSend.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
+{
+    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
+    return await connection.ChatSendAsync(parse.GetValue(chatText)!, cancellationToken: ct);
+}, Output.ChatSend));
+
+Argument<string> whisperName = new("name") { Description = "The player to whisper." };
+Command chatWhisper = new("whisper", "Whisper a player.") { whisperName, chatText };
+chatWhisper.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
+{
+    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
+    return await connection.ChatSendAsync(parse.GetValue(chatText)!, parse.GetValue(whisperName), ct);
+}, Output.ChatSend));
+
+Command chat = new("chat", "Send game chat; 'skua logs game' reads it.") { chatSend, chatWhisper };
+
 Argument<string> evalCode = new("code") { Description = "A C# expression or statements against IScriptInterface Bot, e.g. Bot.Player.Level; - reads it from stdin." };
 Option<int?> evalTimeout = new("--timeout") { Description = "Seconds the snippet may run once compiled: 30 by default." };
 Command eval = new("eval", "Compile and run a C# snippet against the Script API, and print its log lines and value.") { evalCode, evalTimeout };
@@ -399,7 +417,7 @@ mcp.SetAction((_, ct) => McpServer.RunAsync(ct));
 
 RootCommand root = new("Drive a Skua Engine.")
 {
-    json, engineName, status, account, servers, login, logout, join, jump, inventory, quests, map, drops, scripts, script, watch, dialogs, eval, logs, screenshot, engine, mcp,
+    json, engineName, status, account, servers, login, logout, join, jump, inventory, quests, map, drops, scripts, script, watch, dialogs, chat, eval, logs, screenshot, engine, mcp,
 };
 ParseResult parsed = root.Parse(args);
 Cli.EngineName = parsed.GetValue(engineName);

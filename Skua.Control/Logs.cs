@@ -19,16 +19,26 @@ public enum LogKind
 
     /// <summary>Typed entries; see <see cref="EventTypes"/>.</summary>
     Events,
+
+    /// <summary>
+    /// What the game's chat shows: the message as <see cref="LogEntryDto.Text"/>, and <c>{channel, from, to?}</c> as its data. The channel is the
+    /// game's (<c>zone</c>, <c>party</c>, <c>guild</c>, <c>whisper</c>, <c>server</c>, <c>warning</c>, …); from is null for the server's own
+    /// messages, and only a whisper has a <c>to</c>.
+    /// </summary>
+    Game,
 }
 
-/// <summary>One log or event entry. It has either <see cref="Text"/> or <see cref="Type"/> and <see cref="Data"/>.</summary>
+/// <summary>
+/// One log or event entry. It has either <see cref="Text"/> or <see cref="Type"/> and <see cref="Data"/>; a <see cref="LogKind.Game"/> entry has
+/// <see cref="Text"/> and <see cref="Data"/>.
+/// </summary>
 /// <param name="Seq">The Engine-wide sequence number; it orders entries of every kind.</param>
 /// <param name="Ts">When the entry was recorded, in UTC milliseconds since the Unix epoch.</param>
 /// <param name="Kind">The log the entry belongs to; never <see cref="LogKind.All"/>.</param>
 /// <param name="Run">The Script run number, or null outside a run.</param>
-/// <param name="Text">The line, for every kind but <see cref="LogKind.Events"/>.</param>
+/// <param name="Text">The line, for every kind but <see cref="LogKind.Events"/>; a game message's text.</param>
 /// <param name="Type">The event type, one of <see cref="EventTypes"/>.</param>
-/// <param name="Data">The event's fields.</param>
+/// <param name="Data">The event's fields, or a game message's channel and sender.</param>
 /// <param name="Truncated">Whether a field was cut to its size cap.</param>
 public sealed record LogEntryDto(
     long Seq,

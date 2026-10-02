@@ -11,8 +11,11 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 * `skua logs --tail N` prints the newest N log entries, without paging from the oldest.
 * Every `skua` command takes `--engine <name>` to talk to a named Engine, instead of setting `SKUA_ENGINE_SOCKET`.
 * A full inventory is now an `inventory.full` event: once as it fills, and once for each new item that drops with no room for it.
+* The Engine now keeps the game's chat, windowless too: zone, party and guild chat, whispers, and server messages and warnings. `skua logs game` reads them and `skua logs game -f` prints them as they arrive.
+* `skua chat send <text>` sends zone chat and `skua chat whisper <name> <text>` whispers a player.
 
 ### Fixes
+* `skua logs -f` now says the connection to the Engine was lost when the Engine stops, instead of crashing with a stack trace.
 * A `skua` command no longer renames an Engine "default": an Engine it replaces after an update keeps its name, and one it starts at `SKUA_ENGINE_SOCKET` is named after the socket's file.
 * A lost connection now starts one relogin instead of several at once, so a farming Script with auto-relogin on comes back on one server instead of logging in again and again.
 * `skua status` always has a `Player` line, `none (not playing)` at the login screen or with the game closed. While playing, when the game is too busy to answer in time, as in heavy combat, it shows the last reading marked stale with its age (`playerAgeSec` in `--json`), or the player as unknown.

@@ -12,7 +12,7 @@ use crate::dto::{EngineHost, Hello, Inventory, LogPage, Map, Quests, Status};
 use crate::rpc::{CallError, Rpc};
 
 /// The Control Surface protocol this build speaks (`ControlProtocol.Version`).
-pub const PROTOCOL: i64 = 12;
+pub const PROTOCOL: i64 = 13;
 
 /// `ErrorCode.NotLoggedIn` on the wire: `ErrorCodes.ToWire` adds 1000.
 pub const NOT_LOGGED_IN: i64 = 1001;
