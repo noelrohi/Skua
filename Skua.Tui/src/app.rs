@@ -10,7 +10,7 @@ use crate::actions::{Job, Op, Outcome, Reply};
 use crate::chat::{ChatUpdate, MAX_CHAT_ENTRIES, Update};
 use crate::dto::{LogEntry, Question, ScriptOption, ScriptsSearch, Server};
 use crate::engine::{Error, SCRIPT_RUNNING};
-use crate::poller::{EngineView, Focus, Snapshot};
+use crate::poller::{EngineView, Focus, Snapshot, gap_entry};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Tab {
@@ -169,6 +169,24 @@ impl Chat {
         self.following = Some((engine, id));
         self.entries.clear();
         self.ended = None;
+    }
+
+    /// Applies what the follow `id` read; a replaced follow's updates are dropped.
+    fn apply(&mut self, id: u64, update: Update) {
+        if self.following.as_ref().map(|(_, following)| *following) != Some(id) {
+            return;
+        }
+        match update {
+            Update::Page { entries, gap } => {
+                if gap {
+                    self.entries.push_back(gap_entry());
+                }
+                self.entries.extend(entries);
+                let excess = self.entries.len().saturating_sub(MAX_CHAT_ENTRIES);
+                self.entries.drain(..excess);
+            }
+            Update::Ended(why) => self.ended = Some(why),
+        }
     }
 
     pub fn unfollow(&mut self) {
@@ -401,28 +419,7 @@ impl App {
     }
 
     pub fn on_chat(&mut self, update: ChatUpdate) {
-        if self.chat.following.as_ref().map(|(_, id)| *id) != Some(update.follow) {
-            return;
-        }
-        match update.update {
-            Update::Page { entries, gap } => {
-                if gap {
-                    self.chat.entries.push_back(LogEntry {
-                        seq: 0,
-                        ts: 0,
-                        kind: "gap".into(),
-                        run: None,
-                        text: None,
-                        event_type: None,
-                        data: None,
-                    });
-                }
-                self.chat.entries.extend(entries);
-                let excess = self.chat.entries.len().saturating_sub(MAX_CHAT_ENTRIES);
-                self.chat.entries.drain(..excess);
-            }
-            Update::Ended(why) => self.chat.ended = Some(why),
-        }
+        self.chat.apply(update.follow, update.update);
     }
 
     /// The marked accounts, else the selected one: what an action acts on.

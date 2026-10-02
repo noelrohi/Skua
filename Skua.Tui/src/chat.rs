@@ -128,7 +128,7 @@ impl Follower {
                         return Ok(());
                     }
                 }
-                Err(Error::Refused("the Engine ended it".into()))
+                Err(Error::Unavailable("the Engine ended the subscription".into()))
             })();
             if let Err(e) = result
                 && !shared.lock().unwrap().stopped

@@ -163,6 +163,8 @@ fn the_chat_tab_shows_the_tail_then_follows_what_the_engine_pushes_newest_at_the
         game_message(2, "zone", Some("bob"), None, "anyone for ultra?"),
     ]);
     tui.wait_until(|app| app.chat.entries.len() == 2);
+    let alice = tui.alice.calls.clone();
+    tui.wait_until(move |_| alice.lock().unwrap().iter().any(|(m, _)| m == "$/enumerator/next"));
 
     assert_eq!(
         tui.alice.params_of("logs").last(),
@@ -254,8 +256,8 @@ fn leaving_the_chat_tab_stops_following_and_coming_back_follows_again() {
     tui.key(KeyCode::Char('6'));
     tui.follower.sync(&mut tui.app);
     tui.wait_until(|app| app.chat.entries.len() == 1);
-
-    assert_eq!(tui.alice.params_of("subscribe").len(), 2);
+    let alice = tui.alice.calls.clone();
+    tui.wait_until(move |_| alice.lock().unwrap().iter().filter(|(m, _)| m == "subscribe").count() == 2);
 }
 
 #[test]

@@ -144,7 +144,7 @@ impl Poller {
 }
 
 /// Marks where entries were missed: evicted from the Engine's buffer, or lost to a restart.
-fn gap_entry() -> LogEntry {
+pub fn gap_entry() -> LogEntry {
     LogEntry {
         seq: 0,
         ts: 0,

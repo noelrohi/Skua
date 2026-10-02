@@ -355,5 +355,4 @@ pub struct ScriptsUpdate {
 pub struct ChatSendResult {
     pub channel: String,
     pub to: Option<String>,
-    pub text: String,
 }
