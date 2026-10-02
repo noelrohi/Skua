@@ -268,6 +268,11 @@ public sealed class ManagerTests : IDisposable
             Assert.Equal(AppEngine.Keychain.Username, agent.Username);
             LoginResult human = await bobEngine.LoginAsync(cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal("BobTester", human.Username);
+            // A login naming another of the Manager's accounts uses it there, and one naming none goes back to the app's own.
+            LoginResult named = await bobEngine.LoginAsync(null, null, "alicetester", TestContext.Current.CancellationToken);
+            Assert.Equal(("AliceTester", false), (named.Username, named.AlreadyLoggedIn));
+            LoginResult own = await bobEngine.LoginAsync(cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Equal(("BobTester", false), (own.Username, own.AlreadyLoggedIn));
         }
 
         await running.StopCommand.ExecuteAsync(alice);

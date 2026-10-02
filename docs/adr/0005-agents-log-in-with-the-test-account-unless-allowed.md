@@ -15,4 +15,5 @@ Credentials still never cross the Control Surface. The CLI alone writes Keychain
 
 - `asAgent` is the caller's word. An agent that runs `skua login` from a shell logs in as a developer would, so agents use MCP, or the CLI only with the Test Account active.
 - The Test Account keeps its reserved name `test` and service `skua-test-account`, which the live tests use. `account add` changes it only with `--test` or `--name test --replace`, and `account remove` deletes it only by name.
+- `login` may name an account (#175), so a Control Surface such as the TUI logs each Engine in as its own account. Naming one doesn't make it active. An agent may name only the Test Account or one added with `--allow-agents`, and naming any other is refused rather than replaced with the Test Account, since the agent asked for it.
 - An app the Skua Manager launched pins its Engine's account (ADR 0006). This rule applies there with the pinned account in place of the active one.

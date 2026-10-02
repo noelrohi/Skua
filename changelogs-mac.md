@@ -18,6 +18,7 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 
 ### New
 * `skua-tui`, a terminal UI for windowless Engines: the Skua Manager's accounts by group with each Engine's state, and the selected one's player, Script, logs, inventory, quests and map. It only shows for now; see [The TUI](./BUILD.md#the-tui-skua-tui).
+* `skua login --account <name>` logs a named account in, such as one of the Skua Manager's, without making it the active account; MCP's `login` takes `account` too, for the Test Account or one added with `--allow-agents`.
 * `skua logs --tail N` prints the newest N log entries, without paging from the oldest.
 * Every `skua` command takes `--engine <name>` to talk to a named Engine, instead of setting `SKUA_ENGINE_SOCKET`.
 * A full inventory is now an `inventory.full` event: once as it fills, and once for each new item that drops with no room for it.

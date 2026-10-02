@@ -133,7 +133,7 @@ public sealed partial class StatusViewModel : ObservableObject
         Show(null, error: false);
         try
         {
-            LoginResult result = await Task.Run(() => _engine.LoginAsync(server, null, asAgent: false, CancellationToken.None));
+            LoginResult result = await Task.Run(() => _engine.LoginAsync(server, null, asAgent: false, account: null, CancellationToken.None));
             Show($"{(result.AlreadyLoggedIn ? "Already playing" : "Logged in")} as {result.Username}{(result.IsTestAccount ? " (the Test Account)" : "")} on {result.Server}.", error: false);
             return true;
         }

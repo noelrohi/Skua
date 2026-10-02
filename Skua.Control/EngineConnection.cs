@@ -85,11 +85,19 @@ public sealed class EngineConnection : IDisposable
         CallAsync(rpc => rpc.ServersAsync(cancellationToken));
 
     public Task<LoginResult> LoginAsync(string? server = null, int? timeoutSec = null, CancellationToken cancellationToken = default) =>
-        CallAsync(rpc => rpc.LoginAsync(server, timeoutSec, asAgent: false, cancellationToken));
+        LoginAsync(server, timeoutSec, null, cancellationToken);
+
+    /// <summary>A login as above, or with <paramref name="account"/> the named account; see <see cref="IEngineRpc.LoginAsync"/>.</summary>
+    public Task<LoginResult> LoginAsync(string? server, int? timeoutSec, string? account, CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.LoginAsync(server, timeoutSec, asAgent: false, account, cancellationToken));
 
     /// <summary>An agent's login: with the Test Account, unless the active account allows agents.</summary>
     public Task<LoginResult> AgentLoginAsync(string? server = null, int? timeoutSec = null, CancellationToken cancellationToken = default) =>
-        CallAsync(rpc => rpc.LoginAsync(server, timeoutSec, asAgent: true, cancellationToken));
+        AgentLoginAsync(server, timeoutSec, null, cancellationToken);
+
+    /// <summary>An agent's login of the named account, which must be the Test Account or one that allows agents.</summary>
+    public Task<LoginResult> AgentLoginAsync(string? server, int? timeoutSec, string? account, CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.LoginAsync(server, timeoutSec, asAgent: true, account, cancellationToken));
 
     public Task<LogoutResult> LogoutAsync(CancellationToken cancellationToken = default) =>
         CallAsync(rpc => rpc.LogoutAsync(cancellationToken));

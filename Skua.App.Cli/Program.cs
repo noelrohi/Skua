@@ -145,11 +145,18 @@ Argument<string?> loginServer = new("server")
     Arity = ArgumentArity.ZeroOrOne,
 };
 Option<int?> loginTimeout = new("--timeout") { Description = "Seconds to wait for the world: 120 by default." };
-Command login = new("login", "Log the active account (see 'skua account') in with its credentials from Keychain, and wait until it is playing.") { loginServer, loginTimeout };
+Option<string?> loginAccount = new("--account")
+{
+    Description = "Log this account in, by name (a Skua Manager account's, or test), without making it active.",
+};
+Command login = new("login", "Log the active account (see 'skua account') in with its credentials from Keychain, and wait until it is playing.")
+{
+    loginServer, loginTimeout, loginAccount,
+};
 login.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
 {
     using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
-    return await connection.LoginAsync(parse.GetValue(loginServer), parse.GetValue(loginTimeout), ct);
+    return await connection.LoginAsync(parse.GetValue(loginServer), parse.GetValue(loginTimeout), parse.GetValue(loginAccount), ct);
 }, Output.Login));
 
 Option<string?> accountName = new("--name")
