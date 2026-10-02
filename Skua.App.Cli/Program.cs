@@ -14,7 +14,7 @@ Option<bool> json = new("--json")
 
 Option<string?> engineName = new("--engine")
 {
-    Description = "The Engine Name of the Engine to talk to (or auto-start): default by default. It wins over SKUA_ENGINE_SOCKET.",
+    Description = "The Engine Name of the Engine to talk to (or auto-start). It wins over SKUA_ENGINE_SOCKET; without it, the Engine at SKUA_ENGINE_SOCKET is named after the socket's file, else default.",
     HelpName = "name",
     Recursive = true,
 };

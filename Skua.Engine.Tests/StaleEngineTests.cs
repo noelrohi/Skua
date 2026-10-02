@@ -31,6 +31,53 @@ public class StaleEngineTests
     }
 
     [Fact]
+    public async Task A_replaced_Engine_keeps_its_Engine_Name_at_its_socket()
+    {
+        await using EngineSandbox sandbox = new();
+        // The socket's file name differs from the Engine Name, so the new Engine's name can only come from the old one's hello.
+        string socket = Path.Combine(sandbox.SkuaDir, "farm.sock");
+        EngineEndpoint named = EngineEndpoint.Resolve("supermovie1", sandbox.SkuaDir, socket);
+        try
+        {
+            await using (OtherVersionEngine other = new(sandbox, endpoint: named))
+            {
+                ProcessResult status = await sandbox.RunCliAsync(
+                    new Dictionary<string, string> { [EngineEndpoint.SocketVariable] = socket }, "status", "--json");
+
+                Assert.Equal(0, status.ExitCode);
+                Assert.True(other.ShutdownRequested);
+                Assert.StartsWith("skua: Replaced Engine 'supermovie1' from another build", status.Stderr);
+                using JsonDocument json = JsonDocument.Parse(status.Stdout);
+                JsonElement engine = json.RootElement.GetProperty("engine");
+                Assert.Equal("supermovie1", engine.GetProperty("name").GetString());
+                Assert.Equal(ControlProtocol.Build, engine.GetProperty("build").GetString());
+            }
+            Assert.True(EngineLock.IsHeld(named.LockPath));
+            Assert.False(File.Exists(sandbox.Endpoint.LockPath));
+        }
+        finally
+        {
+            await EngineClient.StopAsync(named, EngineSandbox.StopTimeout);
+        }
+    }
+
+    [Fact]
+    public async Task Engine_stop_waits_for_the_lock_of_the_Engine_Name_the_Engine_gave()
+    {
+        await using EngineSandbox sandbox = new();
+        string socket = Path.Combine(sandbox.SkuaDir, "farm.sock");
+        EngineEndpoint named = EngineEndpoint.Resolve("supermovie1", sandbox.SkuaDir, socket);
+        await using OtherVersionEngine other = new(sandbox, endpoint: named, lockHeldAfterShutdown: TimeSpan.FromSeconds(2));
+
+        ProcessResult stop = await sandbox.RunCliAsync(
+            new Dictionary<string, string> { [EngineEndpoint.SocketVariable] = socket }, "engine", "stop");
+
+        Assert.Equal(0, stop.ExitCode);
+        Assert.True(other.ShutdownRequested);
+        Assert.False(EngineLock.IsHeld(named.LockPath));
+    }
+
+    [Fact]
     public async Task The_CLI_leaves_an_Engine_on_another_protocol_running_while_its_Script_runs_and_explains()
     {
         await using EngineSandbox sandbox = new();

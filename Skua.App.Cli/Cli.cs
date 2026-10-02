@@ -12,7 +12,7 @@ internal static class Cli
 
     /// <summary>
     /// The Engine every command talks to: the one <c>--engine</c> names, at its own socket even when <c>SKUA_ENGINE_SOCKET</c> is set, or else
-    /// the default one, at that socket if set.
+    /// the one at that socket, named after its file, or else the default one.
     /// </summary>
     public static EngineEndpoint Endpoint() => EngineName is { } name
         ? EngineEndpoint.Resolve(name, EngineEndpoint.DefaultSkuaDir())

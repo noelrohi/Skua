@@ -41,7 +41,7 @@ The Mac App's companion process (`Skua --manager`) that keeps a developer's acco
 _Avoid_: launcher, account manager (alone)
 
 **Engine Name**:
-The short name that identifies one Engine on a Mac, so several Engines can run side by side; the default is `default`.
+The short name that identifies one Engine on a Mac, so several Engines can run side by side; the default is `default`, or the file name of the `SKUA_ENGINE_SOCKET` a `skua` command talks to.
 _Avoid_: instance, profile, session
 
 **Script**:

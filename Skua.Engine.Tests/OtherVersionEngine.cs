@@ -20,6 +20,7 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
     private readonly bool _scriptRunning;
     private readonly bool _predatesShutdownIfIdle;
     private readonly EngineHost? _host;
+    private readonly TimeSpan _lockHeldAfterShutdown;
     private readonly EngineLock _lock;
     private readonly Socket _listener = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
     private readonly CancellationTokenSource _stop = new();
@@ -28,11 +29,15 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
     /// <param name="scriptRunning">Whether <c>shutdown_if_idle</c> refuses, as while a Script runs.</param>
     /// <param name="predatesShutdownIfIdle">Whether it is an Engine from before <c>shutdown_if_idle</c>, which doesn't have the method.</param>
     /// <param name="host">What its <c>hello</c> says hosts it; null, as from an Engine before protocol 10, by default.</param>
+    /// <param name="endpoint">Where it serves, and the Engine Name its <c>hello</c> gives; the sandbox's by default.</param>
+    /// <param name="lockHeldAfterShutdown">How long it keeps its lock after closing its socket, as an Engine closing its Game Host does.</param>
     public OtherVersionEngine(
-        EngineSandbox sandbox, int protocol = OtherProtocol, bool scriptRunning = false, bool predatesShutdownIfIdle = false, EngineHost? host = null)
+        EngineSandbox sandbox, int protocol = OtherProtocol, bool scriptRunning = false, bool predatesShutdownIfIdle = false, EngineHost? host = null,
+        EngineEndpoint? endpoint = null, TimeSpan lockHeldAfterShutdown = default)
     {
+        _lockHeldAfterShutdown = lockHeldAfterShutdown;
         _host = host;
-        _endpoint = sandbox.Endpoint;
+        _endpoint = endpoint ?? sandbox.Endpoint;
         _protocol = protocol;
         _scriptRunning = scriptRunning;
         _predatesShutdownIfIdle = predatesShutdownIfIdle;
@@ -191,6 +196,7 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
             _listener.Dispose();
             foreach (JsonRpc rpc in connections)
                 rpc.Dispose();
+            await Task.Delay(_lockHeldAfterShutdown);
             _lock.Dispose();
         }
     }

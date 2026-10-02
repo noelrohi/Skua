@@ -55,7 +55,7 @@ public static class EngineClient
 
     /// <summary>
     /// Connects to the Engine, auto-starting it if needed, and checks its protocol version; with <see cref="EngineClientOptions.ReplaceStale"/>,
-    /// it first replaces an idle Engine from another build.
+    /// it first replaces an idle Engine from another build with one of the same Engine Name.
     /// </summary>
     /// <exception cref="ControlException">
     /// <see cref="ErrorCode.EngineUnavailable"/> or <see cref="ErrorCode.ProtocolMismatch"/>; <see cref="ErrorCode.ScriptRunning"/> or
@@ -65,20 +65,20 @@ public static class EngineClient
     public static async Task<EngineConnection> ConnectAsync(EngineClientOptions options, CancellationToken cancellationToken = default)
     {
         EngineConnection connection = await ConnectOrStartAsync(options, cancellationToken);
-        bool replaced;
+        EngineEndpoint? replaced;
         try
         {
-            replaced = options.ReplaceStale && await ReplaceIfStaleAsync(options, connection, cancellationToken);
+            replaced = options.ReplaceStale ? await ReplaceIfStaleAsync(options, connection, cancellationToken) : null;
         }
         catch
         {
             connection.Dispose();
             throw;
         }
-        if (replaced)
+        if (replaced is not null)
         {
             connection.Dispose();
-            connection = await ConnectOrStartAsync(options, cancellationToken);
+            connection = await ConnectOrStartAsync(options with { Endpoint = replaced }, cancellationToken);
         }
 
         try
@@ -112,6 +112,7 @@ public static class EngineClient
                 return false;
             }
 
+            endpoint = StartedAs(endpoint, connection.Hello);
             try
             {
                 await connection.ShutdownAsync(cancellationToken);
@@ -127,14 +128,17 @@ public static class EngineClient
     }
 
     /// <summary>
-    /// Stops the Engine behind <paramref name="connection"/> when it is from another build and idle, and returns whether it did. A busy one
-    /// is kept, with a notice, when it speaks this protocol version, and fails the connect when it doesn't. The Mac App's is never stopped.
+    /// Stops the Engine behind <paramref name="connection"/> when it is from another build and idle, and returns the endpoint to start its
+    /// replacement at: the same socket, under the Engine Name it gave, or the endpoint's when it gave none valid. Returns null when it kept it.
+    /// A busy one is kept, with a notice, when it speaks this protocol version, and fails the connect when it doesn't. The Mac App's is never
+    /// stopped.
     /// </summary>
-    private static async Task<bool> ReplaceIfStaleAsync(EngineClientOptions options, EngineConnection connection, CancellationToken cancellationToken)
+    private static async Task<EngineEndpoint?> ReplaceIfStaleAsync(
+        EngineClientOptions options, EngineConnection connection, CancellationToken cancellationToken)
     {
         HelloResult engine = connection.Hello;
         if (engine.Protocol == ControlProtocol.Version && engine.Build == options.Build)
-            return false;
+            return null;
 
         string staleEngine = $"Engine '{engine.EngineName}' from another build ({engine.Build}, protocol {engine.Protocol})";
         if (engine.Host == EngineHost.App)
@@ -142,7 +146,7 @@ public static class EngineClient
             // It would refuse anyway; EnsureCompatible refuses an incompatible one, saying to quit the app.
             if (connection.IsCompatible)
                 options.Notice?.Invoke($"{staleEngine} wasn't replaced: the Skua app hosts it; quit the app to replace it.");
-            return false;
+            return null;
         }
 
         try
@@ -152,7 +156,7 @@ public static class EngineClient
                 // EnsureCompatible refuses an incompatible one, with a stop hint.
                 if (connection.IsCompatible)
                     options.Notice?.Invoke($"{staleEngine} wasn't replaced: it is too old to replace safely; run 'skua engine stop' to replace it.");
-                return false;
+                return null;
             }
         }
         catch (ControlException e) when (e.Code is ErrorCode.ScriptRunning or ErrorCode.Busy)
@@ -163,17 +167,25 @@ public static class EngineClient
                     $"{kept}, and this skua speaks protocol {ControlProtocol.Version}. Wait for it to finish, or run 'skua engine stop', which stops its Script too; then try again.",
                     e);
             options.Notice?.Invoke($"{kept}; a later skua command replaces it once it's idle.");
-            return false;
+            return null;
         }
         catch (ControlException e) when (e.Code == ErrorCode.EngineUnavailable)
         {
             // The Engine may close the connection before its reply arrives.
         }
 
-        await WaitUntilStoppedAsync(options.Endpoint, ReplaceTimeout, cancellationToken);
+        EngineEndpoint endpoint = StartedAs(options.Endpoint, engine);
+        await WaitUntilStoppedAsync(endpoint, ReplaceTimeout, cancellationToken);
         options.Notice?.Invoke($"Replaced {staleEngine} with build {options.Build}, protocol {ControlProtocol.Version}.");
-        return true;
+        return endpoint;
     }
+
+    /// <summary>
+    /// The endpoint of the Engine that answered at <paramref name="endpoint"/>'s socket, under the Engine Name it gave: it holds that name's
+    /// lock, which may not be the one this client resolved.
+    /// </summary>
+    private static EngineEndpoint StartedAs(EngineEndpoint endpoint, HelloResult hello) =>
+        EngineName.IsValid(hello.EngineName) ? endpoint.WithName(hello.EngineName) : endpoint;
 
     /// <summary>Waits until the Engine has released its lock, e.g. after a <c>shutdown</c> request.</summary>
     /// <exception cref="ControlException"><see cref="ErrorCode.Timeout"/> when it doesn't stop in time.</exception>
