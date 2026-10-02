@@ -32,6 +32,24 @@ public class ScriptRunTests
         Assert.Equal(start.Run, line.Run);
     }
 
+    [Theory]
+    [InlineData("""bot.StopAsync(true).GetAwaiter().GetResult(); bot.Log("after the stop");""")]
+    [InlineData("""bot.Stop(); bot.Log("after the stop");""")]
+    public async Task A_Script_that_stops_itself_ends_its_run_as_stopped(string body)
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture game = await GameFixture.StartAsync(sandbox);
+        TestScripts.Write(sandbox, "Tests/SelfStop.cs", TestScripts.Main(body));
+
+        ScriptStartResult start = await game.Connection.ScriptStartAsync("Tests/SelfStop.cs", cancellationToken: Ct);
+        ScriptWaitResult wait = await game.Connection.ScriptWaitAsync(60, Ct);
+
+        Assert.Equal(ScriptWaitReason.Ended, wait.Reason);
+        Assert.Equal((start.Run, ScriptOutcome.Stopped, (string?)null), (wait.Status.LastRun!.Number, wait.Status.LastRun.Outcome, wait.Status.LastRun.Error));
+        LogEntryDto stopped = (await ScriptEvents.AllAsync(game.Connection)).Single(e => e.Type == EventTypes.ScriptStopped);
+        Assert.Equal("stopped", ScriptEvents.Get(stopped, "outcome"));
+    }
+
     [Fact]
     public async Task A_broken_Script_fails_with_CompileFailed_and_its_diagnostics_and_starts_no_run()
     {

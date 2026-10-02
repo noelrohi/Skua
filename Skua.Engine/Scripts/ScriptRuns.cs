@@ -61,7 +61,7 @@ internal sealed class ScriptRuns
         int status = (int)MessageChannels.ScriptStatus;
         messenger.Register<ScriptRuns, ScriptStartedMessage, int>(this, status, static (r, _) => r.OnStarted());
         messenger.Register<ScriptRuns, ScriptErrorMessage, int>(this, status, static (r, m) => r.OnError(m.Exception));
-        messenger.Register<ScriptRuns, ScriptStoppedMessage, int>(this, status, static (r, _) => r.OnThreadStopped());
+        messenger.Register<ScriptRuns, ScriptStoppedMessage, int>(this, status, static (r, m) => r.OnThreadStopped(m.ToldToStop));
         int game = (int)MessageChannels.GameEvents;
         messenger.Register<ScriptRuns, ReloginStoppingScriptMessage, int>(this, game, static (r, _) => r.OnReloginStopping());
         messenger.Register<ScriptRuns, ReloginFinishedMessage, int>(this, game, static (r, m) => r.OnReloginFinished(m.Success));
@@ -204,6 +204,7 @@ internal sealed class ScriptRuns
             {
                 _run.ReloginPending = false;
                 _run.ThreadEnded = false;
+                _run.ThreadToldToStop = false;
                 _run.Relogins++;
                 _dialogs.Reopen(_run.Number);
                 _logs.Event(EventTypes.ScriptStarted, new { run = _run.Number, script = _run.Script, restart = true });
@@ -234,10 +235,14 @@ internal sealed class ScriptRuns
         }
     }
 
-    private void OnThreadStopped()
+    private void OnThreadStopped(bool toldToStop)
     {
         lock (_lock)
+        {
             _threadEnding = true;
+            if (_run is not null)
+                _run.ThreadToldToStop = toldToStop;
+        }
     }
 
     /// <summary>Core reports no Script running only once the thread's last cleanup is done, so the run ends here.</summary>
@@ -332,8 +337,12 @@ internal sealed class ScriptRuns
         return true;
     }
 
+    /// <remarks>A Script that stops itself is stopped, unless it threw; <c>script_stop</c> wins over an error it causes.</remarks>
     private static ScriptOutcome Outcome(Run run) =>
-        run.StopRequested ? ScriptOutcome.Stopped : run.Error is not null ? ScriptOutcome.Error : ScriptOutcome.Completed;
+        run.StopRequested ? ScriptOutcome.Stopped
+        : run.Error is not null ? ScriptOutcome.Error
+        : run.ThreadToldToStop ? ScriptOutcome.Stopped
+        : ScriptOutcome.Completed;
 
     /// <summary>Ends the run: records it as the last run and emits <c>script.stopped</c>, still tagged with its number.</summary>
     private void FinishLocked(ScriptOutcome outcome)
@@ -428,6 +437,9 @@ internal sealed class ScriptRuns
         public bool Started { get; set; }
         public bool ThreadEnded { get; set; }
         public bool StopRequested { get; set; }
+
+        /// <summary>Its thread ended after being told to stop, by <c>script_stop</c> or by the Script itself (#162).</summary>
+        public bool ThreadToldToStop { get; set; }
         public bool ReloginPending { get; set; }
         public int Relogins { get; set; }
         public string? Error { get; set; }

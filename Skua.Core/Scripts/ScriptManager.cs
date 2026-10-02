@@ -198,9 +198,10 @@ public partial class ScriptManager : ObservableObject, IScriptManager, IDisposab
 
                     AuraMonitor.StopMonitoring();
                     UnloadPreviousScript();
+                    bool toldToStop = ScriptCts?.IsCancellationRequested ?? false;
                     ScriptCts?.Dispose();
                     ScriptCts = null;
-                    StrongReferenceMessenger.Default.Send<ScriptStoppedMessage, int>((int)MessageChannels.ScriptStatus);
+                    StrongReferenceMessenger.Default.Send<ScriptStoppedMessage, int>(new() { ToldToStop = toldToStop }, (int)MessageChannels.ScriptStatus);
                     ScriptRunning = false;
                 }
             })

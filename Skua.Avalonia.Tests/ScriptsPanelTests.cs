@@ -119,8 +119,7 @@ public sealed class ScriptsPanelTests(AppEngine app)
             "the panel to show the Script stopped");
 
         ScriptStatusDto status = await connection.ScriptStatusAsync(Ct);
-        // A Script's own stop isn't the window's, so its run still completes.
-        Assert.Equal(("Tests/StopsItself.cs", ScriptOutcome.Completed), (status.LastRun!.Script, status.LastRun.Outcome));
+        Assert.Equal(("Tests/StopsItself.cs", ScriptOutcome.Stopped), (status.LastRun!.Script, status.LastRun.Outcome));
         window.Close();
     }
 

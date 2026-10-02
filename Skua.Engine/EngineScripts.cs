@@ -146,7 +146,6 @@ public sealed class EngineScripts
             }
         }
 
-        /// <remarks>A Script stopping itself stays Core's own stop, so its run still ends as completed.</remarks>
         public async ValueTask StopScript(bool runScriptStoppingEvent = true)
         {
             if (Thread.CurrentThread.Name == ScriptThread)

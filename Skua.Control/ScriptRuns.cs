@@ -21,10 +21,10 @@ public enum ScriptState
 /// <summary>How a run ended.</summary>
 public enum ScriptOutcome
 {
-    /// <summary>The Script returned, or stopped itself.</summary>
+    /// <summary>The Script returned.</summary>
     Completed,
 
-    /// <summary><c>script_stop</c> stopped it.</summary>
+    /// <summary><c>script_stop</c> stopped it, or the Script stopped itself.</summary>
     Stopped,
 
     /// <summary>It threw, or Core's auto-relogin couldn't restart it.</summary>
