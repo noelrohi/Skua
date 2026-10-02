@@ -16,6 +16,7 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 * A `skua` command no longer renames an Engine "default": an Engine it replaces after an update keeps its name, and one it starts at `SKUA_ENGINE_SOCKET` is named after the socket's file.
 * A lost connection now starts one relogin instead of several at once, so a farming Script with auto-relogin on comes back on one server instead of logging in again and again.
 * `skua status` always has a `Player` line, `none (not playing)` at the login screen or with the game closed. While playing, when the game is too busy to answer in time, as in heavy combat, it shows the last reading marked stale with its age (`playerAgeSec` in `--json`), or the player as unknown.
+* A Script that stops itself, as CoreBots' Scripts do when you aren't logged in, now ends as `stopped` in `skua script status` and `script.stopped` instead of `completed`.
 
 ---
 
