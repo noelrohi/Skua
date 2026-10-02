@@ -230,6 +230,61 @@ public class CliTests
     }
 
     [Fact]
+    public async Task Logs_tail_prints_the_newest_entries_and_takes_neither_max_nor_follow()
+    {
+        await using EngineSandbox sandbox = new();
+        FakeGameHost gameHost = new FakeGameHost(sandbox).Repeat(30, "send F trace {i}");
+        (_, EngineConnection connection) = await sandbox.StartEngineAsync(gameHost.Environment());
+        using (connection)
+        {
+            await connection.WaitForLogsAsync(LogKind.Flash, 30);
+
+            ProcessResult tail = await sandbox.RunCliAsync("logs", "flash", "--tail", "2", "--json");
+            ProcessResult withMax = await sandbox.RunCliAsync("logs", "--tail", "2", "--max", "5");
+            ProcessResult withFollow = await sandbox.RunCliAsync("logs", "-f", "--tail", "2");
+
+            Assert.Equal(0, tail.ExitCode);
+            using (JsonDocument json = JsonDocument.Parse(tail.Stdout))
+                Assert.Equal(["trace 28", "trace 29"], json.RootElement.GetProperty("entries").EnumerateArray().Select(e => e.GetProperty("text").GetString()));
+            Assert.Equal(1, withMax.ExitCode);
+            Assert.Contains("--tail", withMax.Stderr);
+            Assert.Equal(1, withFollow.ExitCode);
+            Assert.Contains("--tail", withFollow.Stderr);
+        }
+    }
+
+    [Fact]
+    public async Task The_engine_option_talks_to_the_named_Engine_and_wins_over_SKUA_ENGINE_SOCKET()
+    {
+        await using EngineSandbox sandbox = new();
+        EngineEndpoint named = EngineEndpoint.Resolve("farm-1", sandbox.SkuaDir);
+        string otherSocket = Path.Combine(sandbox.SkuaDir, "other.sock");
+        try
+        {
+            ProcessResult status = await sandbox.RunCliAsync(
+                new Dictionary<string, string> { [EngineEndpoint.SocketVariable] = otherSocket }, "--engine", "farm-1", "status", "--json");
+            ProcessResult engineStatus = await sandbox.RunCliAsync("engine", "status", "--engine", "farm-1", "--json");
+            ProcessResult invalid = await sandbox.RunCliAsync("status", "--engine", "Not Valid");
+
+            Assert.Equal(0, status.ExitCode);
+            using (JsonDocument json = JsonDocument.Parse(status.Stdout))
+                Assert.Equal("farm-1", json.RootElement.GetProperty("engine").GetProperty("name").GetString());
+            Assert.True(File.Exists(named.SocketPath));
+            Assert.False(File.Exists(otherSocket));
+            Assert.False(File.Exists(sandbox.Endpoint.SocketPath));
+            Assert.Equal("running", State(engineStatus));
+            using (JsonDocument json = JsonDocument.Parse(engineStatus.Stdout))
+                Assert.Equal("farm-1", json.RootElement.GetProperty("name").GetString());
+            Assert.Equal(1, invalid.ExitCode);
+            Assert.Contains("[a-z0-9-]{1,16}", invalid.Stderr);
+        }
+        finally
+        {
+            await EngineClient.StopAsync(named, EngineSandbox.StopTimeout);
+        }
+    }
+
+    [Fact]
     public async Task Logs_follow_streams_entries_after_the_cursor_as_JSON_lines()
     {
         await using EngineSandbox sandbox = new();

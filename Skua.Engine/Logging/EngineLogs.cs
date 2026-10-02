@@ -113,25 +113,31 @@ internal sealed class EngineLogs : IDisposable
     }
 
     /// <summary>
-    /// The entries of the given kinds after the cursor (or from the oldest held), merged by seq.
+    /// The entries of the given kinds after the cursor (or from the oldest held), merged by seq: the oldest of them, or with
+    /// <paramref name="tail"/> the newest, in seq order either way. A tail's <see cref="LogPage.Next"/> is after the newest entry recorded.
     /// Any requested entry after the cursor that is no longer held sets <see cref="LogPage.Gap"/>.
     /// </summary>
-    /// <exception cref="StreamJsonRpc.LocalRpcException"><see cref="ErrorCode.InvalidArgument"/> for a malformed cursor or a max below 1.</exception>
-    public LogPage Read(IEnumerable<LogKind> requested, string? after, int? max)
+    /// <exception cref="StreamJsonRpc.LocalRpcException">
+    /// <see cref="ErrorCode.InvalidArgument"/> for a malformed cursor, a max or tail below 1, or both a max and a tail.
+    /// </exception>
+    public LogPage Read(IEnumerable<LogKind> requested, string? after, int? max, int? tail = null)
     {
-        int limit = Math.Min(max ?? DefaultMax, MaxMax);
+        if (max is not null && tail is not null)
+            throw RpcErrors.Of(ErrorCode.InvalidArgument, "Give max or tail, not both.");
+        bool newestFirst = tail is not null;
+        int limit = Math.Min(tail ?? max ?? DefaultMax, MaxMax);
         if (limit < 1)
-            throw RpcErrors.Of(ErrorCode.InvalidArgument, $"max must be at least 1, not {max}.");
+            throw RpcErrors.Of(ErrorCode.InvalidArgument, $"{(newestFirst ? "tail" : "max")} must be at least 1, not {tail ?? max}.");
         LogKind[] kinds = requested.SelectMany(kind => kind == LogKind.All ? AllKinds : [kind]).Distinct().ToArray();
         (long afterSeq, bool restarted) = ParseCursor(after);
 
         lock (_lock)
         {
-            bool gap = restarted || kinds.Any(k => _rings[k].EvictedThrough > afterSeq);
+            bool evicted = kinds.Any(k => _rings[k].EvictedThrough > afterSeq);
             List<LogEntryDto> entries = [];
             int budget = MaxReplyBytes - ReplyOverheadBytes;
             bool more = false;
-            foreach (LogRecord record in Merge(kinds.Select(k => _rings[k].After(afterSeq))))
+            foreach (LogRecord record in Merge(kinds.Select(k => _rings[k].After(afterSeq, newestFirst)), newestFirst))
             {
                 budget -= record.Bytes + 1;
                 if (entries.Count == limit || budget < 0)
@@ -141,13 +147,17 @@ internal sealed class EngineLogs : IDisposable
                 }
                 entries.Add(record.Entry);
             }
-            long next = more ? entries[^1].Seq : _seq;
+            if (newestFirst)
+                entries.Reverse();
+            long next = more && !newestFirst ? entries[^1].Seq : _seq;
+            // A tail that stopped at its limit never reached the entries that are gone.
+            bool gap = restarted || (evicted && !(newestFirst && more));
             return new LogPage(entries, Cursor(next), gap);
         }
     }
 
-    /// <summary>Merges seq-ordered sequences into one, lazily, so a page reads only the records it returns.</summary>
-    private static IEnumerable<LogRecord> Merge(IEnumerable<IEnumerable<LogRecord>> sequences)
+    /// <summary>Merges sequences ordered by seq (rising, or falling when newest first) into one, lazily, so a page reads only the records it returns.</summary>
+    private static IEnumerable<LogRecord> Merge(IEnumerable<IEnumerable<LogRecord>> sequences, bool newestFirst)
     {
         List<IEnumerator<LogRecord>> heads = [];
         foreach (IEnumerable<LogRecord> sequence in sequences)
@@ -159,7 +169,7 @@ internal sealed class EngineLogs : IDisposable
 
         while (heads.Count > 0)
         {
-            IEnumerator<LogRecord> first = heads.MinBy(head => head.Current.Entry.Seq)!;
+            IEnumerator<LogRecord> first = newestFirst ? heads.MaxBy(head => head.Current.Entry.Seq)! : heads.MinBy(head => head.Current.Entry.Seq)!;
             yield return first.Current;
             if (!first.MoveNext())
                 heads.Remove(first);

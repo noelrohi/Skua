@@ -29,8 +29,8 @@ internal sealed class LogRing(int capacity)
         }
     }
 
-    /// <summary>The records with a seq above <paramref name="seq"/>, oldest first.</summary>
-    public IEnumerable<LogRecord> After(long seq)
+    /// <summary>The records with a seq above <paramref name="seq"/>, oldest first or newest first.</summary>
+    public IEnumerable<LogRecord> After(long seq, bool newestFirst = false)
     {
         // Seqs rise from oldest to newest, so a binary search finds the first one above the cursor.
         int low = 0, high = _count;
@@ -42,8 +42,12 @@ internal sealed class LogRing(int capacity)
             else
                 high = middle;
         }
-        for (int i = low; i < _count; i++)
-            yield return At(i);
+        if (newestFirst)
+            for (int i = _count - 1; i >= low; i--)
+                yield return At(i);
+        else
+            for (int i = low; i < _count; i++)
+                yield return At(i);
     }
 
     private LogRecord At(int index) => _records[(_oldest + index) % capacity];

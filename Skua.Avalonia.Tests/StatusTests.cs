@@ -191,7 +191,7 @@ public sealed class StatusTests(AppEngine app)
         string? cursor = null;
         while (true)
         {
-            LogPage page = await app.Engine.Rpc.LogsAsync(LogKind.All, cursor, 1000, TestContext.Current.CancellationToken);
+            LogPage page = await app.Engine.Rpc.LogsAsync(LogKind.All, cursor, 1000, cancellationToken: TestContext.Current.CancellationToken);
             logged.AddRange(page.Entries.Select(e => e.Text + e.Data));
             cursor = page.Next;
             if (page.Entries.Count == 0)

@@ -55,7 +55,8 @@ internal sealed class GameHostSupervisor : IDisposable
         // skua-engine never shows the game, so nothing is lost by not drawing the world; on again after any login, since a stopped Script turns it off.
         if (keepLagKillerOn)
             tracker.Playing += () => options.LagKiller = true;
-        GameEventRecorder.Start(services.GetRequiredService<IFlashUtil>(), options, services.GetRequiredService<IScriptPlayer>(), logs, tracker);
+        GameEventRecorder.Start(services.GetRequiredService<IFlashUtil>(), options, services.GetRequiredService<IScriptPlayer>(),
+            services.GetRequiredService<IScriptInventory>(), logs, tracker);
         RespawnWatch respawn = new(services.GetRequiredService<IFlashUtil>(), services.GetRequiredService<IScriptPlayer>(),
             services.GetRequiredService<IScriptMap>(), services.GetRequiredService<IScriptSend>(), tracker);
 

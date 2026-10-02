@@ -54,6 +54,30 @@ public class LogTests
     }
 
     [Fact]
+    public async Task Logs_tail_returns_the_newest_entries_after_the_cursor_in_seq_order()
+    {
+        await using EngineSandbox sandbox = new();
+        FakeGameHost gameHost = new FakeGameHost(sandbox).Repeat(450, "send F trace {i}");
+        (_, EngineConnection connection) = await sandbox.StartEngineAsync(gameHost.Environment());
+        using (connection)
+        {
+            await connection.WaitForLogsAsync(LogKind.Flash, 450);
+
+            LogPage tail = await connection.LogsAsync(LogKind.Flash, null, null, 3, Ct);
+            LogPage after = await connection.LogsAsync(LogKind.Flash, max: 448, cancellationToken: Ct);
+            LogPage tailAfter = await connection.LogsAsync(LogKind.Flash, after.Next, null, 5, Ct);
+            LogPage next = await connection.LogsAsync(LogKind.Flash, tail.Next, cancellationToken: Ct);
+            ControlException both = await Assert.ThrowsAsync<ControlException>(() => connection.LogsAsync(LogKind.Flash, null, 5, 5, Ct));
+
+            Assert.Equal(["trace 447", "trace 448", "trace 449"], tail.Entries.Select(e => e.Text));
+            Assert.False(tail.Gap);
+            Assert.Equal(["trace 448", "trace 449"], tailAfter.Entries.Select(e => e.Text));
+            Assert.Empty(next.Entries);
+            Assert.Equal(ErrorCode.InvalidArgument, both.Code);
+        }
+    }
+
+    [Fact]
     public async Task Kind_all_merges_every_kind_in_seq_order()
     {
         await using EngineSandbox sandbox = new();
@@ -101,6 +125,9 @@ public class LogTests
             Assert.EndsWith("line 10049", held[^1].Text);
             Assert.EndsWith("line 50", held[0].Text);
             Assert.True((await connection.LogsAsync(LogKind.Debug, cancellationToken: Ct)).Gap);
+            LogPage tail = await connection.LogsAsync(LogKind.Debug, null, null, 5, Ct);
+            Assert.False(tail.Gap);
+            Assert.EndsWith("line 10049", tail.Entries[^1].Text);
         }
     }
 

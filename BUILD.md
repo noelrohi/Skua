@@ -299,13 +299,15 @@ The Manager's tests launch `fake-app` (`Skua.FakeApp`, set with `SKUA_APP_EXECUT
 
 The tests never run the real Game Host, read the real Keychain or reach AQW: they point `SKUA_GAMEHOST` at a fake that speaks the Bridge frames and simulates the game, `SKUA_SECURITY_TOOL` at a fake `security`, and `SKUA_AQ_SERVERS_URL` at a fake servers API.
 
+Every `skua` command, `skua mcp` included, takes `--engine <name>`: it talks to the Engine with that Engine Name, at `<SkuaDIR>/engines/<name>.sock`, and auto-starts one under that name when none runs. It wins over `SKUA_ENGINE_SOCKET`. Without it, a command talks to `default`, at `SKUA_ENGINE_SOCKET` when that is set.
+
 Environment overrides:
 
 | Variable | Overrides |
 |---|---|
 | `SKUA_DIR` | The Skua data folder (default `~/Library/Application Support/Skua`) |
 | `SKUA_ENGINE` | The `skua-engine` that auto-start launches |
-| `SKUA_ENGINE_SOCKET` | The Engine's socket (default `<SkuaDIR>/engines/default.sock`); the path must fit in 103 bytes |
+| `SKUA_ENGINE_SOCKET` | The Engine's socket (default `<SkuaDIR>/engines/default.sock`); the path must fit in 103 bytes. `--engine` wins over it |
 | `SKUA_GAMEHOST`, `SKUA_SWF` | The Game Host the Engine runs, and the SWF it loads (default `skua-gamehost` and `skua.swf` next to the Engine); a missing file fails the start with an error naming its path |
 | `SKUA_GITHUB_RAW_URL`, `SKUA_GITHUB_API_URL` | `https://raw.githubusercontent.com/` and `https://api.github.com/`, for tests |
 | `SKUA_AQ_SERVERS_URL` | The game's servers API, `http://content.aq.com/game/api/data/servers`, for tests |
@@ -394,6 +396,12 @@ On a terminal, `--follow` and `skua watch` keep a status line under the log, ref
 The MCP tools are `script_options`, `script_start`, `script_stop`, `script_status`, `script_wait`, `dialogs`, `dialog_answer` and `eval`. A compile failure is `CompileFailed` with the compiler's diagnostics. While a Script runs, `login`, `logout`, `join`, `jump`, `scripts update`, `scripts source <source>` and `script options` are refused with `ScriptRunning`; queries, logs, screenshots and `eval` still work. Each run has a number, which its log entries carry as `run`, and `script.started`, `script.error` and `script.stopped` events. A restart by Core's auto-relogin is the same run, counted in its `relogins`. Core's options window, which it opens at a Script's first start, does nothing headless: the Script runs with its stored values. `eval` runs off the Script Thread with a 30 s limit, and returns the value as JSON, the log lines it wrote, and what it threw.
 
 A Script's message boxes are Script Dialogs. An OK-only one is a Notice: it never waits, returns null at once, and arrives as a `notice.shown` event with its full text (up to 64 KB). A yes/no or buttons one is a Question, and only the thread that raised it waits. With `--dialogs ask` (the default) it stays pending for `--dialog-timeout` seconds (120 by default), listed by `skua dialogs` (MCP `dialogs`) and `status`, and `script wait` returns as soon as one is pending; `skua dialogs answer <id> <choice>` (MCP `dialog_answer`) answers it, and a later answer fails with `DialogNotPending`. Unanswered, or with `--dialogs cancel`, it gets the fallback: null or `DialogResult.Cancelled`, never the first button. `script stop` gives pending Questions the fallback first. `question.raised` and `question.answered` events record each one, with `answeredBy` `agent`, `user` (the Mac App's window, protocol 11), `timeout` or `fallback`. Headless, other dialogs (`ShowDialog` and the file dialogs) are never shown; they return null and are logged. The Mac App shows them for real.
+
+#### Logs and events
+
+`skua logs [kind]` (MCP `logs`) prints a page of the Engine's entries, oldest first: `script`, `debug`, `flash`, `events`, or `all` (the default) merged by seq. A page ends with its `next` cursor, which `--after` reads on from; `--max` sets the page size (200 by default, at most 1000). `--tail N` reads the newest N entries instead (after `--after`'s cursor, if given), still oldest first, with a `next` after the newest entry, so `skua logs -f --after <next>` follows on from it. `-f` follows one kind or several as entries arrive.
+
+The `events` entries are typed facts: `game.state`, `game.disconnected`, `map.joined`, `player.death`, `player.afk`, the runs' `script.*` and the Questions' `question.*`, among others. `inventory.full` (`{used, slots, drop}`) says the inventory is full: once as it fills, with `drop` null, and once for each item that drops while it stays full and isn't in the inventory already, with the drop's `id` and `name`, since it has no slot to go to. The Engine checks when an item drops, is added, picked up or bought, and when the player joins a map, not on a timer; a check that finds a free slot, or a new login, re-arms it. What to do about it is up to the Script or whoever reads the events.
 
 #### Compile check
 

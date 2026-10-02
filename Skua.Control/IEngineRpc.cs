@@ -92,9 +92,14 @@ public partial interface IEngineRpc
     /// <param name="kind">One kind, or <see cref="LogKind.All"/>.</param>
     /// <param name="after">The <see cref="LogPage.Next"/> of an earlier page, or null for the oldest entry held.</param>
     /// <param name="max">Entries per page: 200 by default, capped at 1000. A reply also stays within 1 MB.</param>
+    /// <param name="tail">
+    /// Instead of <paramref name="max"/>: the newest this many entries after the cursor, still in seq order, capped at 1000 and 1 MB. The page's
+    /// <see cref="LogPage.Next"/> is then after the newest entry recorded, and <see cref="LogPage.Gap"/> is set only when the tail reaches back
+    /// to entries no longer held.
+    /// </param>
     /// <param name="cancellationToken">Cancels the call.</param>
     [JsonRpcMethod("logs")]
-    Task<LogPage> LogsAsync(LogKind kind = LogKind.All, string? after = null, int? max = null, CancellationToken cancellationToken = default);
+    Task<LogPage> LogsAsync(LogKind kind = LogKind.All, string? after = null, int? max = null, int? tail = null, CancellationToken cancellationToken = default);
 
     /// <summary>Replays the entries of the given kinds after the cursor, then follows new ones until cancelled. CLI-only.</summary>
     [JsonRpcMethod("subscribe")]
