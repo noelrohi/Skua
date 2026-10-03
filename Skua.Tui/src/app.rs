@@ -540,6 +540,13 @@ impl App {
             KeyCode::PageUp if inventory => self.scroll_inventory(-self.inventory_page()),
             KeyCode::Home if inventory => self.inventory_scroll = 0,
             KeyCode::End if inventory => self.inventory_scroll = self.hits.borrow().inventory_max_scroll,
+            // PROTOTYPE: flips the Overview's variants.
+            KeyCode::Left if self.tab == Tab::Overview && crate::ui::prototype_overview::enabled() => {
+                crate::ui::prototype_overview::cycle(-1)
+            }
+            KeyCode::Right if self.tab == Tab::Overview && crate::ui::prototype_overview::enabled() => {
+                crate::ui::prototype_overview::cycle(1)
+            }
             KeyCode::Left if inventory => self.cycle_shelf(-1),
             KeyCode::Right if inventory => self.cycle_shelf(1),
             KeyCode::Char('j') | KeyCode::Down => self.move_selection(1),

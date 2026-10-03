@@ -7,6 +7,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 use serde_json::Value;
 
+pub mod prototype_overview;
+
 use crate::app::{App, Field, KEYS, Modal, Note, Row, Tab, Tone, first_line};
 use crate::discovery::MANAGER_FILE;
 use crate::dto::{GameState, Hello, HookRun, LogEntry, Player, Quest, ScriptRun, Status};
@@ -295,6 +297,10 @@ fn right(frame: &mut Frame, app: &App, area: Rect) {
                 .map(|s| &s.detail)
                 .filter(|d| d.engine.as_deref() == Some(row.name.as_str()));
             match app.tab {
+                // PROTOTYPE: SKUA_TUI_PROTOTYPE=1 swaps in the party-aware variants.
+                Tab::Overview if prototype_overview::enabled() && status.game.player.is_some() => {
+                    prototype_overview::render(frame, &row.name, status, detail, content)
+                }
                 Tab::Overview => overview(frame, hello, status, detail, content),
                 Tab::Inventory => inventory(frame, app, status, detail, content),
                 Tab::Quests => quests(frame, status, detail, content),

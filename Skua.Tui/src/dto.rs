@@ -116,6 +116,9 @@ pub struct ScriptRun {
     #[serde(default)]
     pub kills: i64,
     pub kills_per_min: Option<f64>,
+    /// How many times the player died during the run.
+    #[serde(default)]
+    pub deaths: i64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
