@@ -33,6 +33,9 @@ fn main() -> io::Result<()> {
     let runner = Runner::new(app.skua_dir.clone());
     let mut follower = Follower::new(app.skua_dir.clone());
     let (outcome_tx, outcomes) = mpsc::channel();
+    if skua_tui::ui::prototype_goal::enabled() {
+        skua_tui::ui::prototype_goal::start(app.skua_dir.clone());
+    }
     let mut terminal = ratatui::init();
     // Clicks and the wheel come to skua-tui; the terminal's own selection still works with option (or shift) held.
     execute!(io::stdout(), EnableMouseCapture)?;

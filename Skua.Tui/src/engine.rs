@@ -228,7 +228,7 @@ impl Engine {
         self.call("scripts_update", json!([]))
     }
 
-    fn call<T: DeserializeOwned>(&mut self, method: &str, params: Value) -> Result<T, Error> {
+    pub(crate) fn call<T: DeserializeOwned>(&mut self, method: &str, params: Value) -> Result<T, Error> {
         decode(self.rpc.call(method, params)?)
     }
 }
