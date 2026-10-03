@@ -83,6 +83,8 @@ pub struct Player {
     pub xp: i64,
     pub required_xp: i64,
     pub xp_percent: Option<f64>,
+    /// The monster the player targets, by its map ID as `map` lists it.
+    pub target_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -116,6 +118,9 @@ pub struct ScriptRun {
     #[serde(default)]
     pub kills: i64,
     pub kills_per_min: Option<f64>,
+    /// How many times the player died during the run.
+    #[serde(default)]
+    pub deaths: i64,
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -141,8 +141,10 @@ internal sealed class GameQueries
         string? playerClass = _api.Inventory.Items.Find(i => i is { Equipped: true, Category: ItemCategory.Class })?.Name;
         int xp = player.XP;
         int requiredXp = player.RequiredXP;
+        // The game answers an empty monster, map ID 0, without a target.
+        int? target = player.Target is { MapID: > 0 } monster ? monster.MapID : null;
         return new PlayerDto(name ?? player.Username ?? "", player.Level, playerClass, player.Health, player.MaxHealth, player.Mana, player.MaxMana, player.Gold,
-            _api.Map.Name, player.Cell, player.Pad, Alive: state > 0, InCombat: state == 2, xp, requiredXp, PlayerDto.Percent(xp, requiredXp));
+            _api.Map.Name, player.Cell, player.Pad, Alive: state > 0, InCombat: state == 2, xp, requiredXp, PlayerDto.Percent(xp, requiredXp), target);
     }
 
     /// <summary>
