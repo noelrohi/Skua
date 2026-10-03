@@ -64,9 +64,25 @@ public sealed record ScriptStatusDto(ScriptState State, ScriptRunDto? Run, Scrip
 /// The run's kills per minute over the last 5 minutes, or over its time if shorter, but at least a minute; with <paramref name="QuestIdleSec"/>
 /// it tells a Script grinding a rare drop from one that is stuck.
 /// </param>
+/// <param name="Deaths">How many times the player died during the run.</param>
+/// <param name="Goal">What the Script is working toward, as its CoreBots log lines say; null when it logs none.</param>
 public sealed record ScriptRunDto(
     int Number, string Script, DateTimeOffset StartedAt, int Relogins, bool ReloggingIn, DialogMode Dialogs, int DialogTimeoutSec, double ElapsedSec,
-    double? QuestIdleSec = null, int Kills = 0, double? KillsPerMin = null);
+    double? QuestIdleSec = null, int Kills = 0, double? KillsPerMin = null, int Deaths = 0, ScriptGoalDto? Goal = null);
+
+/// <summary>What a run's Script is working toward and why: each step is what the one before it needs.</summary>
+/// <param name="Quest">The quest it does, by name.</param>
+/// <param name="Buy">The item it farms the materials to buy.</param>
+/// <param name="Farm">The material, or quest item, it farms.</param>
+/// <param name="Now">What it is doing for it, e.g. <c>killing Inquisitor Hobo for Inquisitor Bones</c>.</param>
+/// <param name="Resets">How many times a death has reset the farm's wave since it began, as <c>Death - Resetting</c> logs it.</param>
+/// <param name="LastResetAt">When the last of those was.</param>
+public sealed record ScriptGoalDto(string? Quest, GoalItemDto? Buy, GoalItemDto? Farm, string? Now, int Resets, DateTimeOffset? LastResetAt);
+
+/// <param name="Want">How many the Script wants.</param>
+/// <param name="Have">How many the player owns, inventory, temporary inventory and bank, as last sampled; null before a sample.</param>
+/// <param name="PerHour">How many it gained an hour since the step began, from the count logged then; null before a gain.</param>
+public sealed record GoalItemDto(string Item, int Want, int? Have, double? PerHour);
 
 /// <summary>A run that ended.</summary>
 /// <param name="Error">Why it failed, for <see cref="ScriptOutcome.Error"/>: the exception's type and message.</param>

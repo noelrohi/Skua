@@ -32,7 +32,8 @@ internal sealed class QuestProgress : IDisposable
     private readonly GameStateTracker _tracker;
     private readonly ScriptRuns _runs;
     private readonly EngineLogs _logs;
-    private readonly KillCounter _kills;
+    private readonly CombatTally _tally;
+    private readonly ScriptGoal _goal;
     private readonly TimeSpan _stallAfter;
     private readonly Timer _poll;
     private readonly object _lock = new();
@@ -49,9 +50,10 @@ internal sealed class QuestProgress : IDisposable
     /// <summary>The run and idle start <see cref="EventTypes.QuestStalled"/> was last recorded for, so it is recorded once per stall.</summary>
     private (int Run, DateTime Since)? _recordedStall;
 
-    public QuestProgress(IScriptInterface api, GameStateTracker tracker, ScriptRuns runs, EngineLogs logs, KillCounter kills)
+    public QuestProgress(IScriptInterface api, GameStateTracker tracker, ScriptRuns runs, EngineLogs logs, CombatTally tally, ScriptGoal goal)
     {
-        _kills = kills;
+        _goal = goal;
+        _tally = tally;
         _api = api;
         _tracker = tracker;
         _runs = runs;
@@ -104,7 +106,7 @@ internal sealed class QuestProgress : IDisposable
             if (_tracker.State != GameState.Playing)
                 return;
             (List<Quest> quests, Stores stores) = ReadGame();
-            ScriptRunDto? run = _kills.WithKills(_runs.Status().Run);
+            ScriptRunDto? run = _tally.WithTally(_runs.Status().Run);
             object? stalled;
             lock (_lock)
             {
@@ -139,7 +141,14 @@ internal sealed class QuestProgress : IDisposable
                 _bankSeen = false;
             }
         }
-        return (_api.Quests.Tree, new Stores(Quantities(_api.Inventory.Items), Quantities(_api.TempInv.Items), Quantities(_api.Bank.Items)));
+        List<InventoryItem> inventory = _api.Inventory.Items;
+        List<ItemBase> temp = _api.TempInv.Items;
+        List<InventoryItem> bank = _api.Bank.Items;
+        // What the player owns by name, for the Script's goal, which names its items.
+        _goal.Sample(inventory.Cast<ItemBase>().Concat(temp).Concat(bank)
+            .GroupBy(i => i.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Sum(i => i.Quantity), StringComparer.OrdinalIgnoreCase));
+        return (_api.Quests.Tree, new Stores(Quantities(inventory), Quantities(temp), Quantities(bank)));
     }
 
     private void Observe(List<Quest> quests, Stores stores, DateTime now)

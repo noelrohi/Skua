@@ -38,6 +38,14 @@ fn fleet() -> Fleet {
         "status" => {
             let mut status = status("alice", true, Some("Farm/AtlasGold.cs"));
             status["script"]["run"]["questIdleSec"] = json!(700.0);
+            status["script"]["run"]["goal"] = json!({
+                "quest": "Tainted Gem Exchange",
+                "buy": { "item": "Atlas Crown", "want": 3, "have": 1, "perHour": null },
+                "farm": { "item": "Atlas Gold", "want": 1000, "have": 870, "perHour": 120.0 },
+                "now": "killing Frogzard for Atlas Gold",
+                "resets": 2, "lastResetAt": "2026-10-02T14:10:00Z"
+            });
+            status["game"]["player"]["targetId"] = json!(5);
             Ok(status)
         }
         "logs" if params[0] == "events" => Ok(json!({
@@ -49,6 +57,10 @@ fn fleet() -> Fleet {
                     "durationMs": 300, "exitCode": 2, "output": "banking…\nbank full\n" })),
             ],
             "next": "c4", "gap": false
+        })),
+        "logs" if params[0] == "game" => Ok(json!({
+            "entries": [game_message(5, "zone", Some("Bob"), None, "anyone for ultra speaker?")],
+            "next": "g5", "gap": false
         })),
         "logs" if params[1].is_null() => Ok(json!({
             "entries": [
@@ -82,7 +94,8 @@ fn fleet() -> Fleet {
         ),
         "map" => Ok(json!({ "name": "battleon", "roomId": 9999, "cells": ["Enter", "r2"],
             "players": [{ "name": "alice", "level": 100, "cell": "Enter", "pad": "Spawn", "hp": 2400, "maxHp": 3000, "afk": false }],
-            "monsters": [{ "id": 1, "mapId": 4, "name": "Frogzard", "cell": "r2", "hp": 0, "maxHp": 1000, "alive": false }] })),
+            "monsters": [{ "id": 1, "mapId": 4, "name": "Frogzard", "cell": "r2", "hp": 0, "maxHp": 1000, "alive": false },
+                { "id": 2, "mapId": 5, "name": "Hydra Crew", "cell": "Enter", "hp": 20000, "maxHp": 100000, "alive": true }] })),
         _ => Err((-32601, "no".into())),
     });
     let bob = FakeEngine::start(dir.path(), "bob", engine_of(11, "bob", status("bob", true, None)));
@@ -149,21 +162,24 @@ fn the_screen_shows_accounts_by_group_with_their_engines_and_the_selected_ones_o
             "carol        offline",
             "default      login screen",
             " Overview │ Inventory │ Quests │ Logs │ Game │",
-            "Player",
-            "alice  Lv 100  Chaos Avenger  in combat",
-            "2400/3000",
-            "max level",
-            "gold 1,234,567",
-            "battleon · Enter · Spawn · Artix",
-            "Script",
-            "Farm/AtlasGold.cs",
-            "run 3 · 12m 34s",
-            "quests stalled 11m",
-            " ago · Farming Atlas Gold",
-            "Logs",
-            "Farming Atlas Gold",
-            "inventory.full",
-            "drop=null slots=120 used=120",
+            "alice  Lv 100 · battleon Enter · Artix · 1,234,567 gold",
+            "AtlasGold  running 12m 34s · 0 kills · —/min · 0 deaths",
+            "stuck · no quest progress or kills for 11m",
+            "└ quest Tainted Gem Exchange",
+            "└ buy   Atlas Crown",
+            "1/3",
+            "└ farm  Atlas Gold",
+            "870/1000   +120/h  ~1h05m",
+            "└ now   killing Frogzard for Atlas Gold",
+            "⟲ wave reset 2× since this farm began",
+            "ACCOUNT",
+            "Chaos Avenger",
+            "MONSTERS IN Enter",
+            "20k/100k",
+            "◀ alice",
+            "Chat",
+            "[zone]",
+            "anyone for ultra speaker?",
             "acting on: alice",
             "? keys",
         ],
@@ -499,10 +515,22 @@ fn a_stall_while_still_killing_is_grinding_not_an_alert() {
         &screen,
         &[
             "4 Engines · 2 alerts",
-            "run 3 · 12m 34s · 312 kills · 5.4/min",
-            "no quest progress 11m · still killing",
+            "RareDrop  running 12m 34s · 312 kills · 5.4/min · 0 deaths",
+            "grinding · no quest progress for 11m, still killing",
         ],
     );
+    // alice plays on carol's map, so she is in carol's party, after carol, with her own kills.
+    let rows: Vec<&str> = screen.lines().collect();
+    let carol = rows
+        .iter()
+        .position(|l| l.contains("carol        Chaos Avenger"))
+        .expect("carol's row");
+    let alice = rows
+        .iter()
+        .position(|l| l.contains("alice        Chaos Avenger"))
+        .expect("alice's row");
+    assert!(carol < alice, "{screen}");
+    assert!(rows[carol].contains("312") && rows[carol].contains("5.4"), "{screen}");
     let row = screen.lines().find(|l| l.contains("● carol")).unwrap();
     assert!(
         row.contains("RareDrop") && row.contains("11m") && !row.contains('▲'),

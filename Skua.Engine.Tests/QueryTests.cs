@@ -192,18 +192,22 @@ public class QueryTests
     }
 
     [Fact]
-    public async Task Status_reports_death_and_combat()
+    public async Task Status_reports_death_combat_and_the_target()
     {
         await using EngineSandbox sandbox = new();
         await using GameFixture session = await GameFixture.StartAsync(sandbox);
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
 
+        PlayerDto idle = (await session.Connection.StatusAsync(Ct)).Game.Player!;
         await session.GameHost.DoAsync("combat");
+        await session.GameHost.DoAsync("target 1");
         PlayerDto fighting = (await session.Connection.StatusAsync(Ct)).Game.Player!;
         await session.GameHost.DoAsync("die");
         PlayerDto dead = (await session.Connection.StatusAsync(Ct)).Game.Player!;
 
-        Assert.Equal((true, true), (fighting.Alive, fighting.InCombat));
+        Assert.Null(idle.TargetId);
+        // The Frogzard with map ID 1, as map lists it.
+        Assert.Equal((true, true, 1), (fighting.Alive, fighting.InCombat, fighting.TargetId));
         Assert.Equal((false, false, 0), (dead.Alive, dead.InCombat, dead.Hp));
     }
 

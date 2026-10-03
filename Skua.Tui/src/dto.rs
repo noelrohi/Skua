@@ -83,6 +83,8 @@ pub struct Player {
     pub xp: i64,
     pub required_xp: i64,
     pub xp_percent: Option<f64>,
+    /// The monster the player targets, by its map ID as `map` lists it.
+    pub target_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -116,6 +118,32 @@ pub struct ScriptRun {
     #[serde(default)]
     pub kills: i64,
     pub kills_per_min: Option<f64>,
+    /// How many times the player died during the run.
+    #[serde(default)]
+    pub deaths: i64,
+    /// What the Script is working toward, as its CoreBots log lines say.
+    pub goal: Option<ScriptGoal>,
+}
+
+/// Each step is what the one before it needs: the quest, the item bought for it, the material farmed for that, what it kills now.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptGoal {
+    pub quest: Option<String>,
+    pub buy: Option<GoalItem>,
+    pub farm: Option<GoalItem>,
+    pub now: Option<String>,
+    pub resets: i64,
+    pub last_reset_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GoalItem {
+    pub item: String,
+    pub want: i64,
+    pub have: Option<i64>,
+    pub per_hour: Option<f64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

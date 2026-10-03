@@ -173,6 +173,7 @@ fn logs_start_with_the_tail_then_follow_from_the_cursor() {
         vec![
             json!(["events", null, null, LOG_TAIL]),
             json!(["script", null, null, 1]),
+            json!(["game", null, null, 100]),
             json!(["all", null, null, LOG_TAIL]),
             json!(["all", "c2", null, null])
         ]

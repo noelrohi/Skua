@@ -54,6 +54,8 @@ internal sealed class FakeGame
     private int _bagSlots = 40;
     private int _slimeSamples = 3;
     private int _slimeCrowns;
+    /// <summary>The map ID of the monster the player targets, or null for none.</summary>
+    private int? _target;
     private readonly HashSet<string> _lockedMaps = new(StringComparer.OrdinalIgnoreCase);
     private bool _brokenLogin;
     /// <summary>The type of the text field the stage's focus is on (<c>input</c> for chat's), or null when it isn't on one.</summary>
@@ -116,6 +118,8 @@ internal sealed class FakeGame
                 ("jumpCorrectRoom", [string cell, string pad, ..]) => Jump(cell, pad),
                 ("selectArrayObjects", ["world.map.currentScene.labels", "name"]) => _world ? Str(new JsonArray([.. Cells(_map).Select(c => JsonValue.Create(c))]).ToJsonString()) : "<undefined/>",
                 ("getMonsters", _) => Str((_world ? Monsters(_map) : []).ToJsonString()),
+                // An empty monster without a target, as the game answers.
+                ("getTargetMonster", _) => Str((Monsters(_map).OfType<JsonObject>().FirstOrDefault(m => _world && (int)m["MonMapID"]! == _target) ?? []).ToJsonString()),
                 ("sendClientPacket", [string packet, string type]) => ClientPacket(packet, type),
                 _ => null,
             };
@@ -174,6 +178,12 @@ internal sealed class FakeGame
                     return true;
                 case ["combat"]:
                     _state = 2;
+                    return true;
+                case ["target", "none"]:
+                    _target = null;
+                    return true;
+                case ["target", string monMapId]:
+                    _target = int.Parse(monMapId);
                     return true;
                 case ["gain", string rest] when rest.Split(' ') is [string xp, string gold]:
                     // Reaching the required XP levels up, as the game says with levelUp, and the next level's XP starts from what is left over.
