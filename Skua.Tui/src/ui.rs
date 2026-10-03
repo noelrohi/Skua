@@ -9,7 +9,7 @@ use serde_json::Value;
 
 use crate::app::{App, Field, KEYS, Modal, Note, Row, Tab, Tone, first_line};
 use crate::discovery::MANAGER_FILE;
-use crate::dto::{GameState, Hello, HookRun, LogEntry, Player, Quest, ScriptRun, Status};
+use crate::dto::{GameState, Hello, HookRun, LogEntry, Player, Quest, ScriptGoal, ScriptRun, Status};
 use crate::engine::{Error, NOT_LOGGED_IN, PROTOCOL};
 use crate::inventory::Shelf;
 use crate::poller::{Detail, EngineView, LOG_TAIL};
@@ -295,7 +295,7 @@ fn right(frame: &mut Frame, app: &App, area: Rect) {
                 .map(|s| &s.detail)
                 .filter(|d| d.engine.as_deref() == Some(row.name.as_str()));
             match app.tab {
-                Tab::Overview => overview(frame, hello, status, detail, content),
+                Tab::Overview => overview(frame, app, hello, status, detail, content),
                 Tab::Inventory => inventory(frame, app, status, detail, content),
                 Tab::Quests => quests(frame, status, detail, content),
                 Tab::Logs => {
@@ -358,82 +358,24 @@ fn failure(frame: &mut Frame, title: &str, message: &str, area: Rect) {
     frame.render_widget(text.block(block), area);
 }
 
-fn overview(frame: &mut Frame, hello: &Hello, status: &Status, detail: Option<&Detail>, area: Rect) {
-    let top = 8.min(area.height);
-    let mut rest = Rect {
-        y: area.y + top,
-        height: area.height - top,
+/// The selected account in plain words, the party with it on its map, the monsters in its cell, any Question, then the game's chat.
+fn overview(frame: &mut Frame, app: &App, hello: &Hello, status: &Status, detail: Option<&Detail>, area: Rect) {
+    let width = area.width.saturating_sub(2) as usize;
+    let mut lines = match playing(status) {
+        Some(player) => party_board(app, player, status, detail, width),
+        None => not_playing_lines(hello, status),
+    };
+    lines.truncate(area.height.saturating_sub(5) as usize);
+    let party_area = Rect {
+        height: (lines.len() as u16 + 2).min(area.height),
         ..area
     };
-    match playing(status) {
-        Some(player) => {
-            let half = area.width / 2;
-            let title = match status.game.player_age_sec {
-                Some(age) => format!("Player · stale {age:.0}s"),
-                None => "Player".into(),
-            };
-            let player_area = Rect {
-                width: half,
-                height: top,
-                ..area
-            };
-            frame.render_widget(
-                Paragraph::new(player_lines(player, status, half.saturating_sub(4))).block(panel(&title)),
-                player_area,
-            );
-            let script_area = Rect {
-                x: area.x + half,
-                width: area.width - half,
-                height: top,
-                ..area
-            };
-            let running = status.script.run.is_some();
-            let block = panel("Script")
-                .title_top(Line::from(if running { " running ".green() } else { " idle ".fg(DIM) }).right_aligned());
-            frame.render_widget(
-                Paragraph::new(script_lines(hello, status, detail)).block(block),
-                script_area,
-            );
-        }
-        None => {
-            let block = panel("Engine")
-                .title_top(Line::from(format!(" {} ", state(status).0).fg(state(status).1)).right_aligned());
-            let mut lines = vec![
-                Line::styled(engine_summary(hello, status), Style::new().fg(DIM)),
-                Line::raw(""),
-                match status.game.state {
-                    GameState::LoginScreen => {
-                        Line::from(vec!["L  ".blue().bold(), "log in, with a server picker".fg(DIM)])
-                    }
-                    GameState::NotStarted if !status.game.game_host_up => {
-                        Line::styled("… starting the Game Host", Style::new().fg(DIM))
-                    }
-                    GameState::NotStarted => Line::styled("… the game is loading", Style::new().fg(DIM)),
-                    GameState::Disconnected => Line::styled(
-                        format!(
-                            "disconnected{}",
-                            status
-                                .game
-                                .server
-                                .as_deref()
-                                .map(|s| format!(" from {s}"))
-                                .unwrap_or_default()
-                        ),
-                        Style::new().red(),
-                    ),
-                    _ => Line::styled(format!("… {}", state(status).0), Style::new().fg(DIM)),
-                },
-            ];
-            if let Some(last) = &status.script.last_run {
-                lines.push(Line::raw(""));
-                lines.push(Line::styled(
-                    format!("last Script: {} {}", base_name(&last.script), last.outcome),
-                    Style::new().yellow(),
-                ));
-            }
-            frame.render_widget(Paragraph::new(lines).block(block), Rect { height: top, ..area });
-        }
-    }
+    frame.render_widget(Paragraph::new(lines).block(panel("Party")), party_area);
+    let mut rest = Rect {
+        y: party_area.bottom(),
+        height: area.bottom() - party_area.bottom(),
+        ..area
+    };
     if let Some(question) = status.pending_dialogs.first() {
         let height = (question.choices.len() as u16 + 3).min(rest.height);
         let block = panel(&format!("Question · {} · d to answer", question.caption))
@@ -454,12 +396,319 @@ fn overview(frame: &mut Frame, hello: &Hello, status: &Status, detail: Option<&D
             ..rest
         };
     }
-    logs(
-        frame,
-        panel("Logs").title_top(dim_right(&format!("logs --tail {LOG_TAIL}"))),
-        detail,
-        rest,
-    );
+    let chat_width = rest.width.saturating_sub(2) as usize;
+    let mut chat: Vec<Line> = detail
+        .map(|d| d.chat.iter().flat_map(|e| chat_lines(e, chat_width)).collect())
+        .unwrap_or_default();
+    if chat.is_empty() {
+        chat.push(Line::styled("no chat yet", Style::new().fg(DIM)));
+    }
+    let skip = chat.len().saturating_sub(rest.height.saturating_sub(2) as usize);
+    frame.render_widget(Paragraph::new(chat.split_off(skip)).block(panel("Chat")), rest);
+}
+
+fn not_playing_lines(hello: &Hello, status: &Status) -> Vec<Line<'static>> {
+    let mut lines = vec![
+        Line::styled(
+            format!("{} · {}", status.engine.name, state(status).0),
+            Style::new().fg(state(status).1).bold(),
+        ),
+        Line::styled(engine_summary(hello, status), Style::new().fg(DIM)),
+        Line::raw(""),
+        match status.game.state {
+            GameState::LoginScreen => Line::from(vec!["L  ".blue().bold(), "log in, with a server picker".fg(DIM)]),
+            GameState::NotStarted if !status.game.game_host_up => {
+                Line::styled("… starting the Game Host", Style::new().fg(DIM))
+            }
+            GameState::NotStarted => Line::styled("… the game is loading", Style::new().fg(DIM)),
+            GameState::Disconnected => Line::styled(
+                format!(
+                    "disconnected{}",
+                    status
+                        .game
+                        .server
+                        .as_deref()
+                        .map(|s| format!(" from {s}"))
+                        .unwrap_or_default()
+                ),
+                Style::new().red(),
+            ),
+            _ => Line::styled(format!("… {}", state(status).0), Style::new().fg(DIM)),
+        },
+    ];
+    if let Some(last) = &status.script.last_run {
+        lines.push(Line::styled(
+            format!("last Script: {} {}", base_name(&last.script), last.outcome),
+            Style::new().yellow(),
+        ));
+    }
+    lines
+}
+
+/// The account and its run in a few plain lines, a row per account on its map (it first), then the monsters in its cell with who is on
+/// each.
+fn party_board(app: &App, me: &Player, status: &Status, detail: Option<&Detail>, width: usize) -> Vec<Line<'static>> {
+    let mut lines = vec![Line::from(vec![
+        me.name.clone().bold(),
+        format!(
+            "  Lv {} · {} {} · {} · {} gold",
+            me.level,
+            me.map,
+            me.cell,
+            status.game.server.as_deref().unwrap_or("?"),
+            thousands(me.gold)
+        )
+        .fg(DIM),
+    ])];
+    match (&status.script.run, &status.script.last_run) {
+        (Some(run), _) => {
+            lines.push(Line::from(vec![
+                Span::styled(
+                    base_name(&run.script).trim_end_matches(".cs").to_owned(),
+                    Style::new().magenta().bold(),
+                ),
+                Span::raw(format!(
+                    "  running {} · {} kills · {}/min · {} deaths{}",
+                    duration(run.elapsed_sec),
+                    thousands(run.kills),
+                    run.kills_per_min.map(rate_text).unwrap_or_else(|| "—".into()),
+                    run.deaths,
+                    if run.relogging_in { " · relogging in" } else { "" }
+                )),
+            ]));
+            lines.push(match (stall(run), run.quest_idle_sec) {
+                (Some(Stall::Stuck(sec)), _) => Line::styled(
+                    format!("stuck · no quest progress or kills for {}", short_duration(sec)),
+                    Style::new().red().bold(),
+                ),
+                (Some(Stall::Grinding(sec)), _) => Line::styled(
+                    format!(
+                        "grinding · no quest progress for {}, still killing",
+                        short_duration(sec)
+                    ),
+                    Style::new().yellow(),
+                ),
+                (None, Some(sec)) => Line::styled(
+                    format!("progressing · last quest progress {} ago", short_duration(sec)),
+                    Style::new().fg(idle_color(sec, true)),
+                ),
+                (None, None) => Line::styled("no quest in progress", Style::new().fg(DIM)),
+            });
+            match &run.goal {
+                Some(goal) => lines.extend(goal_tree(goal)),
+                None => lines.push(doing(run, detail)),
+            }
+        }
+        (None, Some(last)) => lines.push(Line::styled(
+            format!("no Script running · last: {} {}", base_name(&last.script), last.outcome),
+            Style::new().fg(DIM),
+        )),
+        (None, None) => lines.push(Line::styled("no Script running", Style::new().fg(DIM))),
+    }
+
+    // Everyone playing on the same map, the selected account first.
+    let party: Vec<(String, &Status)> = std::iter::once((status.engine.name.clone(), status))
+        .chain(
+            app.snapshot
+                .iter()
+                .flat_map(|s| &s.engines)
+                .filter_map(|(name, view)| match view {
+                    EngineView::Up { status: other, .. }
+                        if *name != status.engine.name
+                            && playing(other).is_some_and(|p| p.map.eq_ignore_ascii_case(&me.map)) =>
+                    {
+                        Some((name.clone(), other.as_ref()))
+                    }
+                    _ => None,
+                }),
+        )
+        .collect();
+    let map = detail.and_then(|d| d.map.as_ref()).and_then(|m| m.as_ref().ok());
+    let monster_name = |id: Option<i64>| -> String {
+        id.and_then(|id| map?.monsters.iter().find(|m| m.map_id == id))
+            .map_or_else(|| "—".into(), |m| m.name.clone())
+    };
+    const NAME: usize = 13;
+    const CLASS: usize = 19;
+    const HP: u16 = 12;
+    const NUMBERS: usize = 7 + 7 + 8;
+    let target_width = width.saturating_sub(NAME + CLASS + HP as usize + 2 + NUMBERS).max(8);
+    lines.push(Line::raw(""));
+    lines.push(Line::styled(
+        format!(
+            "{:<NAME$}{:<CLASS$}{:<w$}  {:<target_width$}{:>7}{:>7}{:>8}",
+            "ACCOUNT",
+            "CLASS",
+            "HP",
+            "TARGET",
+            "KILLS",
+            "/MIN",
+            "DEATHS",
+            w = HP as usize
+        ),
+        Style::new().fg(DIM).bold(),
+    ));
+    for (name, member) in &party {
+        let Some(player) = playing(member) else { continue };
+        let run = member.script.run.as_ref();
+        let hp = ratio(player.hp, player.max_hp);
+        let hp_color = if !player.alive {
+            Color::Red
+        } else if hp > 0.5 {
+            Color::Green
+        } else if hp > 0.25 {
+            Color::Yellow
+        } else {
+            Color::Red
+        };
+        let mut spans = vec![
+            Span::styled(format!("{:<NAME$}", truncate(name, NAME - 1)), Style::new().bold()),
+            Span::styled(
+                format!(
+                    "{:<CLASS$}",
+                    truncate(player.class.as_deref().unwrap_or("—"), CLASS - 1)
+                ),
+                Style::new().fg(DIM),
+            ),
+        ];
+        let hp_text = if player.alive {
+            short_number(player.hp)
+        } else {
+            "dead".into()
+        };
+        spans.extend(gauge("", HP - 1, hp, hp_color, hp_text).spans.into_iter().skip(1));
+        spans.push(Span::raw(format!(
+            "  {:<target_width$}",
+            truncate(&monster_name(player.target_id), target_width)
+        )));
+        spans.push(Span::raw(format!(
+            "{:>7}",
+            run.map(|r| thousands(r.kills)).unwrap_or_default()
+        )));
+        spans.push(Span::styled(
+            format!(
+                "{:>7}",
+                run.and_then(|r| r.kills_per_min).map(rate_text).unwrap_or_default()
+            ),
+            Style::new().fg(DIM),
+        ));
+        let deaths = run.map_or(0, |r| r.deaths);
+        spans.push(Span::styled(
+            format!("{:>8}", run.map(|r| r.deaths.to_string()).unwrap_or_default()),
+            if deaths > 0 {
+                Style::new().red()
+            } else {
+                Style::new().fg(DIM)
+            },
+        ));
+        lines.push(Line::from(spans));
+    }
+
+    lines.push(Line::raw(""));
+    lines.push(Line::styled(
+        format!("MONSTERS IN {}", me.cell),
+        Style::new().fg(DIM).bold(),
+    ));
+    let Some(map) = map else {
+        lines.push(loading());
+        return lines;
+    };
+    let here: Vec<_> = map.monsters.iter().filter(|m| m.cell == me.cell).collect();
+    if here.is_empty() {
+        lines.push(Line::styled("  none", Style::new().fg(DIM)));
+    }
+    let bar = width.saturating_sub(2 + 24 + 30).clamp(10, 24) as u16;
+    for monster in here {
+        if !monster.alive {
+            lines.push(Line::styled(
+                format!("  {:<24}dead, respawning", truncate(&monster.name, 23)),
+                Style::new().fg(DIM),
+            ));
+            continue;
+        }
+        let attackers: Vec<&str> = party
+            .iter()
+            .filter(|(_, m)| playing(m).is_some_and(|p| p.target_id == Some(monster.map_id)))
+            .map(|(name, _)| name.as_str())
+            .collect();
+        let mut spans = vec![Span::raw(format!("  {:<24}", truncate(&monster.name, 23)))];
+        spans.extend(
+            gauge(
+                "",
+                bar,
+                ratio(monster.hp, monster.max_hp),
+                Color::Red,
+                format!("{}/{}", short_number(monster.hp), short_number(monster.max_hp)),
+            )
+            .spans
+            .into_iter()
+            .skip(1),
+        );
+        spans.push(if attackers.is_empty() {
+            Span::styled("  no one on it", Style::new().fg(DIM))
+        } else {
+            Span::styled(format!("  ◀ {}", attackers.join(", ")), Style::new().yellow())
+        });
+        lines.push(Line::from(spans));
+    }
+    lines
+}
+
+/// The Script's goal as a tree, each step what the one above needs, with counts, pace and time left; then how often a death reset the
+/// wave, which is why a farm loops.
+fn goal_tree(goal: &ScriptGoal) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    let mut depth = 0;
+    let mut step = |kind: &str, text: String, right: Vec<Span<'static>>| {
+        let mut spans = vec![
+            Span::styled(format!("{}└ {kind:<6}", "   ".repeat(depth)), Style::new().fg(DIM)),
+            Span::raw(format!("{:<34}", truncate(&text, 33))),
+        ];
+        spans.extend(right);
+        lines.push(Line::from(spans));
+        depth += 1;
+    };
+    if let Some(quest) = &goal.quest {
+        step("quest", quest.clone(), vec![]);
+    }
+    for (kind, item) in [("buy", &goal.buy), ("farm", &goal.farm)] {
+        let Some(item) = item else { continue };
+        let have = item.have.unwrap_or(0);
+        let mut right = vec![Span::styled(
+            format!("{:>13}", format!("{}/{}", short_number(have), short_number(item.want))),
+            Style::new().bold(),
+        )];
+        if let Some(rate) = item.per_hour.filter(|r| *r > 0.0) {
+            let left = ((item.want - have).max(0) as f64 / rate * 3600.0).round();
+            right.push(Span::styled(
+                format!("   +{}/h  ~{}", short_number(rate.round() as i64), short_duration(left)),
+                Style::new().fg(DIM),
+            ));
+        }
+        step(kind, item.item.clone(), right);
+    }
+    if let Some(now) = &goal.now {
+        step("now", now.clone(), vec![]);
+    }
+    if goal.resets > 0 {
+        lines.push(Line::styled(
+            format!(
+                "⟲ wave reset {}× since this farm began: each leader death restarts the wave",
+                goal.resets
+            ),
+            Style::new().yellow(),
+        ));
+    }
+    lines
+}
+
+/// A big number in a few characters: `833`, `20k`, `1.0m`.
+fn short_number(n: i64) -> String {
+    match n {
+        n if n >= 1_000_000 => format!("{:.1}m", n as f64 / 1e6),
+        n if n >= 10_000 => format!("{}k", n / 1000),
+        n => n.to_string(),
+    }
 }
 
 fn engine_summary(hello: &Hello, status: &Status) -> String {
@@ -470,129 +719,6 @@ fn engine_summary(hello: &Hello, status: &Status) -> String {
         status.engine.pid,
         duration(status.engine.uptime_sec)
     )
-}
-
-fn player_lines(player: &Player, status: &Status, gauge_width: u16) -> Vec<Line<'static>> {
-    let tag = if !player.alive {
-        "dead".red().bold()
-    } else if player.in_combat {
-        "in combat".light_red().bold()
-    } else {
-        "idle".fg(DIM)
-    };
-    let xp = match player.xp_percent {
-        Some(percent) => (
-            player.xp as f64 / player.required_xp.max(1) as f64,
-            format!("{percent}%"),
-        ),
-        None => (1.0, "max level".into()),
-    };
-    let hp = ratio(player.hp, player.max_hp);
-    vec![
-        Line::from(vec![
-            player.name.clone().bold(),
-            format!(
-                "  Lv {}  {}  ",
-                player.level,
-                player.class.as_deref().unwrap_or("no class")
-            )
-            .fg(DIM),
-            tag,
-        ]),
-        gauge(
-            "HP",
-            gauge_width,
-            hp,
-            if hp > 0.5 {
-                Color::Green
-            } else if hp > 0.25 {
-                Color::Yellow
-            } else {
-                Color::Red
-            },
-            format!("{}/{}", player.hp, player.max_hp),
-        ),
-        gauge(
-            "MP",
-            gauge_width,
-            ratio(player.mp, player.max_mp),
-            Color::Blue,
-            format!("{}/{}", player.mp, player.max_mp),
-        ),
-        gauge("XP", gauge_width, xp.0, Color::Magenta, xp.1),
-        Line::styled(format!("gold {}", thousands(player.gold)), Style::new().yellow()),
-        Line::raw(format!(
-            "{} · {} · {} · {}",
-            player.map,
-            player.cell,
-            player.pad,
-            status.game.server.as_deref().unwrap_or("?")
-        )),
-    ]
-}
-
-fn script_lines(hello: &Hello, status: &Status, detail: Option<&Detail>) -> Vec<Line<'static>> {
-    let mut lines = match (&status.script.run, &status.script.last_run) {
-        (Some(run), _) => vec![
-            Line::styled(run.script.clone(), Style::new().magenta().bold()),
-            Line::raw(format!(
-                "run {} · {}{}{}{}",
-                run.number,
-                duration(run.elapsed_sec),
-                run.kills_per_min
-                    .map(|rate| format!(" · {} kills · {}/min", thousands(run.kills), rate_text(rate)))
-                    .unwrap_or_default(),
-                if run.relogins > 0 {
-                    format!(" · {} relogins", run.relogins)
-                } else {
-                    String::new()
-                },
-                if run.relogging_in { " · relogging in" } else { "" }
-            )),
-            match (stall(run), run.quest_idle_sec) {
-                (Some(Stall::Stuck(sec)), _) => Line::styled(
-                    format!("quests stalled {} · no kills", short_duration(sec)),
-                    Style::new().red().bold(),
-                ),
-                (Some(Stall::Grinding(sec)), _) => Line::styled(
-                    format!("no quest progress {} · still killing", short_duration(sec)),
-                    Style::new().yellow(),
-                ),
-                (None, Some(sec)) => Line::styled(
-                    format!("quests: last progress {} ago", short_duration(sec)),
-                    Style::new().fg(idle_color(sec, true)),
-                ),
-                (None, None) => Line::styled("quests: none in progress", Style::new().fg(DIM)),
-            },
-            doing(run, detail),
-        ],
-        (None, last) => vec![
-            Line::styled("no Script running", Style::new().fg(DIM)),
-            match last {
-                Some(last) => Line::styled(
-                    format!("last: {} {}", base_name(&last.script), last.outcome),
-                    if last.outcome == "completed" {
-                        Style::new().fg(DIM)
-                    } else {
-                        Style::new().yellow()
-                    },
-                ),
-                None => Line::styled("last outcome: —", Style::new().fg(DIM)),
-            },
-        ],
-    };
-    if status.script.run.is_none() {
-        lines.push(Line::raw(""));
-    }
-    lines.push(Line::styled(
-        format!("Engine {} · pid {}", status.engine.name, status.engine.pid),
-        Style::new().fg(DIM),
-    ));
-    lines.push(Line::styled(
-        format!("build {} · up {}", hello.build, duration(status.engine.uptime_sec)),
-        Style::new().fg(DIM),
-    ));
-    lines
 }
 
 fn gauge(label: &str, width: u16, ratio: f64, color: Color, text: String) -> Line<'static> {
@@ -1198,7 +1324,34 @@ fn status_line(frame: &mut Frame, app: &App, area: Rect) {
             Style::new().fg(DIM),
         ),
     };
+    let used = line.width() as u16;
     frame.render_widget(Paragraph::new(line), area);
+    // The selected Engine's details, which the Overview leaves out, where the status line leaves room for them.
+    if let Some(row) = app.selected_row()
+        && let Some(EngineView::Up { hello, status }) = app.engine(&row.name)
+    {
+        let build = hello
+            .build
+            .split_once('+')
+            .map_or(hello.build.clone(), |(version, commit)| {
+                format!("{version}+{}", commit.chars().take(7).collect::<String>())
+            });
+        let info = format!(
+            "Engine {} · pid {} · {build} · up {} ",
+            status.engine.name,
+            status.engine.pid,
+            duration(status.engine.uptime_sec)
+        );
+        let width = info.chars().count() as u16;
+        if used + 2 + width <= area.width {
+            let right = Rect {
+                x: area.right() - width,
+                width,
+                ..area
+            };
+            frame.render_widget(Paragraph::new(Line::styled(info, Style::new().fg(DIM))), right);
+        }
+    }
 }
 
 fn note_line(prefix: String, note: &Note) -> Line<'static> {

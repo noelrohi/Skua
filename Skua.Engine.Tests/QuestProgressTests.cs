@@ -89,7 +89,7 @@ public class QuestProgressTests
     }
 
     [Fact]
-    public async Task A_run_counts_the_kills_credited_to_the_player_and_its_kills_per_minute()
+    public async Task A_run_counts_the_kills_credited_to_the_player_its_kills_per_minute_and_its_deaths()
     {
         await using EngineSandbox sandbox = new();
         await using GameFixture session = await GameFixture.StartAsync(sandbox, environment: Fast);
@@ -105,11 +105,58 @@ public class QuestProgressTests
             await session.GameHost.DoAsync($"kill {monster}");
         ScriptRunDto killed = await WaitForAsync(async () => (await session.Connection.StatusAsync(Ct)).Script.Run!, r => r.Kills == 3);
         LogEntryDto stalled = await session.Connection.WaitForEventAsync(EventTypes.QuestStalled);
+        await session.GameHost.DoAsync("die");
+        await session.Connection.WaitForEventAsync(EventTypes.PlayerDeath);
+        ScriptRunDto died = (await session.Connection.StatusAsync(Ct)).Script.Run!;
 
-        Assert.Equal((0, 0.0), (none.Kills, none.KillsPerMin));
+        Assert.Equal((0, 0.0, 0), (none.Kills, none.KillsPerMin, none.Deaths));
         // Within the run's first minute the rate is over a minute, so three kills are 3 a minute.
         Assert.Equal((3, 3.0), (killed.Kills, killed.KillsPerMin));
         Assert.Equal(3.0, stalled.Data!.Value.GetProperty("killsPerMin").GetDouble());
+        Assert.Equal((0, 1), (killed.Deaths, died.Deaths));
+    }
+
+    [Fact]
+    public async Task A_runs_goal_follows_its_CoreBots_lines_with_what_the_player_owns()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox, environment: Fast);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        string bought = Path.Combine(sandbox.SkuaDir, "bought");
+        TestScripts.Write(sandbox, "Tests/Goal.cs", TestScripts.Main("""
+            bot.Log("[00:00:01] (QuestProgression) Doing Quest: [1001] - \"Slime Time\"");
+            bot.Log("[00:00:01] (StartBuyAllMerge) Farming to buy Slime Crown (#0/1)");
+            bot.Log("[00:00:01] (BuyAllMerge) Farming Slime Sample (1/5)");
+            bot.Log("[00:00:01] (HuntMonster) Killing Frogzard for item: \"Slime Sample\" 3/5");
+            bot.Log("[00:00:01] (BuyAllMerge) Death - Resetting");
+            while (!bot.ShouldExit && !System.IO.File.Exists(@"BOUGHT"))
+                Thread.Sleep(50);
+            bot.Log("[00:00:02] (BuyItem) Bought 1 Slime Crown");
+            while (!bot.ShouldExit)
+                Thread.Sleep(50);
+            """).Replace("BOUGHT", bought));
+        TestScripts.Write(sandbox, "Tests/Loop.cs", TestScripts.Loop);
+
+        await session.Connection.ScriptStartAsync("Tests/Goal.cs", cancellationToken: Ct);
+        ScriptGoalDto goal = (await WaitForAsync(async () => (await session.Connection.StatusAsync(Ct)).Script.Run!,
+            r => r.Goal is { Resets: 1, Farm.Have: not null })).Goal!;
+        File.WriteAllText(bought, "");
+        ScriptGoalDto afterBuying = (await WaitForAsync(async () => (await session.Connection.StatusAsync(Ct)).Script.Run!,
+            r => r.Goal is { Buy: null })).Goal!;
+        await session.Connection.ScriptStopAsync(Ct);
+        await session.Connection.ScriptStartAsync("Tests/Loop.cs", cancellationToken: Ct);
+        ScriptRunDto next = (await session.Connection.StatusAsync(Ct)).Script.Run!;
+
+        // Slime Time needs Slime Samples, which the temporary inventory holds 3 of; the kill names the item it is for.
+        Assert.Equal("Slime Time", goal.Quest);
+        Assert.Equal(new GoalItemDto("Slime Crown", 1, 0, null), goal.Buy);
+        Assert.Equal(("Slime Sample", 5, (int?)3), (goal.Farm!.Item, goal.Farm.Want, goal.Farm.Have));
+        Assert.Equal("killing Frogzard for Slime Sample", goal.Now);
+        Assert.NotNull(goal.LastResetAt);
+        // Buying the item ends its chain below the quest.
+        Assert.Equal(("Slime Time", (GoalItemDto?)null, (GoalItemDto?)null, 0), (afterBuying.Quest, afterBuying.Buy, afterBuying.Farm, afterBuying.Resets));
+        // Another run has none of the last run's goal.
+        Assert.Null(next.Goal);
     }
 
     private static async Task<T> WaitForAsync<T>(Func<Task<T>> read, Func<T, bool> done)

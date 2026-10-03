@@ -20,6 +20,8 @@ const MAX_LOG_LINES: usize = 2000;
 pub const HOOK_RAN: &str = "hook.ran";
 /// How many of the latest Hook runs the Hooks tab keeps.
 const MAX_HOOK_RUNS: usize = 200;
+/// How many of the newest game messages the Overview keeps.
+const MAX_CHAT: u32 = 100;
 
 #[derive(Debug, Clone)]
 pub enum EngineView {
@@ -44,6 +46,8 @@ pub struct Detail {
     pub hook_runs: Vec<LogEntry>,
     /// Its newest `script` log entry, which says what the Script is doing.
     pub script_line: Option<LogEntry>,
+    /// Its newest game messages, oldest first, for the Overview's chat.
+    pub chat: Vec<LogEntry>,
     pub inventory: Option<Result<Inventory, Error>>,
     pub quests: Option<Result<Quests, Error>>,
     pub map: Option<Result<Map, Error>>,
@@ -134,6 +138,7 @@ impl Poller {
                     .entries
                     .into_iter()
                     .rfind(|e| e.kind == "script");
+                self.detail.chat = engine.logs_of("game", None, Some(MAX_CHAT))?.entries;
                 engine.logs(None, Some(LOG_TAIL))
             }),
             Some(cursor) => engine.logs(Some(cursor), None),
@@ -154,6 +159,11 @@ impl Poller {
                 if let Some(line) = page.entries.iter().rfind(|e| e.kind == "script") {
                     self.detail.script_line = Some(line.clone());
                 }
+                self.detail
+                    .chat
+                    .extend(page.entries.iter().filter(|e| e.kind == "game").cloned());
+                let excess = self.detail.chat.len().saturating_sub(MAX_CHAT as usize);
+                self.detail.chat.drain(..excess);
                 self.detail.logs.extend(page.entries);
                 let excess = self.detail.logs.len().saturating_sub(MAX_LOG_LINES);
                 self.detail.logs.drain(..excess);
@@ -168,8 +178,9 @@ impl Poller {
         match tab {
             Tab::Inventory => self.detail.inventory = Some(engine.inventory()),
             Tab::Quests => self.detail.quests = Some(engine.quests()),
-            Tab::Game => self.detail.map = Some(engine.map()),
-            Tab::Overview | Tab::Logs | Tab::Chat | Tab::Hooks => {}
+            // The Overview shows the monsters in the player's cell.
+            Tab::Overview | Tab::Game => self.detail.map = Some(engine.map()),
+            Tab::Logs | Tab::Chat | Tab::Hooks => {}
         }
     }
 }
