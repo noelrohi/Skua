@@ -479,3 +479,32 @@ fn the_inventory_splits_into_categories_scrolls_and_takes_clicks() {
         &["acting on: alice", "Tainted Gem Exchange"],
     );
 }
+
+#[test]
+fn a_stall_while_still_killing_is_grinding_not_an_alert() {
+    let fleet = fleet();
+    let mut grinding = status("carol", true, Some("Farm/RareDrop.cs"));
+    grinding["script"]["run"]["questIdleSec"] = json!(700.0);
+    grinding["script"]["run"]["kills"] = json!(312);
+    grinding["script"]["run"]["killsPerMin"] = json!(5.4);
+    let _carol = FakeEngine::start(fleet.dir.path(), "carol", engine_of(PROTOCOL, "carol", grinding));
+    let mut app = App::new(fleet.dir.path().to_owned());
+    app.filter = "carol".into();
+
+    let screen = screen(&fleet, &mut app, 120, 32);
+
+    // alice is stuck and bob speaks another protocol; carol only grinds.
+    assert_shows(
+        &screen,
+        &[
+            "4 Engines · 2 alerts",
+            "run 3 · 12m 34s · 312 kills · 5.4/min",
+            "no quest progress 11m · still killing",
+        ],
+    );
+    let row = screen.lines().find(|l| l.contains("● carol")).unwrap();
+    assert!(
+        row.contains("RareDrop") && row.contains("11m") && !row.contains('▲'),
+        "{row}"
+    );
+}

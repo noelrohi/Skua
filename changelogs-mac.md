@@ -7,6 +7,7 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 ## October 3, 2026
 
 ### New
+* The Engine counts each run's kills, and `skua-tui` shows them with kills per minute. A quest stall while the Script still kills (a rare-drop grind) shows in yellow and is no longer an alert; only a stall with no kills is. See [The TUI](./BUILD.md#the-tui-skua-tui).
 * `skua-tui` takes the mouse: click an account, a tab or an Inventory category, and scroll with the wheel. The Inventory tab splits into category tabs (Weapons, Classes, Gear, Items, Quest items, Other) and scrolls (`pgup`/`pgdn`, or click the list and use `j`/`k`). See [The TUI](./BUILD.md#the-tui-skua-tui).
 * `skua-tui` shows how long each account's quests have gone without progress. A stall of 10 minutes or more shows in red next to the account's Script and counts as an alert, and the Quests tab now shows only the quests in progress, each unmet requirement on its own line with its idle time, rate and time left. The Engine records `quest.stalled` when a run's quests stall, so a Hook can alert you. See [The TUI](./BUILD.md#the-tui-skua-tui).
 * `./install-macos.sh` installs `skua-tui` too, next to `skua`, so it's on PATH and updates with it. It needs `cargo` ([Rust](https://rustup.rs)), as the Game Host already did; `SKUA_NO_TUI=1 ./install-macos.sh` installs everything but `skua-tui`, without Rust. See [Install on macOS](./BUILD.md#install-on-macos).

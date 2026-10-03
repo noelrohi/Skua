@@ -207,6 +207,10 @@ internal sealed class FakeGame
                     // How many Slime Crowns, the 1/1 drop Slime Time also needs, the temporary inventory holds.
                     _slimeCrowns = int.Parse(qty);
                     return true;
+                case ["kill", string monMapId]:
+                    // The game's credit for a monster the player killed, as it sends it even when the monster gives nothing.
+                    Pext(new JsonObject { ["cmd"] = "addGoldExp", ["intGold"] = 0, ["intExp"] = 0, ["typ"] = "m", ["id"] = int.Parse(monMapId) });
+                    return true;
                 case ["pickup", string id]:
                     Pext(new JsonObject { ["cmd"] = "getDrop", ["ItemID"] = int.Parse(id), ["bSuccess"] = 1, ["iQty"] = 1, ["iQtyNow"] = 1, ["bBank"] = false });
                     return true;

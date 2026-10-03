@@ -42,6 +42,7 @@ internal sealed class Engine : IEngineRpc
     private readonly ChatOperations _chat;
     private readonly GameQueries _queries;
     private readonly QuestProgress _questProgress;
+    private readonly KillCounter _kills;
     private readonly ScriptOperations _scripts;
     private readonly EvalOperations _eval;
     private readonly DialogOperations _dialogs;
@@ -71,7 +72,8 @@ internal sealed class Engine : IEngineRpc
         _moves = new MoveOperations(
             services.GetRequiredService<IScriptMap>(), services.GetRequiredService<IScriptPlayer>(), services.GetRequiredService<IScriptWait>(), gameHost.Tracker, gameSlot);
         _chat = new ChatOperations(services.GetRequiredService<IScriptSend>(), services.GetRequiredService<IScriptMap>(), gameSlot);
-        _questProgress = new QuestProgress(services.GetRequiredService<IScriptInterface>(), gameHost.Tracker, _runs, logs);
+        _kills = new KillCounter(services.GetRequiredService<IFlashUtil>());
+        _questProgress = new QuestProgress(services.GetRequiredService<IScriptInterface>(), gameHost.Tracker, _runs, logs, _kills);
         _queries = new GameQueries(services.GetRequiredService<IScriptInterface>(), services.GetRequiredService<IFlashUtil>(), gameHost.Tracker, gameSlot, _questProgress);
         _scripts = new ScriptOperations(manager, _runs, broker, _slot, _scriptsSlot, compiling);
         _eval = new EvalOperations(manager, services.GetRequiredService<IScriptInterface>(), logs, compiling);
@@ -331,7 +333,7 @@ internal sealed class Engine : IEngineRpc
     private ScriptStatusDto ScriptStatus()
     {
         ScriptStatusDto status = _scripts.Status();
-        return status with { Run = _questProgress.WithQuestIdle(status.Run) };
+        return status with { Run = _kills.WithKills(_questProgress.WithQuestIdle(status.Run)) };
     }
 
     public Task<ScriptWaitResult> ScriptWaitAsync(int? timeoutSec, CancellationToken cancellationToken) =>

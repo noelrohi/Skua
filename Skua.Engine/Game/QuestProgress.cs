@@ -30,6 +30,7 @@ internal sealed class QuestProgress : IDisposable
     private readonly GameStateTracker _tracker;
     private readonly ScriptRuns _runs;
     private readonly EngineLogs _logs;
+    private readonly KillCounter _kills;
     private readonly TimeSpan _stallAfter;
     private readonly Timer _poll;
     private readonly object _lock = new();
@@ -43,8 +44,9 @@ internal sealed class QuestProgress : IDisposable
     /// <summary>The run and idle start <see cref="EventTypes.QuestStalled"/> was last recorded for, so it is recorded once per stall.</summary>
     private (int Run, DateTime Since)? _recordedStall;
 
-    public QuestProgress(IScriptInterface api, GameStateTracker tracker, ScriptRuns runs, EngineLogs logs)
+    public QuestProgress(IScriptInterface api, GameStateTracker tracker, ScriptRuns runs, EngineLogs logs, KillCounter kills)
     {
+        _kills = kills;
         _api = api;
         _tracker = tracker;
         _runs = runs;
@@ -91,7 +93,7 @@ internal sealed class QuestProgress : IDisposable
             if (_tracker.State != GameState.Playing)
                 return;
             (List<Quest> quests, Dictionary<int, int> inventory, Dictionary<int, int> temp) = ReadGame();
-            ScriptRunDto? run = _runs.Status().Run;
+            ScriptRunDto? run = _kills.WithKills(_runs.Status().Run);
             object? stalled;
             lock (_lock)
             {
@@ -160,6 +162,7 @@ internal sealed class QuestProgress : IDisposable
             run = run.Number,
             script = run.Script,
             idleSec,
+            killsPerMin = run.KillsPerMin,
             quests = quests
                 .Where(q => q.Active)
                 .Select(q => new

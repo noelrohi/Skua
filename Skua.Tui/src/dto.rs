@@ -112,6 +112,10 @@ pub struct ScriptRun {
     pub elapsed_sec: f64,
     /// How long the accepted quests' unmet requirements have gone without a rise, at most `elapsed_sec`; None when there are none.
     pub quest_idle_sec: Option<f64>,
+    /// The monsters the player was credited with killing during the run, and how many a minute over the last 5 minutes.
+    #[serde(default)]
+    pub kills: i64,
+    pub kills_per_min: Option<f64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

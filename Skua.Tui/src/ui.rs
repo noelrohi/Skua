@@ -162,14 +162,16 @@ fn account_line(app: &App, row: &Row, selected: bool, width: u16) -> Line<'stati
         _ => " ".into(),
     };
     let up = matches!(view, Some(EngineView::Up { .. }));
-    let stalled = match view {
-        Some(EngineView::Up { status, .. }) => status.script.run.as_ref().and_then(stalled_for),
+    let stall = match view {
+        Some(EngineView::Up { status, .. }) => status.script.run.as_ref().and_then(stall),
         _ => None,
     };
-    let stall = stalled
-        .map(|sec| format!(" {}", short_duration(sec)))
-        .unwrap_or_default();
-    let fixed = 3 + 2 + 2 + 13 + 1 + stall.chars().count();
+    let stall = match stall {
+        Some(Stall::Stuck(sec)) => format!(" {}", short_duration(sec)).red(),
+        Some(Stall::Grinding(sec)) => format!(" {}", short_duration(sec)).yellow(),
+        None => Span::raw(""),
+    };
+    let fixed = 3 + 2 + 2 + 13 + 1 + stall.content.chars().count();
     let state_width = (width as usize).saturating_sub(fixed);
     let mut line = Line::from(vec![
         if marked { "[x]".blue().bold() } else { "[ ]".fg(DIM) },
@@ -185,7 +187,7 @@ fn account_line(app: &App, row: &Row, selected: bool, width: u16) -> Line<'stati
             format!("{:<state_width$}", truncate(&state, state_width)),
             Style::new().fg(color),
         ),
-        stall.red(),
+        stall,
         flag,
     ]);
     if selected {
@@ -218,7 +220,7 @@ fn is_alert(view: &EngineView) -> bool {
     match view {
         EngineView::Failed(_) => true,
         EngineView::Up { status, .. } => {
-            state(status).1 == Color::Red || status.script.run.as_ref().and_then(stalled_for).is_some()
+            state(status).1 == Color::Red || matches!(status.script.run.as_ref().and_then(stall), Some(Stall::Stuck(_)))
         }
         EngineView::Offline => false,
     }
@@ -534,9 +536,12 @@ fn script_lines(hello: &Hello, status: &Status, detail: Option<&Detail>) -> Vec<
         (Some(run), _) => vec![
             Line::styled(run.script.clone(), Style::new().magenta().bold()),
             Line::raw(format!(
-                "run {} · {}{}{}",
+                "run {} · {}{}{}{}",
                 run.number,
                 duration(run.elapsed_sec),
+                run.kills_per_min
+                    .map(|rate| format!(" · {} kills · {}/min", thousands(run.kills), rate_text(rate)))
+                    .unwrap_or_default(),
                 if run.relogins > 0 {
                     format!(" · {} relogins", run.relogins)
                 } else {
@@ -544,16 +549,20 @@ fn script_lines(hello: &Hello, status: &Status, detail: Option<&Detail>) -> Vec<
                 },
                 if run.relogging_in { " · relogging in" } else { "" }
             )),
-            match run.quest_idle_sec {
-                Some(sec) if sec >= STALL_SEC => Line::styled(
-                    format!("quests stalled {}", short_duration(sec)),
+            match (stall(run), run.quest_idle_sec) {
+                (Some(Stall::Stuck(sec)), _) => Line::styled(
+                    format!("quests stalled {} · no kills", short_duration(sec)),
                     Style::new().red().bold(),
                 ),
-                Some(sec) => Line::styled(
+                (Some(Stall::Grinding(sec)), _) => Line::styled(
+                    format!("no quest progress {} · still killing", short_duration(sec)),
+                    Style::new().yellow(),
+                ),
+                (None, Some(sec)) => Line::styled(
                     format!("quests: last progress {} ago", short_duration(sec)),
                     Style::new().fg(idle_color(sec, true)),
                 ),
-                None => Line::styled("quests: none in progress", Style::new().fg(DIM)),
+                (None, None) => Line::styled("quests: none in progress", Style::new().fg(DIM)),
             },
             doing(run, detail),
         ],
@@ -801,9 +810,22 @@ fn doing(run: &ScriptRun, detail: Option<&Detail>) -> Line<'static> {
     ])
 }
 
-/// How long `run`'s quests have gone without progress, once that is a stall.
-fn stalled_for(run: &ScriptRun) -> Option<f64> {
-    run.quest_idle_sec.filter(|sec| *sec >= STALL_SEC)
+/// A run whose quests have gone the stall time without progress: stuck when it kills nothing either, else grinding, as for a rare drop.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Stall {
+    Stuck(f64),
+    Grinding(f64),
+}
+
+/// How long `run`'s quests have gone without progress, once that is a stall, and whether it still kills; an Engine that doesn't count
+/// kills says nothing about them, so its stall is stuck.
+fn stall(run: &ScriptRun) -> Option<Stall> {
+    let sec = run.quest_idle_sec.filter(|sec| *sec >= STALL_SEC)?;
+    Some(if run.kills_per_min.is_some_and(|rate| rate > 0.0) {
+        Stall::Grinding(sec)
+    } else {
+        Stall::Stuck(sec)
+    })
 }
 
 /// Dim while progress is recent, yellow past half the stall time and red once stalled; dim throughout when no Script runs.
