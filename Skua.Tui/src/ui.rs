@@ -370,7 +370,10 @@ fn overview(frame: &mut Frame, hello: &Hello, status: &Status, detail: Option<&D
             let running = status.script.run.is_some();
             let block = panel("Script")
                 .title_top(Line::from(if running { " running ".green() } else { " idle ".fg(DIM) }).right_aligned());
-            frame.render_widget(Paragraph::new(script_lines(hello, status)).block(block), script_area);
+            frame.render_widget(
+                Paragraph::new(script_lines(hello, status, detail)).block(block),
+                script_area,
+            );
         }
         None => {
             let block = panel("Engine")
@@ -508,7 +511,7 @@ fn player_lines(player: &Player, status: &Status, gauge_width: u16) -> Vec<Line<
     ]
 }
 
-fn script_lines(hello: &Hello, status: &Status) -> Vec<Line<'static>> {
+fn script_lines(hello: &Hello, status: &Status, detail: Option<&Detail>) -> Vec<Line<'static>> {
     let mut lines = match (&status.script.run, &status.script.last_run) {
         (Some(run), _) => vec![
             Line::styled(run.script.clone(), Style::new().magenta().bold()),
@@ -534,6 +537,7 @@ fn script_lines(hello: &Hello, status: &Status) -> Vec<Line<'static>> {
                 ),
                 None => Line::styled("quests: none in progress", Style::new().fg(DIM)),
             },
+            doing(run, detail),
         ],
         (None, last) => vec![
             Line::styled("no Script running", Style::new().fg(DIM)),
@@ -550,7 +554,9 @@ fn script_lines(hello: &Hello, status: &Status) -> Vec<Line<'static>> {
             },
         ],
     };
-    lines.push(Line::raw(""));
+    if status.script.run.is_none() {
+        lines.push(Line::raw(""));
+    }
     lines.push(Line::styled(
         format!("Engine {} · pid {}", status.engine.name, status.engine.pid),
         Style::new().fg(DIM),
@@ -652,7 +658,8 @@ fn quest_lines(quests: &[Quest], running: bool, width: usize) -> Vec<Line<'stati
     }
     for quest in in_progress {
         let unmet: Vec<_> = quest.requirements.iter().filter(|r| r.have < r.qty).collect();
-        let idle = unmet.iter().filter_map(|r| r.idle_sec).reduce(f64::min);
+        // The rise that met a requirement counts too, as the Engine counts it.
+        let idle = quest.requirements.iter().filter_map(|r| r.idle_sec).reduce(f64::min);
         let done = format!(
             "{}/{} done",
             quest.requirements.len() - unmet.len(),
@@ -697,6 +704,33 @@ fn quest_lines(quests: &[Quest], running: bool, width: usize) -> Vec<Line<'stati
         lines.push(Line::styled(format!(" {}", others.join(" · ")), Style::new().fg(DIM)));
     }
     lines
+}
+
+/// What the run's Script last logged, and how long ago: what it is doing, or what it is stuck on.
+fn doing(run: &ScriptRun, detail: Option<&Detail>) -> Line<'static> {
+    let Some(entry) = detail
+        .and_then(|d| d.script_line.as_ref())
+        .filter(|e| e.run == Some(run.number))
+    else {
+        return Line::styled("no Script log yet", Style::new().fg(DIM));
+    };
+    let text = entry.text.as_deref().unwrap_or_default();
+    // Scripts stamp their own lines with [hh:mm:ss]; the age says when.
+    let text = match text.split_once("] ") {
+        Some((stamp, rest)) if stamp.starts_with('[') && stamp.len() == 9 => rest,
+        _ => text,
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64);
+    let age = (now - entry.ts) as f64 / 1000.0;
+    Line::from(vec![
+        Span::styled(
+            format!("{} ago · ", short_duration(age)),
+            Style::new().fg(idle_color(age, true)),
+        ),
+        Span::raw(first_line(text).to_owned()),
+    ])
 }
 
 /// How long `run`'s quests have gone without progress, once that is a stall.

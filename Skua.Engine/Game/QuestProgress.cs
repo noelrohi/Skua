@@ -9,8 +9,8 @@ namespace Skua.Engine.Game;
 
 /// <summary>
 /// Watches the loaded quests' requirements while playing, so a Control Surface can tell how long an account has gone without
-/// progress: when each requirement's count last rose and how fast it rises, and how long a run's accepted quests have gone without a
-/// rise. A count that falls (a turn-in, or temporary items lost to a relogin) is no progress. It records <see cref="EventTypes.QuestStalled"/>
+/// progress: when each requirement's count last rose and how fast it rises, and how long a run's accepted quests not yet done have gone
+/// without a rise in any of their requirements. A count that falls (a turn-in, or temporary items lost to a relogin) is no progress. It records <see cref="EventTypes.QuestStalled"/>
 /// once a run's quests have gone without a rise for the stall time.
 /// </summary>
 /// <remarks>What it remembers is the account's: another account logging in starts it afresh.</remarks>
@@ -139,10 +139,11 @@ internal sealed class QuestProgress : IDisposable
             else
                 _watches[(requirement.ID, requirement.Temp)] = new Watch(have, now);
         }
-        // The newest rise among the accepted quests' unmet requirements: while any of them rises, the account is progressing.
+        // The newest rise among the requirements of the accepted quests not yet done: while any of them rises, the account is progressing.
+        // The rise that meets a requirement counts too, as most 1/1 drops do at once.
         _questsIdleSince = quests
-            .Where(q => q.Active)
-            .SelectMany(q => q.Requirements.Where(r => Have(r, inventory, temp) < r.Quantity))
+            .Where(q => q.Active && q.Requirements.Any(r => Have(r, inventory, temp) < r.Quantity))
+            .SelectMany(q => q.Requirements)
             .Select(r => (DateTime?)_watches[(r.ID, r.Temp)].IdleSince)
             .Max();
     }

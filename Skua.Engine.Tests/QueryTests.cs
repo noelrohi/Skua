@@ -58,7 +58,8 @@ public class QueryTests
         QuestsResult active = await session.Connection.QuestsAsync(QuestFilter.Active, Ct);
 
         QuestDto slimes = new(1001, "Slime Time", QuestStatus.InProgress, false, 100, 50,
-            [new QuestRequirementDto(20, "Slime Sample", 5, 3, true)], [new QuestRewardDto(3, "Treasure Chest", 1)]);
+            [new QuestRequirementDto(20, "Slime Sample", 5, 3, true), new QuestRequirementDto(21, "Slime Crown", 1, 0, true)],
+            [new QuestRewardDto(3, "Treasure Chest", 1)]);
         Assert.Equal(QuestFilter.Loaded, loaded.Filter);
         Assert.Equal([1001, 1002, 1003], loaded.Quests.Select(q => q.Id));
         AssertQuest(slimes, loaded.Quests[0]);

@@ -56,8 +56,8 @@ public sealed record ScriptStatusDto(ScriptState State, ScriptRunDto? Run, Scrip
 /// <param name="ReloggingIn">Whether its thread has ended for an auto-relogin that will restart it.</param>
 /// <param name="ElapsedSec">How long it has run so far, to a tenth of a second, as the Engine's clock measures it.</param>
 /// <param name="QuestIdleSec">
-/// How many seconds the accepted quests' unmet requirements have gone without a rise (see <see cref="QuestRequirementDto.IdleSec"/>), at most
-/// <paramref name="ElapsedSec"/>; null when no accepted quest has an unmet requirement.
+/// How many seconds since a requirement of an accepted quest not yet done rose (see <see cref="QuestRequirementDto.IdleSec"/>), the rise that
+/// met it included; at most <paramref name="ElapsedSec"/>, and null when every accepted quest is done or none is accepted.
 /// </param>
 public sealed record ScriptRunDto(
     int Number, string Script, DateTimeOffset StartedAt, int Relogins, bool ReloggingIn, DialogMode Dialogs, int DialogTimeoutSec, double ElapsedSec,

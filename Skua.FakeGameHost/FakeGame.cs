@@ -53,6 +53,7 @@ internal sealed class FakeGame
     private int _inventoryDelay = 500;
     private int _bagSlots = 40;
     private int _slimeSamples = 3;
+    private int _slimeCrowns;
     private readonly HashSet<string> _lockedMaps = new(StringComparer.OrdinalIgnoreCase);
     private bool _brokenLogin;
     /// <summary>The type of the text field the stage's focus is on (<c>input</c> for chat's), or null when it isn't on one.</summary>
@@ -201,6 +202,10 @@ internal sealed class FakeGame
                 case ["slime-samples", string qty]:
                     // How many Slime Samples, which Slime Time needs, the temporary inventory holds.
                     _slimeSamples = int.Parse(qty);
+                    return true;
+                case ["slime-crowns", string qty]:
+                    // How many Slime Crowns, the 1/1 drop Slime Time also needs, the temporary inventory holds.
+                    _slimeCrowns = int.Parse(qty);
                     return true;
                 case ["pickup", string id]:
                     Pext(new JsonObject { ["cmd"] = "getDrop", ["ItemID"] = int.Parse(id), ["bSuccess"] = 1, ["iQty"] = 1, ["iQtyNow"] = 1, ["bBank"] = false });
@@ -668,14 +673,16 @@ internal sealed class FakeGame
 
     private static JsonArray Bank() => [Item(10, "Bank Relic", 2, 10, "Item")];
 
-    private JsonArray TempItems() => [Item(20, "Slime Sample", _slimeSamples, 10, "Quest Item", temp: true)];
+    private JsonArray TempItems() =>
+        [Item(20, "Slime Sample", _slimeSamples, 10, "Quest Item", temp: true), .. _slimeCrowns > 0 ? [Item(21, "Slime Crown", _slimeCrowns, 1, "Quest Item", temp: true)] : Array.Empty<JsonObject>()];
 
     private static JsonArray HouseItems() => [Item(30, "Wooden Chair", 1, 1, "Floor Item")];
 
     private static JsonObject QuestTree() => new()
     {
         ["1001"] = Quest(1001, "Slime Time", "p", member: false, gold: 100, xp: 50,
-            new JsonObject { ["itemsS"] = new JsonObject { ["3"] = Item(3, "Treasure Chest", 1, 1000, "Item") } }, (Item(20, "Slime Sample", 1, 10, "Quest Item", temp: true), 5)),
+            new JsonObject { ["itemsS"] = new JsonObject { ["3"] = Item(3, "Treasure Chest", 1, 1000, "Item") } }, (Item(20, "Slime Sample", 1, 10, "Quest Item", temp: true), 5),
+            (Item(21, "Slime Crown", 1, 1, "Quest Item", temp: true), 1)),
         ["1002"] = Quest(1002, "Chest Hoarder", "c", member: true, gold: 0, xp: 0, new JsonObject(), (Item(3, "Treasure Chest", 1, 1000, "Item"), 5)),
         // Shaped like 10238: oItems in the order the server adds them, which Ruffle keeps and Flash doesn't.
         ["1003"] = Quest(1003, "Not Yet", null, member: false, gold: 10, xp: 10, new JsonObject(),

@@ -172,9 +172,15 @@ fn logs_start_with_the_tail_then_follow_from_the_cursor() {
         engine.params_of("logs"),
         vec![
             json!(["events", null, null, LOG_TAIL]),
+            json!(["script", null, null, 1]),
             json!(["all", null, null, LOG_TAIL]),
             json!(["all", "c2", null, null])
         ]
+    );
+    // The newest script line says what the Script is doing.
+    assert_eq!(
+        snapshot.detail.script_line.and_then(|e| e.text).as_deref(),
+        Some("second")
     );
     let texts: Vec<_> = snapshot
         .detail

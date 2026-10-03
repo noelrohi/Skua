@@ -153,6 +153,7 @@ fn the_screen_shows_accounts_by_group_with_their_engines_and_the_selected_ones_o
             "Farm/AtlasGold.cs",
             "run 3 · 12m 34s",
             "quests stalled 11m",
+            " ago · Farming Atlas Gold",
             "Logs",
             "Farming Atlas Gold",
             "inventory.full",
@@ -236,7 +237,7 @@ fn the_tabs_show_inventory_quests_logs_and_the_map_with_the_picture_not_yet() {
         line.split_whitespace().collect::<Vec<_>>().join(" ")
     };
     assert!(
-        row("Tainted Gem Exchange").contains("Tainted Gem Exchange 1/3 done 14m"),
+        row("Tainted Gem Exchange").contains("Tainted Gem Exchange 1/3 done 30s"),
         "{quests}"
     );
     assert!(row("Cubes").contains("Cubes 21/25 +12/h ~20m 14m"), "{quests}");
