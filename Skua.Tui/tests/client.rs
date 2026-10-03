@@ -45,7 +45,7 @@ fn an_engine_of_another_protocol_is_refused_after_hello_and_nothing_else_is_aske
     );
     let message = error.to_string();
     assert!(
-        message.contains("Engine 'bob'") && message.contains("speaks protocol 11") && message.contains("speaks 16"),
+        message.contains("Engine 'bob'") && message.contains("speaks protocol 11") && message.contains("speaks 17"),
         "{message}"
     );
     assert_eq!(engine.methods(), vec!["hello"]);

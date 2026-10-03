@@ -238,7 +238,8 @@ public class QueryTests
     private static void AssertQuest(QuestDto expected, QuestDto actual)
     {
         Assert.Equal(expected with { Requirements = [], Rewards = [] }, actual with { Requirements = [], Rewards = [] });
-        Assert.Equal(expected.Requirements, actual.Requirements);
+        // How long each requirement has gone without a rise is the clock's; QuestProgressTests checks it.
+        Assert.Equal(expected.Requirements, actual.Requirements.Select(r => r with { IdleSec = null, GainPerHour = null }));
         Assert.Equal(expected.Rewards, actual.Rewards);
     }
 

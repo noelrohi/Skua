@@ -1,7 +1,6 @@
 using Skua.Control;
 using Skua.Core.Interfaces;
 using Skua.Core.Models.Items;
-using Skua.Core.Models.Quests;
 
 namespace Skua.Engine.Game;
 
@@ -22,6 +21,7 @@ internal sealed class GameQueries
     private readonly GameStateTracker _tracker;
     private readonly GameActionSlot _slot;
     private readonly DropTracker _drops;
+    private readonly QuestProgress _questProgress;
     private readonly SemaphoreSlim _bankLoad = new(1, 1);
 
     /// <summary>Counts the worlds the game has entered; one per login or relogin.</summary>
@@ -35,9 +35,10 @@ internal sealed class GameQueries
     private int _playerReadWorld;
     private PlayerReading? _lastPlayer;
 
-    public GameQueries(IScriptInterface api, IFlashUtil flash, GameStateTracker tracker, GameActionSlot slot)
+    public GameQueries(IScriptInterface api, IFlashUtil flash, GameStateTracker tracker, GameActionSlot slot, QuestProgress questProgress)
     {
         _api = api;
+        _questProgress = questProgress;
         _flash = flash;
         _tracker = tracker;
         _slot = slot;
@@ -64,16 +65,7 @@ internal sealed class GameQueries
     public Task<QuestsResult> QuestsAsync(QuestFilter filter, CancellationToken cancellationToken)
     {
         _slot.EnsurePlaying("list the quests");
-        return Task.Run(() =>
-        {
-            List<Quest> quests = _api.Quests.Tree;
-            if (filter == QuestFilter.Active)
-                quests = quests.FindAll(q => q.Active);
-            // What the player has counts toward a requirement from the inventory, or the temporary inventory for a temporary item.
-            Dictionary<int, int> inventory = Quantities(_api.Inventory.Items);
-            Dictionary<int, int> temp = Quantities(_api.TempInv.Items);
-            return new QuestsResult(filter, quests.Select(q => ToDto(q, inventory, temp)).ToList());
-        }, cancellationToken);
+        return Task.Run(() => new QuestsResult(filter, _questProgress.Read(filter)), cancellationToken);
     }
 
     public Task<MapDto> MapAsync(CancellationToken cancellationToken)
@@ -207,20 +199,4 @@ internal sealed class GameQueries
     /// <summary>A temporary item, which can't be equipped or enhanced.</summary>
     private static ItemDto ToTempDto(ItemBase item) =>
         new(item.ID, item.Name, item.Quantity, item.MaxStack, item.CategoryString ?? "", Equipped: false, EnhancementLevel: null);
-
-    private static QuestDto ToDto(Quest quest, Dictionary<int, int> inventory, Dictionary<int, int> temp)
-    {
-        QuestStatus status = quest.Status switch
-        {
-            null => QuestStatus.NotAccepted,
-            "c" => QuestStatus.Completable,
-            _ => QuestStatus.InProgress,
-        };
-        return new QuestDto(quest.ID, quest.Name, status, quest.Upgrade, quest.Gold, quest.XP,
-            quest.Requirements.Select(r => new QuestRequirementDto(r.ID, r.Name, r.Quantity, (r.Temp ? temp : inventory).GetValueOrDefault(r.ID), r.Temp)).ToList(),
-            quest.Rewards.Select(r => new QuestRewardDto(r.ID, r.Name, r.Quantity)).ToList());
-    }
-
-    private static Dictionary<int, int> Quantities(IEnumerable<ItemBase> items) =>
-        items.GroupBy(i => i.ID).ToDictionary(g => g.Key, g => g.Sum(i => i.Quantity));
 }

@@ -52,6 +52,7 @@ internal sealed class FakeGame
     private DateTime _inventoryAt;
     private int _inventoryDelay = 500;
     private int _bagSlots = 40;
+    private int _slimeSamples = 3;
     private readonly HashSet<string> _lockedMaps = new(StringComparer.OrdinalIgnoreCase);
     private bool _brokenLogin;
     /// <summary>The type of the text field the stage's focus is on (<c>input</c> for chat's), or null when it isn't on one.</summary>
@@ -196,6 +197,10 @@ internal sealed class FakeGame
                     return true;
                 case ["bag-slots", string slots]:
                     _bagSlots = int.Parse(slots);
+                    return true;
+                case ["slime-samples", string qty]:
+                    // How many Slime Samples, which Slime Time needs, the temporary inventory holds.
+                    _slimeSamples = int.Parse(qty);
                     return true;
                 case ["pickup", string id]:
                     Pext(new JsonObject { ["cmd"] = "getDrop", ["ItemID"] = int.Parse(id), ["bSuccess"] = 1, ["iQty"] = 1, ["iQtyNow"] = 1, ["bBank"] = false });
@@ -663,7 +668,7 @@ internal sealed class FakeGame
 
     private static JsonArray Bank() => [Item(10, "Bank Relic", 2, 10, "Item")];
 
-    private static JsonArray TempItems() => [Item(20, "Slime Sample", 3, 10, "Quest Item", temp: true)];
+    private JsonArray TempItems() => [Item(20, "Slime Sample", _slimeSamples, 10, "Quest Item", temp: true)];
 
     private static JsonArray HouseItems() => [Item(30, "Wooden Chair", 1, 1, "Floor Item")];
 
