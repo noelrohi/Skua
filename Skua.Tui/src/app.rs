@@ -501,6 +501,13 @@ impl App {
             KeyCode::Char('j') | KeyCode::Down => self.move_selection(1),
             KeyCode::Char('k') | KeyCode::Up => self.move_selection(-1),
             KeyCode::Enter if self.tab == Tab::Chat && self.chat.engine().is_some() => self.chat.typing = true,
+            // PROTOTYPE: flips the Quests tab's variants.
+            KeyCode::Left if self.tab == Tab::Quests && crate::ui::prototype_quests::enabled() => {
+                crate::ui::prototype_quests::cycle(-1)
+            }
+            KeyCode::Right if self.tab == Tab::Quests && crate::ui::prototype_quests::enabled() => {
+                crate::ui::prototype_quests::cycle(1)
+            }
             KeyCode::Tab => self.tab = Tab::ALL[(self.tab.index() + 1) % Tab::ALL.len()],
             KeyCode::BackTab => self.tab = Tab::ALL[(self.tab.index() + Tab::ALL.len() - 1) % Tab::ALL.len()],
             KeyCode::Esc => {

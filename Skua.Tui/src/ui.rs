@@ -7,6 +7,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 use serde_json::Value;
 
+pub mod prototype_quests;
+
 use crate::app::{App, Field, KEYS, Modal, Note, Row, Tab, Tone, first_line};
 use crate::discovery::MANAGER_FILE;
 use crate::dto::{GameState, Hello, HookRun, LogEntry, Player, Quest, ScriptRun, Status};
@@ -623,6 +625,13 @@ fn inventory(frame: &mut Frame, status: &Status, detail: Option<&Detail>, area: 
 }
 
 fn quests(frame: &mut Frame, status: &Status, detail: Option<&Detail>, area: Rect) {
+    // PROTOTYPE: SKUA_TUI_PROTOTYPE=1 swaps in the variants.
+    if prototype_quests::enabled()
+        && playing(status).is_some()
+        && let Some(Ok(q)) = detail.and_then(|d| d.quests.as_ref())
+    {
+        return prototype_quests::render(frame, status, q, area);
+    }
     let running = status.script.run.is_some();
     let width = area.width.saturating_sub(2) as usize;
     let lines = match detail.and_then(|d| d.quests.as_ref()) {
