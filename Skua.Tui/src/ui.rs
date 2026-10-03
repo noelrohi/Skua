@@ -11,6 +11,7 @@ use crate::app::{App, Field, KEYS, Modal, Note, Row, Tab, Tone, first_line};
 use crate::discovery::MANAGER_FILE;
 use crate::dto::{GameState, Hello, HookRun, LogEntry, Player, Quest, ScriptRun, Status};
 use crate::engine::{Error, NOT_LOGGED_IN, PROTOCOL};
+use crate::inventory::Shelf;
 use crate::poller::{Detail, EngineView, LOG_TAIL};
 
 const DIM: Color = Color::DarkGray;
@@ -118,6 +119,7 @@ fn accounts(frame: &mut Frame, app: &App, area: Rect) {
         lines.push(Line::styled("reading…", Style::new().fg(DIM)));
     }
     let mut selected_line = 0;
+    let mut row_lines = Vec::new();
     let mut group: Option<&str> = None;
     for (i, row) in rows.iter().enumerate() {
         if group != Some(row.group.as_str()) {
@@ -131,9 +133,19 @@ fn accounts(frame: &mut Frame, app: &App, area: Rect) {
         if i == app.selected {
             selected_line = lines.len();
         }
+        row_lines.push((lines.len(), i));
         lines.push(account_line(app, row, i == app.selected, inner.width));
     }
     let scroll = (selected_line + 1).saturating_sub(inner.height as usize) as u16;
+    {
+        let mut hits = app.hits.borrow_mut();
+        hits.accounts = area;
+        hits.rows = row_lines
+            .into_iter()
+            .filter_map(|(line, i)| (line as u16).checked_sub(scroll).map(|y| (inner.y + y, i)))
+            .filter(|(y, _)| *y < inner.bottom())
+            .collect();
+    }
     frame.render_widget(Paragraph::new(lines).scroll((scroll, 0)), inner);
 }
 
@@ -236,8 +248,13 @@ fn state(status: &Status) -> (&'static str, Color) {
 fn right(frame: &mut Frame, app: &App, area: Rect) {
     let row = app.selected_row();
     let mut tabs = vec![Span::raw(" ")];
+    let mut tab_hits = Vec::new();
+    let mut x = area.x + 1;
     for tab in Tab::ALL {
         let title = format!(" {} ", tab.title());
+        let width = title.chars().count() as u16;
+        tab_hits.push((Rect::new(x, area.y, width, 1), tab));
+        x += width + 1;
         tabs.push(if tab == app.tab {
             title.black().on_blue().bold()
         } else {
@@ -245,6 +262,7 @@ fn right(frame: &mut Frame, app: &App, area: Rect) {
         });
         tabs.push("│".fg(DIM));
     }
+    app.hits.borrow_mut().tabs = tab_hits;
     let tabs_area = Rect { height: 1, ..area };
     frame.render_widget(Paragraph::new(Line::from(tabs)), tabs_area);
     if let Some(row) = &row {
@@ -276,7 +294,7 @@ fn right(frame: &mut Frame, app: &App, area: Rect) {
                 .filter(|d| d.engine.as_deref() == Some(row.name.as_str()));
             match app.tab {
                 Tab::Overview => overview(frame, hello, status, detail, content),
-                Tab::Inventory => inventory(frame, status, detail, content),
+                Tab::Inventory => inventory(frame, app, status, detail, content),
                 Tab::Quests => quests(frame, status, detail, content),
                 Tab::Logs => {
                     let block =
@@ -590,9 +608,14 @@ fn gauge(label: &str, width: u16, ratio: f64, color: Color, text: String) -> Lin
     Line::from(spans)
 }
 
-fn inventory(frame: &mut Frame, status: &Status, detail: Option<&Detail>, area: Rect) {
+/// The items on the chosen category's shelf, scrolled, under a row of the categories that hold something; a click on the list puts the keys
+/// on it, and its border turns blue.
+fn inventory(frame: &mut Frame, app: &App, status: &Status, detail: Option<&Detail>, area: Rect) {
     let read = detail.and_then(|d| d.inventory.as_ref());
     let mut block = panel("Inventory");
+    if app.inventory_focused {
+        block = block.border_style(Style::new().blue());
+    }
     if let Some(Ok(inv)) = read {
         let slots = inv
             .total_slots
@@ -604,27 +627,72 @@ fn inventory(frame: &mut Frame, status: &Status, detail: Option<&Detail>, area: 
                 .right_aligned(),
         );
     }
-    let lines = match read {
-        _ if playing(status).is_none() => vec![not_playing()],
-        None => vec![loading()],
-        Some(Err(e)) => vec![read_error(e)],
-        Some(Ok(inv)) => {
-            let mut lines = vec![Line::styled(
-                format!("{:<34}{:<14}{}", "ITEM", "QTY", "CATEGORY"),
-                Style::new().fg(DIM).bold(),
-            )];
-            lines.extend(inv.items.iter().map(|item| {
-                let qty = if item.max_stack > 1 {
-                    format!("{}/{}", item.qty, item.max_stack)
-                } else {
-                    item.qty.to_string()
-                };
-                let name = format!("{}{}", truncate(&item.name, 31), if item.equipped { " ✓" } else { "" });
-                Line::raw(format!("{name:<34}{qty:<14}{}", item.category))
-            }));
-            lines
-        }
+    let inner = block.inner(area);
+    app.hits.borrow_mut().inventory = area;
+    let inv = match read {
+        _ if playing(status).is_none() => return frame.render_widget(Paragraph::new(not_playing()).block(block), area),
+        None => return frame.render_widget(Paragraph::new(loading()).block(block), area),
+        Some(Err(e)) => return frame.render_widget(Paragraph::new(read_error(e)).block(block), area),
+        Some(Ok(inv)) => inv,
     };
+
+    let mut shelves = Vec::new();
+    let mut spans = Vec::new();
+    let mut x = inner.x;
+    for (shelf, count) in Shelf::counts(&inv.items) {
+        let text = format!(" {} {count} ", shelf.title());
+        let width = text.chars().count() as u16;
+        if x + width > inner.right() {
+            break;
+        }
+        shelves.push((Rect::new(x, inner.y, width, 1), shelf));
+        spans.push(if shelf == app.shelf {
+            text.black().on_blue().bold()
+        } else {
+            text.fg(DIM)
+        });
+        spans.push(" ".into());
+        x += width + 1;
+    }
+    let items: Vec<_> = inv.items.iter().filter(|i| app.shelf.holds(i)).collect();
+    let page = inner.height.saturating_sub(3) as usize;
+    let max_scroll = items.len().saturating_sub(page);
+    let scroll = app.inventory_scroll.min(max_scroll);
+    {
+        let mut hits = app.hits.borrow_mut();
+        hits.shelves = shelves;
+        hits.inventory_max_scroll = max_scroll;
+        hits.inventory_page = page;
+    }
+    if items.len() > page {
+        block = block.title_bottom(dim_right(&format!(
+            "{}–{} of {} ",
+            scroll + 1,
+            (scroll + page).min(items.len()),
+            items.len()
+        )));
+    }
+
+    let mut lines = vec![
+        Line::from(spans),
+        Line::raw(""),
+        Line::styled(
+            format!("{:<34}{:<14}{}", "ITEM", "QTY", "CATEGORY"),
+            Style::new().fg(DIM).bold(),
+        ),
+    ];
+    lines.extend(items.iter().skip(scroll).take(page).map(|item| {
+        let qty = if item.max_stack > 1 {
+            format!("{}/{}", item.qty, item.max_stack)
+        } else {
+            item.qty.to_string()
+        };
+        let name = format!("{}{}", truncate(&item.name, 31), if item.equipped { " ✓" } else { "" });
+        Line::raw(format!("{name:<34}{qty:<14}{}", item.category))
+    }));
+    if items.is_empty() {
+        lines.push(Line::styled("nothing on this shelf", Style::new().fg(DIM)));
+    }
     frame.render_widget(Paragraph::new(lines).block(block), area);
 }
 

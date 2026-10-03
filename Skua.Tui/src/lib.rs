@@ -7,6 +7,7 @@ pub mod chat;
 pub mod discovery;
 pub mod dto;
 pub mod engine;
+pub mod inventory;
 pub mod poller;
 pub mod rpc;
 pub mod ui;

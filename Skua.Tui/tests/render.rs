@@ -5,7 +5,7 @@ use std::time::Duration;
 use common::*;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use serde_json::{Value, json};
 use skua_tui::app::{App, Tab};
 use skua_tui::engine::PROTOCOL;
@@ -58,12 +58,17 @@ fn fleet() -> Fleet {
             "next": "c2", "gap": false
         })),
         "logs" => Ok(json!({ "entries": [], "next": "c2", "gap": false })),
-        "inventory" => Ok(
-            json!({ "kind": "inventory", "usedSlots": 2, "totalSlots": 120, "items": [
-                { "id": 1, "name": "Atlas Gold", "qty": 870, "maxStack": 1000, "category": "Item", "equipped": false, "enhancementLevel": 0 },
-                { "id": 2, "name": "Chaos Avenger", "qty": 1, "maxStack": 1, "category": "Class", "equipped": true, "enhancementLevel": 0 }
-            ]}),
-        ),
+        "inventory" => {
+            let mut items = vec![
+                json!({ "id": 1, "name": "Atlas Gold", "qty": 870, "maxStack": 1000, "category": "Item", "equipped": false, "enhancementLevel": 0 }),
+                json!({ "id": 2, "name": "Chaos Avenger", "qty": 1, "maxStack": 1, "category": "Class", "equipped": true, "enhancementLevel": 0 }),
+                json!({ "id": 3, "name": "Necrotic Sword of Doom", "qty": 1, "maxStack": 1, "category": "Sword", "equipped": false, "enhancementLevel": 0 }),
+            ];
+            items.extend((1..=40).map(|n| {
+                json!({ "id": 100 + n, "name": format!("Relic {n:02}"), "qty": n, "maxStack": 99, "category": "Quest Item", "equipped": false, "enhancementLevel": null })
+            }));
+            Ok(json!({ "kind": "inventory", "usedSlots": 43, "totalSlots": 120, "items": items }))
+        }
         "quests" => Ok(
             json!({ "filter": "loaded", "quests": [{ "id": 7551, "name": "Tainted Gem Exchange", "status": "inProgress",
             "memberOnly": false, "gold": 0, "xp": 0, "requirements": [
@@ -224,7 +229,7 @@ fn the_tabs_show_inventory_quests_logs_and_the_map_with_the_picture_not_yet() {
     press(&mut app, KeyCode::Tab);
     assert_shows(
         &screen(&fleet, &mut app, 120, 32),
-        &["2/120", "Atlas Gold", "870/1000", "Chaos Avenger ✓", "Class"],
+        &["43/120", "Atlas Gold", "870/1000", "Chaos Avenger ✓", "Class"],
     );
     press(&mut app, KeyCode::Tab);
     // Only the quest in progress, with its unmet requirements in columns; the quest that isn't accepted is only counted.
@@ -381,4 +386,96 @@ fn the_selection_stays_on_its_account_when_an_engine_appears_above_it() {
     screen(&fleet, &mut app, 120, 32);
 
     assert_eq!(app.selected_row().unwrap().name, "default");
+}
+
+/// Where `text` first shows on the screen, as a column and row.
+fn find(screen: &str, text: &str) -> (u16, u16) {
+    for (y, line) in screen.lines().enumerate() {
+        if let Some(i) = line.find(text) {
+            return (line[..i].chars().count() as u16, y as u16);
+        }
+    }
+    panic!("no {text:?} on screen:\n{screen}");
+}
+
+fn mouse(app: &mut App, kind: MouseEventKind, (column, row): (u16, u16)) {
+    app.on_mouse(MouseEvent {
+        kind,
+        column,
+        row,
+        modifiers: KeyModifiers::NONE,
+    });
+}
+
+#[test]
+fn the_inventory_splits_into_categories_scrolls_and_takes_clicks() {
+    let fleet = fleet();
+    let mut app = App::new(fleet.dir.path().to_owned());
+    app.tab = Tab::Inventory;
+
+    let all = screen(&fleet, &mut app, 120, 32);
+    assert_shows(
+        &all,
+        &[
+            " All 43 ",
+            " Weapons 1 ",
+            " Classes 1 ",
+            " Items 1 ",
+            " Quest items 40 ",
+            "1–23 of 43",
+            "Atlas Gold",
+        ],
+    );
+    assert!(!all.contains("Gear") && !all.contains("Relic 21"), "{all}");
+
+    // ←/→ pick a category, and a click on one does too.
+    press(&mut app, KeyCode::Right);
+    let weapons = screen(&fleet, &mut app, 120, 32);
+    assert_shows(&weapons, &["Necrotic Sword of Doom"]);
+    assert!(
+        !weapons.contains("Atlas Gold") && !weapons.contains("of 43"),
+        "{weapons}"
+    );
+    mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        find(&weapons, "Quest items 40"),
+    );
+    let relics = screen(&fleet, &mut app, 120, 32);
+    assert_shows(&relics, &["Relic 01", "1–23 of 40"]);
+
+    // The wheel scrolls the list; page down and End too; a click on it puts j/k on it, and esc gives them back to the accounts.
+    mouse(&mut app, MouseEventKind::ScrollDown, find(&relics, "Relic 05"));
+    assert_shows(&screen(&fleet, &mut app, 120, 32), &["4–26 of 40", "Relic 04"]);
+    press(&mut app, KeyCode::End);
+    assert_shows(&screen(&fleet, &mut app, 120, 32), &["18–40 of 40", "Relic 40"]);
+    press(&mut app, KeyCode::Home);
+    let top = screen(&fleet, &mut app, 120, 32);
+    mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        find(&top, "Relic 03"),
+    );
+    press(&mut app, KeyCode::Char('j'));
+    assert_shows(&screen(&fleet, &mut app, 120, 32), &["2–24 of 40", "acting on: alice"]);
+    press(&mut app, KeyCode::Esc);
+    press(&mut app, KeyCode::Char('j'));
+    assert_shows(&screen(&fleet, &mut app, 120, 32), &["acting on: bob"]);
+
+    // A click on an account picks it, and one on a tab opens it.
+    let screen_now = screen(&fleet, &mut app, 120, 32);
+    mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        find(&screen_now, "alice   "),
+    );
+    mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        find(&screen_now, " Quests "),
+    );
+    assert_shows(
+        &screen(&fleet, &mut app, 120, 32),
+        &["acting on: alice", "Tainted Gem Exchange"],
+    );
 }

@@ -2,7 +2,8 @@ use std::io;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use ratatui::crossterm::event::{self, Event};
+use ratatui::crossterm::event::{self, DisableMouseCapture, EnableMouseCapture, Event};
+use ratatui::crossterm::execute;
 use skua_tui::actions::{self, Runner};
 use skua_tui::app::App;
 use skua_tui::chat::Follower;
@@ -33,6 +34,8 @@ fn main() -> io::Result<()> {
     let mut follower = Follower::new(app.skua_dir.clone());
     let (outcome_tx, outcomes) = mpsc::channel();
     let mut terminal = ratatui::init();
+    // Clicks and the wheel come to skua-tui; the terminal's own selection still works with option (or shift) held.
+    execute!(io::stdout(), EnableMouseCapture)?;
     let result = (|| -> io::Result<()> {
         let mut focus = app.focus();
         while !app.quit {
@@ -48,10 +51,12 @@ fn main() -> io::Result<()> {
                 _ = focus_tx.send(focus.clone());
             }
             terminal.draw(|frame| skua_tui::ui::draw(frame, &app))?;
-            if event::poll(Duration::from_millis(100))?
-                && let Event::Key(key) = event::read()?
-            {
-                app.on_key(key);
+            if event::poll(Duration::from_millis(100))? {
+                match event::read()? {
+                    Event::Key(key) => app.on_key(key),
+                    Event::Mouse(mouse) => app.on_mouse(mouse),
+                    _ => {}
+                }
             }
             for job in app.jobs.drain(..) {
                 actions::spawn(&runner, job, outcome_tx.clone());
@@ -59,6 +64,7 @@ fn main() -> io::Result<()> {
         }
         Ok(())
     })();
+    _ = execute!(io::stdout(), DisableMouseCapture);
     ratatui::restore();
     result
 }

@@ -1,15 +1,20 @@
 //! skua-tui's state and keys: accounts by group, selection, marks, tabs, the command palette and the actions' pickers. It does no I/O: an
 //! action queues [`Job`]s in [`App::jobs`], and their [`Outcome`]s come back through [`App::on_outcome`].
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::PathBuf;
 
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::crossterm::event::{
+    KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+};
+use ratatui::layout::{Position, Rect};
 
 use crate::actions::{Job, Op, Outcome, Reply};
 use crate::chat::{ChatUpdate, MAX_CHAT_ENTRIES, Update};
 use crate::dto::{LogEntry, Question, ScriptOption, ScriptsSearch, Server};
 use crate::engine::{Error, SCRIPT_RUNNING};
+use crate::inventory::Shelf;
 use crate::poller::{EngineView, Focus, Snapshot, gap_entry};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -138,6 +143,11 @@ pub const KEYS: &[(&str, &str)] = &[
     ("esc", "clear marks and filter"),
     ("tab ⇧tab", "Overview, Inventory, Quests, Logs, Game, Chat, Hooks"),
     ("1–7", "pick a tab"),
+    ("←/→", "Inventory: previous / next category"),
+    (
+        "pgup/pgdn",
+        "Inventory: scroll a page; click the list, then j/k scroll it",
+    ),
     ("enter", "Chat: type, then enter sends; /w name text whispers"),
     (":", "command palette"),
     ("/", "filter accounts"),
@@ -326,7 +336,28 @@ pub struct App {
     /// The jobs the actions queued, for the caller to run.
     pub jobs: Vec<Job>,
     pub chat: Chat,
+    /// The Inventory tab's category, and how far down its list is scrolled.
+    pub shelf: Shelf,
+    pub inventory_scroll: usize,
+    /// Whether a click put the keys on the Inventory list, so j/k scroll it rather than move between accounts.
+    pub inventory_focused: bool,
+    /// Where the last draw put what a click can hit.
+    pub hits: RefCell<Hits>,
     pub quit: bool,
+}
+
+/// What the screen showed where, as the last draw left it, for the mouse.
+#[derive(Debug, Clone, Default)]
+pub struct Hits {
+    pub accounts: Rect,
+    /// The screen row of each account row shown, with its index in `App::rows`.
+    pub rows: Vec<(u16, usize)>,
+    pub tabs: Vec<(Rect, Tab)>,
+    pub shelves: Vec<(Rect, Shelf)>,
+    pub inventory: Rect,
+    /// How far the Inventory list can scroll, and how many items one page shows.
+    pub inventory_max_scroll: usize,
+    pub inventory_page: usize,
 }
 
 impl App {
@@ -343,6 +374,10 @@ impl App {
             activity: BTreeMap::new(),
             jobs: Vec::new(),
             chat: Chat::default(),
+            shelf: Shelf::default(),
+            inventory_scroll: 0,
+            inventory_focused: false,
+            hits: RefCell::default(),
             quit: false,
         }
     }
@@ -497,12 +532,22 @@ impl App {
     }
 
     fn on_main_key(&mut self, key: KeyEvent) {
+        let inventory = self.tab == Tab::Inventory;
         match key.code {
+            KeyCode::Char('j') | KeyCode::Down if inventory && self.inventory_focused => self.scroll_inventory(1),
+            KeyCode::Char('k') | KeyCode::Up if inventory && self.inventory_focused => self.scroll_inventory(-1),
+            KeyCode::PageDown if inventory => self.scroll_inventory(self.inventory_page()),
+            KeyCode::PageUp if inventory => self.scroll_inventory(-self.inventory_page()),
+            KeyCode::Home if inventory => self.inventory_scroll = 0,
+            KeyCode::End if inventory => self.inventory_scroll = self.hits.borrow().inventory_max_scroll,
+            KeyCode::Left if inventory => self.cycle_shelf(-1),
+            KeyCode::Right if inventory => self.cycle_shelf(1),
             KeyCode::Char('j') | KeyCode::Down => self.move_selection(1),
             KeyCode::Char('k') | KeyCode::Up => self.move_selection(-1),
             KeyCode::Enter if self.tab == Tab::Chat && self.chat.engine().is_some() => self.chat.typing = true,
             KeyCode::Tab => self.tab = Tab::ALL[(self.tab.index() + 1) % Tab::ALL.len()],
             KeyCode::BackTab => self.tab = Tab::ALL[(self.tab.index() + Tab::ALL.len() - 1) % Tab::ALL.len()],
+            KeyCode::Esc if self.inventory_focused => self.inventory_focused = false,
             KeyCode::Esc => {
                 self.marks.clear();
                 self.filter.clear();
@@ -1103,8 +1148,74 @@ impl App {
     }
 
     fn move_selection(&mut self, by: isize) {
-        self.selected = self.selected.saturating_add_signed(by);
+        self.select(self.selected.saturating_add_signed(by));
+    }
+
+    fn select(&mut self, index: usize) {
+        let before = self.selected;
+        self.selected = index;
         self.clamp_selection();
+        if self.selected != before {
+            self.inventory_scroll = 0;
+        }
+    }
+
+    /// A click picks an account, a tab or a category, or puts the keys on the Inventory list; the wheel scrolls what it is over.
+    pub fn on_mouse(&mut self, mouse: MouseEvent) {
+        if self.modal.is_some() {
+            return;
+        }
+        let at = Position::new(mouse.column, mouse.row);
+        let hits = self.hits.borrow().clone();
+        let over_inventory = self.tab == Tab::Inventory && hits.inventory.contains(at);
+        match mouse.kind {
+            MouseEventKind::ScrollDown if over_inventory => self.scroll_inventory(3),
+            MouseEventKind::ScrollUp if over_inventory => self.scroll_inventory(-3),
+            MouseEventKind::ScrollDown if hits.accounts.contains(at) => self.move_selection(1),
+            MouseEventKind::ScrollUp if hits.accounts.contains(at) => self.move_selection(-1),
+            MouseEventKind::Down(MouseButton::Left) => {
+                self.toast = None;
+                if let Some((_, shelf)) = hits.shelves.iter().find(|(r, _)| r.contains(at)) {
+                    self.set_shelf(*shelf);
+                    self.inventory_focused = true;
+                } else if let Some((_, tab)) = hits.tabs.iter().find(|(r, _)| r.contains(at)) {
+                    self.tab = *tab;
+                    self.inventory_focused = false;
+                } else if let Some((_, index)) =
+                    hits.rows.iter().find(|(y, _)| *y == at.y && hits.accounts.contains(at))
+                {
+                    self.select(*index);
+                    self.inventory_focused = false;
+                } else if over_inventory {
+                    self.inventory_focused = true;
+                } else if hits.accounts.contains(at) {
+                    self.inventory_focused = false;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn inventory_page(&self) -> isize {
+        self.hits.borrow().inventory_page.max(1) as isize
+    }
+
+    fn scroll_inventory(&mut self, by: isize) {
+        let max = self.hits.borrow().inventory_max_scroll;
+        self.inventory_scroll = self.inventory_scroll.saturating_add_signed(by).min(max);
+    }
+
+    /// The next or previous category the Inventory tab shows.
+    fn cycle_shelf(&mut self, by: isize) {
+        let shown: Vec<Shelf> = self.hits.borrow().shelves.iter().map(|(_, s)| *s).collect();
+        let shown = if shown.is_empty() { Shelf::ALL.to_vec() } else { shown };
+        let at = shown.iter().position(|s| *s == self.shelf).unwrap_or(0) as isize;
+        self.set_shelf(shown[(at + by).rem_euclid(shown.len() as isize) as usize]);
+    }
+
+    fn set_shelf(&mut self, shelf: Shelf) {
+        self.shelf = shelf;
+        self.inventory_scroll = 0;
     }
 
     fn clamp_selection(&mut self) {
