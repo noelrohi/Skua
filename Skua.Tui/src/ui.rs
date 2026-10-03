@@ -734,7 +734,8 @@ fn quest_lines(quests: &[Quest], running: bool, width: usize) -> Vec<Line<'stati
         lines.push(Line::raw(""));
     }
     for quest in in_progress {
-        let unmet: Vec<_> = quest.requirements.iter().filter(|r| r.have < r.qty).collect();
+        // A requirement the bank covers is done: the Script takes it out for the turn-in.
+        let unmet: Vec<_> = quest.requirements.iter().filter(|r| r.owned() < r.qty).collect();
         // The rise that met a requirement counts too, as the Engine counts it.
         let idle = quest.requirements.iter().filter_map(|r| r.idle_sec).reduce(f64::min);
         let done = format!(
@@ -752,14 +753,15 @@ fn quest_lines(quests: &[Quest], running: bool, width: usize) -> Vec<Line<'stati
         ]));
         for r in unmet {
             let rate = r.gain_per_hour.filter(|rate| *rate > 0.0).map(|rate| {
-                let left = (r.qty - r.have) as f64 / rate * 3600.0;
+                let left = (r.qty - r.owned()) as f64 / rate * 3600.0;
                 format!("+{}/h ~{}", rate_text(rate), short_duration(left))
             });
+            let rate = rate.or_else(|| (r.in_bank > 0).then(|| format!("{} in bank", r.in_bank)));
             lines.push(Line::from(vec![
                 Span::raw(format!(
                     "   {:<name_width$} {:>COUNT$}",
                     truncate(&r.name, name_width),
-                    format!("{}/{}", r.have, r.qty)
+                    format!("{}/{}", r.owned(), r.qty)
                 )),
                 Span::styled(format!("{:>RATE$}", rate.unwrap_or_default()), Style::new().fg(DIM)),
                 Span::styled(

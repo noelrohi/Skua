@@ -70,6 +70,25 @@ public class QuestProgressTests
     }
 
     [Fact]
+    public async Task A_requirement_counts_what_the_bank_holds_once_it_has_loaded_and_its_arrival_is_no_rise()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox, environment: Fast);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+
+        QuestRequirementDto unloaded = await RelicsAsync(session);
+        await Task.Delay(1500, Ct);
+        await session.Connection.InventoryAsync(InventoryKind.Bank, Ct);
+        await Task.Delay(300, Ct);
+        QuestRequirementDto banked = await RelicsAsync(session);
+
+        // Relic Keeper needs 2 Bank Relics, and the bank holds both; the game has no bank until something loads it.
+        Assert.Equal((0, 0), (unloaded.Have, unloaded.InBank));
+        Assert.Equal((0, 2), (banked.Have, banked.InBank));
+        Assert.InRange(banked.IdleSec!.Value, 1.5, 30);
+    }
+
+    [Fact]
     public async Task A_run_counts_the_kills_credited_to_the_player_and_its_kills_per_minute()
     {
         await using EngineSandbox sandbox = new();
@@ -108,6 +127,9 @@ public class QuestProgressTests
         quest.GetProperty("requirements").EnumerateArray()
             .Select(r => (r.GetProperty("name").GetString(), r.GetProperty("have").GetInt32(), r.GetProperty("qty").GetInt32()))
             .ToList();
+
+    private static async Task<QuestRequirementDto> RelicsAsync(GameFixture session) =>
+        (await session.Connection.QuestsAsync(cancellationToken: Ct)).Quests.Single(q => q.Id == 1004).Requirements.Single();
 
     private static async Task<QuestRequirementDto> SlimesAsync(GameFixture session) =>
         (await session.Connection.QuestsAsync(cancellationToken: Ct)).Quests.Single(q => q.Id == 1001).Requirements.Single(r => r.ItemId == 20);

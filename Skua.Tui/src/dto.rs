@@ -190,8 +190,18 @@ pub struct QuestRequirement {
     pub have: i64,
     /// How long since the Engine saw `have` rise, or began watching the requirement if it hasn't.
     pub idle_sec: Option<f64>,
-    /// How much `have` rose per hour over the last hour watched; None until the Engine has watched it for 5 minutes.
+    /// How much the count rose per hour over the last hour watched; None until the Engine has watched it for 5 minutes.
     pub gain_per_hour: Option<f64>,
+    /// How many the bank holds, which a Script takes out for the turn-in; 0 until the game has loaded the bank.
+    #[serde(default)]
+    pub in_bank: i64,
+}
+
+impl QuestRequirement {
+    /// What the player owns toward it: the inventory's (or temporary inventory's) and the bank's.
+    pub fn owned(&self) -> i64 {
+        self.have + self.in_bank
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

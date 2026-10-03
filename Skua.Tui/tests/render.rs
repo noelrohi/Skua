@@ -73,7 +73,8 @@ fn fleet() -> Fleet {
             json!({ "filter": "loaded", "quests": [{ "id": 7551, "name": "Tainted Gem Exchange", "status": "inProgress",
             "memberOnly": false, "gold": 0, "xp": 0, "requirements": [
                 { "itemId": 9, "name": "Cubes", "qty": 25, "have": 21, "temp": false, "idleSec": 840.0, "gainPerHour": 12.0 },
-                { "itemId": 10, "name": "Gems", "qty": 10, "have": 2, "temp": false, "idleSec": 2820.0, "gainPerHour": 0.0 },
+                { "itemId": 10, "name": "Gems", "qty": 10, "have": 2, "temp": false, "idleSec": 2820.0, "gainPerHour": 0.0, "inBank": 3 },
+                { "itemId": 13, "name": "Crown", "qty": 1, "have": 0, "temp": false, "idleSec": 420.0, "gainPerHour": 8.0, "inBank": 1 },
                 { "itemId": 11, "name": "Shards", "qty": 5, "have": 5, "temp": false, "idleSec": 30.0, "gainPerHour": 40.0 }
             ], "rewards": [] }, { "id": 7552, "name": "Gem Hoarder", "status": "notAccepted", "memberOnly": false, "gold": 0, "xp": 0,
             "requirements": [{ "itemId": 12, "name": "Rubies", "qty": 99, "have": 0, "temp": false, "idleSec": 840.0, "gainPerHour": null }],
@@ -242,13 +243,13 @@ fn the_tabs_show_inventory_quests_logs_and_the_map_with_the_picture_not_yet() {
         line.split_whitespace().collect::<Vec<_>>().join(" ")
     };
     assert!(
-        row("Tainted Gem Exchange").contains("Tainted Gem Exchange 1/3 done 30s"),
+        row("Tainted Gem Exchange").contains("Tainted Gem Exchange 2/4 done 30s"),
         "{quests}"
     );
     assert!(row("Cubes").contains("Cubes 21/25 +12/h ~20m 14m"), "{quests}");
-    assert!(row("Gems ").contains("Gems 2/10 47m"), "{quests}");
+    assert!(row("Gems ").contains("Gems 5/10 3 in bank 47m"), "{quests}");
     assert_shows(&quests, &[" Quests ", "1 not accepted"]);
-    for hidden in ["Shards", "Gem Hoarder", "Rubies", "7551"] {
+    for hidden in ["Shards", "Crown", "Gem Hoarder", "Rubies", "7551"] {
         assert!(!quests.contains(hidden), "{hidden:?} shows:\n{quests}");
     }
     press(&mut app, KeyCode::Tab);
