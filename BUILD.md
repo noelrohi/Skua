@@ -497,9 +497,12 @@ Keys: `j`/`k` move, `space` marks, `a` marks a group, `esc` clears marks, the fi
 | `d` | Answer the selected account's oldest Question: `1`–`9`, or `↑`/`↓` and `enter` | `dialogs`, `dialog_answer` |
 | `J` | Join a map: `map[-room] [cell] [pad]` | `join` |
 | `U` | Update the Scripts from the Script Source (once: every Engine of the data folder shares them) | `scripts_update` |
+| `p` | Open the game's picture in Preview | `skua screenshot`, the `skua` on `PATH`, into the temporary folder, then `open` |
 | `H` | Start the Hook Runner, if none runs for the data folder | `skua hooks`, the `skua` on `PATH`, in the background with its output in `<SkuaDIR>/hooks.log` |
 
 Each result or error shows on the status line and stays on its account (a red `!` in the list for an error) until its next action or `esc`. `E` launches the `skua-engine` that `skua` would: `SKUA_ENGINE`, else the one next to the `skua` on `PATH`, with the same `SKUA_DIR`. It never starts one where an Engine answers or is starting, and never replaces or restarts one. `L` names each Engine's own account in its `login`, the account named after the Engine, as `skua login --account <name>` does, so marked Engines log in as their own accounts whichever is the Active Account, and an app the Skua Manager launched logs in its account too. An Engine no account names fails with the Engine's `AccountNotFound`. The Engine reads the password from Keychain; skua-tui never does.
+
+The **Game** tab shows the game's picture, as large as the tab allows at the game's shape, read with `screenshot` every 2 seconds while the tab shows, and the map's players and monsters under it. The picture is drawn with the kitty graphics protocol, which Ghostty, kitty and WezTerm speak; any other terminal shows the lists only, and `p` opens the picture in Preview from any tab.
 
 The **Chat** tab shows the selected Engine's game messages (`skua logs game`): the newest 200, then each one as the Engine pushes it (`subscribe`, one connection while the tab is open), newest at the bottom, with its channel as a coloured `[zone]`, `[whisper]`, `[server]` … tag. It keeps the newest 500. `enter` opens the input line: `enter` sends the text as zone chat, `/w <name> <text>` whispers (`chat_send`; nothing else starting with `/` is sent), `esc` stops typing and keeps the draft. The Engine's refusal, such as not logged in, shows under the messages. If the follow breaks while the Engine still shows as up, the tab says the follow ended; it follows again when the Engine restarts or the tab is opened again.
 

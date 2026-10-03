@@ -20,6 +20,8 @@ const SELECTED: Color = Color::Indexed(237);
 const STALL_SEC: f64 = 600.0;
 
 pub fn draw(frame: &mut Frame, app: &App) {
+    // The Game tab sets it again while it shows the picture.
+    app.hits.borrow_mut().picture = None;
     let area = frame.area();
     if area.width < 40 || area.height < 10 {
         frame.render_widget(Paragraph::new("skua-tui needs at least 40×10"), area);
@@ -303,7 +305,7 @@ fn right(frame: &mut Frame, app: &App, area: Rect) {
                         panel("Logs + events").title_top(dim_right(&format!("logs --tail {LOG_TAIL}, following")));
                     logs(frame, block, detail, content)
                 }
-                Tab::Game => game(frame, status, detail, content),
+                Tab::Game => game(frame, app, &row.name, status, detail, content),
                 Tab::Chat => chat(frame, app, &row.name, content),
                 Tab::Hooks => hooks(frame, app, &row.name, detail, content),
             }
@@ -974,51 +976,105 @@ fn rate_text(rate: f64) -> String {
     }
 }
 
-fn game(frame: &mut Frame, status: &Status, detail: Option<&Detail>, area: Rect) {
+/// The game's picture, as large as the tab allows at the game's shape, where the terminal draws pictures; the map's players and monsters
+/// under it, as room allows.
+fn game(frame: &mut Frame, app: &App, name: &str, status: &Status, detail: Option<&Detail>, area: Rect) {
     let read = detail.and_then(|d| d.map.as_ref());
     let title = match read {
         Some(Ok(map)) if playing(status).is_some() => format!("Game · {} · room {}", map.name, map.room_id),
         _ => "Game".into(),
     };
-    let mut lines = match read {
-        _ if playing(status).is_none() => vec![not_playing()],
-        None => vec![loading()],
-        Some(Err(e)) => vec![read_error(e)],
-        Some(Ok(map)) => {
-            let mut lines = vec![Line::raw(format!("cells: {}", map.cells.join(", "))), Line::raw("")];
-            lines.push(Line::styled(
-                format!("PLAYERS · {}", map.players.len()),
-                Style::new().fg(DIM).bold(),
-            ));
-            lines.extend(map.players.iter().map(|p| {
-                Line::raw(format!(
-                    "  {:<20}Lv {:<4}{:<12}{}/{}{}",
-                    p.name,
-                    p.level,
-                    p.cell,
-                    p.hp,
-                    p.max_hp,
-                    if p.afk { "  afk" } else { "" }
-                ))
-            }));
-            lines.push(Line::raw(""));
-            lines.push(Line::styled(
-                format!("MONSTERS · {}", map.monsters.len()),
-                Style::new().fg(DIM).bold(),
-            ));
-            lines.extend(map.monsters.iter().map(|m| {
-                let style = if m.alive { Style::new() } else { Style::new().fg(DIM) };
-                Line::styled(
-                    format!("  {:<4}{:<24}{:<12}{}/{}", m.map_id, m.name, m.cell, m.hp, m.max_hp),
-                    style,
-                )
-            }));
-            lines
+    let block = panel(&title).title_bottom(dim_right("p opens it in Preview "));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    if playing(status).is_none() {
+        return frame.render_widget(Paragraph::new(not_playing()), inner);
+    }
+    let mut below = inner;
+    match detail.and_then(|d| d.picture.as_ref()) {
+        _ if !crate::picture::supported() => {
+            frame.render_widget(
+                Paragraph::new(Line::styled(
+                    "The game's picture shows here in Ghostty, kitty or WezTerm; p opens it in Preview.",
+                    Style::new().fg(DIM),
+                )),
+                Rect { height: 1, ..inner },
+            );
+            below = Rect {
+                y: inner.y + 2,
+                height: inner.height.saturating_sub(2),
+                ..inner
+            };
         }
-    };
-    lines.push(Line::raw(""));
-    lines.push(Line::styled("The game's picture: not yet.", Style::new().fg(DIM)));
-    frame.render_widget(Paragraph::new(lines).block(panel(&title)), area);
+        None => {
+            frame.render_widget(Paragraph::new(loading()), Rect { height: 1, ..inner });
+            below = Rect {
+                y: inner.y + 2,
+                height: inner.height.saturating_sub(2),
+                ..inner
+            };
+        }
+        Some(Err(e)) => {
+            frame.render_widget(Paragraph::new(read_error(e)), Rect { height: 1, ..inner });
+            below = Rect {
+                y: inner.y + 2,
+                height: inner.height.saturating_sub(2),
+                ..inner
+            };
+        }
+        Some(Ok(picture)) if app.modal.is_none() => {
+            // A cell is about twice as tall as it is wide.
+            let aspect = picture.height.max(1) as f64 / picture.width.max(1) as f64;
+            let mut width = inner.width;
+            let mut height = ((width as f64 * aspect) / 2.0).round() as u16;
+            if height > inner.height {
+                height = inner.height;
+                width = ((height as f64 * 2.0) / aspect).round() as u16;
+            }
+            let rect = Rect {
+                x: inner.x + (inner.width - width.min(inner.width)) / 2,
+                y: inner.y,
+                width: width.min(inner.width),
+                height,
+            };
+            app.hits.borrow_mut().picture = Some((name.to_owned(), picture.frame, rect));
+            below = Rect {
+                y: inner.y + height + 1,
+                height: inner.height.saturating_sub(height + 1),
+                ..inner
+            };
+        }
+        Some(Ok(_)) => {}
+    }
+    let Some(Ok(map)) = read else { return };
+    let mut lines = vec![Line::styled(
+        format!(
+            "PLAYERS · {}    MONSTERS · {}    cells: {}",
+            map.players.len(),
+            map.monsters.len(),
+            map.cells.join(", ")
+        ),
+        Style::new().fg(DIM).bold(),
+    )];
+    lines.extend(map.players.iter().map(|p| {
+        Line::raw(format!(
+            "  {:<20}Lv {:<4}{:<12}{}/{}{}",
+            p.name,
+            p.level,
+            p.cell,
+            p.hp,
+            p.max_hp,
+            if p.afk { "  afk" } else { "" }
+        ))
+    }));
+    lines.extend(map.monsters.iter().map(|m| {
+        let style = if m.alive { Style::new() } else { Style::new().fg(DIM) };
+        Line::styled(
+            format!("  {:<4}{:<24}{:<12}{}/{}", m.map_id, m.name, m.cell, m.hp, m.max_hp),
+            style,
+        )
+    }));
+    frame.render_widget(Paragraph::new(lines), below);
 }
 
 fn chat(frame: &mut Frame, app: &App, name: &str, area: Rect) {

@@ -65,6 +65,8 @@ pub enum Op {
     },
     /// Launches `skua hooks` for the data folder, unless a Hook Runner holds its lock; its job's `engine` is empty.
     StartHookRunner,
+    /// Takes the game's picture with `skua screenshot` and opens it in Preview.
+    OpenPicture,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -90,6 +92,7 @@ pub enum Reply {
     Updated(ScriptsUpdate),
     ChatSent(ChatSendResult),
     HookRunnerStarted,
+    PictureOpened(PathBuf),
 }
 
 #[derive(Debug, Clone)]
@@ -123,6 +126,7 @@ impl Runner {
         let result = match &job.op {
             Op::StartEngine => self.start_engine(&job.engine).map(Reply::Started),
             Op::StartHookRunner => self.start_hook_runner().map(|()| Reply::HookRunnerStarted),
+            Op::OpenPicture => self.open_picture(&job.engine).map(Reply::PictureOpened),
             op => self.call(&job.engine, op),
         };
         Outcome { job, result }
@@ -139,7 +143,7 @@ impl Runner {
             _ => 30,
         }))?;
         Ok(match op {
-            Op::StartEngine | Op::StartHookRunner => unreachable!("not a call"),
+            Op::StartEngine | Op::StartHookRunner | Op::OpenPicture => unreachable!("not a call"),
             Op::StopEngine => engine.shutdown_if_idle().map(|()| Reply::Stopping)?,
             Op::Servers => Reply::Servers(engine.servers()?.servers),
             // An Engine's own account is the one named after it, which the Skua Manager also launches its app with.
@@ -230,6 +234,34 @@ impl Runner {
 
     /// Launches `skua hooks` in its own process group, so it outlives skua-tui, with its output in `<SkuaDIR>/hooks.log`; and waits for it to
     /// take its lock. skua-tui never runs a Hook itself.
+    /// `skua screenshot` of the Engine into a file in the temporary folder, then `open`, which shows a PNG in Preview.
+    fn open_picture(&self, name: &str) -> Result<PathBuf, Error> {
+        let skua = match &self.skua_executable {
+            Some(path) => path.clone(),
+            None => skua_on_path().map_err(Error::Refused)?,
+        };
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        let file = std::env::temp_dir().join(format!("skua-{name}-{stamp}.png"));
+        let shot = Command::new(&skua)
+            .args(["screenshot", "--engine", name, "-o"])
+            .arg(&file)
+            .env(discovery::SKUA_DIR_VARIABLE, &self.skua_dir)
+            .env_remove("SKUA_ENGINE_SOCKET")
+            .stdin(Stdio::null())
+            .output()
+            .map_err(|e| Error::Refused(format!("couldn't run {}: {e}", skua.display())))?;
+        if !shot.status.success() {
+            return Err(Error::Refused(first_line_of(&shot.stderr, "skua screenshot failed")));
+        }
+        Command::new("open")
+            .arg(&file)
+            .status()
+            .map_err(|e| Error::Refused(format!("couldn't open {}: {e}", file.display())))?;
+        Ok(file)
+    }
+
     fn start_hook_runner(&self) -> Result<(), Error> {
         let lock = discovery::hook_runner_lock(&self.skua_dir);
         if discovery::lock_held(&lock) {
@@ -320,4 +352,14 @@ fn skua_on_path() -> Result<PathBuf, String> {
 pub fn spawn(runner: &Runner, job: Job, outcomes: Sender<Outcome>) {
     let runner = runner.clone();
     thread::spawn(move || _ = outcomes.send(runner.run(job)));
+}
+
+/// The first line of a process's output, or `fallback` when it said nothing.
+fn first_line_of(output: &[u8], fallback: &str) -> String {
+    String::from_utf8_lossy(output)
+        .lines()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or(fallback)
+        .trim()
+        .to_owned()
 }

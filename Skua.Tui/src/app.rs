@@ -157,6 +157,7 @@ pub const KEYS: &[(&str, &str)] = &[
     ("J", "join a map: map[-room] [cell] [pad]"),
     ("d", "answer the selected account's Question"),
     ("U", "update the Scripts from the Script Source"),
+    ("p", "open the game's picture in Preview"),
     ("H", "start the Hook Runner (skua hooks), which runs the hooks"),
     ("q", "quit"),
 ];
@@ -358,6 +359,8 @@ pub struct Hits {
     /// How far the Inventory list can scroll, and how many items one page shows.
     pub inventory_max_scroll: usize,
     pub inventory_page: usize,
+    /// Where the game's picture goes, and whose picture of which frame, while the Game tab shows one.
+    pub picture: Option<(String, i64, Rect)>,
 }
 
 impl App {
@@ -600,6 +603,7 @@ impl App {
                 }
             }
             'O' => self.act(Op::Logout, "logging out…"),
+            'p' => self.act(Op::OpenPicture, "taking a picture…"),
             's' => {
                 if let Some(engine) = self.source("start a Script") {
                     self.search(&engine, String::new());
@@ -903,6 +907,7 @@ impl App {
                     Tone::Failed
                 },
             ),
+            Reply::PictureOpened(file) => ok(format!("opened {} in Preview", file.display())),
             r => Note::new(unexpected(r).to_string(), Tone::Failed),
         }
     }
