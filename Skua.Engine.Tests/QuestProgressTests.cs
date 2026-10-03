@@ -89,7 +89,7 @@ public class QuestProgressTests
     }
 
     [Fact]
-    public async Task A_run_counts_the_kills_credited_to_the_player_and_its_kills_per_minute()
+    public async Task A_run_counts_the_kills_credited_to_the_player_its_kills_per_minute_and_its_deaths()
     {
         await using EngineSandbox sandbox = new();
         await using GameFixture session = await GameFixture.StartAsync(sandbox, environment: Fast);
@@ -105,11 +105,15 @@ public class QuestProgressTests
             await session.GameHost.DoAsync($"kill {monster}");
         ScriptRunDto killed = await WaitForAsync(async () => (await session.Connection.StatusAsync(Ct)).Script.Run!, r => r.Kills == 3);
         LogEntryDto stalled = await session.Connection.WaitForEventAsync(EventTypes.QuestStalled);
+        await session.GameHost.DoAsync("die");
+        await session.Connection.WaitForEventAsync(EventTypes.PlayerDeath);
+        ScriptRunDto died = (await session.Connection.StatusAsync(Ct)).Script.Run!;
 
-        Assert.Equal((0, 0.0), (none.Kills, none.KillsPerMin));
+        Assert.Equal((0, 0.0, 0), (none.Kills, none.KillsPerMin, none.Deaths));
         // Within the run's first minute the rate is over a minute, so three kills are 3 a minute.
         Assert.Equal((3, 3.0), (killed.Kills, killed.KillsPerMin));
         Assert.Equal(3.0, stalled.Data!.Value.GetProperty("killsPerMin").GetDouble());
+        Assert.Equal((0, 1), (killed.Deaths, died.Deaths));
     }
 
     private static async Task<T> WaitForAsync<T>(Func<Task<T>> read, Func<T, bool> done)

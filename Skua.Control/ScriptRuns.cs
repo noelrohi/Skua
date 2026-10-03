@@ -64,9 +64,10 @@ public sealed record ScriptStatusDto(ScriptState State, ScriptRunDto? Run, Scrip
 /// The run's kills per minute over the last 5 minutes, or over its time if shorter, but at least a minute; with <paramref name="QuestIdleSec"/>
 /// it tells a Script grinding a rare drop from one that is stuck.
 /// </param>
+/// <param name="Deaths">How many times the player died during the run.</param>
 public sealed record ScriptRunDto(
     int Number, string Script, DateTimeOffset StartedAt, int Relogins, bool ReloggingIn, DialogMode Dialogs, int DialogTimeoutSec, double ElapsedSec,
-    double? QuestIdleSec = null, int Kills = 0, double? KillsPerMin = null);
+    double? QuestIdleSec = null, int Kills = 0, double? KillsPerMin = null, int Deaths = 0);
 
 /// <summary>A run that ended.</summary>
 /// <param name="Error">Why it failed, for <see cref="ScriptOutcome.Error"/>: the exception's type and message.</param>
