@@ -234,11 +234,17 @@ public enum QuestStatus
 /// <param name="Qty">How many the quest needs.</param>
 /// <param name="Have">How many the player has, in the inventory or, for a temporary item, the temporary inventory.</param>
 /// <param name="IdleSec">
-/// How many seconds since the Engine saw <paramref name="Have"/> rise, or since it began watching the requirement if it hasn't; a fall (a turn-in, or
+/// How many seconds since the Engine saw the requirement's count rise, or since it began watching the requirement if it hasn't; a fall (a turn-in, or
 /// temporary items lost to a relogin) is no rise. It watches the loaded quests while playing, and starts afresh when another account logs in.
 /// </param>
-/// <param name="GainPerHour">How much <paramref name="Have"/> rose per hour over the last hour watched; null until it has watched for 5 minutes.</param>
-public sealed record QuestRequirementDto(int ItemId, string Name, int Qty, int Have, bool Temp, double? IdleSec = null, double? GainPerHour = null);
+/// <param name="GainPerHour">How much the count rose per hour over the last hour watched; null until it has watched for 5 minutes.</param>
+/// <param name="InBank">
+/// How many the bank holds, which a Script takes out for the turn-in; 0 for a temporary item, and until the game has loaded the bank. The
+/// requirement's count, which <paramref name="IdleSec"/> and <paramref name="GainPerHour"/> follow, is <paramref name="Have"/> plus this,
+/// so banking an item is no rise.
+/// </param>
+public sealed record QuestRequirementDto(
+    int ItemId, string Name, int Qty, int Have, bool Temp, double? IdleSec = null, double? GainPerHour = null, int InBank = 0);
 
 /// <summary>An item a quest can reward.</summary>
 public sealed record QuestRewardDto(int ItemId, string Name, int Qty);

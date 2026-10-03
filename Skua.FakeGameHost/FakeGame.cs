@@ -207,6 +207,10 @@ internal sealed class FakeGame
                     // How many Slime Crowns, the 1/1 drop Slime Time also needs, the temporary inventory holds.
                     _slimeCrowns = int.Parse(qty);
                     return true;
+                case ["kill", string monMapId]:
+                    // The game's credit for a monster the player killed, as it sends it even when the monster gives nothing.
+                    Pext(new JsonObject { ["cmd"] = "addGoldExp", ["intGold"] = 0, ["intExp"] = 0, ["typ"] = "m", ["id"] = int.Parse(monMapId) });
+                    return true;
                 case ["pickup", string id]:
                     Pext(new JsonObject { ["cmd"] = "getDrop", ["ItemID"] = int.Parse(id), ["bSuccess"] = 1, ["iQty"] = 1, ["iQtyNow"] = 1, ["bBank"] = false });
                     return true;
@@ -687,6 +691,8 @@ internal sealed class FakeGame
         // Shaped like 10238: oItems in the order the server adds them, which Ruffle keeps and Flash doesn't.
         ["1003"] = Quest(1003, "Not Yet", null, member: false, gold: 10, xp: 10, new JsonObject(),
             (Item(93555, "Undead Vaughn", 1, 6, "Quest Item", temp: true), 6), (Item(93556, "Wraith's Loyalty", 1, 9, "Quest Item", temp: true), 9)),
+        // Its Bank Relics are all in the bank.
+        ["1004"] = Quest(1004, "Relic Keeper", null, member: false, gold: 0, xp: 0, new JsonObject(), (Item(10, "Bank Relic", 1, 10, "Item"), 2)),
     };
 
     private static JsonObject Quest(int id, string name, string? status, bool member, int gold, int xp, JsonObject rewards, params (JsonObject Item, int Qty)[] requirements)

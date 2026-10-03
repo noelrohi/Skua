@@ -59,9 +59,14 @@ public sealed record ScriptStatusDto(ScriptState State, ScriptRunDto? Run, Scrip
 /// How many seconds since a requirement of an accepted quest not yet done rose (see <see cref="QuestRequirementDto.IdleSec"/>), the rise that
 /// met it included; at most <paramref name="ElapsedSec"/>, and null when every accepted quest is done or none is accepted.
 /// </param>
+/// <param name="Kills">How many monsters the player was credited with killing during the run.</param>
+/// <param name="KillsPerMin">
+/// The run's kills per minute over the last 5 minutes, or over its time if shorter, but at least a minute; with <paramref name="QuestIdleSec"/>
+/// it tells a Script grinding a rare drop from one that is stuck.
+/// </param>
 public sealed record ScriptRunDto(
     int Number, string Script, DateTimeOffset StartedAt, int Relogins, bool ReloggingIn, DialogMode Dialogs, int DialogTimeoutSec, double ElapsedSec,
-    double? QuestIdleSec = null);
+    double? QuestIdleSec = null, int Kills = 0, double? KillsPerMin = null);
 
 /// <summary>A run that ended.</summary>
 /// <param name="Error">Why it failed, for <see cref="ScriptOutcome.Error"/>: the exception's type and message.</param>
