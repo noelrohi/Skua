@@ -482,6 +482,8 @@ cargo run --release                    # or target/release/skua-tui
 
 It reads the Engines under the data folder (`SKUA_DIR`, else `~/Library/Application Support/Skua`) from `engines/*.sock`, and the accounts from `Skua.manager.json`, which it never writes; it never reads Keychain. An Engine that speaks another protocol shows a red **Protocol mismatch** with what to do, and none of its data; skua-tui never acts on it.
 
+The mouse works too: a click picks an account, a tab or an Inventory category, and the wheel scrolls the list it is over. Hold option (or shift) to select text in the terminal as usual. The Inventory tab splits the items into categories, shown as tabs with their counts: All, Weapons, Classes, Gear (armour, helms, capes, pets), Items, Quest items and Other, each shown only when it holds something. `←`/`→` move between them. `pgup`/`pgdn`, `home`/`end` and the wheel scroll the list, and the bottom of the panel shows which items are in view (`1–23 of 43`). Clicking the list moves the keys to it: its border turns blue and `j`/`k` scroll it instead of moving between accounts, until `esc` or a click on the accounts.
+
 Keys: `j`/`k` move, `space` marks, `a` marks a group, `esc` clears marks, the filter and finished notes, `tab` or `1`–`7` picks a tab, `:` opens the command palette, `/` filters, `?` lists the keys, `q` quits. The actions act on the marked accounts, else the selected one:
 
 | Key | Action | Control Surface op |
