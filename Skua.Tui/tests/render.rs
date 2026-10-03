@@ -70,7 +70,9 @@ fn fleet() -> Fleet {
                 { "itemId": 9, "name": "Cubes", "qty": 25, "have": 21, "temp": false, "idleSec": 840.0, "gainPerHour": 12.0 },
                 { "itemId": 10, "name": "Gems", "qty": 10, "have": 2, "temp": false, "idleSec": 2820.0, "gainPerHour": 0.0 },
                 { "itemId": 11, "name": "Shards", "qty": 5, "have": 5, "temp": false, "idleSec": 30.0, "gainPerHour": 40.0 }
-            ], "rewards": [] }]}),
+            ], "rewards": [] }, { "id": 7552, "name": "Gem Hoarder", "status": "notAccepted", "memberOnly": false, "gold": 0, "xp": 0,
+            "requirements": [{ "itemId": 12, "name": "Rubies", "qty": 99, "have": 0, "temp": false, "idleSec": 840.0, "gainPerHour": null }],
+            "rewards": [] }]}),
         ),
         "map" => Ok(json!({ "name": "battleon", "roomId": 9999, "cells": ["Enter", "r2"],
             "players": [{ "name": "alice", "level": 100, "cell": "Enter", "pad": "Spawn", "hp": 2400, "maxHp": 3000, "afk": false }],
@@ -224,22 +226,25 @@ fn the_tabs_show_inventory_quests_logs_and_the_map_with_the_picture_not_yet() {
         &["2/120", "Atlas Gold", "870/1000", "Chaos Avenger ✓", "Class"],
     );
     press(&mut app, KeyCode::Tab);
-    assert_shows(
-        &screen(&fleet, &mut app, 120, 32),
-        &[
-            "Quests · loaded",
-            "7551",
-            "Tainted Gem Exchange",
-            "in progress · idle 14m",
-            "Cubes 21/25 14m +12/h ~20m · Gems 2/10 47m · Shards 5/5",
-        ],
+    // Only the quest in progress, with its unmet requirements in columns; the quest that isn't accepted is only counted.
+    let quests = screen(&fleet, &mut app, 120, 32);
+    let row = |text: &str| -> String {
+        let line = quests
+            .lines()
+            .find(|l| l.contains(text))
+            .unwrap_or_else(|| panic!("no {text:?} in:\n{quests}"));
+        line.split_whitespace().collect::<Vec<_>>().join(" ")
+    };
+    assert!(
+        row("Tainted Gem Exchange").contains("Tainted Gem Exchange 1/3 done 14m"),
+        "{quests}"
     );
-    // Requirements that don't fit wrap under the quest.
-    let narrow = screen(&fleet, &mut app, 90, 32);
-    assert_shows(
-        &narrow,
-        &["       Cubes 21/25 14m +12/h ~20m · Gems 2/10 47m", "       Shards 5/5"],
-    );
+    assert!(row("Cubes").contains("Cubes 21/25 +12/h ~20m 14m"), "{quests}");
+    assert!(row("Gems ").contains("Gems 2/10 47m"), "{quests}");
+    assert_shows(&quests, &[" Quests ", "1 not accepted"]);
+    for hidden in ["Shards", "Gem Hoarder", "Rubies", "7551"] {
+        assert!(!quests.contains(hidden), "{hidden:?} shows:\n{quests}");
+    }
     press(&mut app, KeyCode::Tab);
     assert_shows(
         &screen(&fleet, &mut app, 120, 32),

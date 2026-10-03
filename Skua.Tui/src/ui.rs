@@ -630,75 +630,71 @@ fn quests(frame: &mut Frame, status: &Status, detail: Option<&Detail>, area: Rec
         None => vec![loading()],
         Some(Err(e)) => vec![read_error(e)],
         Some(Ok(q)) if q.quests.is_empty() => vec![Line::styled("no quests loaded", Style::new().fg(DIM))],
-        Some(Ok(q)) => q
-            .quests
-            .iter()
-            .flat_map(|quest| quest_lines(quest, running, width))
-            .collect(),
+        Some(Ok(q)) => quest_lines(&q.quests, running, width),
     };
-    frame.render_widget(Paragraph::new(lines).block(panel("Quests · loaded")), area);
+    frame.render_widget(Paragraph::new(lines).block(panel("Quests")), area);
 }
 
-/// A quest's name and status, then its requirements wrapped under it. An accepted quest's unmet requirements say how long they have gone
-/// without a rise, and how fast they rise with the time left at that rate; the quest says how long since any of them rose.
-fn quest_lines(quest: &Quest, running: bool, width: usize) -> Vec<Line<'static>> {
-    const INDENT: usize = 7;
-    let accepted = quest.status == "inProgress";
-    let (status, color) = match quest.status.as_str() {
-        "completable" => ("completable", Color::Green),
-        "inProgress" => ("in progress", Color::Yellow),
-        _ => ("not accepted", DIM),
-    };
-    let unmet = || quest.requirements.iter().filter(|r| accepted && r.have < r.qty);
-    let mut head = vec![
-        format!("{:<INDENT$}{}  ", quest.id, quest.name).bold(),
-        Span::styled(status, Style::new().fg(color)),
-    ];
-    if let Some(idle) = unmet().filter_map(|r| r.idle_sec).reduce(f64::min) {
-        head.push(Span::styled(
-            format!(" · idle {}", short_duration(idle)),
-            Style::new().fg(idle_color(idle, running)),
-        ));
+/// The quests in progress, each with its unmet requirements one per line in columns: the count, the rate and the time left at that rate
+/// once the Engine knows it, and how long since the count rose. The quest says how many requirements are done and how long since any of
+/// them rose. The other loaded quests are only counted.
+fn quest_lines(quests: &[Quest], running: bool, width: usize) -> Vec<Line<'static>> {
+    const COUNT: usize = 12;
+    const RATE: usize = 18;
+    const IDLE: usize = 7;
+    let name_width = width.saturating_sub(3 + 1 + COUNT + RATE + IDLE).min(32);
+    let idle_style = |idle: Option<f64>| Style::new().fg(idle.map_or(DIM, |sec| idle_color(sec, running)));
+    let mut lines = vec![Line::raw("")];
+    let in_progress: Vec<&Quest> = quests.iter().filter(|q| q.status == "inProgress").collect();
+    if in_progress.is_empty() {
+        lines.push(Line::styled(" no quest in progress", Style::new().fg(DIM)));
+        lines.push(Line::raw(""));
     }
-    let mut lines = vec![Line::from(head)];
-    let mut line: Vec<Span<'static>> = Vec::new();
-    let mut used = INDENT;
-    for r in &quest.requirements {
-        let mut piece = vec![Span::styled(
-            format!("{} {}/{}", r.name, r.have, r.qty),
-            Style::new().fg(DIM),
-        )];
-        if accepted && r.have < r.qty {
-            if let Some(idle) = r.idle_sec {
-                piece.push(Span::styled(
-                    format!(" {}", short_duration(idle)),
-                    Style::new().fg(idle_color(idle, running)),
-                ));
-            }
-            if let Some(rate) = r.gain_per_hour.filter(|rate| *rate > 0.0) {
+    for quest in in_progress {
+        let unmet: Vec<_> = quest.requirements.iter().filter(|r| r.have < r.qty).collect();
+        let idle = unmet.iter().filter_map(|r| r.idle_sec).reduce(f64::min);
+        let done = format!(
+            "{}/{} done",
+            quest.requirements.len() - unmet.len(),
+            quest.requirements.len()
+        );
+        lines.push(Line::from(vec![
+            format!(" {:<w$} ", truncate(&quest.name, name_width + 2), w = name_width + 2).bold(),
+            Span::styled(format!("{done:>COUNT$}{:RATE$}", ""), Style::new().fg(DIM)),
+            Span::styled(
+                format!("{:>IDLE$}", idle.map(short_duration).unwrap_or_default()),
+                idle_style(idle),
+            ),
+        ]));
+        for r in unmet {
+            let rate = r.gain_per_hour.filter(|rate| *rate > 0.0).map(|rate| {
                 let left = (r.qty - r.have) as f64 / rate * 3600.0;
-                piece.push(Span::styled(
-                    format!(" +{}/h ~{}", rate_text(rate), short_duration(left)),
-                    Style::new().fg(DIM),
-                ));
-            }
+                format!("+{}/h ~{}", rate_text(rate), short_duration(left))
+            });
+            lines.push(Line::from(vec![
+                Span::raw(format!(
+                    "   {:<name_width$} {:>COUNT$}",
+                    truncate(&r.name, name_width),
+                    format!("{}/{}", r.have, r.qty)
+                )),
+                Span::styled(format!("{:>RATE$}", rate.unwrap_or_default()), Style::new().fg(DIM)),
+                Span::styled(
+                    format!("{:>IDLE$}", r.idle_sec.map(short_duration).unwrap_or_default()),
+                    idle_style(r.idle_sec),
+                ),
+            ]));
         }
-        let piece_width: usize = piece.iter().map(|s| s.content.chars().count()).sum();
-        if !line.is_empty() && used + 3 + piece_width > width {
-            lines.push(Line::from(std::mem::take(&mut line)));
-            used = INDENT;
-        }
-        if line.is_empty() {
-            line.push(Span::raw(" ".repeat(INDENT)));
-        } else {
-            line.push(Span::styled(" · ", Style::new().fg(DIM)));
-            used += 3;
-        }
-        used += piece_width;
-        line.extend(piece);
+        lines.push(Line::raw(""));
     }
-    if !line.is_empty() {
-        lines.push(Line::from(line));
+    let completable = quests.iter().filter(|q| q.status == "completable").count();
+    let not_accepted = quests.iter().filter(|q| q.status == "notAccepted").count();
+    let others: Vec<String> = [(completable, "completable"), (not_accepted, "not accepted")]
+        .into_iter()
+        .filter(|(n, _)| *n > 0)
+        .map(|(n, what)| format!("{n} {what}"))
+        .collect();
+    if !others.is_empty() {
+        lines.push(Line::styled(format!(" {}", others.join(" · ")), Style::new().fg(DIM)));
     }
     lines
 }
