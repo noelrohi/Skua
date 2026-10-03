@@ -105,6 +105,13 @@ public static class EventTypes
     public const string InventoryFull = "inventory.full";
 
     /// <summary>
+    /// A run's accepted quests not yet done have gone without a rise in any of their requirements for the stall time (10 minutes): <c>{run, script, idleSec, quests}</c>, each quest
+    /// <c>{id, name, requirements}</c> with its unmet requirements as <c>{itemId, name, have, qty}</c>. It is recorded once per stall; a rise in
+    /// any of their requirements' counts, or another run, re-arms it. See <see cref="ScriptRunDto.QuestIdleSec"/>.
+    /// </summary>
+    public const string QuestStalled = "quest.stalled";
+
+    /// <summary>
     /// A run started: <c>{run, script, restart}</c>. A restart by Core's auto-relogin is the same run, with <c>restart</c> true.
     /// </summary>
     public const string ScriptStarted = "script.started";

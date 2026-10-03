@@ -233,7 +233,12 @@ public enum QuestStatus
 /// <summary>An item a quest needs to be turned in.</summary>
 /// <param name="Qty">How many the quest needs.</param>
 /// <param name="Have">How many the player has, in the inventory or, for a temporary item, the temporary inventory.</param>
-public sealed record QuestRequirementDto(int ItemId, string Name, int Qty, int Have, bool Temp);
+/// <param name="IdleSec">
+/// How many seconds since the Engine saw <paramref name="Have"/> rise, or since it began watching the requirement if it hasn't; a fall (a turn-in, or
+/// temporary items lost to a relogin) is no rise. It watches the loaded quests while playing, and starts afresh when another account logs in.
+/// </param>
+/// <param name="GainPerHour">How much <paramref name="Have"/> rose per hour over the last hour watched; null until it has watched for 5 minutes.</param>
+public sealed record QuestRequirementDto(int ItemId, string Name, int Qty, int Have, bool Temp, double? IdleSec = null, double? GainPerHour = null);
 
 /// <summary>An item a quest can reward.</summary>
 public sealed record QuestRewardDto(int ItemId, string Name, int Qty);

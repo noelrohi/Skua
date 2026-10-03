@@ -41,6 +41,7 @@ internal sealed class Engine : IEngineRpc
     private readonly MoveOperations _moves;
     private readonly ChatOperations _chat;
     private readonly GameQueries _queries;
+    private readonly QuestProgress _questProgress;
     private readonly ScriptOperations _scripts;
     private readonly EvalOperations _eval;
     private readonly DialogOperations _dialogs;
@@ -70,7 +71,8 @@ internal sealed class Engine : IEngineRpc
         _moves = new MoveOperations(
             services.GetRequiredService<IScriptMap>(), services.GetRequiredService<IScriptPlayer>(), services.GetRequiredService<IScriptWait>(), gameHost.Tracker, gameSlot);
         _chat = new ChatOperations(services.GetRequiredService<IScriptSend>(), services.GetRequiredService<IScriptMap>(), gameSlot);
-        _queries = new GameQueries(services.GetRequiredService<IScriptInterface>(), services.GetRequiredService<IFlashUtil>(), gameHost.Tracker, gameSlot);
+        _questProgress = new QuestProgress(services.GetRequiredService<IScriptInterface>(), gameHost.Tracker, _runs, logs);
+        _queries = new GameQueries(services.GetRequiredService<IScriptInterface>(), services.GetRequiredService<IFlashUtil>(), gameHost.Tracker, gameSlot, _questProgress);
         _scripts = new ScriptOperations(manager, _runs, broker, _slot, _scriptsSlot, compiling);
         _eval = new EvalOperations(manager, services.GetRequiredService<IScriptInterface>(), logs, compiling);
         services.GetRequiredService<EngineScripts>().Attach(_scripts, _scriptSource, _runs, _slot, _scriptsSlot, compiling);
@@ -185,7 +187,7 @@ internal sealed class Engine : IEngineRpc
     {
         EngineInfoDto engine = new(_endpoint.Name, Build, ControlProtocol.Version, Math.Round(_uptime.Elapsed.TotalSeconds, 1), Environment.ProcessId, Host);
         (PlayerDto? player, double? playerAgeSec) = await _queries.PlayerAsync();
-        return new StatusDto(engine, _gameHost.Status() with { Player = player, PlayerAgeSec = playerAgeSec }, _scripts.Status(), _dialogs.Pending());
+        return new StatusDto(engine, _gameHost.Status() with { Player = player, PlayerAgeSec = playerAgeSec }, ScriptStatus(), _dialogs.Pending());
     }
 
     public Task ShutdownAsync(CancellationToken cancellationToken)
@@ -324,7 +326,13 @@ internal sealed class Engine : IEngineRpc
         _scripts.StopAsync(cancellationToken);
 
     public Task<ScriptStatusDto> ScriptStatusAsync(CancellationToken cancellationToken) =>
-        Task.FromResult(_scripts.Status());
+        Task.FromResult(ScriptStatus());
+
+    private ScriptStatusDto ScriptStatus()
+    {
+        ScriptStatusDto status = _scripts.Status();
+        return status with { Run = _questProgress.WithQuestIdle(status.Run) };
+    }
 
     public Task<ScriptWaitResult> ScriptWaitAsync(int? timeoutSec, CancellationToken cancellationToken) =>
         _scripts.WaitAsync(timeoutSec, cancellationToken);
@@ -459,6 +467,7 @@ internal sealed class Engine : IEngineRpc
         {
             EngineLog.Write($"Stopping the Script failed: {e}");
         }
+        _questProgress.Dispose();
         _gameHost.Dispose();
         foreach (JsonRpc rpc in _connections.Keys)
             rpc.Dispose();

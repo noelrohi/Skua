@@ -110,6 +110,8 @@ pub struct ScriptRun {
     pub relogins: i64,
     pub relogging_in: bool,
     pub elapsed_sec: f64,
+    /// How long the accepted quests' unmet requirements have gone without a rise, at most `elapsed_sec`; None when there are none.
+    pub quest_idle_sec: Option<f64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -182,6 +184,10 @@ pub struct QuestRequirement {
     pub name: String,
     pub qty: i64,
     pub have: i64,
+    /// How long since the Engine saw `have` rise, or began watching the requirement if it hasn't.
+    pub idle_sec: Option<f64>,
+    /// How much `have` rose per hour over the last hour watched; None until the Engine has watched it for 5 minutes.
+    pub gain_per_hour: Option<f64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

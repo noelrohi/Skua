@@ -23,8 +23,8 @@ fn manager_file() -> Value {
     })
 }
 
-/// A fleet in a temp data folder: alice farms with a Script, bob's Engine is of another protocol, carol has no Engine, and `default` is no
-/// account's.
+/// A fleet in a temp data folder: alice farms with a Script whose quests have stalled, bob's Engine is of another protocol, carol has no
+/// Engine, and `default` is no account's.
 struct Fleet {
     dir: tempfile::TempDir,
     _engines: Vec<FakeEngine>,
@@ -35,7 +35,11 @@ fn fleet() -> Fleet {
     write_manager_file(dir.path(), manager_file());
     let alice = FakeEngine::start(dir.path(), "alice", |method, params| match method {
         "hello" => Ok(hello(PROTOCOL, "alice")),
-        "status" => Ok(status("alice", true, Some("Farm/AtlasGold.cs"))),
+        "status" => {
+            let mut status = status("alice", true, Some("Farm/AtlasGold.cs"));
+            status["script"]["run"]["questIdleSec"] = json!(700.0);
+            Ok(status)
+        }
         "logs" if params[0] == "events" => Ok(json!({
             "entries": [
                 event(2, "inventory.full", json!({ "used": 120, "slots": 120, "drop": null })),
@@ -62,7 +66,13 @@ fn fleet() -> Fleet {
         ),
         "quests" => Ok(
             json!({ "filter": "loaded", "quests": [{ "id": 7551, "name": "Tainted Gem Exchange", "status": "inProgress",
-            "memberOnly": false, "gold": 0, "xp": 0, "requirements": [{ "itemId": 9, "name": "Cubes", "qty": 25, "have": 21, "temp": false }], "rewards": [] }]}),
+            "memberOnly": false, "gold": 0, "xp": 0, "requirements": [
+                { "itemId": 9, "name": "Cubes", "qty": 25, "have": 21, "temp": false, "idleSec": 840.0, "gainPerHour": 12.0 },
+                { "itemId": 10, "name": "Gems", "qty": 10, "have": 2, "temp": false, "idleSec": 2820.0, "gainPerHour": 0.0 },
+                { "itemId": 11, "name": "Shards", "qty": 5, "have": 5, "temp": false, "idleSec": 30.0, "gainPerHour": 40.0 }
+            ], "rewards": [] }, { "id": 7552, "name": "Gem Hoarder", "status": "notAccepted", "memberOnly": false, "gold": 0, "xp": 0,
+            "requirements": [{ "itemId": 12, "name": "Rubies", "qty": 99, "have": 0, "temp": false, "idleSec": 840.0, "gainPerHour": null }],
+            "rewards": [] }]}),
         ),
         "map" => Ok(json!({ "name": "battleon", "roomId": 9999, "cells": ["Enter", "r2"],
             "players": [{ "name": "alice", "level": 100, "cell": "Enter", "pad": "Spawn", "hp": 2400, "maxHp": 3000, "afk": false }],
@@ -121,13 +131,14 @@ fn the_screen_shows_accounts_by_group_with_their_engines_and_the_selected_ones_o
         &screen,
         &[
             " skua  windowless Engines",
-            "3 Engines · 1 alert · hooks off · protocol 16",
+            "3 Engines · 2 alerts · hooks off · protocol 17",
             "Accounts",
             "▾ Farm · 2",
             "▾ Butler · 1",
             "▾ Ungrouped · 1",
             "▾ Other Engines · 1",
             "[ ] ● alice        AtlasGold",
+            " 11m▲",
             "bob          protocol 11",
             "carol        offline",
             "default      login screen",
@@ -141,6 +152,8 @@ fn the_screen_shows_accounts_by_group_with_their_engines_and_the_selected_ones_o
             "Script",
             "Farm/AtlasGold.cs",
             "run 3 · 12m 34s",
+            "quests stalled 11m",
+            " ago · Farming Atlas Gold",
             "Logs",
             "Farming Atlas Gold",
             "inventory.full",
@@ -172,7 +185,7 @@ fn an_engine_of_another_protocol_fails_loudly_on_every_tab_and_shows_none_of_its
                 "Protocol mismatch",
                 "Engine 'bob'",
                 "speaks protocol 11, but",
-                "this skua-tui speaks 16. Nothing it reports is shown.",
+                "this skua-tui speaks 17. Nothing it reports is shown.",
             ],
         );
         assert!(!screen.contains("Player") && !screen.contains("Artix"), "{screen}");
@@ -214,16 +227,25 @@ fn the_tabs_show_inventory_quests_logs_and_the_map_with_the_picture_not_yet() {
         &["2/120", "Atlas Gold", "870/1000", "Chaos Avenger ✓", "Class"],
     );
     press(&mut app, KeyCode::Tab);
-    assert_shows(
-        &screen(&fleet, &mut app, 120, 32),
-        &[
-            "Quests · loaded",
-            "7551",
-            "Tainted Gem Exchange",
-            "in progress",
-            "Cubes 21/25",
-        ],
+    // Only the quest in progress, with its unmet requirements in columns; the quest that isn't accepted is only counted.
+    let quests = screen(&fleet, &mut app, 120, 32);
+    let row = |text: &str| -> String {
+        let line = quests
+            .lines()
+            .find(|l| l.contains(text))
+            .unwrap_or_else(|| panic!("no {text:?} in:\n{quests}"));
+        line.split_whitespace().collect::<Vec<_>>().join(" ")
+    };
+    assert!(
+        row("Tainted Gem Exchange").contains("Tainted Gem Exchange 1/3 done 30s"),
+        "{quests}"
     );
+    assert!(row("Cubes").contains("Cubes 21/25 +12/h ~20m 14m"), "{quests}");
+    assert!(row("Gems ").contains("Gems 2/10 47m"), "{quests}");
+    assert_shows(&quests, &[" Quests ", "1 not accepted"]);
+    for hidden in ["Shards", "Gem Hoarder", "Rubies", "7551"] {
+        assert!(!quests.contains(hidden), "{hidden:?} shows:\n{quests}");
+    }
     press(&mut app, KeyCode::Tab);
     assert_shows(
         &screen(&fleet, &mut app, 120, 32),

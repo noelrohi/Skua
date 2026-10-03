@@ -45,7 +45,7 @@ fn an_engine_of_another_protocol_is_refused_after_hello_and_nothing_else_is_aske
     );
     let message = error.to_string();
     assert!(
-        message.contains("Engine 'bob'") && message.contains("speaks protocol 11") && message.contains("speaks 16"),
+        message.contains("Engine 'bob'") && message.contains("speaks protocol 11") && message.contains("speaks 17"),
         "{message}"
     );
     assert_eq!(engine.methods(), vec!["hello"]);
@@ -172,9 +172,15 @@ fn logs_start_with_the_tail_then_follow_from_the_cursor() {
         engine.params_of("logs"),
         vec![
             json!(["events", null, null, LOG_TAIL]),
+            json!(["script", null, null, 1]),
             json!(["all", null, null, LOG_TAIL]),
             json!(["all", "c2", null, null])
         ]
+    );
+    // The newest script line says what the Script is doing.
+    assert_eq!(
+        snapshot.detail.script_line.and_then(|e| e.text).as_deref(),
+        Some("second")
     );
     let texts: Vec<_> = snapshot
         .detail

@@ -9,12 +9,14 @@ use serde_json::Value;
 
 use crate::app::{App, Field, KEYS, Modal, Note, Row, Tab, Tone, first_line};
 use crate::discovery::MANAGER_FILE;
-use crate::dto::{GameState, Hello, HookRun, LogEntry, Player, Status};
+use crate::dto::{GameState, Hello, HookRun, LogEntry, Player, Quest, ScriptRun, Status};
 use crate::engine::{Error, NOT_LOGGED_IN, PROTOCOL};
 use crate::poller::{Detail, EngineView, LOG_TAIL};
 
 const DIM: Color = Color::DarkGray;
 const SELECTED: Color = Color::Indexed(237);
+/// How long a run's quests go without progress before they are stalled, as the Engine's `quest.stalled` says by default.
+const STALL_SEC: f64 = 600.0;
 
 pub fn draw(frame: &mut Frame, app: &App) {
     let area = frame.area();
@@ -148,7 +150,14 @@ fn account_line(app: &App, row: &Row, selected: bool, width: u16) -> Line<'stati
         _ => " ".into(),
     };
     let up = matches!(view, Some(EngineView::Up { .. }));
-    let fixed = 3 + 2 + 2 + 13 + 1;
+    let stalled = match view {
+        Some(EngineView::Up { status, .. }) => status.script.run.as_ref().and_then(stalled_for),
+        _ => None,
+    };
+    let stall = stalled
+        .map(|sec| format!(" {}", short_duration(sec)))
+        .unwrap_or_default();
+    let fixed = 3 + 2 + 2 + 13 + 1 + stall.chars().count();
     let state_width = (width as usize).saturating_sub(fixed);
     let mut line = Line::from(vec![
         if marked { "[x]".blue().bold() } else { "[ ]".fg(DIM) },
@@ -164,6 +173,7 @@ fn account_line(app: &App, row: &Row, selected: bool, width: u16) -> Line<'stati
             format!("{:<state_width$}", truncate(&state, state_width)),
             Style::new().fg(color),
         ),
+        stall.red(),
         flag,
     ]);
     if selected {
@@ -195,7 +205,9 @@ fn row_state(view: Option<&EngineView>) -> (String, Color) {
 fn is_alert(view: &EngineView) -> bool {
     match view {
         EngineView::Failed(_) => true,
-        EngineView::Up { status, .. } => state(status).1 == Color::Red,
+        EngineView::Up { status, .. } => {
+            state(status).1 == Color::Red || status.script.run.as_ref().and_then(stalled_for).is_some()
+        }
         EngineView::Offline => false,
     }
 }
@@ -358,7 +370,10 @@ fn overview(frame: &mut Frame, hello: &Hello, status: &Status, detail: Option<&D
             let running = status.script.run.is_some();
             let block = panel("Script")
                 .title_top(Line::from(if running { " running ".green() } else { " idle ".fg(DIM) }).right_aligned());
-            frame.render_widget(Paragraph::new(script_lines(hello, status)).block(block), script_area);
+            frame.render_widget(
+                Paragraph::new(script_lines(hello, status, detail)).block(block),
+                script_area,
+            );
         }
         None => {
             let block = panel("Engine")
@@ -496,7 +511,7 @@ fn player_lines(player: &Player, status: &Status, gauge_width: u16) -> Vec<Line<
     ]
 }
 
-fn script_lines(hello: &Hello, status: &Status) -> Vec<Line<'static>> {
+fn script_lines(hello: &Hello, status: &Status, detail: Option<&Detail>) -> Vec<Line<'static>> {
     let mut lines = match (&status.script.run, &status.script.last_run) {
         (Some(run), _) => vec![
             Line::styled(run.script.clone(), Style::new().magenta().bold()),
@@ -511,6 +526,18 @@ fn script_lines(hello: &Hello, status: &Status) -> Vec<Line<'static>> {
                 },
                 if run.relogging_in { " · relogging in" } else { "" }
             )),
+            match run.quest_idle_sec {
+                Some(sec) if sec >= STALL_SEC => Line::styled(
+                    format!("quests stalled {}", short_duration(sec)),
+                    Style::new().red().bold(),
+                ),
+                Some(sec) => Line::styled(
+                    format!("quests: last progress {} ago", short_duration(sec)),
+                    Style::new().fg(idle_color(sec, true)),
+                ),
+                None => Line::styled("quests: none in progress", Style::new().fg(DIM)),
+            },
+            doing(run, detail),
         ],
         (None, last) => vec![
             Line::styled("no Script running", Style::new().fg(DIM)),
@@ -527,7 +554,9 @@ fn script_lines(hello: &Hello, status: &Status) -> Vec<Line<'static>> {
             },
         ],
     };
-    lines.push(Line::raw(""));
+    if status.script.run.is_none() {
+        lines.push(Line::raw(""));
+    }
     lines.push(Line::styled(
         format!("Engine {} · pid {}", status.engine.name, status.engine.pid),
         Style::new().fg(DIM),
@@ -600,37 +629,131 @@ fn inventory(frame: &mut Frame, status: &Status, detail: Option<&Detail>, area: 
 }
 
 fn quests(frame: &mut Frame, status: &Status, detail: Option<&Detail>, area: Rect) {
+    let running = status.script.run.is_some();
+    let width = area.width.saturating_sub(2) as usize;
     let lines = match detail.and_then(|d| d.quests.as_ref()) {
         _ if playing(status).is_none() => vec![not_playing()],
         None => vec![loading()],
         Some(Err(e)) => vec![read_error(e)],
         Some(Ok(q)) if q.quests.is_empty() => vec![Line::styled("no quests loaded", Style::new().fg(DIM))],
-        Some(Ok(q)) => q
-            .quests
-            .iter()
-            .flat_map(|quest| {
-                let (status, color) = match quest.status.as_str() {
-                    "completable" => ("completable", Color::Green),
-                    "inProgress" => ("in progress", Color::Yellow),
-                    _ => ("not accepted", DIM),
-                };
-                let needs = quest
-                    .requirements
-                    .iter()
-                    .map(|r| format!("{} {}/{}", r.name, r.have, r.qty))
-                    .collect::<Vec<_>>()
-                    .join(" · ");
-                [
-                    Line::from(vec![
-                        format!("{:<7}{}  ", quest.id, quest.name).bold(),
-                        Span::styled(status, Style::new().fg(color)),
-                    ]),
-                    Line::styled(format!("       {needs}"), Style::new().fg(DIM)),
-                ]
-            })
-            .collect(),
+        Some(Ok(q)) => quest_lines(&q.quests, running, width),
     };
-    frame.render_widget(Paragraph::new(lines).block(panel("Quests · loaded")), area);
+    frame.render_widget(Paragraph::new(lines).block(panel("Quests")), area);
+}
+
+/// The quests in progress, each with its unmet requirements one per line in columns: the count, the rate and the time left at that rate
+/// once the Engine knows it, and how long since the count rose. The quest says how many requirements are done and how long since any of
+/// them rose. The other loaded quests are only counted.
+fn quest_lines(quests: &[Quest], running: bool, width: usize) -> Vec<Line<'static>> {
+    const COUNT: usize = 12;
+    const RATE: usize = 18;
+    const IDLE: usize = 7;
+    let name_width = width.saturating_sub(3 + 1 + COUNT + RATE + IDLE).min(32);
+    let idle_style = |idle: Option<f64>| Style::new().fg(idle.map_or(DIM, |sec| idle_color(sec, running)));
+    let mut lines = vec![Line::raw("")];
+    let in_progress: Vec<&Quest> = quests.iter().filter(|q| q.status == "inProgress").collect();
+    if in_progress.is_empty() {
+        lines.push(Line::styled(" no quest in progress", Style::new().fg(DIM)));
+        lines.push(Line::raw(""));
+    }
+    for quest in in_progress {
+        let unmet: Vec<_> = quest.requirements.iter().filter(|r| r.have < r.qty).collect();
+        // The rise that met a requirement counts too, as the Engine counts it.
+        let idle = quest.requirements.iter().filter_map(|r| r.idle_sec).reduce(f64::min);
+        let done = format!(
+            "{}/{} done",
+            quest.requirements.len() - unmet.len(),
+            quest.requirements.len()
+        );
+        lines.push(Line::from(vec![
+            format!(" {:<w$} ", truncate(&quest.name, name_width + 2), w = name_width + 2).bold(),
+            Span::styled(format!("{done:>COUNT$}{:RATE$}", ""), Style::new().fg(DIM)),
+            Span::styled(
+                format!("{:>IDLE$}", idle.map(short_duration).unwrap_or_default()),
+                idle_style(idle),
+            ),
+        ]));
+        for r in unmet {
+            let rate = r.gain_per_hour.filter(|rate| *rate > 0.0).map(|rate| {
+                let left = (r.qty - r.have) as f64 / rate * 3600.0;
+                format!("+{}/h ~{}", rate_text(rate), short_duration(left))
+            });
+            lines.push(Line::from(vec![
+                Span::raw(format!(
+                    "   {:<name_width$} {:>COUNT$}",
+                    truncate(&r.name, name_width),
+                    format!("{}/{}", r.have, r.qty)
+                )),
+                Span::styled(format!("{:>RATE$}", rate.unwrap_or_default()), Style::new().fg(DIM)),
+                Span::styled(
+                    format!("{:>IDLE$}", r.idle_sec.map(short_duration).unwrap_or_default()),
+                    idle_style(r.idle_sec),
+                ),
+            ]));
+        }
+        lines.push(Line::raw(""));
+    }
+    let completable = quests.iter().filter(|q| q.status == "completable").count();
+    let not_accepted = quests.iter().filter(|q| q.status == "notAccepted").count();
+    let others: Vec<String> = [(completable, "completable"), (not_accepted, "not accepted")]
+        .into_iter()
+        .filter(|(n, _)| *n > 0)
+        .map(|(n, what)| format!("{n} {what}"))
+        .collect();
+    if !others.is_empty() {
+        lines.push(Line::styled(format!(" {}", others.join(" · ")), Style::new().fg(DIM)));
+    }
+    lines
+}
+
+/// What the run's Script last logged, and how long ago: what it is doing, or what it is stuck on.
+fn doing(run: &ScriptRun, detail: Option<&Detail>) -> Line<'static> {
+    let Some(entry) = detail
+        .and_then(|d| d.script_line.as_ref())
+        .filter(|e| e.run == Some(run.number))
+    else {
+        return Line::styled("no Script log yet", Style::new().fg(DIM));
+    };
+    let text = entry.text.as_deref().unwrap_or_default();
+    // Scripts stamp their own lines with [hh:mm:ss]; the age says when.
+    let text = match text.split_once("] ") {
+        Some((stamp, rest)) if stamp.starts_with('[') && stamp.len() == 9 => rest,
+        _ => text,
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64);
+    let age = (now - entry.ts) as f64 / 1000.0;
+    Line::from(vec![
+        Span::styled(
+            format!("{} ago · ", short_duration(age)),
+            Style::new().fg(idle_color(age, true)),
+        ),
+        Span::raw(first_line(text).to_owned()),
+    ])
+}
+
+/// How long `run`'s quests have gone without progress, once that is a stall.
+fn stalled_for(run: &ScriptRun) -> Option<f64> {
+    run.quest_idle_sec.filter(|sec| *sec >= STALL_SEC)
+}
+
+/// Dim while progress is recent, yellow past half the stall time and red once stalled; dim throughout when no Script runs.
+fn idle_color(sec: f64, running: bool) -> Color {
+    match sec {
+        _ if !running => DIM,
+        s if s >= STALL_SEC => Color::Red,
+        s if s >= STALL_SEC / 2.0 => Color::Yellow,
+        _ => DIM,
+    }
+}
+
+fn rate_text(rate: f64) -> String {
+    if rate >= 10.0 {
+        format!("{rate:.0}")
+    } else {
+        format!("{rate:.1}")
+    }
 }
 
 fn game(frame: &mut Frame, status: &Status, detail: Option<&Detail>, area: Rect) {
@@ -1393,6 +1516,17 @@ fn duration(sec: f64) -> String {
         (0, 0, s) => format!("{s}s"),
         (0, m, s) => format!("{m}m {s:02}s"),
         (h, m, _) => format!("{h}h {m:02}m"),
+    }
+}
+
+/// A duration in its largest unit or two: `45s`, `14m`, `2h13m`, `3d4h`.
+fn short_duration(sec: f64) -> String {
+    let sec = sec.max(0.0) as u64;
+    match (sec / 86400, sec / 3600 % 24, sec / 60 % 60) {
+        (0, 0, 0) => format!("{sec}s"),
+        (0, 0, m) => format!("{m}m"),
+        (0, h, m) => format!("{h}h{m:02}m"),
+        (d, h, _) => format!("{d}d{h}h"),
     }
 }
 

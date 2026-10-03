@@ -18,7 +18,7 @@ use crate::dto::{
 use crate::rpc::{CallError, Rpc};
 
 /// The Control Surface protocol this build speaks (`ControlProtocol.Version`).
-pub const PROTOCOL: i64 = 16;
+pub const PROTOCOL: i64 = 17;
 
 /// `ErrorCode.NotLoggedIn` on the wire: `ErrorCodes.ToWire` adds 1000.
 pub const NOT_LOGGED_IN: i64 = 1001;

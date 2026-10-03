@@ -42,6 +42,8 @@ pub struct Detail {
     pub logs: Vec<LogEntry>,
     /// Its `hook.ran` events, oldest first: those among its newest events, then each that arrives in its logs.
     pub hook_runs: Vec<LogEntry>,
+    /// Its newest `script` log entry, which says what the Script is doing.
+    pub script_line: Option<LogEntry>,
     pub inventory: Option<Result<Inventory, Error>>,
     pub quests: Option<Result<Quests, Error>>,
     pub map: Option<Result<Map, Error>>,
@@ -127,6 +129,11 @@ impl Poller {
         let page = match &self.cursor {
             None => engine.events(LOG_TAIL).and_then(|events| {
                 self.detail.hook_runs = events.entries.into_iter().filter(is_hook_run).collect();
+                self.detail.script_line = engine
+                    .logs_of("script", None, Some(1))?
+                    .entries
+                    .into_iter()
+                    .rfind(|e| e.kind == "script");
                 engine.logs(None, Some(LOG_TAIL))
             }),
             Some(cursor) => engine.logs(Some(cursor), None),
@@ -144,6 +151,9 @@ impl Poller {
                 self.detail.hook_runs.extend(arrived.cloned());
                 let excess = self.detail.hook_runs.len().saturating_sub(MAX_HOOK_RUNS);
                 self.detail.hook_runs.drain(..excess);
+                if let Some(line) = page.entries.iter().rfind(|e| e.kind == "script") {
+                    self.detail.script_line = Some(line.clone());
+                }
                 self.detail.logs.extend(page.entries);
                 let excess = self.detail.logs.len().saturating_sub(MAX_LOG_LINES);
                 self.detail.logs.drain(..excess);
