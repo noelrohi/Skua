@@ -121,7 +121,7 @@ public sealed class ForegroundTests(AppEngine app)
                         return;
                     }
                     bot.Config.Configure();
-                    bot.Log($"restarted count={bot.Config.Get<int>("count")}");
+                    bot.Log($"restarted {{id}} count={bot.Config.Get<int>("count")}");
                 }
             }
             """);
@@ -142,7 +142,9 @@ public sealed class ForegroundTests(AppEngine app)
             // An agent's start that stores the option, so the Script has saved options.
             await connection.ScriptStartAsync(path, new Dictionary<string, string> { ["count"] = "7" }, cancellationToken: Ct);
 
-            await connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text == "restarted count=7");
+            // Its own restart's line: the other test's Script logs one too, and a match on that would end this test before the restart, which
+            // would then start whatever Script a later test loaded.
+            await connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text == $"restarted {id} count=7");
             Dispatcher.UIThread.RunJobs();
             Assert.Empty(opened);
             Assert.Empty(_posted);
@@ -193,7 +195,7 @@ public sealed class ForegroundTests(AppEngine app)
                         return;
                     }
                     bot.Config.Configure();
-                    bot.Log($"restarted count={bot.Config.Get<int>("count")}");
+                    bot.Log($"restarted {{id}} count={bot.Config.Get<int>("count")}");
                 }
             }
             """);
@@ -219,7 +221,7 @@ public sealed class ForegroundTests(AppEngine app)
             await connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text == "running");
 
             await AppEngine.DoAsync("lose-connection Your connection to the server has been lost.");
-            await connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text == "restarted count=7");
+            await connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text == $"restarted {id} count=7");
             ScriptWaitResult ended = await connection.ScriptWaitAsync(60, Ct);
             Dispatcher.UIThread.RunJobs();
             Assert.Equal((ScriptWaitReason.Ended, start.Run, 1), (ended.Reason, ended.Status.LastRun!.Number, ended.Status.LastRun.Relogins));
