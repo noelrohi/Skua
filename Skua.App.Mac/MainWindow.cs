@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -8,8 +9,8 @@ using Skua.MacOS.GameHost;
 namespace Skua.App.Mac;
 
 /// <summary>
-/// The main window: the login controls with the Auto, Jump and + buttons beside them, the Game View, the status strip with the Notices
-/// beside it, and the sheet of a pending Question over them. The main menu is the macOS menu bar's alone.
+/// The main window: the Auto, Jump and + buttons, beside what the Skua Manager's launch did; the Game View; the status strip with the
+/// Notices beside it; and the sheet of a pending Question over them. The main menu is the macOS menu bar's alone.
 /// </summary>
 internal sealed class MainWindow : Window
 {
@@ -20,9 +21,9 @@ internal sealed class MainWindow : Window
     public const string StatsPrefix = "[gameview] stats ";
 
     /// <summary>
-    /// Room for the login controls above the Game View and the status strip below it, so the stage opens at its native size.
+    /// Room for the buttons above the Game View and the status strip below it, so the stage opens at its native size.
     /// </summary>
-    private const int BarsHeight = 64;
+    private const int BarsHeight = 46;
 
     public MainWindow(BridgeFlashUtil flash, ILogService log, StatusViewModel status, HelpersBar helpers, ScriptDialogsViewModel dialogs)
     {
@@ -33,14 +34,15 @@ internal sealed class MainWindow : Window
         Background = Brushes.Black;
         GameView view = new(flash);
         view.LiveChanged += reason => log.DebugLog($"[gameview] {reason}");
-        LoginBar login = new(status);
+        LaunchMessage launched = new(status);
         StatusStrip strip = new(status);
         Notices = new NoticesButton(dialogs);
         Sheet = new QuestionSheet(dialogs);
         DockPanel bottom = new() { Background = strip.Background, Children = { Notices, strip } };
         DockPanel.SetDock(Notices, Dock.Right);
-        DockPanel top = new() { Background = login.Background, Children = { helpers, login } };
+        DockPanel buttons = new() { Children = { helpers, launched } };
         DockPanel.SetDock(helpers, Dock.Right);
+        Border top = new() { Background = strip.Background, Padding = new Thickness(0, 4), Child = buttons };
         DockPanel.SetDock(top, Dock.Top);
         DockPanel.SetDock(bottom, Dock.Bottom);
         Content = new Panel { Children = { new DockPanel { Children = { top, bottom, view } }, Sheet } };

@@ -1,14 +1,12 @@
-using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
 using Skua.Control;
 
 namespace Skua.Avalonia;
 
 /// <summary>
-/// The status strip and the login controls of the Mac App's main window, over the Engine the app hosts: what <c>status</c> reports, read
-/// again each time the Engine says it may have changed, and <c>servers</c>, <c>login</c> and <c>logout</c> called in-process, as <c>skua</c> calls them.
+/// The status strip of the Mac App's main window and the Skua Manager's launch, over the Engine the app hosts: what <c>status</c> reports,
+/// read again each time the Engine says it may have changed, and <c>login</c> and <c>script start</c> called in-process, as <c>skua</c> calls them.
 /// </summary>
 /// <remarks>
 /// Its properties change on the UI thread only. The Engine's calls run on the thread pool, since some of them call the Game Client and wait.
@@ -36,7 +34,6 @@ public sealed partial class StatusViewModel : ObservableObject
 
     /// <summary>The game state, as <c>status</c> reports it; <see cref="GameStateText"/> is how the strip shows it.</summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(LogOutCommand))]
     private GameState _gameState = GameState.NotStarted;
 
     /// <summary>The character the game plays, or null when not logged in.</summary>
@@ -59,18 +56,7 @@ public sealed partial class StatusViewModel : ObservableObject
     [ObservableProperty]
     private string? _script;
 
-    /// <summary>The servers to pick from: <see cref="ServerChoice.Any"/> first, then the game's servers as <c>servers</c> lists them.</summary>
-    public ObservableCollection<ServerChoice> Servers { get; } = [ServerChoice.Any];
-
-    [ObservableProperty]
-    private ServerChoice _selectedServer = ServerChoice.Any;
-
-    /// <summary>Whether a login or a logout from this window is in flight, which disables both.</summary>
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(LogInCommand), nameof(LogOutCommand))]
-    private bool _busy;
-
-    /// <summary>What the last login, logout or server list did: who it logged in as, or why it failed.</summary>
+    /// <summary>What the launch did: who it logged in as and the Script it started, or why it failed.</summary>
     [ObservableProperty]
     private string? _message;
 
@@ -99,37 +85,9 @@ public sealed partial class StatusViewModel : ObservableObject
             Dispatcher.UIThread.Post(() => _ = RefreshAsync());
     }
 
-    /// <summary>Lists the servers again, keeping the pick if the server is still listed.</summary>
-    [RelayCommand]
-    private async Task LoadServersAsync()
-    {
-        try
-        {
-            ServersResult result = await Task.Run(() => _engine.ServersAsync(CancellationToken.None));
-            string? picked = SelectedServer.Name;
-            Servers.Clear();
-            Servers.Add(ServerChoice.Any);
-            foreach (ServerDto server in result.Servers)
-                Servers.Add(new ServerChoice(server.Name, Label(server)));
-            SelectedServer = Servers.FirstOrDefault(s => s.Name == picked) ?? ServerChoice.Any;
-        }
-        catch (Exception e)
-        {
-            Show(e.Message, error: true);
-        }
-    }
-
-    /// <summary>
-    /// Logs in with the Engine's account (the app's own, or else the Active Account) on the picked server, or on one the Engine picks, as
-    /// <c>skua login</c> does.
-    /// </summary>
-    [RelayCommand(CanExecute = nameof(CanLogIn))]
-    private Task LogInAsync() => LogInAsync(SelectedServer.Name);
-
     /// <summary>Logs in on <paramref name="server"/>, or on one the Engine picks, showing the outcome; returns whether it is playing.</summary>
-    public async Task<bool> LogInAsync(string? server)
+    private async Task<bool> LogInAsync(string? server)
     {
-        Busy = true;
         Show(null, error: false);
         try
         {
@@ -141,10 +99,6 @@ public sealed partial class StatusViewModel : ObservableObject
         {
             Show(e.Message, error: true);
             return false;
-        }
-        finally
-        {
-            Busy = false;
         }
     }
 
@@ -166,30 +120,6 @@ public sealed partial class StatusViewModel : ObservableObject
             Show($"Couldn't start {Path.GetFileName(script)}: {e.Message}", error: true);
         }
     }
-
-    private bool CanLogIn() => !Busy;
-
-    [RelayCommand(CanExecute = nameof(CanLogOut))]
-    private async Task LogOutAsync()
-    {
-        Busy = true;
-        Show(null, error: false);
-        try
-        {
-            LogoutResult result = await Task.Run(() => _engine.LogoutAsync(CancellationToken.None));
-            Show(result.WasLoggedIn ? "Logged out." : "Not logged in.", error: false);
-        }
-        catch (Exception e)
-        {
-            Show(e.Message, error: true);
-        }
-        finally
-        {
-            Busy = false;
-        }
-    }
-
-    private bool CanLogOut() => !Busy && GameState is GameState.LoggingIn or GameState.Playing or GameState.Disconnected;
 
     private async Task RefreshAsync()
     {
@@ -229,16 +159,4 @@ public sealed partial class StatusViewModel : ObservableObject
         Message = message;
         MessageIsError = error && message is not null;
     }
-
-    private static string Label(ServerDto server) =>
-        !server.Online ? $"{server.Name} (offline)"
-        : $"{server.Name} ({server.PlayerCount}/{server.MaxPlayers}{(server.MemberOnly ? ", members" : "")})";
-}
-
-/// <summary>A server in the picker; <see cref="Name"/> is null for <see cref="Any"/>, which lets the Engine pick one.</summary>
-public sealed record ServerChoice(string? Name, string Label)
-{
-    public static readonly ServerChoice Any = new(null, "Any server");
-
-    public override string ToString() => Label;
 }

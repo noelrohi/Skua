@@ -3,7 +3,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
-using Avalonia.Input;
 using Avalonia.Threading;
 using Skua.Control;
 using Skua.Engine;
@@ -12,7 +11,7 @@ using StreamJsonRpc;
 
 namespace Skua.Avalonia.Tests;
 
-/// <summary>The main window's status strip and login controls, over the app's Engine with the simulated game, the fake Keychain and servers API.</summary>
+/// <summary>The main window's status strip and what the Skua Manager's launch did, over the app's Engine with the simulated game, the fake Keychain and servers API.</summary>
 /// <remarks>In the Game View tests' collection, as they share the one Engine and its game.</remarks>
 [Collection(nameof(GameViewTests))]
 public sealed class StatusTests(AppEngine app)
@@ -20,32 +19,26 @@ public sealed class StatusTests(AppEngine app)
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(20);
 
     [AvaloniaFact]
-    public async Task Log_in_reaches_logged_in_with_the_account_map_and_server_shown_and_Log_out_returns_to_the_login_screen()
+    public async Task A_launch_says_who_it_logged_in_as_and_the_strip_shows_the_account_map_and_server_until_a_logout()
     {
         await using Shown shown = await ShowAsync();
-        await PickAsync(shown, "Galanoth");
 
-        Click(shown.Window, shown.Login.LogInButton);
-        await PumpUntilAsync(() => shown.Model.Message is not null && !shown.Model.Busy, "the login to finish");
+        await LaunchAsync(shown, "Galanoth");
 
-        Assert.Equal("Logged in as SkuaTester (the Test Account) on Galanoth.", shown.Login.MessageText.Text);
+        Assert.Equal("Logged in as SkuaTester (the Test Account) on Galanoth.", shown.Launched.Text);
         await PumpUntilAsync(() => shown.Strip.Text.Contains("level"), "the strip to show the player");
         // The simulated game starts at level 10 and keeps its levels across logins.
         Assert.True(shown.Model.Level >= 10);
         Assert.Equal($"Engine default (app)  ·  logged in  ·  SkuaTester  ·  Galanoth  ·  battleon, Enter  ·  level {shown.Model.Level}  ·  no Script", shown.Strip.Text);
 
-        Click(shown.Window, shown.Login.LogOutButton);
-        await PumpUntilAsync(() => shown.Model.Message == "Logged out.", "the logout to finish");
-        await PumpUntilAsync(() => shown.Model.GameState == GameState.LoginScreen, "the login screen");
+        await LogOutAsync(shown);
         Assert.Equal("Engine default (app)  ·  login screen  ·  no Script", shown.Strip.Text);
-        Assert.False(shown.Login.LogOutButton.IsEffectivelyEnabled, "Log out is off at the login screen");
     }
 
     [AvaloniaFact]
     public async Task Log_in_goes_ahead_during_a_start_up_Scripts_update_while_a_Script_start_is_refused_until_it_ends()
     {
         await using Shown shown = await ShowAsync();
-        await PickAsync(shown, "Galanoth");
         string path = $"Tests/Updating{Guid.NewGuid():N}.cs";
         AppEngine.GitHub.Commit("noelrohi", "Scripts", "Skua", new FakeScript(path, "public class TestScript { }"));
         EngineScripts scripts = app.Get<EngineScripts>();
@@ -60,8 +53,7 @@ public sealed class StatusTests(AppEngine app)
             update = Task.Run(scripts.UpdateAsync, TestContext.Current.CancellationToken);
             await PumpUntilAsync(() => AppEngine.GitHub.Requests.Any(r => r.StartsWith("/raw/", StringComparison.Ordinal)), "the update to start downloading");
 
-            Click(shown.Window, shown.Login.LogInButton);
-            await PumpUntilAsync(() => shown.Model.Message is not null && !shown.Model.Busy, "the login to finish");
+            await LaunchAsync(shown, "Galanoth");
             Assert.False(update.IsCompleted, "the update was still in flight during the login");
 
             // As the Scripts panel's Start Script does.
@@ -77,20 +69,18 @@ public sealed class StatusTests(AppEngine app)
         await update;
 
         Assert.False(shown.Model.MessageIsError, shown.Model.Message);
-        Assert.Equal("Logged in as SkuaTester (the Test Account) on Galanoth.", shown.Login.MessageText.Text);
+        Assert.Equal("Logged in as SkuaTester (the Test Account) on Galanoth.", shown.Launched.Text);
         Assert.Contains("update the Scripts", Assert.IsType<LocalRpcException>(refused).Message);
         Assert.False(scripts.ScriptManager.ScriptRunning);
 
-        Click(shown.Window, shown.Login.LogOutButton);
-        await PumpUntilAsync(() => shown.Model.GameState == GameState.LoginScreen, "the login screen");
+        await LogOutAsync(shown);
     }
 
     [AvaloniaFact]
     public async Task The_strip_follows_moves_between_cells_and_level_ups_as_they_happen()
     {
         await using Shown shown = await ShowAsync();
-        await PickAsync(shown, "Galanoth");
-        Click(shown.Window, shown.Login.LogInButton);
+        await LaunchAsync(shown, "Galanoth");
         await PumpUntilAsync(() => shown.Strip.Text.Contains("battleon, Enter  ·  level"), "the player on the strip");
         int level = shown.Model.Level!.Value;
 
@@ -101,8 +91,7 @@ public sealed class StatusTests(AppEngine app)
         await AppEngine.DoAsync("gain 4000 0");
         await PumpUntilAsync(() => shown.Strip.Text.Contains($"level {level + 1}"), "the strip to show the new level");
 
-        Click(shown.Window, shown.Login.LogOutButton);
-        await PumpUntilAsync(() => shown.Model.GameState == GameState.LoginScreen, "the login screen");
+        await LogOutAsync(shown);
     }
 
     [AvaloniaFact]
@@ -115,7 +104,6 @@ public sealed class StatusTests(AppEngine app)
         Assert.True(login.ExitCode == 0, $"skua login exited with {login.ExitCode}: {login.Stderr}");
         await PumpUntilAsync(() => shown.Strip.Text.Contains("level"), "the strip to show the CLI's login");
         Assert.Equal($"Engine default (app)  ·  logged in  ·  SkuaTester  ·  Sir Ver  ·  battleon, Enter  ·  level {shown.Model.Level}  ·  no Script", shown.Strip.Text);
-        Assert.True(shown.Login.LogOutButton.IsEffectivelyEnabled, "Log out logs out a login from anywhere");
 
         ProcessResult logout = await RunCliAsync("logout");
 
@@ -136,16 +124,16 @@ public sealed class StatusTests(AppEngine app)
     [InlineData(Failure.KeychainDenied, "Couldn't read the account from Keychain (security exited with 128: security: SecKeychainItemCopyContent: User canceled the operation.)")]
     [InlineData(Failure.FullServer, "Artix is full (1500/1500); pick another server.")]
     [InlineData(Failure.OfflineServer, "Twig is offline; pick another server.")]
-    public async Task A_failed_login_shows_why_and_leaves_the_controls_usable(Failure failure, string message)
+    public async Task A_failed_launch_says_why_and_the_next_one_goes_ahead(Failure failure, string message)
     {
         await using Shown shown = await ShowAsync();
         string tool = AppEngine.Keychain.Tool;
-        await PickAsync(shown, failure switch
+        string server = failure switch
         {
             Failure.FullServer => "Artix",
             Failure.OfflineServer => "Twig",
             _ => "Galanoth",
-        });
+        };
         try
         {
             if (failure == Failure.NoActiveAccount)
@@ -153,8 +141,7 @@ public sealed class StatusTests(AppEngine app)
             if (failure == Failure.KeychainDenied)
                 Environment.SetEnvironmentVariable(Keychain.ToolVariable, DenyingTool());
 
-            Click(shown.Window, shown.Login.LogInButton);
-            await PumpUntilAsync(() => shown.Model.Message is not null && !shown.Model.Busy, "the login to fail");
+            await LaunchAsync(shown, server);
         }
         finally
         {
@@ -164,27 +151,22 @@ public sealed class StatusTests(AppEngine app)
         }
 
         Assert.True(shown.Model.MessageIsError);
-        Assert.Contains(message, shown.Login.MessageText.Text);
+        Assert.Contains(message, shown.Launched.Text);
         Assert.Equal(GameState.LoginScreen, shown.Model.GameState);
-        Assert.True(shown.Login.LogInButton.IsEffectivelyEnabled, "Log in is usable after a failure");
-        Assert.True(shown.Login.ServerPicker.IsEffectivelyEnabled, "the server picker is usable after a failure");
 
-        // Usable indeed: with the cause gone, the next login works.
-        await PickAsync(shown, "Galanoth");
-        Click(shown.Window, shown.Login.LogInButton);
-        await PumpUntilAsync(() => shown.Model.GameState == GameState.Playing && !shown.Model.Busy, "the next login");
+        // With the cause gone, the next launch logs in.
+        await LaunchAsync(shown, "Galanoth");
+        await PumpUntilAsync(() => shown.Model.GameState == GameState.Playing, "the next login");
         Assert.False(shown.Model.MessageIsError);
-        Click(shown.Window, shown.Login.LogOutButton);
-        await PumpUntilAsync(() => shown.Model.GameState == GameState.LoginScreen, "the login screen");
+        await LogOutAsync(shown);
     }
 
     [AvaloniaFact]
     public async Task The_password_never_reaches_the_logs_or_the_window()
     {
         await using Shown shown = await ShowAsync();
-        await PickAsync(shown, "Galanoth");
-        Click(shown.Window, shown.Login.LogInButton);
-        await PumpUntilAsync(() => shown.Model.GameState == GameState.Playing && !shown.Model.Busy, "the login");
+        await LaunchAsync(shown, "Galanoth");
+        await PumpUntilAsync(() => shown.Model.GameState == GameState.Playing, "the login");
         string password = AppEngine.Keychain.Password;
 
         List<string> logged = [.. Directory.EnumerateFiles(app.Engine.Endpoint.LogFilesDir).Select(File.ReadAllText)];
@@ -201,10 +183,9 @@ public sealed class StatusTests(AppEngine app)
         // The check can find it: the simulated game's scenario holds the password.
         Assert.Equal(1, Count(File.ReadAllText(Path.Combine(AppEngine.SkuaDir, "fake-gamehost.scenario")), password));
         Assert.Equal(0, logged.Sum(text => Count(text, password)));
-        Assert.Equal(0, Count(shown.Strip.Text + shown.Login.MessageText.Text, password));
+        Assert.Equal(0, Count(shown.Strip.Text + shown.Launched.Text, password));
 
-        Click(shown.Window, shown.Login.LogOutButton);
-        await PumpUntilAsync(() => shown.Model.GameState == GameState.LoginScreen, "the login screen");
+        await LogOutAsync(shown);
     }
 
     [AvaloniaFact]
@@ -245,42 +226,43 @@ public sealed class StatusTests(AppEngine app)
             await PumpUntilAsync(() => stop.IsCompleted, "the Script to stop");
             File.Delete(script);
         }
-        Click(shown.Window, shown.Login.LogOutButton);
-        await PumpUntilAsync(() => shown.Model.GameState == GameState.LoginScreen, "the login screen");
+        await LogOutAsync(shown);
     }
 
-    /// <summary>A window with the login controls and the status strip, over the app's Engine at its login screen with the servers listed.</summary>
+    /// <summary>A window with what the launch did and the status strip, over the app's Engine at its login screen.</summary>
     private async Task<Shown> ShowAsync()
     {
         StatusViewModel model = new(app.Engine.Rpc, app.Engine.Endpoint.Name, "app");
         app.Engine.StatusChanged += model.Changed;
-        LoginBar login = new(model);
+        LaunchMessage launched = new(model);
         StatusStrip strip = new(model);
-        DockPanel.SetDock(login, Dock.Top);
-        Window window = new() { Width = 958, Height = 200, Content = new DockPanel { Children = { login, strip } } };
+        DockPanel.SetDock(launched, Dock.Top);
+        Window window = new() { Width = 958, Height = 200, Content = new DockPanel { Children = { launched, strip } } };
         window.Show();
-        Shown shown = new(window, model, login, strip, () => app.Engine.StatusChanged -= model.Changed);
+        Shown shown = new(window, model, launched, strip, () => app.Engine.StatusChanged -= model.Changed);
         // A test before may have left the game logged in, or restarted it.
         await PumpUntilAsync(() => model.GameState != GameState.NotStarted, "the Game Client to load");
         if (model.GameState != GameState.LoginScreen)
             await app.Engine.Rpc.LogoutAsync(TestContext.Current.CancellationToken);
         await PumpUntilAsync(() => model.GameState == GameState.LoginScreen, "the login screen");
-        await PumpUntilAsync(() => model.Servers.Count == AppEngine.Servers.Length + 1, "the servers");
         return shown;
     }
 
-    private static async Task PickAsync(Shown shown, string server)
+    /// <summary>Logs in on <paramref name="server"/> as the Skua Manager's launch does, and waits for it to finish.</summary>
+    private static async Task LaunchAsync(Shown shown, string server)
     {
-        shown.Login.ServerPicker.SelectedItem = shown.Model.Servers.Single(s => s.Name == server);
-        await PumpUntilAsync(() => shown.Model.SelectedServer.Name == server, $"{server} to be picked");
+        Task launch = shown.Model.LaunchAsync(server, null);
+        await PumpUntilAsync(() => launch.IsCompleted, "the launch");
+        await launch;
     }
 
-    private static void Click(Window window, Button button)
+    /// <summary>Logs out as <c>skua logout</c> does, and waits for the strip to show the login screen.</summary>
+    private async Task LogOutAsync(Shown shown)
     {
-        Assert.True(button.IsEffectivelyEnabled, $"{button.Content} is enabled");
-        Point center = button.TranslatePoint(new Point(button.Bounds.Width / 2, button.Bounds.Height / 2), window)!.Value;
-        window.MouseDown(center, MouseButton.Left);
-        window.MouseUp(center, MouseButton.Left);
+        Task logout = Task.Run(() => app.Engine.Rpc.LogoutAsync(TestContext.Current.CancellationToken));
+        await PumpUntilAsync(() => logout.IsCompleted, "the logout");
+        await logout;
+        await PumpUntilAsync(() => shown.Model.GameState == GameState.LoginScreen, "the login screen");
     }
 
     /// <summary>A security tool that fails as macOS's does when the developer denies it access to the item.</summary>
@@ -335,7 +317,7 @@ public sealed class StatusTests(AppEngine app)
         }
     }
 
-    private sealed record Shown(Window Window, StatusViewModel Model, LoginBar Login, StatusStrip Strip, Action Unsubscribe) : IAsyncDisposable
+    private sealed record Shown(Window Window, StatusViewModel Model, LaunchMessage Launched, StatusStrip Strip, Action Unsubscribe) : IAsyncDisposable
     {
         public ValueTask DisposeAsync()
         {

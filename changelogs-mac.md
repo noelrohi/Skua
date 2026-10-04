@@ -7,7 +7,7 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 ## October 4, 2026
 
 ### Changes
-* The window no longer has its own menu row: Scripts, Options, Helpers and the rest are in the macOS menu bar, as before. **Auto**, **Jump** and **+** sit at the right of the login controls, so the game gets the room.
+* The window is the game, with **Auto**, **Jump** and **+** above it and the status strip below. Its menu row is gone (Scripts, Options, Helpers and the rest are in the macOS menu bar, as before), and so are Log in, Log out and the server picker: log in from the Skua Manager, the game's own login screen or `skua login`, and out with `skua logout`.
 
 ### Fixes
 * An app the Skua Manager launches opens its window down and right of the other apps' windows instead of exactly over them, where closing the top one looked like the close button did nothing.
