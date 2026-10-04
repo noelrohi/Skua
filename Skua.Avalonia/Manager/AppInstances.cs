@@ -46,11 +46,7 @@ public sealed partial class AppInstances
     /// <summary>The Engines that answer on a socket in the data folder, by name.</summary>
     public async Task<IReadOnlyList<RunningEngine>> ListAsync(CancellationToken cancellationToken)
     {
-        string engines = Path.Combine(SkuaDir, "engines");
-        IEnumerable<string> names = Directory.Exists(engines)
-            ? Directory.EnumerateFiles(engines, "*.sock").Select(Path.GetFileNameWithoutExtension).OfType<string>().Where(EngineName.IsValid)
-            : [];
-        RunningEngine?[] found = await Task.WhenAll(names.Order(StringComparer.Ordinal).Select(name => DescribeAsync(Endpoint(name), cancellationToken)));
+        RunningEngine?[] found = await Task.WhenAll(EngineEndpoint.InDataFolder(SkuaDir).Select(endpoint => DescribeAsync(endpoint, cancellationToken)));
         return [.. found.OfType<RunningEngine>()];
     }
 

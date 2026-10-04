@@ -12,12 +12,29 @@ internal static class Output
     public static string Status(StatusDto status)
     {
         EngineInfoDto engine = status.Engine;
+        return $"Engine  {engine.Name} ({(engine.Host == EngineHost.App ? "in the Skua app, " : "")}pid {engine.Pid}, up {engine.UptimeSec:0} s, "
+            + $"build {engine.Build}, protocol {engine.Protocol})\n{GameAndScript(status)}";
+    }
+
+    /// <summary>One block per Engine: its name and host, then its game and Script indented; one without a status says why on one line.</summary>
+    public static string EngineList(IReadOnlyList<EngineListEntry> engines)
+    {
+        if (engines.Count == 0)
+            return "No Engines are running.";
+        return string.Join("\n\n", engines.Select(entry => entry.Status is not { Engine: var engine } status
+            ? Engine(entry.Engine)
+            : $"{engine.Name}  {(engine.Host == EngineHost.App ? "in the Skua app" : "windowless")}, pid {engine.Pid}, up {engine.UptimeSec:0} s, build {engine.Build}\n"
+                + string.Join('\n', GameAndScript(status).Split('\n').Select(line => "  " + line))));
+    }
+
+    /// <summary>The lines of a status below its Engine: the game, the Script, the player and any pending Questions.</summary>
+    private static string GameAndScript(StatusDto status)
+    {
         GameStatusDto game = status.Game;
         string gameLine = game.GameHostUp
             ? $"Game Host up, {Name(game.State)}{(game.Server is { } server ? $" on {server}" : "")}"
             : "Game Host down";
         string text = $"""
-            Engine  {engine.Name} ({(engine.Host == EngineHost.App ? "in the Skua app, " : "")}pid {engine.Pid}, up {engine.UptimeSec:0} s, build {engine.Build}, protocol {engine.Protocol})
             Game    {gameLine}
             Script  {ScriptLine(status.Script)}
             """;

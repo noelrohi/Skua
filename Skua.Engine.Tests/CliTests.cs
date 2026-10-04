@@ -62,6 +62,49 @@ public class CliTests
     }
 
     [Fact]
+    public async Task Engine_list_shows_every_Engine_in_the_data_folder_and_a_stale_socket_as_not_running()
+    {
+        await using EngineSandbox sandbox = new();
+        EngineEndpoint alpha = EngineEndpoint.Resolve("alpha", sandbox.SkuaDir);
+        EngineEndpoint beta = EngineEndpoint.Resolve("beta", sandbox.SkuaDir);
+        try
+        {
+            Assert.Equal(0, (await sandbox.RunCliAsync("--engine", "alpha", "engine", "start")).ExitCode);
+            Assert.Equal(0, (await sandbox.RunCliAsync("--engine", "beta", "engine", "start")).ExitCode);
+            // The socket a killed Engine left behind, which nothing serves; a plain file, since a Socket removes the path it bound when disposed.
+            File.WriteAllText(Path.Combine(alpha.EnginesDir, "gone.sock"), "");
+
+            ProcessResult json = await sandbox.RunCliAsync("engine", "list", "--json");
+            ProcessResult human = await sandbox.RunCliAsync("engine", "list");
+
+            Assert.Equal(0, json.ExitCode);
+            using JsonDocument list = JsonDocument.Parse(json.Stdout);
+            JsonElement[] engines = [.. list.RootElement.EnumerateArray()];
+            Assert.Equal(["alpha", "beta", "gone"], engines.Select(e => e.GetProperty("engine").GetProperty("name").GetString()));
+            Assert.Equal(["running", "running", "stopped"], engines.Select(e => e.GetProperty("engine").GetProperty("state").GetString()));
+            Assert.Equal("engine", engines[0].GetProperty("engine").GetProperty("host").GetString());
+            Assert.Equal("beta", engines[1].GetProperty("status").GetProperty("engine").GetProperty("name").GetString());
+            Assert.Equal("notStarted", engines[1].GetProperty("status").GetProperty("game").GetProperty("state").GetString());
+            Assert.Equal(JsonValueKind.Null, engines[2].GetProperty("status").ValueKind);
+
+            Assert.Equal(0, human.ExitCode);
+            string[] blocks = human.Stdout.Trim().Split("\n\n");
+            Assert.Equal(3, blocks.Length);
+            Assert.StartsWith("alpha  windowless, pid ", blocks[0]);
+            Assert.Contains("\n  Game    Game Host up", blocks[0]);
+            Assert.Contains("\n  Script  ", blocks[1]);
+            Assert.Contains("\n  Player  none (not playing)", blocks[1]);
+            Assert.Equal("Engine 'gone' is stopped.", blocks[2]);
+            Assert.False(File.Exists(sandbox.Endpoint.SocketPath));
+        }
+        finally
+        {
+            await EngineClient.StopAsync(alpha, EngineSandbox.StopTimeout);
+            await EngineClient.StopAsync(beta, EngineSandbox.StopTimeout);
+        }
+    }
+
+    [Fact]
     public async Task Skua_login_logs_the_Test_Account_in_on_a_server_it_picks_with_no_credentials_passed()
     {
         await using EngineSandbox sandbox = new();

@@ -417,7 +417,10 @@ engineStop.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), options =
 Command engineStatus = new("status", "Show whether the Engine is running, without starting it.");
 engineStatus.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), options => EngineCommands.StatusAsync(options, ct), Output.Engine));
 
-Command engine = new("engine", "Control the Engine's lifetime.") { engineStart, engineStop, engineStatus };
+Command engineList = new("list", "List every Engine in the data folder, in the Skua app or windowless, with its status; starts none.");
+engineList.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), _ => EngineCommands.ListAsync(ct), Output.EngineList));
+
+Command engine = new("engine", "Control the Engine's lifetime.") { engineStart, engineStop, engineStatus, engineList };
 
 Command hooks = new("hooks",
     "Run the Hook Runner: follow every Engine's events (or --engine's) and run <SKUA_DIR>/hooks/<event type> for each, with the event's JSON on stdin; one per data folder.");
