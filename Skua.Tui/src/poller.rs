@@ -5,11 +5,11 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::app::Tab;
 use crate::discovery::{self, ManagerAccounts};
-use crate::dto::{Hello, Inventory, LogEntry, Map, Quests, Status};
+use crate::dto::{Hello, Inventory, LogEntry, Map, Quests, Screenshot, Status};
 use crate::engine::{Engine, Error};
 
 /// How many entries `logs --tail` shows first.
@@ -20,6 +20,9 @@ const MAX_LOG_LINES: usize = 2000;
 pub const HOOK_RAN: &str = "hook.ran";
 /// How many of the latest Hook runs the Hooks tab keeps.
 const MAX_HOOK_RUNS: usize = 200;
+/// How often the Game tab's picture is read, and how wide: the game's own width, which a terminal scales down.
+const PICTURE_EVERY: Duration = Duration::from_secs(2);
+const PICTURE_WIDTH: u32 = 960;
 /// How many of the newest game messages the Overview keeps.
 const MAX_CHAT: u32 = 100;
 
@@ -51,6 +54,8 @@ pub struct Detail {
     pub inventory: Option<Result<Inventory, Error>>,
     pub quests: Option<Result<Quests, Error>>,
     pub map: Option<Result<Map, Error>>,
+    /// The game's picture, read every 2 s while the Game tab shows.
+    pub picture: Option<Result<Screenshot, Error>>,
 }
 
 #[derive(Debug, Clone)]
@@ -68,6 +73,8 @@ pub struct Poller {
     connections: HashMap<String, Engine>,
     detail: Detail,
     cursor: Option<String>,
+    /// When the picture was last read, so the Engine lifts its lag killer for one only every 2 s.
+    pictured: Option<Instant>,
 }
 
 impl Poller {
@@ -78,6 +85,7 @@ impl Poller {
             connections: HashMap::new(),
             detail: Detail::default(),
             cursor: None,
+            pictured: None,
         }
     }
 
@@ -93,6 +101,7 @@ impl Poller {
                 ..Detail::default()
             };
             self.cursor = None;
+            self.pictured = None;
         }
         if let Some(name) = &focus.engine {
             self.read_detail(&name.clone(), focus.tab);
@@ -179,7 +188,14 @@ impl Poller {
             Tab::Inventory => self.detail.inventory = Some(engine.inventory()),
             Tab::Quests => self.detail.quests = Some(engine.quests()),
             // The Overview shows the monsters in the player's cell.
-            Tab::Overview | Tab::Game => self.detail.map = Some(engine.map()),
+            Tab::Overview => self.detail.map = Some(engine.map()),
+            Tab::Game => {
+                self.detail.map = Some(engine.map());
+                if self.pictured.is_none_or(|at| at.elapsed() >= PICTURE_EVERY) {
+                    self.pictured = Some(Instant::now());
+                    self.detail.picture = Some(engine.screenshot(PICTURE_WIDTH));
+                }
+            }
             Tab::Logs | Tab::Chat | Tab::Hooks => {}
         }
     }

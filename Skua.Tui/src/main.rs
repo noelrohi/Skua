@@ -33,6 +33,7 @@ fn main() -> io::Result<()> {
     let runner = Runner::new(app.skua_dir.clone());
     let mut follower = Follower::new(app.skua_dir.clone());
     let (outcome_tx, outcomes) = mpsc::channel();
+    let mut shown = skua_tui::picture::Shown::default();
     let mut terminal = ratatui::init();
     // Clicks and the wheel come to skua-tui; the terminal's own selection still works with option (or shift) held.
     execute!(io::stdout(), EnableMouseCapture)?;
@@ -51,6 +52,19 @@ fn main() -> io::Result<()> {
                 _ = focus_tx.send(focus.clone());
             }
             terminal.draw(|frame| skua_tui::ui::draw(frame, &app))?;
+            let place = app.hits.borrow().picture.clone();
+            let picture = app
+                .snapshot
+                .as_ref()
+                .and_then(|s| s.detail.picture.as_ref())
+                .and_then(|p| p.as_ref().ok());
+            shown.sync(
+                &mut io::stdout(),
+                place
+                    .as_ref()
+                    .zip(picture)
+                    .map(|((engine, frame, area), p)| (engine.as_str(), *frame, p.png.as_str(), *area)),
+            )?;
             if event::poll(Duration::from_millis(100))? {
                 match event::read()? {
                     Event::Key(key) => app.on_key(key),
@@ -64,6 +78,7 @@ fn main() -> io::Result<()> {
         }
         Ok(())
     })();
+    _ = shown.sync(&mut io::stdout(), None);
     _ = execute!(io::stdout(), DisableMouseCapture);
     ratatui::restore();
     result

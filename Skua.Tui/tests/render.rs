@@ -239,7 +239,7 @@ fn an_account_without_an_engine_says_so() {
 }
 
 #[test]
-fn the_tabs_show_inventory_quests_logs_and_the_map_with_the_picture_not_yet() {
+fn the_tabs_show_inventory_quests_logs_and_the_map_with_the_picture() {
     let fleet = fleet();
     let mut app = App::new(fleet.dir.path().to_owned());
 
@@ -280,7 +280,7 @@ fn the_tabs_show_inventory_quests_logs_and_the_map_with_the_picture_not_yet() {
             "Game · battleon · room 9999",
             "cells: Enter, r2",
             "Frogzard",
-            "The game's picture: not yet",
+            "p opens it in Preview",
         ],
     );
 }

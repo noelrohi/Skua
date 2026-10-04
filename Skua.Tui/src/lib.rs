@@ -8,6 +8,7 @@ pub mod discovery;
 pub mod dto;
 pub mod engine;
 pub mod inventory;
+pub mod picture;
 pub mod poller;
 pub mod rpc;
 pub mod ui;

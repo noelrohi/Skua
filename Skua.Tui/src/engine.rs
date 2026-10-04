@@ -13,7 +13,8 @@ use serde_json::{Value, json};
 
 use crate::dto::{
     ChatSendResult, DialogAnswer, Dialogs, EngineHost, Hello, Inventory, Location, LogPage, LoginResult, LogoutResult,
-    Map, Quests, ScriptOptions, ScriptStartResult, ScriptStopResult, ScriptsSearch, ScriptsUpdate, Servers, Status,
+    Map, Quests, Screenshot, ScriptOptions, ScriptStartResult, ScriptStopResult, ScriptsSearch, ScriptsUpdate, Servers,
+    Status,
 };
 use crate::rpc::{CallError, Rpc};
 
@@ -154,6 +155,11 @@ impl Engine {
 
     pub fn quests(&mut self) -> Result<Quests, Error> {
         self.call("quests", json!(["loaded"]))
+    }
+
+    /// The game's picture, scaled down to `max_width` when wider.
+    pub fn screenshot(&mut self, max_width: u32) -> Result<Screenshot, Error> {
+        self.call("screenshot", json!([max_width]))
     }
 
     pub fn map(&mut self) -> Result<Map, Error> {

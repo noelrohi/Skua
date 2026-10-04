@@ -191,6 +191,16 @@ pub struct LogPage {
     pub gap: bool,
 }
 
+/// The game's picture: `png` is the PNG in base64, as JSON carries bytes; `frame` counts the Game Host's frames.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Screenshot {
+    pub width: i64,
+    pub height: i64,
+    pub frame: i64,
+    pub png: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Item {
