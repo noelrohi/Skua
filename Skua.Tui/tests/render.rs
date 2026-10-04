@@ -508,6 +508,31 @@ fn the_inventory_splits_into_categories_scrolls_and_takes_clicks() {
 }
 
 #[test]
+fn an_account_in_another_cell_of_the_map_is_listed_with_its_cell_and_its_run() {
+    let fleet = fleet();
+    let mut elsewhere = status("dave", true, Some("Farm/Other.cs"));
+    elsewhere["game"]["player"]["cell"] = json!("r2");
+    elsewhere["script"]["run"]["kills"] = json!(40);
+    elsewhere["script"]["run"]["deaths"] = json!(2);
+    let _dave = FakeEngine::start(fleet.dir.path(), "dave", engine_of(PROTOCOL, "dave", elsewhere));
+    let mut app = App::new(fleet.dir.path().to_owned());
+
+    let screen = screen(&fleet, &mut app, 120, 32);
+
+    let rows: Vec<&str> = screen.lines().collect();
+    let dave = rows
+        .iter()
+        .position(|l| l.contains("dave  Chaos Avenger · in r2"))
+        .expect("dave's row");
+    assert!(
+        rows[dave + 1].contains("40 kills") && rows[dave + 1].contains("2 deaths"),
+        "{screen}"
+    );
+    // dave targets nothing in alice's cell.
+    assert!(!screen.contains("◀ alice, dave"), "{screen}");
+}
+
+#[test]
 fn a_stall_while_still_killing_is_grinding_not_an_alert() {
     let fleet = fleet();
     let mut grinding = status("carol", true, Some("Farm/RareDrop.cs"));

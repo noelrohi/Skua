@@ -23,6 +23,8 @@ const MAX_HOOK_RUNS: usize = 200;
 /// How often the Game tab's picture is read, and how wide: the game's own width, which a terminal scales down.
 const PICTURE_EVERY: Duration = Duration::from_secs(2);
 const PICTURE_WIDTH: u32 = 960;
+/// How old the last read of the quests may be for a rise since it to be news.
+const QUESTS_RECENT: Duration = Duration::from_secs(5);
 /// How many of the newest game messages the Overview keeps.
 const MAX_CHAT: u32 = 100;
 
@@ -78,6 +80,8 @@ pub struct Poller {
     cursor: Option<String>,
     /// When the picture was last read, so the Engine lifts its lag killer for one only every 2 s.
     pictured: Option<Instant>,
+    /// When the quests were last read, so a rise is only told against a read just before it.
+    quests_read: Option<Instant>,
 }
 
 impl Poller {
@@ -89,6 +93,7 @@ impl Poller {
             detail: Detail::default(),
             cursor: None,
             pictured: None,
+            quests_read: None,
         }
     }
 
@@ -105,6 +110,7 @@ impl Poller {
             };
             self.cursor = None;
             self.pictured = None;
+            self.quests_read = None;
         }
         if let Some(name) = &focus.engine {
             self.read_detail(&name.clone(), focus.tab);
@@ -206,12 +212,16 @@ impl Poller {
         }
     }
 
+    /// Reads the quests, and notes the newest requirement that rose since a read just before; one from before another tab showed would
+    /// say an old rise is new.
     fn read_quests(&mut self, name: &str) {
         let Some(engine) = self.connections.get_mut(name) else {
             return;
         };
         let quests = engine.quests();
-        if let (Some(Ok(before)), Ok(now)) = (&self.detail.quests, &quests)
+        let recent = self.quests_read.is_some_and(|at| at.elapsed() < QUESTS_RECENT);
+        self.quests_read = Some(Instant::now());
+        if let (true, Some(Ok(before)), Ok(now)) = (recent, &self.detail.quests, &quests)
             && let Some(text) = progress(before, now)
         {
             self.detail.progress = Some((text, Instant::now()));
@@ -220,7 +230,8 @@ impl Poller {
     }
 }
 
-/// The last requirement whose count rose from `before` to `now`, as the game says it.
+/// The last requirement whose count in the inventory rose from `before` to `now`, as the game says it; a copy taken out of the bank is
+/// no progress.
 fn progress(before: &Quests, now: &Quests) -> Option<String> {
     now.quests
         .iter()
@@ -232,9 +243,9 @@ fn progress(before: &Quests, now: &Quests) -> Option<String> {
                 .iter()
                 .find(|q| q.id == quest.id)
                 .and_then(|q| q.requirements.iter().find(|old| old.name == r.name))
-                .is_some_and(|old| r.owned() > old.owned())
+                .is_some_and(|old| r.have > old.have && r.owned() > old.owned())
         })
-        .map(|(quest, r)| format!("{}: {} {}/{}", quest.name, r.name, r.owned(), r.qty))
+        .map(|(quest, r)| format!("{}: {} {}/{}", quest.name, r.name, r.have, r.qty))
 }
 
 fn is_hook_run(entry: &LogEntry) -> bool {
