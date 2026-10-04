@@ -562,6 +562,32 @@ public class CliTests
     }
 
     [Fact]
+    public async Task Skua_script_options_shows_an_option_stored_as_empty_as_empty_beside_its_default()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeAqApi api = new(GameFixture.Servers);
+        FakeKeychain keychain = new(sandbox);
+        Dictionary<string, string> environment = GameFixture.Environment(new FakeGameHost(sandbox).Game(keychain, GameFixture.Servers), api, keychain);
+        TestScripts.Write(sandbox, "Tests/Classes.cs", TestScripts.Main("", """
+            public string OptionsStorage = "TestClasses";
+
+            public List<IOption> Options = new()
+            {
+                new Option<string>("Class1", "Class 1", "", "ArchPaladin"),
+                new Option<string>("Class2", "Class 2", "", "StoneCrusher"),
+            };
+            """));
+        Directory.CreateDirectory(Path.Combine(sandbox.SkuaDir, "options"));
+        await File.WriteAllLinesAsync(Path.Combine(sandbox.SkuaDir, "options", "TestClasses.cfg"), ["Options:Class1="], TestContext.Current.CancellationToken);
+
+        ProcessResult result = await sandbox.RunCliAsync(environment, "script", "options", "Tests/Classes.cs");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("Class1  string  (empty) (default ArchPaladin)", result.Stdout);
+        Assert.Contains("Class2  string  StoneCrusher\n", result.Stdout);
+    }
+
+    [Fact]
     public async Task Script_start_follow_asks_a_Question_in_the_terminal_and_answers_with_the_developers_choice()
     {
         await using EngineSandbox sandbox = new();

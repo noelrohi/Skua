@@ -125,7 +125,8 @@ internal static class Output
         int width = result.Options.Max(o => o.Key.Length);
         foreach (ScriptOptionDto option in result.Options)
         {
-            string value = option.Value == option.Default ? option.Value : $"{option.Value} (default {option.Default})";
+            string shown = option.Value.Length == 0 ? "(empty)" : option.Value;
+            string value = option.Value == option.Default ? shown : $"{shown} (default {option.Default})";
             string choices = option.Choices is { } list ? $" [{string.Join(", ", list)}]" : "";
             string transient = option.Transient ? " (transient)" : "";
             text.AppendLine().Append($"  {option.Key.PadRight(width)}  {option.Type,-6}  {value}{choices}{transient}");
