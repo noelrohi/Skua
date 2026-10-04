@@ -8,8 +8,8 @@ using Skua.MacOS.GameHost;
 namespace Skua.App.Mac;
 
 /// <summary>
-/// The main window: the main menu with the Auto and Jump buttons, the login controls, the Game View, the status strip with the Notices
-/// beside it, and the sheet of a pending Question over them.
+/// The main window: the login controls with the Auto, Jump and + buttons beside them, the Game View, the status strip with the Notices
+/// beside it, and the sheet of a pending Question over them. The main menu is the macOS menu bar's alone.
 /// </summary>
 internal sealed class MainWindow : Window
 {
@@ -20,12 +20,11 @@ internal sealed class MainWindow : Window
     public const string StatsPrefix = "[gameview] stats ";
 
     /// <summary>
-    /// Room for the main menu and the login controls above the Game View and the status strip below it, so the stage opens at its
-    /// native size.
+    /// Room for the login controls above the Game View and the status strip below it, so the stage opens at its native size.
     /// </summary>
-    private const int BarsHeight = 96;
+    private const int BarsHeight = 64;
 
-    public MainWindow(BridgeFlashUtil flash, ILogService log, StatusViewModel status, Menu menu, HelpersBar helpers, ScriptDialogsViewModel dialogs)
+    public MainWindow(BridgeFlashUtil flash, ILogService log, StatusViewModel status, HelpersBar helpers, ScriptDialogsViewModel dialogs)
     {
         Width = GameHostLaunch.StageWidth;
         Height = GameHostLaunch.StageHeight + BarsHeight;
@@ -40,12 +39,11 @@ internal sealed class MainWindow : Window
         Sheet = new QuestionSheet(dialogs);
         DockPanel bottom = new() { Background = strip.Background, Children = { Notices, strip } };
         DockPanel.SetDock(Notices, Dock.Right);
-        DockPanel top = new() { Children = { helpers, menu } };
+        DockPanel top = new() { Background = login.Background, Children = { helpers, login } };
         DockPanel.SetDock(helpers, Dock.Right);
         DockPanel.SetDock(top, Dock.Top);
-        DockPanel.SetDock(login, Dock.Top);
         DockPanel.SetDock(bottom, Dock.Bottom);
-        Content = new Panel { Children = { new DockPanel { Children = { top, login, bottom, view } }, Sheet } };
+        Content = new Panel { Children = { new DockPanel { Children = { top, bottom, view } }, Sheet } };
         Opened += (_, _) => view.Focus();
 
         TimeSpan interval = TimeSpan.FromSeconds(

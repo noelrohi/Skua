@@ -33,6 +33,7 @@ internal sealed class App : Application
     private IClassicDesktopStyleApplicationLifetime? _desktop;
     private CloseAndQuit? _closeAndQuit;
     private AppUpdates? _updates;
+    private WindowCascade? _cascade;
     private int _quitRequested;
     private bool _shuttingDown;
 
@@ -191,7 +192,10 @@ internal sealed class App : Application
         _ = Task.Run(() => engine.Services.GetRequiredService<GitHubToken>().LoadAsync(CancellationToken.None));
         // Made here, on the UI thread, where its collections change.
         ScriptDialogsViewModel dialogs = engine.Services.GetRequiredService<ScriptDialogsViewModel>();
-        MainWindow window = new(flash, engine.Services.GetRequiredService<ILogService>(), status, MainMenus.InWindow(mainMenu, windows, OpenManager), new HelpersBar(mainMenu), dialogs);
+        MainWindow window = new(flash, engine.Services.GetRequiredService<ILogService>(), status, new HelpersBar(mainMenu), dialogs);
+        // Down and right of the windows of the other apps open on this data folder, such as those the Skua Manager launches.
+        _cascade ??= WindowCascade.Claim(_endpoint.SkuaDir);
+        _cascade.Place(window);
         // Core's title, with the version and, if the developer chose, the username; and the Engine Name unless it's the default.
         MainWindowTitle.Follow(window, engine.Services, engine.Endpoint.Name);
         window.Notices.WindowOpened = w => NativeMenu.SetMenu(w, MenuBar());

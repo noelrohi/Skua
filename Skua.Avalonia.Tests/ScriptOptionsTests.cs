@@ -166,8 +166,8 @@ public sealed class ScriptOptionsTests(AppEngine app)
                 File.WriteAllText(skills, "{}");
             MainMenuViewModel menu = app.Get<MainMenuViewModel>();
             AvaloniaWindowService windows = app.Get<AvaloniaWindowService>();
-            MenuItem options = MainMenus.InWindow(menu, windows).Items.OfType<MenuItem>().Single(i => (string)i.Header! == "Options");
-            MenuItem coreBots = options.Items.OfType<MenuItem>().Single(i => (string)i.Header! == "CoreBots");
+            NativeMenu options = MainMenus.Native(menu, windows).Items.OfType<NativeMenuItem>().Single(i => i.Header == "Options").Menu!;
+            NativeMenuItem coreBots = options.Items.OfType<NativeMenuItem>().Single(i => i.Header == "CoreBots");
             Assert.True(coreBots.IsEnabled, "Options → CoreBots is disabled");
             // Shown once before, as another test or the Bot Window may have: the file is read again each time it shows.
             coreBots.Command!.Execute(null);

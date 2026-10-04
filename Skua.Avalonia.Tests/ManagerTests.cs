@@ -451,18 +451,17 @@ public sealed class ManagerTests : IDisposable
     }
 
     [AvaloniaFact]
-    public void The_app_menu_bar_and_window_menu_open_the_Manager()
+    public void The_menu_bar_opens_the_Manager()
     {
         MainMenuViewModel viewModel = _app.Get<MainMenuViewModel>();
         Services.AvaloniaWindowService windows = _app.Get<Services.AvaloniaWindowService>();
         int opened = 0;
 
-        MenuItem inWindow = MainMenus.InWindow(viewModel, windows, () => opened++).Items.OfType<MenuItem>().Single(i => (string)i.Header! == "Manager");
         NativeMenuItem native = MainMenus.Native(viewModel, windows, () => opened++).Items.OfType<NativeMenuItem>().Single(i => i.Header == "Manager");
 
-        Assert.Equal(MainMenus.ManagerHeader, (string)((MenuItem)inWindow.Items.Single()!).Header!);
-        Assert.Equal(MainMenus.ManagerHeader, native.Menu!.Items.OfType<NativeMenuItem>().Single().Header);
-        ((MenuItem)inWindow.Items.Single()!).RaiseEvent(new global::Avalonia.Interactivity.RoutedEventArgs(MenuItem.ClickEvent));
+        NativeMenuItem item = native.Menu!.Items.OfType<NativeMenuItem>().Single();
+        Assert.Equal(MainMenus.ManagerHeader, item.Header);
+        item.Command!.Execute(null);
         Assert.Equal(1, opened);
     }
 

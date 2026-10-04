@@ -138,7 +138,7 @@ public sealed class ToolsTests(AppEngine app)
         await connection.LoginAsync("Galanoth", cancellationToken: Ct);
         try
         {
-            MenuItem bank = Leaf(Menu(), "Bank");
+            NativeMenuItem bank = Leaf(Menu(), "Show Bank");
             Assert.True(bank.IsEnabled, "Bank is disabled");
 
             bank.Command!.Execute(null);
@@ -235,12 +235,10 @@ public sealed class ToolsTests(AppEngine app)
             Assert.EndsWith("specified. It needs WPF, which only Skua on Windows has.", failed);
 
             // The plugins' items join the Plugins menu, after View Plugins, which opens the Plugins panel listing the loaded ones.
-            Menu menu = Menu();
-            MenuItem pluginsMenu = menu.Items.OfType<MenuItem>().Single(i => (string)i.Header! == MainMenus.PluginsHeader);
-            Assert.Equal(["View Plugins", $"Hello {id}", $"Open WPF {id}"], pluginsMenu.Items.OfType<MenuItem>().Select(i => (string)i.Header!).Where(h => h == "View Plugins" || h.EndsWith(id, StringComparison.Ordinal)));
-            Assert.All(pluginsMenu.Items.OfType<MenuItem>(), i => Assert.True(i.IsEnabled, $"{i.Header} is disabled"));
-            NativeMenuItem nativePlugins = MainMenus.Native(app.Get<MainMenuViewModel>(), app.Get<AvaloniaWindowService>()).Items.OfType<NativeMenuItem>().Single(i => i.Header == MainMenus.PluginsHeader);
-            Assert.Contains(nativePlugins.Menu!.Items.OfType<NativeMenuItem>(), i => i.Header == $"Hello {id}" && i.IsEnabled);
+            NativeMenu menu = Menu();
+            NativeMenu pluginsMenu = menu.Items.OfType<NativeMenuItem>().Single(i => i.Header == MainMenus.PluginsHeader).Menu!;
+            Assert.Equal(["View Plugins", $"Hello {id}", $"Open WPF {id}"], pluginsMenu.Items.OfType<NativeMenuItem>().Select(i => i.Header!).Where(h => h == "View Plugins" || h.EndsWith(id, StringComparison.Ordinal)));
+            Assert.All(pluginsMenu.Items.OfType<NativeMenuItem>(), i => Assert.True(i.IsEnabled, $"{i.Header} is disabled"));
 
             Leaf(menu, "View Plugins").Command!.Execute(null);
             (Window window, PluginsView view) = await ShownAsync<PluginsView>("Plugins");
@@ -259,7 +257,7 @@ public sealed class ToolsTests(AppEngine app)
 
                 // Unloading a plugin takes its item out of the menus that are open.
                 plugins.Unload($"Good {id}");
-                await Ui.PumpUntilAsync(() => !pluginsMenu.Items.OfType<MenuItem>().Any(i => (string)i.Header! == $"Hello {id}"), "the unloaded plugin's item to go");
+                await Ui.PumpUntilAsync(() => !pluginsMenu.Items.OfType<NativeMenuItem>().Any(i => i.Header == $"Hello {id}"), "the unloaded plugin's item to go");
                 await Ui.PumpUntilAsync(() => !Names(list).Contains($"Good {id}"), "the unloaded plugin to leave the panel");
             }
             finally
@@ -288,19 +286,16 @@ public sealed class ToolsTests(AppEngine app)
             .FirstOrDefault(v => Grid.GetRow(v) == Grid.GetRow(label) && v.Parent == label.Parent)?.Text;
     }
 
-    private Menu Menu() => MainMenus.InWindow(app.Get<MainMenuViewModel>(), app.Get<AvaloniaWindowService>());
+    private NativeMenu Menu() => MainMenus.Native(app.Get<MainMenuViewModel>(), app.Get<AvaloniaWindowService>());
 
-    private static MenuItem Leaf(Menu menu, string header) =>
-        Leaves(menu.Items.OfType<MenuItem>()).Single(i => (string)i.Header! == header);
-
-    private static IEnumerable<MenuItem> Leaves(IEnumerable<MenuItem> items) =>
-        items.SelectMany(i => i.Items.Count > 0 ? Leaves(i.Items.OfType<MenuItem>()) : [i]);
+    private static NativeMenuItem Leaf(NativeMenu menu, string header) =>
+        menu.Items.OfType<NativeMenuItem>().SelectMany(i => i.Menu!.Items.OfType<NativeMenuItem>()).Single(i => i.Header == header);
 
     /// <summary>Opens a panel from its main menu item, as a click does, and returns its window and view.</summary>
     private async Task<(Window, T)> OpenAsync<T>(string group, string item) where T : global::Avalonia.Visual
     {
-        MenuItem groupItem = Menu().Items.OfType<MenuItem>().Single(i => (string)i.Header! == group);
-        MenuItem leaf = groupItem.Items.OfType<MenuItem>().Single(i => (string)i.Header! == item);
+        NativeMenuItem groupItem = Menu().Items.OfType<NativeMenuItem>().Single(i => i.Header == group);
+        NativeMenuItem leaf = groupItem.Menu!.Items.OfType<NativeMenuItem>().Single(i => i.Header == item);
         Assert.True(leaf.IsEnabled, $"{group} → {item} is disabled");
         leaf.Command!.Execute(null);
         return await ShownAsync<T>(item);

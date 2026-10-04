@@ -64,16 +64,8 @@ public sealed class PanelTests(AppEngine app)
         MainMenuViewModel viewModel = app.Get<MainMenuViewModel>();
         AvaloniaWindowService windows = app.Get<AvaloniaWindowService>();
 
-        Menu menu = MainMenus.InWindow(viewModel, windows);
         NativeMenu native = MainMenus.Native(viewModel, windows);
 
-        List<MenuItem> leaves = Leaves(menu.Items.OfType<MenuItem>()).ToList();
-        Assert.Equal(
-            [
-                "Application", "Application Themes", "Bank", "Console", "CoreBots", "Current Drops", "Fast Travel", "Game", "Grabber", "HotKeys", "Interceptor",
-                "Junk Items", "Loader", "Logger", "Logs", "Runtime", "Scripts", "Skills", "Spammer", "Stats", "View Plugins",
-            ],
-            leaves.Where(i => i.IsEnabled).Select(i => (string)i.Header!).Order(StringComparer.Ordinal));
         List<NativeMenuItem> nativeLeaves = native.Items.OfType<NativeMenuItem>().SelectMany(i => i.Menu!.Items.OfType<NativeMenuItem>()).ToList();
         Assert.Equal(
             [
@@ -81,7 +73,6 @@ public sealed class PanelTests(AppEngine app)
                 "Junk Items", "Loader", "Logger", "Runtime", "Show Bank", "Show Logs", "Show Scripts", "Show Skills", "Spammer", "Stats", "View Plugins",
             ],
             nativeLeaves.Where(i => i.IsEnabled).Select(i => i.Header!).Order(StringComparer.Ordinal));
-        Assert.Equal(menu.Items.OfType<MenuItem>().Select(i => (string)i.Header!), native.Items.OfType<NativeMenuItem>().Select(i => i.Header));
     }
 
     [AvaloniaFact]
@@ -89,7 +80,7 @@ public sealed class PanelTests(AppEngine app)
     {
         MainMenuViewModel viewModel = app.Get<MainMenuViewModel>();
         AvaloniaWindowService windows = app.Get<AvaloniaWindowService>();
-        MenuItem scripts = MainMenus.InWindow(viewModel, windows).Items.OfType<MenuItem>().Single(i => (string)i.Header! == "Scripts");
+        NativeMenuItem scripts = MainMenus.Native(viewModel, windows).Items.OfType<NativeMenuItem>().Single(i => i.Header == "Scripts").Menu!.Items.OfType<NativeMenuItem>().Single();
 
         scripts.Command!.Execute(null);
         await Ui.PumpUntilAsync(() => windows.OpenWindow("Scripts") is not null, "the Scripts window");
@@ -153,9 +144,6 @@ public sealed class PanelTests(AppEngine app)
         new ServiceCollection()
             .AddManagerServices(Directory.CreateDirectory(Path.Combine(AppEngine.SkuaDir, "manager-" + Guid.NewGuid().ToString("N")[..8])).FullName)
             .BuildServiceProvider());
-
-    private static IEnumerable<MenuItem> Leaves(IEnumerable<MenuItem> items) =>
-        items.SelectMany(i => i.Items.Count > 0 ? Leaves(i.Items.OfType<MenuItem>()) : [i]);
 
     /// <summary>Collects Avalonia's binding warnings and errors while it lives.</summary>
     internal sealed class BindingErrors : ILogSink, IDisposable

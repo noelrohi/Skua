@@ -8,7 +8,7 @@ using Skua.Core.ViewModels;
 namespace Skua.Avalonia;
 
 /// <summary>
-/// The main menu's Auto and Jump buttons, as in <c>Skua.WPF</c>'s <c>MainMenuUserControl</c>: each opens its view below it, and Auto shows a
+/// The main window's Auto and Jump buttons, as in <c>Skua.WPF</c>'s <c>MainMenuUserControl</c>: each opens its view below it, and Auto shows a
 /// mark while auto attack or hunt runs. The + beside them opens the Bot Window.
 /// </summary>
 public sealed class HelpersBar : StackPanel

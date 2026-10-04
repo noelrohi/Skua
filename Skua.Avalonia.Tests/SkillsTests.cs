@@ -30,7 +30,7 @@ public sealed class SkillsTests(AppEngine app)
     {
         MainMenuViewModel viewModel = app.Get<MainMenuViewModel>();
         AvaloniaWindowService windows = app.Get<AvaloniaWindowService>();
-        MenuItem skills = MainMenus.InWindow(viewModel, windows).Items.OfType<MenuItem>().Single(i => (string)i.Header! == "Skills");
+        NativeMenuItem skills = MainMenus.Native(viewModel, windows).Items.OfType<NativeMenuItem>().Single(i => i.Header == "Skills").Menu!.Items.OfType<NativeMenuItem>().Single();
         Assert.True(skills.IsEnabled);
         windows.OpenWindow("Skills")?.Close();
         await Ui.PumpUntilAsync(() => windows.OpenWindow("Skills") is null, "any earlier Skills window to go");
