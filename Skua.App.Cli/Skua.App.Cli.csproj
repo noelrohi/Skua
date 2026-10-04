@@ -16,6 +16,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The agent skill, which the skill option prints. -->
+    <EmbeddedResource Include="..\skills\skua\SKILL.md" LogicalName="SKILL.md" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Skua.Control\Skua.Control.csproj" />
   </ItemGroup>
 
