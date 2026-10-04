@@ -1,7 +1,7 @@
 //! Accounts by group on the left; the selected account's Engine in tabs on the right; a status line and the keys at the bottom.
 
 use ratatui::Frame;
-use ratatui::layout::{Alignment, Rect};
+use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
@@ -9,7 +9,7 @@ use serde_json::Value;
 
 use crate::app::{App, Field, KEYS, Modal, Note, Row, Tab, Tone, first_line};
 use crate::discovery::MANAGER_FILE;
-use crate::dto::{GameState, Hello, HookRun, LogEntry, Player, Quest, ScriptGoal, ScriptRun, Status};
+use crate::dto::{GameState, Hello, HookRun, LogEntry, Map, Player, Quest, ScriptGoal, ScriptRun, Status};
 use crate::engine::{Error, NOT_LOGGED_IN, PROTOCOL};
 use crate::inventory::Shelf;
 use crate::poller::{Detail, EngineView, LOG_TAIL};
@@ -18,6 +18,12 @@ const DIM: Color = Color::DarkGray;
 const SELECTED: Color = Color::Indexed(237);
 /// How long a run's quests go without progress before they are stalled, as the Engine's `quest.stalled` says by default.
 const STALL_SEC: f64 = 600.0;
+/// How long the Overview shows the newest quest progress, as the game's line over the fight.
+const PROGRESS_SHOWN: std::time::Duration = std::time::Duration::from_secs(5);
+/// The player's frame: four lines and its border.
+const PLAYER_H: u16 = 6;
+/// How wide the run's panel must be for its goal tree's lines, rates and times left included.
+const RUN_W: u16 = 84;
 
 pub fn draw(frame: &mut Frame, app: &App) {
     // The Game tab sets it again while it shows the picture.
@@ -360,26 +366,57 @@ fn failure(frame: &mut Frame, title: &str, message: &str, area: Rect) {
     frame.render_widget(text.block(block), area);
 }
 
-/// The selected account in plain words, the party with it on its map, the monsters in its cell, any Question, then the game's chat.
+/// The selected account as the game's screen shows it, in text: the player, its Script's run and its quests across the top; any
+/// Question; the newest quest progress; the players in its cell on the left and the cell's monsters on the right; then the game's chat
+/// and who else is on the map.
 fn overview(frame: &mut Frame, app: &App, hello: &Hello, status: &Status, detail: Option<&Detail>, area: Rect) {
-    let width = area.width.saturating_sub(2) as usize;
-    let mut lines = match playing(status) {
-        Some(player) => party_board(app, player, status, detail, width),
-        None => not_playing_lines(hello, status),
+    let Some(me) = playing(status) else {
+        return frame.render_widget(
+            Paragraph::new(not_playing_lines(hello, status)).block(panel("Overview")),
+            area,
+        );
     };
-    lines.truncate(area.height.saturating_sub(5) as usize);
-    let party_area = Rect {
-        height: (lines.len() as u16 + 2).min(area.height),
-        ..area
+    let map = detail.and_then(|d| d.map.as_ref());
+    let place = match map {
+        Some(Ok(map)) => format!("{}-{} · {}", map.name, map.room_id, me.cell),
+        _ => format!("{} · {}", me.map, me.cell),
     };
-    frame.render_widget(Paragraph::new(lines).block(panel("Party")), party_area);
-    let mut rest = Rect {
-        y: party_area.bottom(),
-        height: area.bottom() - party_area.bottom(),
-        ..area
+    let block = panel(&format!("Overview · {place}"));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let run = run_lines(status, detail);
+    let ours = on_map(app, me, status);
+    let members = cell_members(me, &ours, map);
+    let question_h = status.pending_dialogs.first().map_or(0, |q| q.choices.len() as u16 + 3);
+    // The player, the run and the quests side by side where the run's goal tree fits; else the run goes under the other two.
+    let wide = inner.width >= 36 + RUN_W + 40;
+    let run_h = run.len() as u16 + 2;
+    let [top, run_row, question_area, progress_area, cell, rest] = Layout::vertical([
+        Constraint::Length(if wide { run_h.max(PLAYER_H) } else { PLAYER_H }),
+        Constraint::Length(if wide { 0 } else { run_h }),
+        Constraint::Length(question_h),
+        Constraint::Length(1),
+        Constraint::Length((members.len() as u16 * 3).saturating_sub(1).max(4)),
+        Constraint::Fill(1),
+    ])
+    .areas(inner);
+    let (player_area, run_area, quests_area) = if wide {
+        let [player, run, quests] =
+            Layout::horizontal([Constraint::Length(36), Constraint::Fill(1), Constraint::Length(40)]).areas(top);
+        (player, run, quests)
+    } else {
+        let [player, quests] = Layout::horizontal([Constraint::Length(36), Constraint::Fill(1)]).areas(top);
+        (player, run_row, quests)
     };
+    player_frame(frame, me, status, player_area);
+    frame.render_widget(Paragraph::new(run).block(panel("Script")), run_area);
+    frame.render_widget(
+        Paragraph::new(tracker_lines(detail)).block(panel("Current Quests")),
+        quests_area,
+    );
+
     if let Some(question) = status.pending_dialogs.first() {
-        let height = (question.choices.len() as u16 + 3).min(rest.height);
         let block = panel(&format!("Question · {} · d to answer", question.caption))
             .border_style(Style::new().yellow())
             .title_style(Style::new().yellow().bold());
@@ -391,22 +428,53 @@ fn overview(frame: &mut Frame, app: &App, hello: &Hello, status: &Status, detail
                 .enumerate()
                 .map(|(i, c)| Line::raw(format!("  {}  {c}", i + 1))),
         );
-        frame.render_widget(Paragraph::new(lines).block(block), Rect { height, ..rest });
-        rest = Rect {
-            y: rest.y + height,
-            height: rest.height - height,
-            ..rest
-        };
+        frame.render_widget(Paragraph::new(lines).block(block), question_area);
     }
-    let chat_width = rest.width.saturating_sub(2) as usize;
+    if let Some((text, _)) = detail
+        .and_then(|d| d.progress.as_ref())
+        .filter(|(_, at)| at.elapsed() < PROGRESS_SHOWN)
+    {
+        frame.render_widget(
+            Paragraph::new(Line::styled(text.clone(), Style::new().yellow().bold()).centered()),
+            progress_area,
+        );
+    }
+
+    let members_width = (cell.width / 2).clamp(30, 44);
+    for (i, member) in members.iter().enumerate() {
+        let y = cell.y + i as u16 * 3;
+        if y + 2 > cell.bottom() {
+            break;
+        }
+        let rect = Rect {
+            x: cell.x + 1,
+            y,
+            width: members_width,
+            height: 2,
+        };
+        frame.render_widget(Paragraph::new(member_lines(member)), rect);
+    }
+    let monsters_area = Rect {
+        x: cell.x + 1 + members_width + 2,
+        width: cell.width.saturating_sub(1 + members_width + 2),
+        ..cell
+    };
+    monster_plates(frame, me, &ours, map, monsters_area);
+
+    let [chat_area, room_area] = Layout::horizontal([Constraint::Fill(1), Constraint::Length(34)]).areas(rest);
+    let chat_width = chat_area.width.saturating_sub(2) as usize;
     let mut chat: Vec<Line> = detail
         .map(|d| d.chat.iter().flat_map(|e| chat_lines(e, chat_width)).collect())
         .unwrap_or_default();
     if chat.is_empty() {
         chat.push(Line::styled("no chat yet", Style::new().fg(DIM)));
     }
-    let skip = chat.len().saturating_sub(rest.height.saturating_sub(2) as usize);
-    frame.render_widget(Paragraph::new(chat.split_off(skip)).block(panel("Chat")), rest);
+    let skip = chat.len().saturating_sub(chat_area.height.saturating_sub(2) as usize);
+    frame.render_widget(Paragraph::new(chat.split_off(skip)).block(panel("Chat")), chat_area);
+    frame.render_widget(
+        Paragraph::new(room_lines(me, map, room_area.height.saturating_sub(2) as usize)).block(panel("Room")),
+        room_area,
+    );
 }
 
 fn not_playing_lines(hello: &Hello, status: &Status) -> Vec<Line<'static>> {
@@ -447,21 +515,53 @@ fn not_playing_lines(hello: &Hello, status: &Status) -> Vec<Line<'static>> {
     lines
 }
 
-/// The account and its run in a few plain lines, a row per account on its map (it first), then the monsters in its cell with who is on
-/// each.
-fn party_board(app: &App, me: &Player, status: &Status, detail: Option<&Detail>, width: usize) -> Vec<Line<'static>> {
-    let mut lines = vec![Line::from(vec![
-        me.name.clone().bold(),
-        format!(
-            "  Lv {} · {} {} · {} · {} gold",
-            me.level,
-            me.map,
-            me.cell,
-            status.game.server.as_deref().unwrap_or("?"),
-            thousands(me.gold)
-        )
-        .fg(DIM),
-    ])];
+/// The player's frame, as the game's top left: name, level, class, where, HP and MP, and gold.
+fn player_frame(frame: &mut Frame, me: &Player, status: &Status, area: Rect) {
+    let block = panel(&me.name)
+        .title_style(Style::new().yellow().bold())
+        .title(Line::from(format!(" Lv {} ", me.level).bold()).right_aligned())
+        .title_bottom(
+            Line::styled(format!(" {} gold ", thousands(me.gold)), Style::new().yellow().bold()).right_aligned(),
+        );
+    let width = block.inner(area).width.saturating_sub(3);
+    let hp = if me.alive {
+        format!("{}/{}", me.hp, me.max_hp)
+    } else {
+        "dead".into()
+    };
+    let lines = vec![
+        Line::styled(me.class.clone().unwrap_or_else(|| "—".into()), Style::new().fg(DIM)),
+        Line::styled(
+            format!(
+                "{} {} · {}",
+                me.map,
+                me.cell,
+                status.game.server.as_deref().unwrap_or("?")
+            ),
+            Style::new().fg(DIM),
+        ),
+        gauge(
+            "HP",
+            width,
+            ratio(me.hp, me.max_hp),
+            hp_color(ratio(me.hp, me.max_hp), me.alive),
+            hp,
+        ),
+        gauge(
+            "MP",
+            width,
+            ratio(me.mp, me.max_mp),
+            Color::Blue,
+            format!("{}/{}", me.mp, me.max_mp),
+        ),
+    ];
+    frame.render_widget(Paragraph::new(lines).block(block), area);
+}
+
+/// The run in a few plain lines: the Script with its time, kills and deaths; whether it progresses, grinds or is stuck; then its goal as
+/// a tree, or its newest log line.
+fn run_lines(status: &Status, detail: Option<&Detail>) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
     match (&status.script.run, &status.script.last_run) {
         (Some(run), _) => {
             lines.push(Line::from(vec![
@@ -507,9 +607,45 @@ fn party_board(app: &App, me: &Player, status: &Status, detail: Option<&Detail>,
         )),
         (None, None) => lines.push(Line::styled("no Script running", Style::new().fg(DIM))),
     }
+    lines
+}
 
-    // Everyone playing on the same map, the selected account first.
-    let party: Vec<(String, &Status)> = std::iter::once((status.engine.name.clone(), status))
+/// The quests in progress or ready to turn in, as the game's Current Quests: each with its requirements and their counts, the bank's
+/// copies included.
+fn tracker_lines(detail: Option<&Detail>) -> Vec<Line<'static>> {
+    let quests = match detail.and_then(|d| d.quests.as_ref()) {
+        None => return vec![loading()],
+        Some(Err(e)) => return vec![read_error(e)],
+        Some(Ok(q)) => q,
+    };
+    let mut lines = Vec::new();
+    for quest in quests.quests.iter().filter(|q| q.status != "notAccepted") {
+        let ready = if quest.status == "completable" {
+            "  ✓ ready"
+        } else {
+            ""
+        };
+        lines.push(Line::styled(
+            format!("{}{ready}", quest.name),
+            Style::new().green().bold(),
+        ));
+        for r in &quest.requirements {
+            let done = r.owned() >= r.qty;
+            lines.push(Line::styled(
+                format!("  {} {}/{}", r.name, r.owned(), r.qty),
+                if done { Style::new().green() } else { Style::new() },
+            ));
+        }
+    }
+    if lines.is_empty() {
+        lines.push(Line::styled("no quest in progress", Style::new().fg(DIM)));
+    }
+    lines
+}
+
+/// Everyone playing on the player's map with an Engine here, by Engine name, the selected account first.
+fn on_map<'a>(app: &'a App, me: &Player, status: &'a Status) -> Vec<(String, &'a Status)> {
+    std::iter::once((status.engine.name.clone(), status))
         .chain(
             app.snapshot
                 .iter()
@@ -524,136 +660,258 @@ fn party_board(app: &App, me: &Player, status: &Status, detail: Option<&Detail>,
                     _ => None,
                 }),
         )
+        .collect()
+}
+
+/// A player in the selected account's cell: one of the Engines here, with its run, or someone else the map lists.
+struct Member<'a> {
+    name: String,
+    /// The class of an Engine's player, else the player's level.
+    label: String,
+    hp: i64,
+    max_hp: i64,
+    alive: bool,
+    me: bool,
+    afk: bool,
+    run: Option<&'a ScriptRun>,
+}
+
+/// The players in the selected account's cell: it first, then the other Engines' players there, then the others the map lists there.
+fn cell_members<'a>(me: &Player, ours: &[(String, &'a Status)], map: Option<&Result<Map, Error>>) -> Vec<Member<'a>> {
+    // `ours` has the selected account first.
+    let mut members: Vec<Member> = ours
+        .iter()
+        .enumerate()
+        .filter_map(|(i, (name, status))| Some((i, name, status, playing(status)?)))
+        .filter(|(_, _, _, p)| p.cell == me.cell)
+        .map(|(i, name, status, p)| Member {
+            name: name.clone(),
+            label: p.class.clone().unwrap_or_default(),
+            hp: p.hp,
+            max_hp: p.max_hp,
+            alive: p.alive,
+            me: i == 0,
+            afk: false,
+            run: status.script.run.as_ref(),
+        })
         .collect();
-    let map = detail.and_then(|d| d.map.as_ref()).and_then(|m| m.as_ref().ok());
-    let monster_name = |id: Option<i64>| -> String {
-        id.and_then(|id| map?.monsters.iter().find(|m| m.map_id == id))
-            .map_or_else(|| "—".into(), |m| m.name.clone())
+    let players: Vec<&str> = ours
+        .iter()
+        .filter_map(|(_, s)| playing(s))
+        .map(|p| p.name.as_str())
+        .collect();
+    if let Some(Ok(map)) = map {
+        members.extend(
+            map.players
+                .iter()
+                .filter(|p| p.cell == me.cell && !players.iter().any(|n| n.eq_ignore_ascii_case(&p.name)))
+                .map(|p| Member {
+                    name: p.name.clone(),
+                    label: format!("Lv {}", p.level),
+                    hp: p.hp,
+                    max_hp: p.max_hp,
+                    alive: p.hp > 0,
+                    me: false,
+                    afk: p.afk,
+                    run: None,
+                }),
+        );
+    }
+    members
+}
+
+/// A member's two lines: its name and class, then its HP and, for an Engine's, its run's kills and deaths.
+fn member_lines(member: &Member) -> Vec<Line<'static>> {
+    let name_style = if member.me {
+        Style::new().yellow().bold()
+    } else {
+        Style::new().bold()
     };
-    const NAME: usize = 13;
-    const CLASS: usize = 19;
-    const HP: u16 = 12;
-    const NUMBERS: usize = 7 + 7 + 8;
-    let target_width = width.saturating_sub(NAME + CLASS + HP as usize + 2 + NUMBERS).max(8);
-    lines.push(Line::raw(""));
-    lines.push(Line::styled(
-        format!(
-            "{:<NAME$}{:<CLASS$}{:<w$}  {:<target_width$}{:>7}{:>7}{:>8}",
-            "ACCOUNT",
-            "CLASS",
-            "HP",
-            "TARGET",
-            "KILLS",
-            "/MIN",
-            "DEATHS",
-            w = HP as usize
-        ),
-        Style::new().fg(DIM).bold(),
-    ));
-    for (name, member) in &party {
-        let Some(player) = playing(member) else { continue };
-        let run = member.script.run.as_ref();
-        let hp = ratio(player.hp, player.max_hp);
-        let hp_color = if !player.alive {
-            Color::Red
-        } else if hp > 0.5 {
-            Color::Green
-        } else if hp > 0.25 {
-            Color::Yellow
-        } else {
-            Color::Red
-        };
-        let mut spans = vec![
-            Span::styled(format!("{:<NAME$}", truncate(name, NAME - 1)), Style::new().bold()),
-            Span::styled(
-                format!(
-                    "{:<CLASS$}",
-                    truncate(player.class.as_deref().unwrap_or("—"), CLASS - 1)
-                ),
-                Style::new().fg(DIM),
-            ),
-        ];
-        let hp_text = if player.alive {
-            short_number(player.hp)
-        } else {
-            "dead".into()
-        };
-        spans.extend(gauge("", HP - 1, hp, hp_color, hp_text).spans.into_iter().skip(1));
-        spans.push(Span::raw(format!(
-            "  {:<target_width$}",
-            truncate(&monster_name(player.target_id), target_width)
-        )));
-        spans.push(Span::raw(format!(
-            "{:>7}",
-            run.map(|r| thousands(r.kills)).unwrap_or_default()
-        )));
-        spans.push(Span::styled(
+    let mut first = vec![
+        Span::styled(truncate(&member.name, 16), name_style),
+        Span::styled(format!("  {}", truncate(&member.label, 20)), Style::new().fg(DIM)),
+    ];
+    if member.afk {
+        first.push(Span::styled("  afk", Style::new().yellow()));
+    }
+    let hp = ratio(member.hp, member.max_hp);
+    let color = hp_color(hp, member.alive);
+    let text = if member.alive {
+        format!("{}/{}", short_number(member.hp), short_number(member.max_hp))
+    } else {
+        "dead".into()
+    };
+    let mut second: Vec<Span> = gauge("", 18, hp, color, text).spans.into_iter().skip(1).collect();
+    if let Some(run) = member.run {
+        second.push(Span::styled(
             format!(
-                "{:>7}",
-                run.and_then(|r| r.kills_per_min).map(rate_text).unwrap_or_default()
+                "  {} kills · {}/min",
+                thousands(run.kills),
+                run.kills_per_min.map(rate_text).unwrap_or_else(|| "—".into())
             ),
             Style::new().fg(DIM),
         ));
-        let deaths = run.map_or(0, |r| r.deaths);
-        spans.push(Span::styled(
-            format!("{:>8}", run.map(|r| r.deaths.to_string()).unwrap_or_default()),
-            if deaths > 0 {
-                Style::new().red()
-            } else {
-                Style::new().fg(DIM)
-            },
-        ));
-        lines.push(Line::from(spans));
+        if run.deaths > 0 {
+            second.push(Span::styled(format!(" · {} deaths", run.deaths), Style::new().red()));
+        }
     }
+    vec![Line::from(first), Line::from(second)]
+}
 
-    lines.push(Line::raw(""));
-    lines.push(Line::styled(
-        format!("MONSTERS IN {}", me.cell),
-        Style::new().fg(DIM).bold(),
-    ));
-    let Some(map) = map else {
-        lines.push(loading());
-        return lines;
+/// The monsters in the player's cell, a box each across `area`: its HP, and which Engines here target it; the player's target outlined.
+/// Those that don't fit are counted.
+fn monster_plates(
+    frame: &mut Frame,
+    me: &Player,
+    ours: &[(String, &Status)],
+    map: Option<&Result<Map, Error>>,
+    area: Rect,
+) {
+    let map = match map {
+        None => return frame.render_widget(Paragraph::new(loading()), area),
+        Some(Err(e)) => return frame.render_widget(Paragraph::new(read_error(e)), area),
+        Some(Ok(map)) => map,
     };
     let here: Vec<_> = map.monsters.iter().filter(|m| m.cell == me.cell).collect();
     if here.is_empty() {
-        lines.push(Line::styled("  none", Style::new().fg(DIM)));
-    }
-    let bar = width.saturating_sub(2 + 24 + 30).clamp(10, 24) as u16;
-    for monster in here {
-        if !monster.alive {
-            lines.push(Line::styled(
-                format!("  {:<24}dead, respawning", truncate(&monster.name, 23)),
+        return frame.render_widget(
+            Paragraph::new(Line::styled(
+                format!("no monsters in {}", me.cell),
                 Style::new().fg(DIM),
-            ));
-            continue;
-        }
-        let attackers: Vec<&str> = party
-            .iter()
-            .filter(|(_, m)| playing(m).is_some_and(|p| p.target_id == Some(monster.map_id)))
-            .map(|(name, _)| name.as_str())
-            .collect();
-        let mut spans = vec![Span::raw(format!("  {:<24}", truncate(&monster.name, 23)))];
-        spans.extend(
-            gauge(
-                "",
-                bar,
-                ratio(monster.hp, monster.max_hp),
-                Color::Red,
-                format!("{}/{}", short_number(monster.hp), short_number(monster.max_hp)),
-            )
-            .spans
-            .into_iter()
-            .skip(1),
+            )),
+            area,
         );
-        spans.push(if attackers.is_empty() {
-            Span::styled("  no one on it", Style::new().fg(DIM))
-        } else {
-            Span::styled(format!("  ◀ {}", attackers.join(", ")), Style::new().yellow())
-        });
-        lines.push(Line::from(spans));
     }
+    const MIN: u16 = 20;
+    const MORE: u16 = 9;
+    let fits = |width: u16| ((width + 1) / (MIN + 1)).max(1) as usize;
+    let shown = if here.len() <= fits(area.width) {
+        here.len()
+    } else {
+        fits(area.width.saturating_sub(MORE))
+    };
+    let room = if shown < here.len() {
+        area.width.saturating_sub(MORE)
+    } else {
+        area.width
+    };
+    let width = ((room + 1) / shown as u16).saturating_sub(1).clamp(MIN, 28);
+    for (i, monster) in here.iter().take(shown).enumerate() {
+        let rect = Rect {
+            x: area.x + i as u16 * (width + 1),
+            width: width.min(area.right().saturating_sub(area.x + i as u16 * (width + 1))),
+            height: 4.min(area.height),
+            ..area
+        };
+        let targeted = me.target_id == Some(monster.map_id);
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(if targeted {
+                Style::new().yellow()
+            } else {
+                Style::new().fg(DIM)
+            })
+            .title(Span::styled(
+                truncate(
+                    &format!("{}{}", if targeted { "▶ " } else { "" }, monster.name),
+                    width as usize - 2,
+                ),
+                if monster.alive {
+                    Style::new().bold()
+                } else {
+                    Style::new().fg(DIM)
+                },
+            ));
+        let inner = block.inner(rect);
+        frame.render_widget(block, rect);
+        let lines = if monster.alive {
+            let attackers: Vec<&str> = ours
+                .iter()
+                .filter(|(_, s)| playing(s).is_some_and(|p| p.cell == me.cell && p.target_id == Some(monster.map_id)))
+                .map(|(name, _)| name.as_str())
+                .collect();
+            let hp = format!("{}/{}", short_number(monster.hp), short_number(monster.max_hp));
+            vec![
+                Line::from(
+                    gauge("", inner.width, ratio(monster.hp, monster.max_hp), Color::Red, hp)
+                        .spans
+                        .into_iter()
+                        .skip(1)
+                        .collect::<Vec<_>>(),
+                ),
+                if attackers.is_empty() {
+                    Line::styled("no one on it", Style::new().fg(DIM))
+                } else {
+                    Line::styled(
+                        truncate(&format!("◀ {}", attackers.join(", ")), inner.width as usize),
+                        Style::new().yellow(),
+                    )
+                },
+            ]
+        } else {
+            vec![Line::styled("dead, respawning", Style::new().fg(DIM))]
+        };
+        frame.render_widget(Paragraph::new(lines), inner);
+    }
+    if shown < here.len() {
+        let x = area.x + shown as u16 * (width + 1);
+        frame.render_widget(
+            Paragraph::new(Line::styled(
+                format!("+{} more", here.len() - shown),
+                Style::new().fg(DIM),
+            )),
+            Rect {
+                x,
+                y: area.y + 1,
+                width: area.right().saturating_sub(x),
+                height: 1,
+            },
+        );
+    }
+}
+
+/// Who else is on the map, as many as fit, then how many players the map has, as the game's bottom right says.
+fn room_lines(me: &Player, map: Option<&Result<Map, Error>>, rows: usize) -> Vec<Line<'static>> {
+    let map = match map {
+        None => return vec![loading()],
+        Some(Err(e)) => return vec![read_error(e)],
+        Some(Ok(map)) => map,
+    };
+    let elsewhere: Vec<_> = map.players.iter().filter(|p| p.cell != me.cell).collect();
+    let mut lines: Vec<Line> = elsewhere
+        .iter()
+        .take(rows.saturating_sub(1))
+        .map(|p| {
+            Line::from(vec![
+                Span::raw(format!("{:<16}", truncate(&p.name, 15))),
+                Span::styled(
+                    format!(
+                        "Lv {:<4}{}{}",
+                        p.level,
+                        truncate(&p.cell, 8),
+                        if p.afk { " afk" } else { "" }
+                    ),
+                    Style::new().fg(DIM),
+                ),
+            ])
+        })
+        .collect();
+    lines.push(Line::from(vec![
+        Span::raw(format!("{} player(s) in ", map.players.len())),
+        Span::styled(format!("{}-{}", map.name, map.room_id), Style::new().yellow()),
+    ]));
     lines
+}
+
+fn hp_color(hp: f64, alive: bool) -> Color {
+    if !alive || hp <= 0.25 {
+        Color::Red
+    } else if hp > 0.5 {
+        Color::Green
+    } else {
+        Color::Yellow
+    }
 }
 
 /// The Script's goal as a tree, each step what the one above needs, with counts, pace and time left; then how often a death reset the

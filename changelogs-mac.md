@@ -11,6 +11,7 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 * `skua logs -f --tail N` prints the newest N entries, then follows new ones, like `tail -f -n N`, so watching a Script no longer takes a `--tail 1` to fetch the cursor first. With `--after`, it prints the newest N after the cursor.
 
 ### Changes
+* `skua-tui`'s Overview is the game's screen in text: the player's frame with HP, MP and gold, the Script's run and goal, the quests in progress, any Question, the game's line when a quest requirement rises, the players and monsters in the player's cell with their HP and who targets what, then the chat and who else is on the map. See [The TUI](./BUILD.md#the-tui-skua-tui).
 * The window is the game, with **Auto**, **Jump** and **+** above it and the status strip below. Its menu row is gone (Scripts, Options, Helpers and the rest are in the macOS menu bar, as before), and so are Log in, Log out and the server picker: log in from the Skua Manager, the game's own login screen or `skua login`, and out with `skua logout`.
 
 ### Fixes

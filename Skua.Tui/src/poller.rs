@@ -53,6 +53,9 @@ pub struct Detail {
     pub chat: Vec<LogEntry>,
     pub inventory: Option<Result<Inventory, Error>>,
     pub quests: Option<Result<Quests, Error>>,
+    /// The newest rise in a quest requirement between two reads, as the game says it (`Dragon's Will: Unyielding Slime 294/300`), and
+    /// when it was seen.
+    pub progress: Option<(String, Instant)>,
     pub map: Option<Result<Map, Error>>,
     /// The game's picture, read every 2 s while the Game tab shows.
     pub picture: Option<Result<Screenshot, Error>>,
@@ -186,9 +189,12 @@ impl Poller {
         }
         match tab {
             Tab::Inventory => self.detail.inventory = Some(engine.inventory()),
-            Tab::Quests => self.detail.quests = Some(engine.quests()),
-            // The Overview shows the monsters in the player's cell.
-            Tab::Overview => self.detail.map = Some(engine.map()),
+            Tab::Quests => self.read_quests(name),
+            // The Overview shows the quests in progress, and the players and monsters in the player's cell.
+            Tab::Overview => {
+                self.detail.map = Some(engine.map());
+                self.read_quests(name);
+            }
             Tab::Game => {
                 self.detail.map = Some(engine.map());
                 if self.pictured.is_none_or(|at| at.elapsed() >= PICTURE_EVERY) {
@@ -199,6 +205,36 @@ impl Poller {
             Tab::Logs | Tab::Chat | Tab::Hooks => {}
         }
     }
+
+    fn read_quests(&mut self, name: &str) {
+        let Some(engine) = self.connections.get_mut(name) else {
+            return;
+        };
+        let quests = engine.quests();
+        if let (Some(Ok(before)), Ok(now)) = (&self.detail.quests, &quests)
+            && let Some(text) = progress(before, now)
+        {
+            self.detail.progress = Some((text, Instant::now()));
+        }
+        self.detail.quests = Some(quests);
+    }
+}
+
+/// The last requirement whose count rose from `before` to `now`, as the game says it.
+fn progress(before: &Quests, now: &Quests) -> Option<String> {
+    now.quests
+        .iter()
+        .flat_map(|quest| quest.requirements.iter().map(move |r| (quest, r)))
+        .rev()
+        .find(|(quest, r)| {
+            before
+                .quests
+                .iter()
+                .find(|q| q.id == quest.id)
+                .and_then(|q| q.requirements.iter().find(|old| old.name == r.name))
+                .is_some_and(|old| r.owned() > old.owned())
+        })
+        .map(|(quest, r)| format!("{}: {} {}/{}", quest.name, r.name, r.owned(), r.qty))
 }
 
 fn is_hook_run(entry: &LogEntry) -> bool {

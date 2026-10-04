@@ -162,7 +162,17 @@ fn the_screen_shows_accounts_by_group_with_their_engines_and_the_selected_ones_o
             "carol        offline",
             "default      login screen",
             " Overview │ Inventory │ Quests │ Logs │ Game │",
-            "alice  Lv 100 · battleon Enter · Artix · 1,234,567 gold",
+            "Overview · battleon-9999 · Enter",
+            "alice ─",
+            "Lv 100",
+            "battleon Enter · Artix",
+            "2400/3000",
+            "1,234,567 gold",
+            "Current Quests",
+            "Tainted Gem Exchange",
+            "Cubes 21/25",
+            "Gems 5/10",
+            "Script",
             "AtlasGold  running 12m 34s · 0 kills · —/min · 0 deaths",
             "stuck · no quest progress or kills for 11m",
             "└ quest Tainted Gem Exchange",
@@ -172,14 +182,14 @@ fn the_screen_shows_accounts_by_group_with_their_engines_and_the_selected_ones_o
             "870/1000   +120/h  ~1h05m",
             "└ now   killing Frogzard for Atlas Gold",
             "⟲ wave reset 2× since this farm began",
-            "ACCOUNT",
-            "Chaos Avenger",
-            "MONSTERS IN Enter",
+            "alice  Chaos Avenger",
+            "▶ Hydra Crew",
             "20k/100k",
             "◀ alice",
             "Chat",
             "[zone]",
-            "anyone for ultra speaker?",
+            "anyone for ultra",
+            "1 player(s) in battleon-9999",
             "acting on: alice",
             "? keys",
         ],
@@ -519,18 +529,18 @@ fn a_stall_while_still_killing_is_grinding_not_an_alert() {
             "grinding · no quest progress for 11m, still killing",
         ],
     );
-    // alice plays on carol's map, so she is in carol's party, after carol, with her own kills.
+    // alice plays in carol's cell, so she is in carol's party, after carol, each with their own kills under their name.
     let rows: Vec<&str> = screen.lines().collect();
     let carol = rows
         .iter()
-        .position(|l| l.contains("carol        Chaos Avenger"))
+        .position(|l| l.contains("carol  Chaos Avenger"))
         .expect("carol's row");
     let alice = rows
         .iter()
-        .position(|l| l.contains("alice        Chaos Avenger"))
+        .position(|l| l.contains("alice  Chaos Avenger"))
         .expect("alice's row");
     assert!(carol < alice, "{screen}");
-    assert!(rows[carol].contains("312") && rows[carol].contains("5.4"), "{screen}");
+    assert!(rows[carol + 1].contains("312 kills · 5.4/min"), "{screen}");
     let row = screen.lines().find(|l| l.contains("● carol")).unwrap();
     assert!(
         row.contains("RareDrop") && row.contains("11m") && !row.contains('▲'),
