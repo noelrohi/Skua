@@ -235,6 +235,9 @@ public sealed class ManagerTests : IDisposable
             Add(list, username, password, "");
         foreach (AccountItemViewModel account in list.Accounts)
             account.UseCheck = true;
+        // Another test's app may have left its login behind, which would pass for this one's before its login ends.
+        foreach (string name in new[] { "alicetester", "bobtester" })
+            File.Delete(Path.Combine(AppEngine.SkuaDir, "engines", name + ".login"));
 
         await Accounts.LaunchSelectedCommand.ExecuteAsync(null);
         Assert.Equal("Launched alicetester, bobtester.", Accounts.Status);
