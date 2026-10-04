@@ -251,7 +251,7 @@ public class CliTests
     }
 
     [Fact]
-    public async Task Logs_tail_prints_the_newest_entries_and_takes_neither_max_nor_follow()
+    public async Task Logs_tail_prints_the_newest_entries_and_does_not_take_max()
     {
         await using EngineSandbox sandbox = new();
         FakeGameHost gameHost = new FakeGameHost(sandbox).Repeat(30, "send F trace {i}");
@@ -262,16 +262,89 @@ public class CliTests
 
             ProcessResult tail = await sandbox.RunCliAsync("logs", "flash", "--tail", "2", "--json");
             ProcessResult withMax = await sandbox.RunCliAsync("logs", "--tail", "2", "--max", "5");
-            ProcessResult withFollow = await sandbox.RunCliAsync("logs", "-f", "--tail", "2");
 
             Assert.Equal(0, tail.ExitCode);
             using (JsonDocument json = JsonDocument.Parse(tail.Stdout))
                 Assert.Equal(["trace 28", "trace 29"], json.RootElement.GetProperty("entries").EnumerateArray().Select(e => e.GetProperty("text").GetString()));
             Assert.Equal(1, withMax.ExitCode);
             Assert.Contains("--tail", withMax.Stderr);
-            Assert.Equal(1, withFollow.ExitCode);
-            Assert.Contains("--tail", withFollow.Stderr);
         }
+    }
+
+    [Fact]
+    public async Task Logs_follow_with_tail_replays_the_newest_entries_then_follows_new_ones()
+    {
+        await using EngineSandbox sandbox = new();
+        FakeGameHost gameHost = new FakeGameHost(sandbox).Control().Repeat(30, "send F trace {i}");
+        (_, EngineConnection connection) = await sandbox.StartEngineAsync(gameHost.Environment());
+        using (connection)
+        {
+            await connection.WaitForLogsAsync(LogKind.Flash, 30);
+
+            Process follow = sandbox.StartCli("logs", "flash", "-f", "--tail", "2", "--json");
+            using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(20));
+            List<string> replayed = [await EntryTextAsync(follow, timeout.Token), await EntryTextAsync(follow, timeout.Token)];
+            await gameHost.DoAsync("send F live");
+
+            Assert.Equal(["trace 28", "trace 29"], replayed);
+            Assert.Equal("live", await EntryTextAsync(follow, timeout.Token));
+            Assert.False(follow.HasExited);
+            Assert.Contains("-f --tail", (await sandbox.RunCliAsync("logs", "--help")).Stdout);
+        }
+    }
+
+    [Fact]
+    public async Task Logs_follow_with_tail_and_after_replays_the_newest_entries_after_the_cursor()
+    {
+        await using EngineSandbox sandbox = new();
+        FakeGameHost gameHost = new FakeGameHost(sandbox).Control().Repeat(10, "send F trace {i}");
+        (_, EngineConnection connection) = await sandbox.StartEngineAsync(gameHost.Environment());
+        using (connection)
+        {
+            await connection.WaitForLogsAsync(LogKind.Flash, 10);
+            LogPage pulled = await connection.LogsAsync(LogKind.Flash, max: 7, cancellationToken: TestContext.Current.CancellationToken);
+
+            Process follow = sandbox.StartCli("logs", "flash", "-f", "--tail", "5", "--after", pulled.Next, "--json");
+            using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(20));
+            List<string> replayed = [await EntryTextAsync(follow, timeout.Token), await EntryTextAsync(follow, timeout.Token), await EntryTextAsync(follow, timeout.Token)];
+            await gameHost.DoAsync("send F live");
+
+            Assert.Equal(["trace 7", "trace 8", "trace 9"], replayed);
+            Assert.Equal("live", await EntryTextAsync(follow, timeout.Token));
+        }
+    }
+
+    [Fact]
+    public async Task Logs_follow_with_tail_replays_the_newest_entries_of_several_kinds_merged_by_seq()
+    {
+        await using EngineSandbox sandbox = new();
+        FakeGameHost gameHost = new FakeGameHost(sandbox).Control();
+        (_, EngineConnection connection) = await sandbox.StartEngineAsync(gameHost.Environment());
+        using (connection)
+        {
+            await connection.WaitForLogsAsync(LogKind.Debug, 1, e => e.Text!.StartsWith("Game Host started", StringComparison.Ordinal));
+            foreach (string directive in (string[])["send F a", "log 2 b", "send F c", "log 2 d"])
+                await gameHost.DoAsync(directive);
+            await connection.WaitForLogsAsync(LogKind.Debug, 1, e => e.Text!.EndsWith(" d", StringComparison.Ordinal));
+
+            Process follow = sandbox.StartCli("logs", "flash", "debug", "-f", "--tail", "3", "--json");
+            using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(20));
+            List<string> replayed = [await EntryTextAsync(follow, timeout.Token), await EntryTextAsync(follow, timeout.Token), await EntryTextAsync(follow, timeout.Token)];
+            await gameHost.DoAsync("send F live");
+
+            Assert.Collection(replayed, b => Assert.EndsWith(" b", b), c => Assert.Equal("c", c), d => Assert.EndsWith(" d", d));
+            Assert.Equal("live", await EntryTextAsync(follow, timeout.Token));
+        }
+    }
+
+    /// <summary>The text of the next entry a <c>logs -f --json</c> prints.</summary>
+    private static async Task<string> EntryTextAsync(Process follow, CancellationToken cancellationToken)
+    {
+        using JsonDocument entry = JsonDocument.Parse((await follow.StandardOutput.ReadLineAsync(cancellationToken))!);
+        return entry.RootElement.GetProperty("text").GetString()!;
     }
 
     [Fact]

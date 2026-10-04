@@ -6,6 +6,9 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 
 ## October 4, 2026
 
+### New
+* `skua logs -f --tail N` prints the newest N entries, then follows new ones, like `tail -f -n N`, so watching a Script no longer takes a `--tail 1` to fetch the cursor first. With `--after`, it prints the newest N after the cursor.
+
 ### Changes
 * The window is the game, with **Auto**, **Jump** and **+** above it and the status strip below. Its menu row is gone (Scripts, Options, Helpers and the rest are in the macOS menu bar, as before), and so are Log in, Log out and the server picker: log in from the Skua Manager, the game's own login screen or `skua login`, and out with `skua logout`.
 
