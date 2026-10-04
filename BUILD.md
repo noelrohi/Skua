@@ -301,6 +301,8 @@ The tests never run the real Game Host, read the real Keychain or reach AQW: the
 
 Every `skua` command, `skua mcp` included, takes `--engine <name>`: it talks to the Engine with that Engine Name, at `<SkuaDIR>/engines/<name>.sock`, and auto-starts one under that name when none runs. It wins over `SKUA_ENGINE_SOCKET`. Without it, a command talks to the Engine at `SKUA_ENGINE_SOCKET` when that is set, named after the socket's file (`supermovie1.sock` names `supermovie1`; `default` when the file name isn't a valid Engine Name), and otherwise to `default`. An Engine a command replaces keeps the Engine Name it gave, at the same socket.
 
+`skua engine list` names every Engine in the data folder, one per socket in `<SkuaDIR>/engines`, and starts none: one block each with its Engine Name, whether it runs in the Mac App or windowless, and its game, Script and player as `skua status` shows them. An Engine whose socket doesn't answer, such as one that was killed, shows as stopped. `--json` prints an array of `{engine, status}`: `engine` as `skua engine status --json` prints it, and `status` as `skua status --json` does, or null when the Engine isn't running or speaks another protocol.
+
 Environment overrides:
 
 | Variable | Overrides |

@@ -84,6 +84,19 @@ public sealed record EngineEndpoint
         return new EngineEndpoint(name, skuaDir, socketPath);
     }
 
+    /// <summary>
+    /// The endpoints of the Engines in a data folder, by name: one per <c>&lt;name&gt;.sock</c> in its engines folder with a valid Engine Name.
+    /// An Engine that went away may have left its socket behind, so one may not answer.
+    /// </summary>
+    public static IReadOnlyList<EngineEndpoint> InDataFolder(string skuaDir)
+    {
+        string engines = Path.Combine(skuaDir, "engines");
+        if (!Directory.Exists(engines))
+            return [];
+        return [.. Directory.EnumerateFiles(engines, "*.sock").Select(Path.GetFileNameWithoutExtension).OfType<string>().Where(EngineName.IsValid)
+            .Order(StringComparer.Ordinal).Select(name => Resolve(name, skuaDir))];
+    }
+
     /// <summary>The endpoint of the Engine with another name at this socket, with that name's lock and log.</summary>
     /// <exception cref="ControlException"><see cref="ErrorCode.InvalidArgument"/> for a bad name.</exception>
     public EngineEndpoint WithName(string name) => name == Name ? this : Resolve(name, SkuaDir, SocketPath);

@@ -35,6 +35,27 @@ public class EndpointTests
     }
 
     [Fact]
+    public void The_data_folders_Engines_are_its_sockets_with_a_valid_Engine_Name_by_name()
+    {
+        string skuaDir = Directory.CreateDirectory(Path.Combine("/tmp", "skua-" + Guid.NewGuid().ToString("N")[..8])).FullName;
+        try
+        {
+            Assert.Empty(EngineEndpoint.InDataFolder(skuaDir));
+
+            string engines = Directory.CreateDirectory(Path.Combine(skuaDir, "engines")).FullName;
+            foreach (string file in (string[])["farm.sock", "alpha.sock", "Not Valid.sock", "alpha.lock", "beta.log"])
+                File.WriteAllText(Path.Combine(engines, file), "");
+
+            Assert.Equal(["alpha", "farm"], EngineEndpoint.InDataFolder(skuaDir).Select(e => e.Name));
+            Assert.Equal(Path.Combine(engines, "alpha.sock"), EngineEndpoint.InDataFolder(skuaDir)[0].SocketPath);
+        }
+        finally
+        {
+            EngineSandbox.DeleteFolder(skuaDir);
+        }
+    }
+
+    [Fact]
     public void A_socket_path_over_103_bytes_fails_fast()
     {
         string skuaDir = "/tmp/" + new string('s', 103 - "/tmp/".Length - "/engines/default.sock".Length);

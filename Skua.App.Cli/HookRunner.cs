@@ -82,15 +82,8 @@ internal sealed class HookRunner
         }
     }
 
-    private IEnumerable<string> EngineNames()
-    {
-        if (_onlyEngine is not null)
-            return [_onlyEngine];
-        string engines = Path.Combine(_skuaDir, "engines");
-        return Directory.Exists(engines)
-            ? Directory.EnumerateFiles(engines, "*.sock").Select(Path.GetFileNameWithoutExtension).OfType<string>().Where(EngineName.IsValid)
-            : [];
-    }
+    private IEnumerable<string> EngineNames() =>
+        _onlyEngine is not null ? [_onlyEngine] : EngineEndpoint.InDataFolder(_skuaDir).Select(endpoint => endpoint.Name);
 
     /// <summary>
     /// Connects to the Engine and follows it in the background until it goes away. An Engine already running as the runner starts is
