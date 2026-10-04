@@ -15,6 +15,7 @@ public partial class ScriptInventory : IScriptInventory
     private readonly Lazy<IScriptMap> _lazyMap;
     private readonly Lazy<IScriptManager> _lazyManager;
     private readonly Lazy<IScriptPlayer> _lazyPlayer;
+    private readonly Lazy<ILogService> _lazyLogger;
     private IFlashUtil Flash => _lazyFlash.Value;
     private IScriptOption Options => _lazyOptions.Value;
     private IScriptWait Wait => _lazyWait.Value;
@@ -22,6 +23,7 @@ public partial class ScriptInventory : IScriptInventory
     private IScriptManager Manager => _lazyManager.Value;
     private IScriptPlayer Player => _lazyPlayer.Value;
     private IScriptSend Send => _lazySend.Value;
+    private ILogService Logger => _lazyLogger.Value;
 
     public ScriptInventory(
         Lazy<IFlashUtil> flash,
@@ -30,7 +32,8 @@ public partial class ScriptInventory : IScriptInventory
         Lazy<IScriptWait> wait,
         Lazy<IScriptMap> map,
         Lazy<IScriptManager> manager,
-        Lazy<IScriptPlayer> player)
+        Lazy<IScriptPlayer> player,
+        Lazy<ILogService> logger)
     {
         _lazyFlash = flash;
         _lazySend = send;
@@ -39,6 +42,7 @@ public partial class ScriptInventory : IScriptInventory
         _lazyMap = map;
         _lazyManager = manager;
         _lazyPlayer = player;
+        _lazyLogger = logger;
     }
 
     [ObjectBinding("world.myAvatar.items", Default = "new()")]
@@ -56,7 +60,13 @@ public partial class ScriptInventory : IScriptInventory
         dynamic item = new ExpandoObject();
         item.ItemID = id;
         Flash.CallGameFunction("world.sendEquipItemRequest", item);
-        Wait.ForItemEquip(id);
+        if (Wait.ForItemEquip(id) || !((IScriptInventory)this).TryGetItem(id, out InventoryItem? asked) || asked!.Equipped)
+            return;
+        // The game sends the request on any map, but the game server ignores it in a house without a word, so say so here.
+        string map = Map.Name;
+        Logger.ScriptLog(string.Equals(map, "house", StringComparison.OrdinalIgnoreCase)
+            ? $"Equipping {asked.Name} failed: the game server ignores equips in a house (map {map}). Join another map, then equip it."
+            : $"Equipping {asked.Name} failed: it isn't equipped on {map}.");
     }
 
     public void EquipUsableItem(InventoryItem? item)
