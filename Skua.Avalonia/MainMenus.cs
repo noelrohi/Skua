@@ -3,16 +3,17 @@ using System.Collections.Specialized;
 using System.Runtime.CompilerServices;
 using Avalonia.Controls;
 using Avalonia.Utilities;
+using CommunityToolkit.Mvvm.Input;
 using Skua.Avalonia.Services;
 using Skua.Core.ViewModels;
 
 namespace Skua.Avalonia;
 
 /// <summary>
-/// The main menu, built from Core's <see cref="MainMenuViewModel"/> as the WPF main menu is: in the window, and in the macOS menu bar.
-/// An item opens its managed window, and is disabled while that window has no view (<see cref="AvaloniaWindowService.CanShow"/>);
+/// The main menu, built from Core's <see cref="MainMenuViewModel"/> as the WPF main menu is, in the macOS menu bar; the main window has
+/// no menu of its own. An item opens its managed window, and is disabled while that window has no view (<see cref="AvaloniaWindowService.CanShow"/>);
 /// an item with its own command, such as Bank or a plugin's, is always enabled. The Plugins menu follows the plugins' items as they come
-/// and go. Given a way to open the Skua Manager, each ends with a Manager menu holding it.
+/// and go. Given a way to open the Skua Manager, it ends with a Manager menu holding it.
 /// </summary>
 public static class MainMenus
 {
@@ -25,35 +26,8 @@ public static class MainMenus
     public const string WindowHeader = "Window";
     public const string BotWindowHeader = "Bot Window";
 
-    public static Menu InWindow(MainMenuViewModel viewModel, AvaloniaWindowService windows, Action? openManager = null)
-    {
-        Menu menu = new();
-        foreach (MainMenuItemViewModel item in viewModel.MainMenuItems)
-            menu.Items.Add(MenuItem(item, windows));
-        MenuItem plugins = new() { Header = PluginsHeader };
-        Follow(viewModel.Plugins, plugins, items =>
-        {
-            plugins.Items.Clear();
-            foreach (MainMenuItemViewModel item in items)
-                plugins.Items.Add(MenuItem(item, windows));
-        });
-        menu.Items.Add(plugins);
-        if (openManager is not null)
-        {
-            MenuItem manager = new() { Header = ManagerHeader };
-            manager.Click += (_, _) => openManager();
-            menu.Items.Add(new MenuItem { Header = "Manager", Items = { manager } });
-        }
-        return menu;
-    }
-
     /// <summary>The item that opens the Skua Manager, for the menu bar and the Dock menu.</summary>
-    public static NativeMenuItem ManagerItem(Action openManager)
-    {
-        NativeMenuItem item = new(ManagerHeader);
-        item.Click += (_, _) => openManager();
-        return item;
-    }
+    public static NativeMenuItem ManagerItem(Action openManager) => new(ManagerHeader) { Command = new RelayCommand(openManager) };
 
     /// <summary>
     /// The menu bar's Window menu with the Bot Window item: <paramref name="windowMenu"/>, a window's own Window menu (its Top Most), with the
@@ -121,22 +95,6 @@ public static class MainMenus
         public void Refresh() => show([.. items]);
 
         public void OnEvent(object? sender, WeakEvent ev, NotifyCollectionChangedEventArgs e) => UiThread.Post(Refresh);
-    }
-
-    private static MenuItem MenuItem(MainMenuItemViewModel item, AvaloniaWindowService windows)
-    {
-        MenuItem menuItem = new() { Header = item.Header };
-        if (item.SubItems is { } subItems)
-        {
-            foreach (MainMenuItemViewModel subItem in subItems)
-                menuItem.Items.Add(MenuItem(subItem, windows));
-        }
-        else
-        {
-            menuItem.Command = item.Command;
-            menuItem.IsEnabled = IsEnabled(item, windows);
-        }
-        return menuItem;
     }
 
     private static NativeMenuItem NativeItem(MainMenuItemViewModel item, string header, AvaloniaWindowService windows) => new(header)

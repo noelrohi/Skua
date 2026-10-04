@@ -196,7 +196,7 @@ public sealed class HelpersTests(AppEngine app)
     {
         MainMenuViewModel viewModel = app.Get<MainMenuViewModel>();
         AvaloniaWindowService windows = app.Get<AvaloniaWindowService>();
-        MenuItem helpers = MainMenus.InWindow(viewModel, windows).Items.OfType<MenuItem>().Single(i => (string)i.Header! == "Helpers");
+        NativeMenu helpers = MainMenus.Native(viewModel, windows).Items.OfType<NativeMenuItem>().Single(i => i.Header == "Helpers").Menu!;
 
         foreach ((string key, string title, Type viewModelType) in new[]
         {
@@ -205,7 +205,7 @@ public sealed class HelpersTests(AppEngine app)
             ("Current Drops", "Current Drops", typeof(CurrentDropsViewModel)),
         })
         {
-            MenuItem item = helpers.Items.OfType<MenuItem>().Single(i => (string)i.Header! == key);
+            NativeMenuItem item = helpers.Items.OfType<NativeMenuItem>().Single(i => i.Header == key);
             Assert.True(item.IsEnabled, $"{key} is enabled");
             item.Command!.Execute(null);
             await Ui.PumpUntilAsync(() => windows.OpenWindow(key) is not null, $"the {key} window");

@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -8,8 +9,8 @@ using Skua.MacOS.GameHost;
 namespace Skua.App.Mac;
 
 /// <summary>
-/// The main window: the main menu with the Auto and Jump buttons, the login controls, the Game View, the status strip with the Notices
-/// beside it, and the sheet of a pending Question over them.
+/// The main window: the Auto, Jump and + buttons, beside what the Skua Manager's launch did; the Game View; the status strip with the
+/// Notices beside it; and the sheet of a pending Question over them. The main menu is the macOS menu bar's alone.
 /// </summary>
 internal sealed class MainWindow : Window
 {
@@ -20,12 +21,11 @@ internal sealed class MainWindow : Window
     public const string StatsPrefix = "[gameview] stats ";
 
     /// <summary>
-    /// Room for the main menu and the login controls above the Game View and the status strip below it, so the stage opens at its
-    /// native size.
+    /// Room for the buttons above the Game View and the status strip below it, so the stage opens at its native size.
     /// </summary>
-    private const int BarsHeight = 96;
+    private const int BarsHeight = 46;
 
-    public MainWindow(BridgeFlashUtil flash, ILogService log, StatusViewModel status, Menu menu, HelpersBar helpers, ScriptDialogsViewModel dialogs)
+    public MainWindow(BridgeFlashUtil flash, ILogService log, StatusViewModel status, HelpersBar helpers, ScriptDialogsViewModel dialogs)
     {
         Width = GameHostLaunch.StageWidth;
         Height = GameHostLaunch.StageHeight + BarsHeight;
@@ -34,18 +34,18 @@ internal sealed class MainWindow : Window
         Background = Brushes.Black;
         GameView view = new(flash);
         view.LiveChanged += reason => log.DebugLog($"[gameview] {reason}");
-        LoginBar login = new(status);
+        LaunchMessage launched = new(status);
         StatusStrip strip = new(status);
         Notices = new NoticesButton(dialogs);
         Sheet = new QuestionSheet(dialogs);
         DockPanel bottom = new() { Background = strip.Background, Children = { Notices, strip } };
         DockPanel.SetDock(Notices, Dock.Right);
-        DockPanel top = new() { Children = { helpers, menu } };
+        DockPanel buttons = new() { Children = { helpers, launched } };
         DockPanel.SetDock(helpers, Dock.Right);
+        Border top = new() { Background = strip.Background, Padding = new Thickness(0, 4), Child = buttons };
         DockPanel.SetDock(top, Dock.Top);
-        DockPanel.SetDock(login, Dock.Top);
         DockPanel.SetDock(bottom, Dock.Bottom);
-        Content = new Panel { Children = { new DockPanel { Children = { top, login, bottom, view } }, Sheet } };
+        Content = new Panel { Children = { new DockPanel { Children = { top, bottom, view } }, Sheet } };
         Opened += (_, _) => view.Focus();
 
         TimeSpan interval = TimeSpan.FromSeconds(

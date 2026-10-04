@@ -459,9 +459,9 @@ public sealed class PacketsTests(AppEngine app)
     private async Task<(Window, T)> OpenAsync<T>(string item) where T : global::Avalonia.Visual
     {
         AvaloniaWindowService windows = app.Get<AvaloniaWindowService>();
-        Menu menu = MainMenus.InWindow(app.Get<MainMenuViewModel>(), windows);
-        MenuItem packets = menu.Items.OfType<MenuItem>().Single(i => (string)i.Header! == "Packets");
-        MenuItem leaf = packets.Items.OfType<MenuItem>().Single(i => (string)i.Header! == item);
+        NativeMenu menu = MainMenus.Native(app.Get<MainMenuViewModel>(), windows);
+        NativeMenuItem packets = menu.Items.OfType<NativeMenuItem>().Single(i => i.Header == "Packets");
+        NativeMenuItem leaf = packets.Menu!.Items.OfType<NativeMenuItem>().Single(i => i.Header == item);
         Assert.True(leaf.IsEnabled, $"Packets → {item} is disabled");
         leaf.Command!.Execute(null);
         await Ui.PumpUntilAsync(() => windows.OpenWindow(item) is not null, $"the {item} window");
