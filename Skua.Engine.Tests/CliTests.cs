@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -623,6 +624,34 @@ public class CliTests
     }
 
     [Fact]
+    public async Task Skill_prints_the_repos_skill_byte_for_byte_without_an_Engine()
+    {
+        await using EngineSandbox sandbox = new();
+
+        ProcessResult result = await sandbox.RunCliAsync("--skill");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(File.ReadAllBytes(SkillPath()), Encoding.UTF8.GetBytes(result.Stdout));
+        Assert.Equal("", result.Stderr);
+        Assert.False(File.Exists(sandbox.Endpoint.SocketPath));
+    }
+
+    [Fact]
+    public async Task Help_lists_skill_and_ends_by_pointing_agents_at_it_but_a_commands_help_doesnt()
+    {
+        await using EngineSandbox sandbox = new();
+
+        ProcessResult root = await sandbox.RunCliAsync("--help");
+        ProcessResult command = await sandbox.RunCliAsync("status", "--help");
+
+        Assert.Equal(0, root.ExitCode);
+        Assert.Matches(@"\n  --skill\s+Print the agent skill", root.Stdout);
+        Assert.EndsWith("Otherwise run: skua --skill" + Environment.NewLine, root.Stdout);
+        Assert.Equal(0, command.ExitCode);
+        Assert.DoesNotContain("skua --skill", command.Stdout);
+    }
+
+    [Fact]
     public void Every_error_code_has_its_own_nonzero_exit_code()
     {
         int[] codes = Enum.GetValues<ErrorCode>().Select(ExitCodes.For).ToArray();
@@ -630,6 +659,9 @@ public class CliTests
         Assert.Equal(codes.Length, codes.Distinct().Count());
         Assert.DoesNotContain(codes, code => code is 0 or 1 or 2 or > 125);
     }
+
+    private static string SkillPath([CallerFilePath] string source = "") =>
+        Path.Combine(Path.GetDirectoryName(source)!, "..", "skills", "skua", "SKILL.md");
 
     private static string? State(ProcessResult result) =>
         JsonDocument.Parse(result.Stdout).RootElement.GetProperty("state").GetString();

@@ -241,6 +241,8 @@ On macOS, building `Skua.App.Engine` also builds the Game Host and `skua.swf`, s
 
 The output is flat: `skua`, `skua-engine`, `skua-gamehost` and `skua.swf` sit side by side in `Skua.App.Engine/bin/<Configuration>/net10.0/` (and in `dotnet publish` output). `skua` auto-starts the `skua-engine` next to it, and the Engine starts the `skua-gamehost` and `skua.swf` next to itself. For MCP clients, the config is `{"command": "skua", "args": ["mcp"]}`. These builds need an installed .NET runtime: with a Homebrew .NET, set `DOTNET_ROOT=/opt/homebrew/opt/dotnet/libexec` so the executables find it. A dev build's `skua` replaces an Engine from another build as an installed one does, but its build is only the version and the commit: after rebuilding uncommitted changes, run `skua engine stop`.
 
+For agents, `skua --skill` prints the skill for driving Engines, `skills/skua/SKILL.md`, which the build embeds, so it always matches the `skua` that prints it; `skua --help` ends by pointing agents at it. `npx skills add noelrohi/Skua --skill skua` installs the same file as a skill.
+
 `skua-engine` loads plugins as the Mac App does: every `.dll` in its own data folder's `plugins` (`<SkuaDIR>/plugins`, so `$SKUA_DIR/plugins` when `SKUA_DIR` is set, never the default folder then), as it starts and before it answers on its socket. A plugin that fails to load, such as one that needs WPF, gets a line in the `debug` log saying why, and the Engine runs on. A plugin's menu items have nowhere to show windowless, and there is no **View Plugins**: to add or remove one, change the folder and restart the Engine (`skua engine stop`). This is how Butlerv4's `LeaderButlerSyncv2.dll` works between windowless Engines.
 
 ### Running the Mac App

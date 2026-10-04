@@ -7,6 +7,7 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 ## October 4, 2026
 
 ### New
+* `skua --skill` prints a skill for agents that drive your Engines: listing them, logging accounts in, running and watching Scripts, checking quest and item progress, and setting up Butlers. `skua --help` points agents at it, and `npx skills add noelrohi/Skua --skill skua` installs it. See [Building the macOS Engine and CLI](./BUILD.md#building-the-macos-engine-and-cli).
 * `skua logs -f --tail N` prints the newest N entries, then follows new ones, like `tail -f -n N`, so watching a Script no longer takes a `--tail 1` to fetch the cursor first. With `--after`, it prints the newest N after the cursor.
 
 ### Changes
