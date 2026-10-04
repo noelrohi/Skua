@@ -194,6 +194,50 @@ fn logs_start_with_the_tail_then_follow_from_the_cursor() {
 }
 
 #[test]
+fn the_overview_reads_the_quests_and_says_which_requirement_rose_between_reads() {
+    let dir = skua_dir();
+    let reads = std::sync::atomic::AtomicI64::new(0);
+    let _engine = FakeEngine::start(dir.path(), "alt1", move |method, params| match method {
+        "hello" => Ok(hello(PROTOCOL, "alt1")),
+        "status" => Ok(status("alt1", true, None)),
+        "logs" if params[1].is_null() => Ok(json!({ "entries": [], "next": "c0", "gap": false })),
+        "logs" => Ok(json!({ "entries": [], "next": "c0", "gap": false })),
+        "map" => Ok(json!({ "name": "battleon", "roomId": 1, "cells": ["Enter"], "players": [], "monsters": [] })),
+        "quests" => {
+            // The second read and after have one more Slime; the Cells stay.
+            let slime = 293 + reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst).min(1);
+            Ok(
+                json!({ "filter": "loaded", "quests": [{ "id": 7722, "name": "Dragon's Will", "status": "inProgress",
+                "memberOnly": false, "gold": 0, "xp": 0, "rewards": [], "requirements": [
+                    { "itemId": 1, "name": "Unyielding Slime", "qty": 300, "have": slime, "temp": false, "idleSec": 1.0, "gainPerHour": null },
+                    { "itemId": 2, "name": "Omnipotent Cells", "qty": 20, "have": 0, "temp": false, "idleSec": 1.0, "gainPerHour": null }
+                ] }] }),
+            )
+        }
+        _ => Err((-32601, "no".into())),
+    });
+    let mut poller = Poller::new(dir.path().to_owned(), TIMEOUT);
+    let focus = Focus {
+        engine: Some("alt1".into()),
+        tab: Tab::Overview,
+    };
+
+    let first = poller.poll(&focus);
+    let second = poller.poll(&focus);
+    let third = poller.poll(&focus);
+
+    assert!(first.detail.progress.is_none(), "nothing rose on the first read");
+    assert!(first.detail.map.is_some() && first.detail.quests.is_some());
+    let (text, at) = second.detail.progress.expect("the Slime rose");
+    assert_eq!(text, "Dragon's Will: Unyielding Slime 294/300");
+    // A read where nothing rose keeps the last rise, and when it was seen.
+    assert_eq!(
+        third.detail.progress.map(|(t, seen)| (t, seen == at)),
+        Some((text, true))
+    );
+}
+
+#[test]
 fn hook_runs_come_from_the_newest_events_then_from_the_logs_as_they_arrive() {
     let dir = skua_dir();
     let ran = |seq, hook: &str| {
