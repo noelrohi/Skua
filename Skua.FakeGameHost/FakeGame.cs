@@ -54,6 +54,13 @@ internal sealed class FakeGame
     private int _bagSlots = 40;
     private int _slimeSamples = 3;
     private int _slimeCrowns;
+    /// <summary>The player's items, whose equips change as the game equips others.</summary>
+    private readonly List<JsonObject> _inventory =
+    [
+        Item(1, "Default Sword", 1, 1, "Sword", equipped: true, enhancement: 1),
+        Item(2, "Healer", 1, 1, "Class", equipped: true),
+        Item(3, "Treasure Chest", 5, 1000, "Item"),
+    ];
     /// <summary>The map ID of the monster the player targets, or null for none.</summary>
     private int? _target;
     private readonly HashSet<string> _lockedMaps = new(StringComparer.OrdinalIgnoreCase);
@@ -221,6 +228,10 @@ internal sealed class FakeGame
                     // The game's credit for a monster the player killed, as it sends it even when the monster gives nothing.
                     Pext(new JsonObject { ["cmd"] = "addGoldExp", ["intGold"] = 0, ["intExp"] = 0, ["typ"] = "m", ["id"] = int.Parse(monMapId) });
                     return true;
+                case ["own", string rest] when rest.Split(' ', 3) is [string id, string category, string name]:
+                    // Another item in the inventory, unequipped, as after buying it.
+                    _inventory.Add(Item(int.Parse(id), name, 1, 1, category));
+                    return true;
                 case ["pickup", string id]:
                     Pext(new JsonObject { ["cmd"] = "getDrop", ["ItemID"] = int.Parse(id), ["bSuccess"] = 1, ["iQty"] = 1, ["iQtyNow"] = 1, ["bBank"] = false });
                     return true;
@@ -285,6 +296,7 @@ internal sealed class FakeGame
         "world.mapLoadInProgress" => _world ? _loading : null,
         "world.curRoom" => _world ? _roomId : null,
         "world.lock.tfer" => _world ? new JsonObject { ["cd"] = 3000, ["ts"] = 0 } : null,
+        "world.lock.equipItem" => _world ? new JsonObject { ["cd"] = 500, ["ts"] = 0 } : null,
         // The game's uoTree is a flash.utils.Dictionary, whose toJSON gives "Dictionary"; the room's names are in areaUsers.
         "world.uoTree" => _world ? "Dictionary" : null,
         "world.areaUsers" => _world ? new JsonArray([.. Players().Select(p => JsonValue.Create(p.Key))]) : null,
@@ -378,6 +390,10 @@ internal sealed class FakeGame
                 break;
             case "world.showQuests" when args is [string quests, ..]:
                 _note($"showQuests {quests}");
+                break;
+            case "world.sendEquipItemRequest" when args is [string itemId]:
+                _note($"equipItem {itemId}");
+                Equip(int.Parse(itemId));
                 break;
             case "world.goto" when args is [string player]:
                 // The /goto command; the player stays where it is.
@@ -637,6 +653,19 @@ internal sealed class FakeGame
         Pext(new JsonObject { ["cmd"] = "moveToArea", ["strMapName"] = map, ["areaId"] = _roomId, ["strMapFileName"] = $"{map}.swf", ["uoBranch"] = users });
     }
 
+    /// <summary>
+    /// The game server's <c>equipItem</c>: the item replaces the equipped one of its category. In a house it ignores the request, with no
+    /// reply, as the real one does (#194).
+    /// </summary>
+    private void Equip(int id)
+    {
+        if (_map == "house" || _inventory.Find(i => (int)i["ItemID"]! == id) is not { } item)
+            return;
+        string category = (string)item["sType"]!;
+        foreach (JsonObject other in _inventory.Where(i => (string)i["sType"]! == category))
+            other["bEquip"] = other == item ? "1" : "0";
+    }
+
     private string Jump(string cell, string pad)
     {
         _note($"jump {cell} {pad}");
@@ -678,12 +707,7 @@ internal sealed class FakeGame
         };
     }
 
-    private static JsonArray Inventory() =>
-    [
-        Item(1, "Default Sword", 1, 1, "Sword", equipped: true, enhancement: 1),
-        Item(2, "Healer", 1, 1, "Class", equipped: true),
-        Item(3, "Treasure Chest", 5, 1000, "Item"),
-    ];
+    private JsonArray Inventory() => [.. _inventory.Select(i => i.DeepClone())];
 
     private static JsonArray Bank() => [Item(10, "Bank Relic", 2, 10, "Item")];
 

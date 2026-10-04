@@ -26,6 +26,43 @@ public class ScriptApiTests
     }
 
     [Fact]
+    public async Task Inventory_EquipItem_equips_the_item_and_logs_nothing()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        await session.GameHost.DoAsync("own 4 Class Rogue");
+
+        EvalResult equip = await session.Connection.EvalAsync("Bot.Inventory.EquipItem(4); return Bot.Player.CurrentClass?.Name;", cancellationToken: Ct);
+
+        Assert.Null(equip.Error);
+        Assert.Equal("Rogue", equip.Value!.Value.GetString());
+        Assert.Empty(equip.Logs);
+    }
+
+    [Fact]
+    public async Task Inventory_EquipItem_in_a_house_warns_once_that_the_item_isnt_equipped()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        await session.GameHost.DoAsync("own 4 Class Rogue");
+        await session.Connection.JoinAsync("house", cancellationToken: Ct);
+
+        EvalResult house = await session.Connection.EvalAsync("Bot.Inventory.EquipItem(4); return Bot.Player.CurrentClass?.Name;", cancellationToken: Ct);
+        await session.Connection.JoinAsync("yulgar", cancellationToken: Ct);
+        EvalResult yulgar = await session.Connection.EvalAsync("Bot.Inventory.EquipItem(4); return Bot.Player.CurrentClass?.Name;", cancellationToken: Ct);
+
+        // The game asked the game server both times; in the house it never answered.
+        Assert.Equal(2, (await session.GameHost.CallsAsync()).Count(c => c == "equipItem 4"));
+        Assert.Null(house.Error);
+        Assert.Equal("Healer", house.Value!.Value.GetString());
+        Assert.Equal(["Equipping Rogue failed: the game server ignores equips in a house (map house). Join another map, then equip it."], house.Logs);
+        Assert.Equal("Rogue", yulgar.Value!.Value.GetString());
+        Assert.Empty(yulgar.Logs);
+    }
+
+    [Fact]
     public async Task Map_Players_lists_the_rooms_players()
     {
         await using EngineSandbox sandbox = new();

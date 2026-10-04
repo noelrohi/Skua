@@ -15,6 +15,7 @@ public interface ICanEquip : ICheckEquipped
 {
     /// <summary>
     /// Equips the item with specified <paramref name="id"/>. This will do nothing if the item is not in the player's inventory.
+    /// If the item isn't equipped after the wait, as in a house, where the game server ignores equips, it writes a warning to the Script log.
     /// </summary>
     /// <param name="id">ID of the item to equip.</param>
     void EquipItem(int id);
