@@ -41,20 +41,40 @@ internal static class Cli
     }
 
     /// <summary>
-    /// Replays the entries of the given kinds after the cursor, then prints new ones as they arrive until interrupted:
-    /// one line each, or one JSON entry per line with <c>--json</c>. A gap is reported on stderr.
+    /// Replays the entries of the given kinds after the cursor, or with <paramref name="tail"/> only the newest that many of them, then prints new
+    /// ones as they arrive until interrupted: one line each, or one JSON entry per line with <c>--json</c>. A gap is reported on stderr.
     /// </summary>
-    public static async Task<int> FollowLogsAsync(bool json, LogKind[] kinds, string? after, CancellationToken cancellationToken)
+    public static async Task<int> FollowLogsAsync(bool json, LogKind[] kinds, string? after, int? tail, CancellationToken cancellationToken)
     {
         try
         {
             using EngineConnection connection = await EngineClient.ConnectAsync(Options(), cancellationToken);
+            HashSet<long> replayed = [];
+            if (tail is { } newest)
+            {
+                // A tail reads one kind, so several are read one after another and merged. Following on from the first one's cursor misses no
+                // entry recorded in between; one a later tail already printed is skipped.
+                List<LogPage> pages = [];
+                foreach (LogKind kind in kinds)
+                    pages.Add(await connection.LogsAsync(kind, after, null, newest, cancellationToken));
+                if (pages.Any(page => page.Gap))
+                    Console.Error.WriteLine($"skua: {Output.GapNotice}");
+                foreach (LogEntryDto entry in pages.SelectMany(page => page.Entries).OrderBy(entry => entry.Seq).TakeLast(newest))
+                {
+                    replayed.Add(entry.Seq);
+                    Print(entry);
+                }
+                after = pages[0].Next;
+            }
             await foreach (LogPage page in connection.SubscribeAsync(kinds, after, cancellationToken))
             {
                 if (page.Gap)
                     Console.Error.WriteLine($"skua: {Output.GapNotice}");
                 foreach (LogEntryDto entry in page.Entries)
-                    Console.WriteLine(json ? JsonSerializer.Serialize(entry, ControlJson.Options) : Output.Entry(entry));
+                {
+                    if (!replayed.Remove(entry.Seq))
+                        Print(entry);
+                }
             }
             return ExitCodes.Success;
         }
@@ -66,6 +86,8 @@ internal static class Cli
         {
             return Fail(json, e);
         }
+
+        void Print(LogEntryDto entry) => Console.WriteLine(json ? JsonSerializer.Serialize(entry, ControlJson.Options) : Output.Entry(entry));
     }
 
     /// <summary>

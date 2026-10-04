@@ -108,23 +108,23 @@ Argument<LogKind[]> logKinds = new("kind")
 };
 Option<string?> logsAfter = new("--after") { Description = "Start after this cursor: the 'next' of an earlier reply." };
 Option<int?> logsMax = new("--max") { Description = "Entries per page: 200 by default, at most 1000." };
-Option<int?> logsTail = new("--tail") { Description = "Instead of --max: the newest N entries (after --after's cursor, if given), still oldest first; at most 1000." };
+Option<int?> logsTail = new("--tail") { Description = "Instead of --max: the newest N entries (after --after's cursor, if given), still oldest first; at most 1000. With -f, it replays them, then follows." };
 Option<bool> follow = new("--follow", "-f") { Description = "Replay from the cursor, then print new entries as they arrive, until interrupted." };
-Command logs = new("logs", "Page through the Engine's logs and events, or follow them with -f.") { logKinds, logsAfter, logsMax, logsTail, follow };
+Command logs = new("logs", "Page through the Engine's logs and events, or follow them with -f; -f --tail N follows on from the newest N, like tail -f -n N.") { logKinds, logsAfter, logsMax, logsTail, follow };
 logs.Validators.Add(result =>
 {
     if (!result.GetValue(follow) && result.GetValue(logKinds)!.Length > 1)
         result.AddError("A page takes one kind; follow several with -f.");
     if (result.GetValue(follow) && result.GetValue(logsMax) is not null)
         result.AddError("--max applies to one page, not to -f.");
-    if (result.GetValue(logsTail) is not null && (result.GetValue(follow) || result.GetValue(logsMax) is not null))
-        result.AddError("--tail reads one page, without --max; to follow on from it, pass its 'next' to -f --after.");
+    if (result.GetValue(logsTail) is not null && result.GetValue(logsMax) is not null)
+        result.AddError("Give --max or --tail, not both.");
 });
 logs.SetAction((parse, ct) =>
 {
     LogKind[] kinds = parse.GetValue(logKinds) is { Length: > 0 } given ? given : [LogKind.All];
     return parse.GetValue(follow)
-        ? Cli.FollowLogsAsync(parse.GetValue(json), kinds, parse.GetValue(logsAfter), ct)
+        ? Cli.FollowLogsAsync(parse.GetValue(json), kinds, parse.GetValue(logsAfter), parse.GetValue(logsTail), ct)
         : Cli.RunAsync(parse.GetValue(json), async options =>
         {
             using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
