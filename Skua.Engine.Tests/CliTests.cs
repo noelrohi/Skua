@@ -106,6 +106,52 @@ public class CliTests
     }
 
     [Fact]
+    public async Task Engine_list_brief_shows_each_Engine_on_one_line_for_watching_a_party()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture game = await GameFixture.StartAsync(sandbox);
+        await game.Connection.LoginAsync("Galanoth", cancellationToken: TestContext.Current.CancellationToken);
+        await game.GameHost.DoAsync("combat");
+        await game.GameHost.DoAsync("target 1");
+        TestScripts.Write(sandbox, "Tests/Loop.cs", TestScripts.Loop);
+        await game.Connection.ScriptStartAsync("Tests/Loop.cs", cancellationToken: TestContext.Current.CancellationToken);
+        await game.GameHost.DoAsync("kill 1");
+        await game.Connection.WaitForStatusAsync(status => status.Script.Run?.Kills == 1);
+        File.WriteAllText(Path.Combine(sandbox.Endpoint.EnginesDir, "gone.sock"), "");
+
+        ProcessResult brief = await sandbox.RunCliAsync("engine", "list", "--brief");
+        ProcessResult json = await sandbox.RunCliAsync("engine", "list", "--brief", "--json");
+
+        Assert.Equal(0, brief.ExitCode);
+        string[] lines = brief.Stdout.TrimEnd().Split('\n');
+        Assert.Equal(2, lines.Length);
+        Assert.Matches(@"^default  Healer  HP \d+/\d+  battleon·Enter  Frogzard #1  Tests/Loop\.cs \d+ s  1\.0 kills/min  0 deaths$", lines[0]);
+        Assert.Equal("gone     stopped", lines[1]);
+        Assert.Equal(0, json.ExitCode);
+        using JsonDocument list = JsonDocument.Parse(json.Stdout);
+        JsonElement status = list.RootElement[0].GetProperty("status");
+        JsonElement player = status.GetProperty("game").GetProperty("player");
+        Assert.Equal(("Healer", "battleon", "Enter", "Frogzard", 1), (player.GetProperty("class").GetString(), player.GetProperty("map").GetString(),
+            player.GetProperty("cell").GetString(), player.GetProperty("target").GetString(), player.GetProperty("targetId").GetInt32()));
+        JsonElement run = status.GetProperty("script").GetProperty("run");
+        Assert.Equal(("Tests/Loop.cs", 1, 0), (run.GetProperty("script").GetString(), run.GetProperty("kills").GetInt32(), run.GetProperty("deaths").GetInt32()));
+        Assert.Equal(1.0, run.GetProperty("killsPerMin").GetDouble());
+        Assert.True(player.GetProperty("maxHp").GetInt32() > 0);
+        Assert.True(run.GetProperty("elapsedSec").GetDouble() > 0);
+    }
+
+    [Fact]
+    public async Task Engine_list_brief_shows_an_Engine_that_isnt_playing_by_its_game_state()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture game = await GameFixture.StartAsync(sandbox);
+
+        ProcessResult brief = await sandbox.RunCliAsync("engine", "list", "--brief");
+
+        Assert.Equal((0, "default  loginScreen  no Script"), (brief.ExitCode, brief.Stdout.TrimEnd()));
+    }
+
+    [Fact]
     public async Task Skua_login_logs_the_Test_Account_in_on_a_server_it_picks_with_no_credentials_passed()
     {
         await using EngineSandbox sandbox = new();

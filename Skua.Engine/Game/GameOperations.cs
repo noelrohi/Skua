@@ -78,7 +78,7 @@ internal sealed class GameOperations
             return new LoginResult(playing, AlreadyLoggedIn: true, _loggedInUsername!, IsTestAccount(service));
 
         TestAccount account = await ReadAccountAsync(service, cancellationToken);
-        _tracker.LoginStarted();
+        _tracker.LoginStarted(Accounts.NameOf(service));
         try
         {
             string playingOn = await LogInAsync(account, server, timeout, cancellationToken);

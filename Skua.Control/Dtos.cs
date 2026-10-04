@@ -39,9 +39,10 @@ public sealed record GameStatusDto(bool GameHostUp, GameState State, string? Ser
 /// <param name="RequiredXp">The XP the next level needs; 0 when there is no next level.</param>
 /// <param name="XpPercent"><see cref="Xp"/> as a percentage of <see cref="RequiredXp"/>, to one decimal; null when there is no next level.</param>
 /// <param name="TargetId">The monster the player targets, by its map ID as <c>map</c> lists it; null without a target.</param>
+/// <param name="Target">The name of the monster the player targets; null without a target.</param>
 public sealed record PlayerDto(
     string Name, int Level, string? Class, int Hp, int MaxHp, int Mp, int MaxMp, int Gold, string Map, string Cell, string Pad, bool Alive, bool InCombat,
-    int Xp, int RequiredXp, double? XpPercent, int? TargetId = null)
+    int Xp, int RequiredXp, double? XpPercent, int? TargetId = null, string? Target = null)
 {
     /// <summary><paramref name="xp"/> as a percentage of <paramref name="requiredXp"/>, to one decimal; null when there is no next level.</summary>
     public static double? Percent(int xp, int requiredXp) =>

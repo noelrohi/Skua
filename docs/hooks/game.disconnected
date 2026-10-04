@@ -1,0 +1,46 @@
+#!/bin/sh
+# Logs an account back in when the game logs it out unexpectedly, such as the game's idle kick after about 40 minutes.
+#
+# To use it, copy it into the data folder's hooks and run the Hook Runner (see BUILD.md, Hooks):
+#   cp docs/hooks/game.disconnected "$SKUA_DIR/hooks/" && chmod +x "$SKUA_DIR/hooks/game.disconnected" && skua hooks
+#
+# It logs back in with the account and server the event names: skua --engine <name> login <server> --account <account>.
+# It leaves the account logged out after:
+#   - a deliberate logout (reason "logout": skua logout, the logout op or the in-game button); skua engine stop and a
+#     replacement by another build record engine.stopping, not game.disconnected;
+#   - a disconnect during a Script run, whose auto-relogin is Core's;
+#   - a login Keychain doesn't name (account null), such as one typed into the game;
+#   - the Engine stopping before it logs in.
+# After a kick it first waits SKUA_RELOGIN_KICK_DELAY seconds (70, as Core's auto-relogin does), so it doesn't fight another
+# login of the same account.
+
+event=$(cat)
+field() { printf '%s' "$event" | plutil -extract "$1" raw -o - - 2>/dev/null; }
+reason=$(field data.reason)
+account=$(field data.account)
+server=$(field data.server)
+run=$(field run)
+
+if [ "$reason" = logout ]; then
+    echo "$SKUA_ENGINE_NAME was logged out deliberately; leaving it logged out."
+    exit 0
+fi
+if [ -n "$run" ]; then
+    echo "$SKUA_ENGINE_NAME was disconnected ($reason) during run $run; Core's auto-relogin handles it."
+    exit 0
+fi
+if [ -z "$account" ]; then
+    echo "$SKUA_ENGINE_NAME was disconnected ($reason), but Keychain doesn't name its account; log it in by hand."
+    exit 0
+fi
+if [ "$reason" = kicked ]; then
+    sleep "${SKUA_RELOGIN_KICK_DELAY:-70}"
+fi
+# engine status starts no Engine, so a stopped one stays stopped.
+state=$(skua --engine "$SKUA_ENGINE_NAME" engine status --json | plutil -extract state raw -o - - 2>/dev/null)
+if [ "$state" != running ]; then
+    echo "$SKUA_ENGINE_NAME is $state; not logging it in."
+    exit 0
+fi
+echo "$SKUA_ENGINE_NAME was disconnected ($reason); logging $account back in."
+exec skua --engine "$SKUA_ENGINE_NAME" login ${server:+"$server"} --account "$account"

@@ -34,6 +34,8 @@ public class GameStateTests
     [InlineData("lose-connection Your connection to the server has been lost.", "connectionLost", GameState.Disconnected)]
     [InlineData("kick", "kicked", GameState.Disconnected)]
     [InlineData("logout-button", "logout", GameState.LoginScreen)]
+    // Back at the login screen with no message, kick or logout to say why, as the game's idle kick leaves it.
+    [InlineData("idle-logout", "unknown", GameState.Disconnected)]
     public async Task Losing_the_session_is_one_disconnect_with_its_reason(string directive, string reason, GameState state)
     {
         await using EngineSandbox sandbox = new();
@@ -55,6 +57,97 @@ public class GameStateTests
         Assert.Single(events, e => e.Type == EventTypes.GameDisconnected);
         Assert.Equal($"playing→{JsonNamingPolicy.CamelCase.ConvertName(state.ToString())}", GameEvents.Describe(events[^1]));
     }
+
+    [Fact]
+    public async Task A_disconnect_names_the_account_and_the_server_it_ended_so_a_Hook_can_log_back_in()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+
+        await session.GameHost.DoAsync("idle-logout");
+        LogEntryDto disconnected = await session.Connection.WaitForEventAsync(EventTypes.GameDisconnected);
+
+        Assert.Equal(("unknown", "test", "Galanoth"), (Field(disconnected, "reason"), Field(disconnected, "account"), Field(disconnected, "server")));
+    }
+
+    [Fact]
+    public async Task Logging_out_with_the_logout_op_is_a_logout_disconnect()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+
+        await session.Connection.LogoutAsync(Ct);
+        LogEntryDto disconnected = await session.Connection.WaitForEventAsync(EventTypes.GameDisconnected);
+
+        Assert.Equal(("logout", "test", "Galanoth"), (Field(disconnected, "reason"), Field(disconnected, "account"), Field(disconnected, "server")));
+        Assert.Equal(GameState.LoginScreen, (await session.Connection.StatusAsync(Ct)).Game.State);
+    }
+
+    [Theory]
+    [InlineData("command")]
+    [InlineData("replaced")]
+    [InlineData("signal")]
+    public async Task A_stopping_Engine_says_why_and_what_was_playing_and_records_no_disconnect(string reason)
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        string after = (await session.Connection.LogsAsync(LogKind.Events, null, null, 1, Ct)).Next;
+        using EngineConnection follower = await sandbox.ConnectAsync();
+        Task<List<LogEntryDto>> followed = FollowUntilGoneAsync(follower, after);
+
+        switch (reason)
+        {
+            case "command":
+                await session.Connection.ShutdownAsync(Ct);
+                break;
+            case "replaced":
+                await session.Connection.ShutdownIfIdleAsync(Ct);
+                break;
+            default:
+                Process.Start("/bin/kill", ["-TERM", session.Engine.Id.ToString()]).WaitForExit();
+                break;
+        }
+        List<LogEntryDto> events = await followed.WaitAsync(TimeSpan.FromSeconds(30), Ct);
+
+        LogEntryDto stopping = Assert.Single(events, e => e.Type == EventTypes.EngineStopping);
+        Assert.Equal((reason, "test", "Galanoth"), (Field(stopping, "reason"), Field(stopping, "account"), Field(stopping, "server")));
+        Assert.DoesNotContain(events, e => e.Type == EventTypes.GameDisconnected);
+    }
+
+    [Fact]
+    public async Task An_Engine_stopping_while_not_playing_names_no_account()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        using EngineConnection follower = await sandbox.ConnectAsync();
+        Task<List<LogEntryDto>> followed = FollowUntilGoneAsync(follower, null);
+
+        await session.Connection.ShutdownAsync(Ct);
+        LogEntryDto stopping = Assert.Single(await followed.WaitAsync(TimeSpan.FromSeconds(30), Ct), e => e.Type == EventTypes.EngineStopping);
+
+        Assert.Equal(("command", null, null), (Field(stopping, "reason"), Field(stopping, "account"), Field(stopping, "server")));
+    }
+
+    /// <summary>The events after <paramref name="after"/> until the Engine closes the connection, as the Hook Runner sees them.</summary>
+    private static async Task<List<LogEntryDto>> FollowUntilGoneAsync(EngineConnection connection, string? after)
+    {
+        List<LogEntryDto> events = [];
+        try
+        {
+            await foreach (LogPage page in connection.SubscribeAsync([LogKind.Events], after, Ct))
+                events.AddRange(page.Entries);
+        }
+        catch (ControlException)
+        {
+        }
+        return events;
+    }
+
+    private static string? Field(LogEntryDto entry, string name) =>
+        entry.Data!.Value.TryGetProperty(name, out JsonElement value) && value.ValueKind != JsonValueKind.Null ? value.GetString() : null;
 
     [Fact]
     public async Task A_lost_connection_message_is_a_disconnect_even_while_the_game_still_says_it_is_connected()

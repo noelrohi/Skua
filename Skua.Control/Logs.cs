@@ -62,6 +62,13 @@ public static class EventTypes
     /// <summary>The Engine started: <c>{name, build, protocol, pid}</c>.</summary>
     public const string EngineStarted = "engine.started";
 
+    /// <summary>
+    /// The Engine is stopping: <c>{reason, account, server}</c>. The reason is <c>command</c> (<c>skua engine stop</c>, the <c>shutdown</c> op),
+    /// <c>replaced</c> (a <c>skua</c> from another build replacing it while idle), <c>signal</c> (SIGTERM or SIGINT) or <c>quit</c> (its host, such
+    /// as the Mac App, quitting). Account and server are what was playing, or null. The game closes without a <c>game.disconnected</c>.
+    /// </summary>
+    public const string EngineStopping = "engine.stopping";
+
     /// <summary>The Game Host started: <c>{pid, executable, swf}</c>.</summary>
     public const string GameHostStarted = "gamehost.started";
 
@@ -78,9 +85,11 @@ public static class EventTypes
     public const string GameState = "game.state";
 
     /// <summary>
-    /// The Test Account was disconnected: <c>{reason, detail?}</c>. The reason is the first that applies of <c>gameHostExited</c>, <c>connectionLost</c>
-    /// (with the game's connection message as detail), <c>kicked</c> and <c>logout</c> (deliberate: the <c>logout</c> op, a Script or the
-    /// in-game button). A failed login and a relogin's own logout aren't disconnects.
+    /// The account was disconnected: <c>{reason, detail?, account, server}</c>. The reason is the first that applies of <c>gameHostExited</c>,
+    /// <c>connectionLost</c> (with the game's connection message as detail), <c>kicked</c>, <c>logout</c> (deliberate: the <c>logout</c> op or the
+    /// in-game button) and <c>unknown</c> (logged out with nothing to say why, as the game's idle kick does). Account is the account's name as
+    /// <c>login --account</c> takes it, null when the Engine didn't log it in; server is the one it played on. A failed login, a relogin's own
+    /// logout and an Engine stopping (see <see cref="EngineStopping"/>) aren't disconnects.
     /// </summary>
     public const string GameDisconnected = "game.disconnected";
 

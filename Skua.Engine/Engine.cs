@@ -51,6 +51,9 @@ internal sealed class Engine : IEngineRpc
     private readonly ActionSlot _slot;
     private readonly ActionSlot _scriptsSlot;
 
+    /// <summary>Why the Engine stops, as <c>engine.stopping</c> says: the first request wins.</summary>
+    private string? _stopReason;
+
     private Engine(EngineEndpoint endpoint, GameHostSupervisor gameHost, EngineLogs logs, IServiceProvider services, EngineHostOptions options)
     {
         _endpoint = endpoint;
@@ -147,7 +150,7 @@ internal sealed class Engine : IEngineRpc
                 throw;
             }
             Task<int> completion = engine.ServeAsync(listener, engineLock, logs);
-            return new HostedEngine(endpoint, services, engine, statusChanges, completion, engine._shutdown.Cancel);
+            return new HostedEngine(endpoint, services, engine, statusChanges, completion, () => engine.RequestStop("quit"));
         }
         catch
         {
@@ -198,7 +201,7 @@ internal sealed class Engine : IEngineRpc
     {
         EnsureHeadless("Shutdown");
         EngineLog.Write("Shutdown requested over the Control Surface.");
-        _shutdown.Cancel();
+        RequestStop("command");
         return Task.CompletedTask;
     }
 
@@ -221,7 +224,7 @@ internal sealed class Engine : IEngineRpc
             throw;
         }
         EngineLog.Write("Shutdown requested over the Control Surface, to replace this Engine with another build.");
-        _shutdown.Cancel();
+        RequestStop("replaced");
         return Task.CompletedTask;
     }
 
@@ -462,6 +465,9 @@ internal sealed class Engine : IEngineRpc
     private async Task StopAsync()
     {
         EngineLog.Write("Shutting down.");
+        // First, so a Hook Runner following the events learns why the game goes away, and what played, before the connection closes.
+        (string? account, string? server) = _gameHost.Tracker.Stopping();
+        _logs.Event(EventTypes.EngineStopping, new { reason = _stopReason ?? "quit", account, server });
         try
         {
             if ((await _scripts.StopAsync(CancellationToken.None)).WasRunning)
@@ -483,6 +489,13 @@ internal sealed class Engine : IEngineRpc
     {
         context.Cancel = true;
         EngineLog.Write($"Shutdown requested by {context.Signal}.");
+        RequestStop("signal");
+    }
+
+    /// <param name="reason">What <c>engine.stopping</c> gives as its reason, unless an earlier request gave one.</param>
+    private void RequestStop(string reason)
+    {
+        Interlocked.CompareExchange(ref _stopReason, reason, null);
         _shutdown.Cancel();
     }
 }

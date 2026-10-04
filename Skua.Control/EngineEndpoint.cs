@@ -28,6 +28,7 @@ public sealed record EngineEndpoint
         EnginesDir = Path.Combine(skuaDir, "engines");
         LockPath = Path.Combine(EnginesDir, name + ".lock");
         LogPath = Path.Combine(EnginesDir, name + ".log");
+        KeptNoticePath = Path.Combine(EnginesDir, name + ".kept");
         LogFilesDir = Path.Combine(EnginesDir, "logs", name);
     }
 
@@ -44,6 +45,9 @@ public sealed record EngineEndpoint
 
     /// <summary>The Engine's own diagnostics when it runs detached.</summary>
     public string LogPath { get; }
+
+    /// <summary>Which Engine from another build a client last said it kept, and from which build, so it says so once.</summary>
+    public string KeptNoticePath { get; }
 
     /// <summary>Where the Engine writes one JSONL file of its log entries per start, keeping the last 10.</summary>
     public string LogFilesDir { get; }

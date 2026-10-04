@@ -13,7 +13,66 @@ internal static class Output
     {
         EngineInfoDto engine = status.Engine;
         return $"Engine  {engine.Name} ({(engine.Host == EngineHost.App ? "in the Skua app, " : "")}pid {engine.Pid}, up {engine.UptimeSec:0} s, "
-            + $"build {engine.Build}, protocol {engine.Protocol})\n{GameAndScript(status)}";
+            + $"build {engine.Build}, protocol {engine.Protocol})\n{(OtherBuild(engine, status.Script) is { } note ? note + "\n" : "")}{GameAndScript(status)}";
+    }
+
+    /// <summary>
+    /// The line that says an Engine is from another build than this skua's, and what replaces it; null for one from this build. The notice when
+    /// a command keeps such an Engine shows only once, so this keeps it in view.
+    /// </summary>
+    private static string? OtherBuild(EngineInfoDto engine, ScriptStatusDto script)
+    {
+        if (engine.Build == ControlProtocol.Build)
+            return null;
+        string replaces = engine.Host == EngineHost.App ? "quitting the app replaces it"
+            : script.Run is not null ? "a skua command replaces it once its Script ends"
+            : "the next skua command replaces it";
+        return $"Build   {engine.Build}, another build than this skua's {ControlProtocol.Build}; {replaces}";
+    }
+
+    /// <summary>
+    /// One line per Engine for watching a party: Engine Name, class, HP, map·cell, target, Script and run time, kills a minute and deaths,
+    /// in columns. An Engine that isn't playing shows its game state, and one that isn't running why.
+    /// </summary>
+    public static string EngineListBrief(IReadOnlyList<EngineListEntry> engines)
+    {
+        if (engines.Count == 0)
+            return "No Engines are running.";
+        List<(string[] Cells, bool Playing)> rows = [.. engines.Select(BriefRow)];
+        // The names line up, and so do the columns of the Engines that are playing; the last cell of a row is never padded.
+        int Width(int column, bool playingOnly) => rows.Where(row => (!playingOnly || row.Playing) && row.Cells.Length > column + 1)
+            .Select(row => row.Cells[column].Length).DefaultIfEmpty(0).Max();
+        int[] widths = [.. Enumerable.Range(0, rows.Max(row => row.Cells.Length)).Select(column => Width(column, playingOnly: column > 0))];
+        return string.Join('\n', rows.Select(row => string.Join("  ", row.Cells.Select((cell, column) =>
+            column < row.Cells.Length - 1 && (column == 0 || row.Playing) ? cell.PadRight(widths[column]) : cell))));
+    }
+
+    private static (string[] Cells, bool Playing) BriefRow(EngineListEntry entry)
+    {
+        if (entry.Status is not { } status)
+            return ([entry.Engine.Name, entry.Engine.State switch
+            {
+                EngineState.Running when entry.Engine.Compatible == false => $"protocol {entry.Engine.Protocol}, not {ControlProtocol.Version}",
+                EngineState.Running => "not answering",
+                EngineState.StartingOrHung => "starting or hung",
+                _ => "stopped",
+            }], false);
+
+        List<string> cells = [status.Engine.Name];
+        ScriptRunDto? run = status.Script.Run;
+        string script = run is null ? "no Script" : $"{run.Script} {Duration(run.ElapsedSec)}";
+        if (status.Game.Player is { } player)
+            cells.AddRange([player.Class ?? "no class", $"HP {player.Hp}/{player.MaxHp}", $"{player.Map}·{player.Cell}",
+                player.TargetId is { } id ? $"{player.Target ?? "monster"} #{id}" : "no target", script]);
+        else
+            cells.AddRange([Name(status.Game.State), script]);
+        if (run is not null)
+            cells.AddRange([$"{(run.KillsPerMin is { } perMin ? $"{perMin:0.0}" : "-")} kills/min", Count(run.Deaths, "death")]);
+        if (status.PendingDialogs.Count > 0)
+            cells.Add(Count(status.PendingDialogs.Count, "Question"));
+        if (status.Engine.Build != ControlProtocol.Build)
+            cells.Add("another build");
+        return ([.. cells], status.Game.Player is not null);
     }
 
     /// <summary>One block per Engine: its name and host, then its game and Script indented; one without a status says why on one line.</summary>
@@ -24,7 +83,7 @@ internal static class Output
         return string.Join("\n\n", engines.Select(entry => entry.Status is not { Engine: var engine } status
             ? Engine(entry.Engine)
             : $"{engine.Name}  {(engine.Host == EngineHost.App ? "in the Skua app" : "windowless")}, pid {engine.Pid}, up {engine.UptimeSec:0} s, build {engine.Build}\n"
-                + string.Join('\n', GameAndScript(status).Split('\n').Select(line => "  " + line))));
+                + string.Join('\n', $"{(OtherBuild(engine, status.Script) is { } note ? note + "\n" : "")}{GameAndScript(status)}".Split('\n').Select(line => "  " + line))));
     }
 
     /// <summary>The lines of a status below its Engine: the game, the Script, the player and any pending Questions.</summary>
@@ -339,6 +398,9 @@ internal static class Output
         EngineState.Running when engine.Compatible == false =>
             $"Engine '{engine.Name}' is running{InApp(engine)} (pid {engine.Pid}, build {engine.Build}) on protocol {engine.Protocol}, not {ControlProtocol.Version}; "
             + (engine.Host == EngineHost.App ? "quit the app." : "run 'skua engine stop'."),
+        EngineState.Running when engine.Build != ControlProtocol.Build =>
+            $"Engine '{engine.Name}' is running{InApp(engine)} (pid {engine.Pid}, build {engine.Build}, another build than this skua's {ControlProtocol.Build}); "
+            + (engine.Host == EngineHost.App ? "quitting the app replaces it." : "a skua command replaces it once it's idle."),
         EngineState.Running => $"Engine '{engine.Name}' is running{InApp(engine)} (pid {engine.Pid}, build {engine.Build}).",
         EngineState.StartingOrHung => $"Engine '{engine.Name}' is starting or hung; its socket {engine.Socket} doesn't answer.",
         _ => $"Engine '{engine.Name}' is stopped.",

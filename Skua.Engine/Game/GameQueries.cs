@@ -1,6 +1,7 @@
 using Skua.Control;
 using Skua.Core.Interfaces;
 using Skua.Core.Models.Items;
+using Skua.Core.Models.Monsters;
 
 namespace Skua.Engine.Game;
 
@@ -142,9 +143,9 @@ internal sealed class GameQueries
         int xp = player.XP;
         int requiredXp = player.RequiredXP;
         // The game answers an empty monster, map ID 0, without a target.
-        int? target = player.Target is { MapID: > 0 } monster ? monster.MapID : null;
+        Monster? target = player.Target is { MapID: > 0 } monster ? monster : null;
         return new PlayerDto(name ?? player.Username ?? "", player.Level, playerClass, player.Health, player.MaxHealth, player.Mana, player.MaxMana, player.Gold,
-            _api.Map.Name, player.Cell, player.Pad, Alive: state > 0, InCombat: state == 2, xp, requiredXp, PlayerDto.Percent(xp, requiredXp), target);
+            _api.Map.Name, player.Cell, player.Pad, Alive: state > 0, InCombat: state == 2, xp, requiredXp, PlayerDto.Percent(xp, requiredXp), target?.MapID, target?.Name);
     }
 
     /// <summary>

@@ -185,6 +185,52 @@ public class HookTests
         Assert.Contains("hook.ran", logs.Stdout);
     }
 
+    [Fact]
+    public async Task The_example_relogin_hook_logs_an_account_back_in_after_an_unexpected_logout_and_never_after_skua_logout()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture game = await GameFixture.StartAsync(sandbox);
+        await game.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        WriteHook(sandbox, EventTypes.GameDisconnected, await File.ReadAllTextAsync(Path.Combine(EngineSandbox.BinDir, "hooks", EventTypes.GameDisconnected), Ct));
+        // The Hook runs the skua on PATH, as an installed one does.
+        Process runner = sandbox.StartCli(
+            new Dictionary<string, string> { ["PATH"] = $"{EngineSandbox.BinDir}:{Environment.GetEnvironmentVariable("PATH")}" }, "hooks");
+        await WaitForLineAsync(runner, "Following Engine 'default'");
+
+        await game.GameHost.DoAsync("idle-logout");
+        HookRunDto relogin = Run(await game.Connection.WaitForEventAsync(EventTypes.HookRan));
+        StatusDto back = await game.Connection.WaitForStatusAsync(status => status.Game.State == GameState.Playing);
+        await game.Connection.LogoutAsync(Ct);
+        LogEntryDto logoutRun = await game.Connection.WaitForEventAsync(EventTypes.HookRan, e => Run(e).EventSeq > relogin.EventSeq);
+        await Task.Delay(1000, Ct);
+
+        Assert.Equal(0, relogin.ExitCode);
+        Assert.Contains("logging test back in", relogin.Output);
+        Assert.Contains("Logged in as SkuaTester (the Test Account) on Galanoth.", relogin.Output);
+        Assert.Equal("Galanoth", back.Game.Server);
+        Assert.Equal(0, Run(logoutRun).ExitCode);
+        Assert.Contains("logged out deliberately", Run(logoutRun).Output);
+        Assert.Equal(GameState.LoginScreen, (await game.Connection.StatusAsync(Ct)).Game.State);
+    }
+
+    private static HookRunDto Run(LogEntryDto entry) => entry.Data!.Value.Deserialize<HookRunDto>(ControlJson.Options)!;
+
+    private static async Task WaitForLineAsync(Process process, string text)
+    {
+        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        timeout.CancelAfter(Wait);
+        while (await process.StandardOutput.ReadLineAsync(timeout.Token) is { } line)
+        {
+            if (line.Contains(text))
+            {
+                // Keep reading, so the runner never blocks on a full pipe.
+                _ = process.StandardOutput.BaseStream.CopyToAsync(Stream.Null, CancellationToken.None);
+                return;
+            }
+        }
+        throw new InvalidOperationException($"skua hooks exited before saying '{text}'.");
+    }
+
     private static void WriteHook(EngineSandbox sandbox, string name, string script, bool executable = true)
     {
         string hooks = Directory.CreateDirectory(Path.Combine(sandbox.SkuaDir, "hooks")).FullName;

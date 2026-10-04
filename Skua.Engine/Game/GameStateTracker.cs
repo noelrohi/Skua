@@ -46,6 +46,12 @@ internal sealed class GameStateTracker : IDisposable
 
     private string? _refusal;
 
+    /// <summary>The name of the account the Engine last logged in, as <c>login --account</c> takes it; null when it logged in none or one Keychain doesn't name.</summary>
+    private string? _account;
+
+    /// <summary>Whether the Engine is stopping, so losing the game is no disconnect: <c>engine.stopping</c> says why.</summary>
+    private bool _stopping;
+
     /// <summary>Counts commits and disconnects, so a poll that read the game before one is dropped and an edge reads again.</summary>
     private long _generation;
 
@@ -170,12 +176,14 @@ internal sealed class GameStateTracker : IDisposable
         Evaluate(edge: true);
     }
 
-    public void LoginStarted()
+    /// <param name="account">The name of the account it logs in, as <c>login --account</c> takes it, or null.</param>
+    public void LoginStarted(string? account)
     {
         lock (_lock)
         {
             // A login replaces the one before, so its own logout isn't a disconnect; it also supersedes an auto-relogin that never finished.
             _loggedIn = false;
+            _account = account;
             _loginInFlight = true;
             _reloginInFlight = false;
             _refusal = null;
@@ -242,6 +250,19 @@ internal sealed class GameStateTracker : IDisposable
         lock (_lock)
             _reloginInFlight = false;
         Evaluate(edge: true);
+    }
+
+    /// <summary>
+    /// The Engine is stopping: from now on losing the game is no disconnect. Returns the account and server that were playing, for
+    /// <c>engine.stopping</c>, or nulls when none was.
+    /// </summary>
+    public (string? Account, string? Server) Stopping()
+    {
+        lock (_lock)
+        {
+            _stopping = true;
+            return _loggedIn ? (_account, _server) : (null, null);
+        }
     }
 
     /// <summary>Whether the game is playing now: logged in with the world loaded. Reads the game, so it is current.</summary>
@@ -373,12 +394,15 @@ internal sealed class GameStateTracker : IDisposable
         return (_lastExitDeliberate ? GameState.LoginScreen : GameState.Disconnected, null, null);
     }
 
-    /// <summary>Why the Test Account was disconnected while the Game Host is up: the connection message, else a kick, else a logout.</summary>
+    /// <summary>
+    /// Why the account was disconnected while the Game Host is up: the connection message, else a kick, else unknown. The deliberate logouts,
+    /// the op's and the in-game button's, are edges of their own.
+    /// </summary>
     private static (DisconnectReason Reason, string? Detail) Why(Sample sample)
     {
         if (IsConnectionLost(sample.Message))
             return (DisconnectReason.ConnectionLost, sample.Message);
-        return sample.Kicked ? (DisconnectReason.Kicked, null) : (DisconnectReason.Logout, null);
+        return sample.Kicked ? (DisconnectReason.Kicked, null) : (DisconnectReason.Unknown, null);
     }
 
     /// <summary>A deliberate logout returns to the login screen; any other loss leaves the game disconnected.</summary>
@@ -389,7 +413,12 @@ internal sealed class GameStateTracker : IDisposable
         _generation++;
         _loggedIn = false;
         _lastExitDeliberate = reason == DisconnectReason.Logout;
-        _logs.Event(EventTypes.GameDisconnected, detail is null ? new { reason } : new { reason, detail });
+        if (_stopping)
+            return;
+        // The server is still the one played on: Commit clears it after.
+        _logs.Event(EventTypes.GameDisconnected, detail is null
+            ? new { reason, account = _account, server = _server }
+            : (object)new { reason, detail, account = _account, server = _server });
     }
 
     private void Commit(GameState next)
@@ -419,11 +448,14 @@ internal sealed class GameStateTracker : IDisposable
     private sealed record Sample(bool LoggedIn, bool World, string? Message, bool Kicked, string? Server);
 }
 
-/// <summary>Why the Test Account was disconnected, as <c>game.disconnected</c> reports it.</summary>
+/// <summary>Why the account was disconnected, as <c>game.disconnected</c> reports it.</summary>
 internal enum DisconnectReason
 {
     GameHostExited,
     ConnectionLost,
     Kicked,
     Logout,
+
+    /// <summary>Logged out with no connection message, kick or deliberate logout to say why, as the game's idle kick does.</summary>
+    Unknown,
 }

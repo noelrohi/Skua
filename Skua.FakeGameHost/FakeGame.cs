@@ -165,6 +165,10 @@ internal sealed class FakeGame
                     ToLoginScreen();
                     _kicked = true;
                     return true;
+                case ["idle-logout"]:
+                    // Back at the login screen with no message, kick or logout packet, as the game's idle kick leaves it.
+                    ToLoginScreen();
+                    return true;
                 case ["logout-button"]:
                     Packet("%xt%zm%cmd%1%logout%");
                     ToLoginScreen();

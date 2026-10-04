@@ -14,10 +14,13 @@ Paths below are in the data folder, `<SkuaDIR>`: `~/Library/Application Support/
 ## Engines
 
 - **List**: `skua engine list` shows every Engine in the data folder, in the Mac App or windowless, with its status, and starts none. With `--json` it is an array of `{engine, status}`, `status` null for an Engine that isn't running.
+- **Party**: `skua engine list --brief` gives each Engine one line: class, HP, map·cell, target, Script, run time, kills/min and deaths. Watch several accounts with it, one call for all of them; `--json` carries the same fields.
 - **Accounts**: an Engine the Skua Manager launched, or the TUI started, is named after its account.
 - **Mac App or windowless**: `status` says `in the Skua app` for an Engine in the Mac App, which stops only with its app; `engine stop` refuses it. A windowless one starts with `skua --engine <name> engine start` and stops with `engine stop`. Stopping an Engine stops its Script: ask the developer first.
 - **Log in**: `skua --engine <name> login [server] --account <name>` logs that account in. From a shell, `skua login` acts with the developer's rights, so log in only the accounts the developer names; otherwise use the Test Account, `--account test`.
 - **Memory**: each logged-in Engine runs its own Game Host. To free memory, `logout` the Engines not needed, then `engine stop` them.
+- **Logged out**: the game logs an idle account out after about 40 minutes, and a newer `skua` installed mid-run replaces an idle Engine at its next command, which comes back logged out. When a Script stops, log the account back in before starting the next.
+- **Relogin Hook**: offer the developer [`docs/hooks/game.disconnected`](https://github.com/noelrohi/Skua/blob/master/docs/hooks/game.disconnected). Copied into `<SkuaDIR>/hooks/` and made executable, with `skua hooks` running, it logs an account back in when the game logs it out unexpectedly, and leaves it out after `skua logout` or `engine stop`.
 
 ## Progress
 
