@@ -13,7 +13,7 @@ Paths below are in the data folder, `<SkuaDIR>`: `~/Library/Application Support/
 
 ## Engines
 
-- **List**: each running Engine has a socket, `<SkuaDIR>/engines/<name>.sock`. List the folder, then run `skua --engine <name> status` for each name.
+- **List**: `skua engine list` shows every Engine in the data folder, in the Mac App or windowless, with its status, and starts none. With `--json` it is an array of `{engine, status}`, `status` null for an Engine that isn't running.
 - **Accounts**: an Engine the Skua Manager launched, or the TUI started, is named after its account.
 - **Mac App or windowless**: `status` says `in the Skua app` for an Engine in the Mac App, which stops only with its app; `engine stop` refuses it. A windowless one starts with `skua --engine <name> engine start` and stops with `engine stop`. Stopping an Engine stops its Script: ask the developer first.
 - **Log in**: `skua --engine <name> login [server] --account <name>` logs that account in. From a shell, `skua login` acts with the developer's rights, so log in only the accounts the developer names; otherwise use the Test Account, `--account test`.
@@ -45,7 +45,7 @@ Paths below are in the data folder, `<SkuaDIR>`: `~/Library/Application Support/
 - **Start**: `skua --engine <name> script start <path> --option <key>=<value> ...`, with `<path>` in the Script Source, e.g. `Farm/Leveling.cs`. `script options <path>` lists the keys, only while no Script runs on that Engine.
 - **Wait**: `skua --engine <name> script wait --timeout 600` returns when the run ends or a Question is pending. `skua --engine <name> dialogs` lists the Questions; `dialogs answer <id> <choice>` answers one.
 - **Classes**: CoreBots swaps classes from `<SkuaDIR>/options/CBO_Storage(<username>).txt`, lines such as `SoloClassSelect: <class>` (also `FarmClassSelect`, `DodgeClassSelect`, `BossClassSelect`). A Script reads it as it starts, so edit it while that account's Script is stopped, after a backup.
-- **Equip by hand**: leave a house first (`skua --engine <name> join yulgar Enter Spawn`). In a house an equip does nothing and says nothing (#194).
+- **Equip by hand**: leave a house first (`skua --engine <name> join yulgar Enter Spawn`). In a house the game server ignores an equip, and the Script log says `Equipping <item> failed: the game server ignores equips in a house`.
 
 ## Butlers
 
@@ -56,6 +56,6 @@ Paths below are in the data folder, `<SkuaDIR>`: `~/Library/Application Support/
 
 ## Watching a run
 
-- **Follow**: `skua --engine <name> logs script --tail 1` ends with `-- next <cursor>`; then `logs script -f --after <cursor>` follows on from it. When a follow ends, re-arm from a fresh cursor.
+- **Follow**: `skua --engine <name> logs script -f --tail 20` prints the newest 20 lines, then follows, like `tail -f -n 20`. When a follow ends, start it again.
 - **Filter**: CoreBots' lines read `[HH:mm:ss] (<method>) <message>`: `Killing <monster> for item`, `Farming <item> (n/m)`, `Enhancement Unlocked`, `is now Rank 10`, and `Script ran for` at the end. Match errors as a whole word, `\b[Ee]rror\b`, since monster names contain "Terror".
 - **Deaths**: `deaths` in `status --json` counts the run's; `skua --engine <name> logs events` has each `player.death`. A death per kill means the account is under-geared for that boss: offer to bring more accounts.
