@@ -44,7 +44,7 @@ public class Reads extends Sprite {
     // world.uoTree: new Dictionary(true) with string keys; players leave and join while the game enumerates it.
     private static function players():Dictionary {
         var d:Dictionary = new Dictionary(true);
-        var names:Array = ["theknightofblood", "ladyapothecary", "maada", "yzobelle", "bpgeo", "bal_"];
+        var names:Array = ["theknightofblood", "ladyapothecary", "maada", "yzobelle", "bpgeo", "alt5"];
         for (var i:int = 0; i < names.length; i++)
             d[names[i]] = {uoName: names[i], entID: 4760 + i, strFrame: "Enter", strPad: "Spawn", intState: 1,
                 intLevel: 100, intHP: 3990, intHPMax: 3990, intMP: 100, tx: 512.5, ty: 400, afk: false,

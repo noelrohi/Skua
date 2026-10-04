@@ -36,7 +36,7 @@ public class StaleEngineTests
         await using EngineSandbox sandbox = new();
         // The socket's file name differs from the Engine Name, so the new Engine's name can only come from the old one's hello.
         string socket = Path.Combine(sandbox.SkuaDir, "farm.sock");
-        EngineEndpoint named = EngineEndpoint.Resolve("supermovie1", sandbox.SkuaDir, socket);
+        EngineEndpoint named = EngineEndpoint.Resolve("alt2", sandbox.SkuaDir, socket);
         try
         {
             await using (OtherVersionEngine other = new(sandbox, endpoint: named))
@@ -46,10 +46,10 @@ public class StaleEngineTests
 
                 Assert.Equal(0, status.ExitCode);
                 Assert.True(other.ShutdownRequested);
-                Assert.StartsWith("skua: Replaced Engine 'supermovie1' from another build", status.Stderr);
+                Assert.StartsWith("skua: Replaced Engine 'alt2' from another build", status.Stderr);
                 using JsonDocument json = JsonDocument.Parse(status.Stdout);
                 JsonElement engine = json.RootElement.GetProperty("engine");
-                Assert.Equal("supermovie1", engine.GetProperty("name").GetString());
+                Assert.Equal("alt2", engine.GetProperty("name").GetString());
                 Assert.Equal(ControlProtocol.Build, engine.GetProperty("build").GetString());
             }
             Assert.True(EngineLock.IsHeld(named.LockPath));
@@ -66,7 +66,7 @@ public class StaleEngineTests
     {
         await using EngineSandbox sandbox = new();
         string socket = Path.Combine(sandbox.SkuaDir, "farm.sock");
-        EngineEndpoint named = EngineEndpoint.Resolve("supermovie1", sandbox.SkuaDir, socket);
+        EngineEndpoint named = EngineEndpoint.Resolve("alt2", sandbox.SkuaDir, socket);
         await using OtherVersionEngine other = new(sandbox, endpoint: named, lockHeldAfterShutdown: TimeSpan.FromSeconds(2));
 
         ProcessResult stop = await sandbox.RunCliAsync(
