@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Skua.Control;
 
 namespace Skua.Engine.Tests;
@@ -41,25 +42,54 @@ public class ScriptApiTests
     }
 
     [Fact]
-    public async Task Inventory_EquipItem_in_a_house_warns_once_that_the_item_isnt_equipped()
+    public async Task Inventory_EquipItem_the_game_server_equips_late_returns_after_its_usual_wait_and_warns_of_nothing()
     {
         await using EngineSandbox sandbox = new();
         await using GameFixture session = await GameFixture.StartAsync(sandbox);
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
         await session.GameHost.DoAsync("own 4 Class Rogue");
+        // Also in a house, where the game server equips too (#198 said it never does).
         await session.Connection.JoinAsync("house", cancellationToken: Ct);
+        await session.GameHost.DoAsync("equip-delay 3000");
 
-        EvalResult house = await session.Connection.EvalAsync("Bot.Inventory.EquipItem(4); return Bot.Player.CurrentClass?.Name;", cancellationToken: Ct);
-        await session.Connection.JoinAsync("yulgar", cancellationToken: Ct);
-        EvalResult yulgar = await session.Connection.EvalAsync("Bot.Inventory.EquipItem(4); return Bot.Player.CurrentClass?.Name;", cancellationToken: Ct);
+        Stopwatch waited = Stopwatch.StartNew();
+        EvalResult equip = await session.Connection.EvalAsync("Bot.Inventory.EquipItem(4); return Bot.Player.CurrentClass?.Name;", cancellationToken: Ct);
+        TimeSpan returnedAfter = waited.Elapsed;
+        EvalResult landed = await session.Connection.EvalAsync("Bot.Wait.ForItemEquip(4, 100); return Bot.Player.CurrentClass?.Name;", cancellationToken: Ct);
+        // Past the time EquipItem gives the game server before it warns.
+        TimeSpan rest = TimeSpan.FromSeconds(11) - waited.Elapsed;
+        if (rest > TimeSpan.Zero)
+            await Task.Delay(rest, Ct);
+        LogPage logs = await session.Connection.LogsAsync(LogKind.Script, null, 1000, Ct);
 
-        // The game asked the game server both times; in the house it never answered.
-        Assert.Equal(2, (await session.GameHost.CallsAsync()).Count(c => c == "equipItem 4"));
-        Assert.Null(house.Error);
-        Assert.Equal("Healer", house.Value!.Value.GetString());
-        Assert.Equal(["Equipping Rogue failed: the game server ignores equips in a house (map house). Join another map, then equip it."], house.Logs);
-        Assert.Equal("Rogue", yulgar.Value!.Value.GetString());
-        Assert.Empty(yulgar.Logs);
+        Assert.Null(equip.Error);
+        Assert.Equal("Healer", equip.Value!.Value.GetString());
+        Assert.InRange(returnedAfter, TimeSpan.Zero, TimeSpan.FromSeconds(2.5));
+        Assert.Empty(equip.Logs);
+        Assert.Equal("Rogue", landed.Value!.Value.GetString());
+        Assert.DoesNotContain(logs.Entries, e => e.Text!.StartsWith("Equipping", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Inventory_EquipItem_the_game_server_never_equips_warns_once_after_the_Script_goes_on()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        await session.GameHost.DoAsync("own 4 Class Rogue");
+        await session.GameHost.DoAsync("equip-delay never");
+
+        EvalResult equip = await session.Connection.EvalAsync("Bot.Inventory.EquipItem(4); return Bot.Player.CurrentClass?.Name;", cancellationToken: Ct);
+        List<LogEntryDto> warnings = await session.Connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text!.StartsWith("Equipping", StringComparison.Ordinal));
+        await Task.Delay(TimeSpan.FromSeconds(1), Ct);
+        LogPage logs = await session.Connection.LogsAsync(LogKind.Script, null, 1000, Ct);
+
+        Assert.Equal(1, (await session.GameHost.CallsAsync()).Count(c => c == "equipItem 4"));
+        Assert.Null(equip.Error);
+        Assert.Equal("Healer", equip.Value!.Value.GetString());
+        Assert.Empty(equip.Logs);
+        Assert.Equal(["Equipping Rogue failed: it still isn't equipped 10 s after the request (map battleon)."], warnings.Select(w => w.Text));
+        Assert.Single(logs.Entries, e => e.Text!.StartsWith("Equipping", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -45,7 +45,7 @@ Paths below are in the data folder, `<SkuaDIR>`: `~/Library/Application Support/
 - **Start**: `skua --engine <name> script start <path> --option <key>=<value> ...`, with `<path>` in the Script Source, e.g. `Farm/Leveling.cs`. `script options <path>` lists the keys, only while no Script runs on that Engine.
 - **Wait**: `skua --engine <name> script wait --timeout 600` returns when the run ends or a Question is pending. `skua --engine <name> dialogs` lists the Questions; `dialogs answer <id> <choice>` answers one.
 - **Classes**: CoreBots swaps classes from `<SkuaDIR>/options/CBO_Storage(<username>).txt`, lines such as `SoloClassSelect: <class>` (also `FarmClassSelect`, `DodgeClassSelect`, `BossClassSelect`). A Script reads it as it starts, so edit it while that account's Script is stopped, after a backup.
-- **Equip by hand**: leave a house first (`skua --engine <name> join yulgar Enter Spawn`). In a house the game server ignores an equip, and the Script log says `Equipping <item> failed: the game server ignores equips in a house`.
+- **Equip**: the game server can take a few seconds to equip an item, so check the equip again before acting on it. When it hasn't landed 10 s after the request, the Script log says `Equipping <item> failed: it still isn't equipped 10 s after the request (map <map>)`.
 
 ## Butlers
 

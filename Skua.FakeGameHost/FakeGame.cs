@@ -61,6 +61,8 @@ internal sealed class FakeGame
         Item(2, "Healer", 1, 1, "Class", equipped: true),
         Item(3, "Treasure Chest", 5, 1000, "Item"),
     ];
+    /// <summary>How long the game server takes to equip an item, or null when it never does.</summary>
+    private int? _equipDelay = 0;
     /// <summary>The map ID of the monster the player targets, or null for none.</summary>
     private int? _target;
     private readonly HashSet<string> _lockedMaps = new(StringComparer.OrdinalIgnoreCase);
@@ -231,6 +233,9 @@ internal sealed class FakeGame
                 case ["own", string rest] when rest.Split(' ', 3) is [string id, string category, string name]:
                     // Another item in the inventory, unequipped, as after buying it.
                     _inventory.Add(Item(int.Parse(id), name, 1, 1, category));
+                    return true;
+                case ["equip-delay", string delay]:
+                    _equipDelay = delay == "never" ? null : int.Parse(delay);
                     return true;
                 case ["pickup", string id]:
                     Pext(new JsonObject { ["cmd"] = "getDrop", ["ItemID"] = int.Parse(id), ["bSuccess"] = 1, ["iQty"] = 1, ["iQtyNow"] = 1, ["bBank"] = false });
@@ -654,13 +659,26 @@ internal sealed class FakeGame
     }
 
     /// <summary>
-    /// The game server's <c>equipItem</c>: the item replaces the equipped one of its category. In a house it ignores the request, with no
-    /// reply, as the real one does (#194).
+    /// The game server's <c>equipItem</c>: the item replaces the equipped one of its category, after the <c>equip-delay</c>, or never.
     /// </summary>
     private void Equip(int id)
     {
-        if (_map == "house" || _inventory.Find(i => (int)i["ItemID"]! == id) is not { } item)
+        if (_equipDelay is not { } delay || _inventory.Find(i => (int)i["ItemID"]! == id) is not { } item)
             return;
+        if (delay == 0)
+        {
+            Equipped(item);
+            return;
+        }
+        Task.Delay(delay).ContinueWith(_ =>
+        {
+            lock (_lock)
+                Equipped(item);
+        });
+    }
+
+    private void Equipped(JsonObject item)
+    {
         string category = (string)item["sType"]!;
         foreach (JsonObject other in _inventory.Where(i => (string)i["sType"]! == category))
             other["bEquip"] = other == item ? "1" : "0";
