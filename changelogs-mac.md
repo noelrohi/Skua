@@ -7,6 +7,7 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 ## October 4, 2026
 
 ### New
+* `skua --skill` prints a skill for agents that drive your Engines: listing them, logging accounts in, running and watching Scripts, checking quest and item progress, and setting up Butlers. `skua --help` points agents at it, and `npx skills add noelrohi/Skua --skill skua` installs it. See [Building the macOS Engine and CLI](./BUILD.md#building-the-macos-engine-and-cli).
 * `skua logs -f --tail N` prints the newest N entries, then follows new ones, like `tail -f -n N`, so watching a Script no longer takes a `--tail 1` to fetch the cursor first. With `--after`, it prints the newest N after the cursor.
 
 ### Changes
@@ -18,7 +19,6 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 ## October 3, 2026
 
 ### New
-* `skua --skill` prints a skill for agents that drive your Engines: listing them, logging accounts in, running and watching Scripts, checking quest and item progress, and setting up Butlers. `skua --help` points agents at it, and `npx skills add noelrohi/Skua --skill skua` installs it. See [Building the macOS Engine and CLI](./BUILD.md#building-the-macos-engine-and-cli).
 * `skua-tui`'s Game tab shows the game's picture in Ghostty, kitty or WezTerm, refreshed every 2 seconds, and `p` opens it in Preview from any tab. See [The TUI](./BUILD.md#the-tui-skua-tui).
 * `skua-tui`'s Overview is a Party board: the account and its run in plain words, what its Script is working toward as a tree (quest › item to buy › material to farm › what it kills, with counts, pace, time left and how often a death reset the wave), every account on the same map with its HP, target, kills and deaths, the monsters in its cell and who is on each, and the game's chat. The Engine reports each run's deaths, the player's target and the Script's goal. See [The TUI](./BUILD.md#the-tui-skua-tui).
 * The Engine counts each run's kills, and `skua-tui` shows them with kills per minute. A quest stall while the Script still kills (a rare-drop grind) shows in yellow and is no longer an alert; only a stall with no kills is. Quest requirements count what the bank holds too, so a banked 1/1 item reads as done. See [The TUI](./BUILD.md#the-tui-skua-tui).
