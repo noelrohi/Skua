@@ -709,7 +709,7 @@ public class CliTests
     }
 
     [Fact]
-    public async Task Skill_teaches_testing_a_Comp_in_the_glossarys_terms_and_points_at_the_playbook()
+    public async Task Skill_teaches_testing_a_Comp_and_points_at_the_Scripts_forks_glossary_and_playbook()
     {
         await using EngineSandbox sandbox = new();
 
@@ -718,12 +718,15 @@ public class CliTests
         Assert.Equal(0, result.ExitCode);
         string[] sections = result.Stdout.Split("\n## ");
         string section = Assert.Single(sections, s => s.StartsWith("Testing a Comp\n", StringComparison.Ordinal));
+        Assert.Contains("[glossary](https://github.com/noelrohi/Scripts/blob/Skua/GLOSSARY.md)", section);
         foreach (string term in new[] { "Comp", "Party Layout", "Loadout", "Role", "Attempt", "Wipe", "Script Report" })
             Assert.Matches($@"\b{term}\b", section);
         Assert.Contains("https://github.com/noelrohi/Scripts/blob/Skua/docs/Skua/Ultras%20v3%20Playbook.md", section);
         Assert.Contains("Unstable Malevolence Elixir", section);
         Assert.Contains("DoAllUltras.cfg", section);
         Assert.Contains("ultra.attempt", section);
+        Assert.Contains("skua scripts source noelrohi/Scripts@<branch>", section);
+        Assert.Contains("skua scripts source --default", section);
         Assert.Contains("alt1", section);
     }
 
