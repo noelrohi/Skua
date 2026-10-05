@@ -709,6 +709,25 @@ public class CliTests
     }
 
     [Fact]
+    public async Task Skill_teaches_testing_a_Comp_in_the_glossarys_terms_and_points_at_the_playbook()
+    {
+        await using EngineSandbox sandbox = new();
+
+        ProcessResult result = await sandbox.RunCliAsync("--skill");
+
+        Assert.Equal(0, result.ExitCode);
+        string[] sections = result.Stdout.Split("\n## ");
+        string section = Assert.Single(sections, s => s.StartsWith("Testing a Comp\n", StringComparison.Ordinal));
+        foreach (string term in new[] { "Comp", "Party Layout", "Loadout", "Role", "Attempt", "Wipe", "Script Report" })
+            Assert.Matches($@"\b{term}\b", section);
+        Assert.Contains("https://github.com/noelrohi/Scripts/blob/Skua/docs/Skua/Ultras%20v3%20Playbook.md", section);
+        Assert.Contains("Unstable Malevolence Elixir", section);
+        Assert.Contains("DoAllUltras.cfg", section);
+        Assert.Contains("ultra.attempt", section);
+        Assert.Contains("alt1", section);
+    }
+
+    [Fact]
     public async Task Help_lists_skill_and_ends_by_pointing_agents_at_it_but_a_commands_help_doesnt()
     {
         await using EngineSandbox sandbox = new();
