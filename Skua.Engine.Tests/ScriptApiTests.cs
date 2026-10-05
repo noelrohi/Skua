@@ -50,7 +50,7 @@ public class ScriptApiTests
         await session.GameHost.DoAsync("own 4 Class Rogue");
         // Also in a house, where the game server equips too (#198 said it never does).
         await session.Connection.JoinAsync("house", cancellationToken: Ct);
-        await session.GameHost.DoAsync("equip-delay 3000");
+        await session.GameHost.DoAsync("equip-delay 6000");
 
         Stopwatch waited = Stopwatch.StartNew();
         // Timed inside the snippet, so compiling it doesn't count.
@@ -67,7 +67,8 @@ public class ScriptApiTests
         Assert.Null(equip.Error);
         string[] returned = equip.Value!.Value.GetString()!.Split('|');
         Assert.Equal("Healer", returned[0]);
-        Assert.InRange(TimeSpan.FromMilliseconds(long.Parse(returned[1])), TimeSpan.Zero, TimeSpan.FromSeconds(2.5));
+        // Well before the game server equips it at 6 s; the equip cooldown and the ~1 s wait take up to ~3 s on a slow runner.
+        Assert.InRange(TimeSpan.FromMilliseconds(long.Parse(returned[1])), TimeSpan.Zero, TimeSpan.FromSeconds(5));
         Assert.Empty(equip.Logs);
         Assert.Equal("Rogue", landed.Value!.Value.GetString());
         Assert.DoesNotContain(logs.Entries, e => e.Text!.StartsWith("Equipping", StringComparison.Ordinal));
