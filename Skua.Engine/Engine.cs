@@ -49,6 +49,7 @@ internal sealed class Engine : IEngineRpc
     private readonly EvalOperations _eval;
     private readonly DialogOperations _dialogs;
     private readonly ScriptRuns _runs;
+    private readonly ScriptReports _reports;
     private readonly ActionSlot _slot;
     private readonly ActionSlot _scriptsSlot;
 
@@ -65,6 +66,7 @@ internal sealed class Engine : IEngineRpc
         ScriptDialogBroker broker = services.GetRequiredService<ScriptDialogBroker>();
         _dialogs = new DialogOperations(broker, logs);
         _runs = new(logs, manager, services.GetRequiredService<IScriptOption>(), broker, keepLagKillerOn: options.IsHeadless);
+        _reports = new ScriptReports(logs, _runs);
         _slot = new();
         _scriptsSlot = new();
         SemaphoreSlim compiling = new(1, 1);

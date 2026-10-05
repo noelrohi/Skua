@@ -146,6 +146,13 @@ public static class EventTypes
     public const string ScriptError = "script.error";
 
     /// <summary>
+    /// A Script Report, which a Script or an <c>eval</c> records with <c>Bot.Report(name, data)</c>: <c>{run, script, name, data}</c>, the data the
+    /// object serialized as JSON. Data over 64 KB is its JSON text cut to 64 KB, as a string; data that can't be serialized is <c>{error}</c>.
+    /// The run and script are null outside a run. A <c>[report] &lt;name&gt;</c> Script log line accompanies it.
+    /// </summary>
+    public const string ScriptReport = "script.report";
+
+    /// <summary>
     /// A Script showed a Notice, which never waits: <c>{caption, text, thread, script}</c>, the text cut to 64 KB and the script null outside a run.
     /// </summary>
     public const string NoticeShown = "notice.shown";

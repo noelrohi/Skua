@@ -22,6 +22,9 @@ internal sealed partial class LogScrubber
     /// <summary>The cap on a Script Dialog's message, a <c>text</c> field in event data, in UTF-8 bytes.</summary>
     public const int MaxDialogTextBytes = 64 * 1024;
 
+    /// <summary>The cap on a Script Report's data, a <c>data</c> field in event data, in UTF-8 bytes; as a Notice's text.</summary>
+    public const int MaxReportDataBytes = MaxDialogTextBytes;
+
     /// <summary>Longest first, so a secret that contains another is redacted whole.</summary>
     private ImmutableArray<string> _secrets = [];
 
@@ -37,15 +40,15 @@ internal sealed partial class LogScrubber
     public string Text(string text, ref bool truncated) => Scrub(text, MaxFieldBytes, ref truncated);
 
     /// <summary>
-    /// Scrubs every string in <paramref name="data"/> in place; a string under a <c>stack</c> key gets the stack cap, and one under a <c>text</c>
-    /// key the Script Dialog cap.
+    /// Scrubs every string in <paramref name="data"/> in place; a string under a <c>stack</c> key gets the stack cap, one under a <c>text</c>
+    /// key the Script Dialog cap, and one under a <c>data</c> key the Script Report cap.
     /// </summary>
     public void Data(JsonNode? data, ref bool truncated, string? key = null)
     {
         switch (data)
         {
             case JsonValue leaf when leaf.TryGetValue(out string? text):
-                leaf.ReplaceWith(Scrub(text, key switch { "stack" => MaxStackBytes, "text" => MaxDialogTextBytes, _ => MaxFieldBytes }, ref truncated));
+                leaf.ReplaceWith(Scrub(text, key switch { "stack" => MaxStackBytes, "text" => MaxDialogTextBytes, "data" => MaxReportDataBytes, _ => MaxFieldBytes }, ref truncated));
                 break;
             case JsonObject obj:
                 foreach ((string name, JsonNode? value) in obj.ToList())

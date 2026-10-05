@@ -268,6 +268,15 @@ public interface IScriptInterface
     void Log(string message);
 
     /// <summary>
+    /// Records a Script Report: a structured result, such as how a fight went, that the Engine records as a <c>script.report</c> event with the
+    /// run, the Script, <paramref name="name"/> and <paramref name="data"/> as JSON, and a <c>[report] &lt;name&gt;</c> Script log line.
+    /// It returns at once and never throws, even while the Script is stopping.
+    /// </summary>
+    /// <param name="name">What the report is, such as <c>ultra.attempt</c>.</param>
+    /// <param name="data">The result, serialized as JSON with camelCase member names; an anonymous object reads best.</param>
+    void Report(string name, object? data);
+
+    /// <summary>
     /// Schedules the specified <paramref name="action"/> to run after the desired <paramref name="delay"/> in ms.
     /// </summary>
     /// <param name="delay">Time to wait before invoking the action.</param>

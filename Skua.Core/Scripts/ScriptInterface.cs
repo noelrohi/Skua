@@ -191,6 +191,21 @@ public class ScriptInterface : IScriptInterface, IScriptInterfaceManager, IDispo
         _logger.ScriptLog(message);
     }
 
+    /// <remarks>Unlike <see cref="Log"/>, it still records while the Script is stopping, so a Script can report how it ended.</remarks>
+    public void Report(string name, object? data)
+    {
+        name ??= "";
+        try
+        {
+            Messenger.Send(new ScriptReportMessage(name, data), (int)MessageChannels.ScriptStatus);
+            _logger.ScriptLog($"[report] {name}");
+        }
+        catch (Exception e)
+        {
+            _logger.DebugLog($"Couldn't record the Script Report '{name}': {e.Message}");
+        }
+    }
+
     public void Sleep(int ms)
     {
         CheckScriptTermination();
