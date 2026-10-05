@@ -1,6 +1,6 @@
 ---
 name: skua
-description: Drive Skua Engines, which play AQW accounts, with the skua CLI. Use when asked how the Engines or accounts are doing, to run or watch a Script, to farm or unlock something on an account, to set up Butlers, or to check quest or item progress.
+description: Drive Skua Engines, which play AQW accounts, with the skua CLI. Use when asked how the Engines or accounts are doing, to run or watch a Script, to farm or unlock something on an account, to set up Butlers, to check quest or item progress, or to test an Ultra Comp.
 ---
 
 # Skua
@@ -64,3 +64,14 @@ Paths below are in the data folder, `<SkuaDIR>`: `~/Library/Application Support/
 - **Filter**: CoreBots' lines read `[HH:mm:ss] (<method>) <message>`: `Killing <monster> for item`, `Farming <item> (n/m)`, `Enhancement Unlocked`, `is now Rank 10`, and `Script ran for` at the end. Match errors as a whole word, `\b[Ee]rror\b`, since monster names contain "Terror".
 - **Script Reports**: a Script that calls `Bot.Report(name, data)` records a structured result as a `script.report` event, `{run, script, name, data}` with `data` as JSON (`{error}` when it couldn't be serialized; a string cut to 64 KB when over it), plus a `[report] <name>` Script log line. Follow them with `skua --engine <name> logs events -f` and read `data` rather than scraping log lines. `run` and `script` are null for a report from `eval`.
 - **Deaths**: `deaths` in `status --json` counts the run's; `skua --engine <name> logs events` has each `player.death`. A death per kill means the account is under-geared for that boss: offer to bring more accounts.
+
+## Testing a Comp
+
+A **Comp** is the developer's named strategy for one Ultra: 4 classes, each with its **Role**, its **Loadout** (enhancements, potions, scroll) and when it taunts. The **Party Layout** says which account plays which class. An **Attempt** is one fight, from engaging the boss to its kill or a **Wipe**, the whole party dead. The [Ultras v3 Playbook](https://github.com/noelrohi/Scripts/blob/Skua/docs/Skua/Ultras%20v3%20Playbook.md) in the Scripts fork has each boss's Comps and results table. To test a Comp:
+
+1. **As written**: run the Comp exactly as the developer wrote it. A tweak worth trying goes in the result's note; the Comp's code stays as it is.
+2. **Potions**: the Script buys each Loadout's potions, except Unstable Malevolence Elixir, which the potion buyer can't make. Check with `eval` that the account playing a class whose Loadout has it holds some.
+3. **Options**: the boss's `<Boss> comp` and `<Boss> layout` options, e.g. `UltraNulgathComp=dot-lr-ap-loo` and `UltraNulgathLayout=<account>=<class>; ...`, are `DoAllUltras` options that a boss Script reads. No command sets them: while no `DoAllUltras` runs, back up `<SkuaDIR>/options/DoAllUltras.cfg` and set its `Options:UltraNulgathComp=` and `Options:UltraNulgathLayout=` lines. All four Engines read that one file. A kill spends the boss's quest for its period: before any test of a weekly boss, warn the developer and wait for their go-ahead.
+4. **Start and follow**: on each of the 4 Engines, `skua --engine <name> script start Ultrasv3/IndividualUltras/<boss script>`, e.g. `6UltraNulgathv3.cs`, and follow its `logs events -f` for the `script.report` events named `ultra.attempt`. Their `data` is `{boss, comp, class, role, startedAt, endedAt, outcome, bossHp, bossMaxHp, deaths: [{atSec}]}`, `outcome` being `kill`, `wipe` or `stopped`. A Script Report names no account; the Engine it came from does. Merge the four accounts' reports into one Attempt by boss, Comp and `startedAt`.
+5. **Stop**: at the first `kill`, or the session's third `wipe`, `skua --engine <name> script stop` on every Engine. A boss Script refights after a Wipe on its own.
+6. **Results**: add one row per Attempt to the boss's results table in the playbook: date, Comp, Party Layout as `alt1=<class>; ...`, outcome, duration (`endedAt` minus `startedAt`), deaths as `<Role> @ <atSec>`, and a note. The playbook is public: write the accounts as `alt1`…`alt4`, the same alt for the same account in every row.
