@@ -43,7 +43,8 @@ public class OptionContainer : ObservableObject, IOptionContainer
             ? default
             : OptionValues.TryGetValue(option, out string? value)
             ? string.IsNullOrEmpty(value)
-                ? default
+                // A string stored as empty is empty, not unset; only one with no default reads back as null, its default.
+                ? typeof(T) == typeof(string) && option.DefaultValue is not null ? (T)(object)string.Empty : default
                 : typeof(T).IsEnum
                 ? (T)Enum.Parse(typeof(T), value.Replace(' ', '_'))
                 : (T)Convert.ChangeType(value, typeof(T))

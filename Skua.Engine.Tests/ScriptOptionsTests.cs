@@ -125,6 +125,50 @@ public class ScriptOptionsTests
         Assert.Equal("seen stored", line.Text);
     }
 
+    [Fact]
+    public async Task An_option_stored_as_empty_reads_back_as_empty_and_one_never_stored_as_its_default()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture game = await GameFixture.StartAsync(sandbox);
+        TestScripts.Write(sandbox, "Tests/Classes.cs", TestScripts.Main(
+            """
+            bot.Log($"Class1=[{bot.Config.Get<string>("Class1") ?? "(null)"}] Class2=[{bot.Config.Get<string>("Class2") ?? "(null)"}]");
+            """,
+            """
+            public bool DontPreconfigure = true;
+
+            public string OptionsStorage = "TestClasses";
+
+            public List<IOption> Options = new()
+            {
+                new Option<string>("Class1", "Class 1", "", "ArchPaladin"),
+                new Option<string>("Class2", "Class 2", "", "StoneCrusher"),
+            };
+            """));
+
+        await game.Connection.ScriptStartAsync("Tests/Classes.cs", new Dictionary<string, string> { ["Class1"] = "" }, cancellationToken: Ct);
+        await game.Connection.ScriptWaitAsync(60, Ct);
+
+        LogEntryDto line = (await game.Connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text!.StartsWith("Class1=", StringComparison.Ordinal)))[0];
+        Assert.Equal("Class1=[] Class2=[StoneCrusher]", line.Text);
+        Assert.Contains("Options:Class1=", await File.ReadAllLinesAsync(Path.Combine(sandbox.SkuaDir, "options", "TestClasses.cfg"), Ct));
+    }
+
+    [Fact]
+    public async Task Script_options_shows_an_option_stored_as_empty_as_empty_beside_its_default()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture game = await GameFixture.StartAsync(sandbox);
+        TestScripts.Write(sandbox, "Tests/Farm.cs", Farm);
+        Directory.CreateDirectory(Path.Combine(sandbox.SkuaDir, "options"));
+        await File.WriteAllLinesAsync(Path.Combine(sandbox.SkuaDir, "options", "TestFarm.cfg"), ["Extra:name="], Ct);
+
+        ScriptOptionsResult result = await game.Connection.ScriptOptionsAsync("Tests/Farm.cs", Ct);
+
+        ScriptOptionDto name = Assert.Single(result.Options, o => o.Key == "Extra:name");
+        Assert.Equal(("", "nobody"), (name.Value, name.Default));
+    }
+
     private sealed class OptionComparer : IEqualityComparer<ScriptOptionDto>
     {
         public bool Equals(ScriptOptionDto? x, ScriptOptionDto? y) =>

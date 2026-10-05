@@ -25,7 +25,7 @@
 // and respawns the player otherwise, as it does for the Engine's), `combat`, `afk`, `join <map>`, `cell <cell>`, `gain <xp> <gold>` (a level up sends `levelUp`), `blip` (the connection reads as dropped until the Engine's game state tracker has read it, i.e. asked isKicked; the call log records `blip read <n>`, from 1), `connection-message <message>`, `broken-login`,
 // `login-response` (the last login's response again), `lock-map <map>` (transfers to it are ignored), `drop <id> <qty> <name>`,
 // `pickup <id>`, `own <id> <category> <name>` (another item in the inventory, unequipped; the game equips an item in place of its
-// category's, except in a house, where the game server ignores equips), `focus <input|dynamic|none>` (the text field the stage's focus is on, e.g. chat's input), `packet <text>` (the game's
+// category's), `equip-delay <ms|never>` (how long the game server takes to equip one from now on, 0 at first, or never), `focus <input|dynamic|none>` (the text field the stage's focus is on, e.g. chat's input), `packet <text>` (the game's
 // packet call, as for a packet it sends) and `server-packet <packet>` (a string packet from the game server, e.g. `%xt%chatm%-1%zone~hi%Bob%`,
 // handed to the game as SmartFox does) act in it.
 // The call log adds ` lag-killed` to a screenshot taken while the game's lag killer hides the world, and records what the game did:
