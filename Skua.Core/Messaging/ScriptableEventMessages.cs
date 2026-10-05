@@ -29,8 +29,6 @@ public sealed record ItemBoughtMessage(int CharItemID);
 public sealed record ItemSoldMessage(int CharItemID, int QuantitySold, int CurrentQuantity, int Cost, bool IsAC);
 public sealed record ScriptStartedMessage();
 public sealed record ScriptErrorMessage(Exception Exception);
-
-/// <summary>A Script Report: <c>Bot.Report(name, data)</c> was called, on the calling thread.</summary>
 public sealed record ScriptReportMessage(string Name, object? Data);
 public sealed record ScriptStoppingMessage();
 public sealed record ScriptStoppedMessage
