@@ -201,6 +201,21 @@ public partial interface IEngineRpc
     [JsonRpcMethod("quests")]
     Task<QuestsResult> QuestsAsync(QuestFilter filter = QuestFilter.Loaded, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Turns a quest in, as a Script's <c>Bot.Quests.Complete</c> does, and returns the game server's answer: whether it turned the quest in,
+    /// and if not, its reason. Its <see cref="EventTypes.QuestCompleted"/> or <see cref="EventTypes.QuestRejected"/> event records the same.
+    /// </summary>
+    /// <param name="id">The quest's ID, as <c>quests</c> lists it.</param>
+    /// <param name="rewardId">For a quest whose reward the player picks, the item to take; null for none.</param>
+    /// <param name="timeoutSec">How long to wait for the game server's answer: 10 s by default.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    /// <remarks>
+    /// Fails with <see cref="ErrorCode.NotLoggedIn"/> unless playing, <see cref="ErrorCode.Timeout"/> when the game server doesn't answer (as for a
+    /// quest that isn't accepted), <see cref="ErrorCode.ScriptRunning"/>, and <see cref="ErrorCode.Busy"/> while a login, logout, join or jump runs.
+    /// </remarks>
+    [JsonRpcMethod("quest_complete")]
+    Task<QuestCompleteResult> QuestCompleteAsync(int id, int? rewardId = null, int? timeoutSec = null, CancellationToken cancellationToken = default);
+
     /// <summary>The current map: its cells, players and monsters. Fails with <see cref="ErrorCode.NotLoggedIn"/> unless playing.</summary>
     [JsonRpcMethod("map")]
     Task<MapDto> MapAsync(CancellationToken cancellationToken = default);

@@ -69,11 +69,20 @@ internal sealed class EngineTools(Func<EngineClientOptions> options)
         CallAsync(connection => connection.InventoryAsync(kind, cancellationToken), cancellationToken);
 
     [McpServerTool(Name = "quests", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(QuestsResult))]
-    [Description("The quests the game has loaded, or only the accepted ones: status (notAccepted, inProgress, completable), member-only, gold, xp, requirements (item, qty needed and how many the player has) and rewards. Fails with NotLoggedIn unless playing.")]
+    [Description("The quests the game has loaded, or only the accepted ones: status (notAccepted, inProgress, completable: ready to turn in), member-only, gold, xp, requirements (item, qty needed and how many the player has) and rewards; for a daily, weekly or monthly quest its repeat and repeatDone (turned in since the game last reset it; null when the game can't tell); and lastRejection, the game server's reason for refusing its last turn-in, until it is turned in. Fails with NotLoggedIn unless playing.")]
     public Task<CallToolResult> Quests(
         [Description("loaded (every quest the game has loaded) or active (only accepted ones).")] QuestFilter filter = QuestFilter.Loaded,
         CancellationToken cancellationToken = default) =>
         CallAsync(connection => connection.QuestsAsync(filter, cancellationToken), cancellationToken);
+
+    [McpServerTool(Name = "quest_complete", UseStructuredContent = true, OutputSchemaType = typeof(QuestCompleteResult))]
+    [Description("Turn a quest in, as a Script's Bot.Quests.Complete does, and return the game server's answer: completed, and when it refused, its reason (the game's message, or null when it gave none). A quest.completed or quest.rejected event records the same, and the quests tool shows a refusal as the quest's lastRejection. Fails with NotLoggedIn unless playing, Timeout when the game server doesn't answer (as for a quest that isn't accepted), ScriptRunning, or Busy during a login, logout, join or jump.")]
+    public Task<CallToolResult> QuestComplete(
+        [Description("The quest's ID, as the quests tool lists it.")] int id,
+        [Description("For a quest whose reward the player picks, the item ID to take.")] int? rewardId = null,
+        [Description("Seconds to wait for the game server's answer: 10 by default.")] int? timeoutSec = null,
+        CancellationToken cancellationToken = default) =>
+        CallAsync(connection => connection.QuestCompleteAsync(id, rewardId, timeoutSec, cancellationToken), cancellationToken);
 
     [McpServerTool(Name = "map", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(MapDto))]
     [Description("The current map: name, roomId, its cells (which jump takes), the players on it and its monsters (mapId targets one). Fails with NotLoggedIn unless playing.")]

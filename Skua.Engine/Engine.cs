@@ -40,6 +40,7 @@ internal sealed class Engine : IEngineRpc
     private readonly GameOperations _game;
     private readonly MoveOperations _moves;
     private readonly ChatOperations _chat;
+    private readonly QuestOperations _questOperations;
     private readonly GameQueries _queries;
     private readonly QuestProgress _questProgress;
     private readonly CombatTally _tally;
@@ -78,7 +79,8 @@ internal sealed class Engine : IEngineRpc
         _chat = new ChatOperations(services.GetRequiredService<IScriptSend>(), services.GetRequiredService<IScriptMap>(), gameSlot);
         _tally = new CombatTally(services.GetRequiredService<IFlashUtil>());
         _goal = new ScriptGoal(logs);
-        _questProgress = new QuestProgress(services.GetRequiredService<IScriptInterface>(), gameHost.Tracker, _runs, logs, _tally, _goal);
+        _questOperations = new QuestOperations(services.GetRequiredService<IFlashUtil>(), services.GetRequiredService<IScriptWait>(), gameHost.TurnIns, gameSlot);
+        _questProgress = new QuestProgress(services.GetRequiredService<IScriptInterface>(), gameHost.Tracker, gameHost.TurnIns, _runs, logs, _tally, _goal);
         _queries = new GameQueries(services.GetRequiredService<IScriptInterface>(), services.GetRequiredService<IFlashUtil>(), gameHost.Tracker, gameSlot, _questProgress);
         _scripts = new ScriptOperations(manager, _runs, broker, _slot, _scriptsSlot, compiling);
         _eval = new EvalOperations(manager, services.GetRequiredService<IScriptInterface>(), logs, compiling);
@@ -317,6 +319,9 @@ internal sealed class Engine : IEngineRpc
 
     public Task<QuestsResult> QuestsAsync(QuestFilter filter, CancellationToken cancellationToken) =>
         _queries.QuestsAsync(filter, cancellationToken);
+
+    public Task<QuestCompleteResult> QuestCompleteAsync(int id, int? rewardId, int? timeoutSec, CancellationToken cancellationToken) =>
+        _questOperations.CompleteAsync(id, rewardId, timeoutSec, cancellationToken);
 
     public Task<MapDto> MapAsync(CancellationToken cancellationToken) => _queries.MapAsync(cancellationToken);
 

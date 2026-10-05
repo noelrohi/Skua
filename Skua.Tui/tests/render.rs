@@ -150,7 +150,7 @@ fn the_screen_shows_accounts_by_group_with_their_engines_and_the_selected_ones_o
         &screen,
         &[
             " skua  windowless Engines",
-            "3 Engines · 2 alerts · hooks off · protocol 17",
+            "3 Engines · 2 alerts · hooks off · protocol 18",
             "Accounts",
             "▾ Farm · 2",
             "▾ Butler · 1",
@@ -217,7 +217,7 @@ fn an_engine_of_another_protocol_fails_loudly_on_every_tab_and_shows_none_of_its
                 "Protocol mismatch",
                 "Engine 'bob'",
                 "speaks protocol 11, but",
-                "this skua-tui speaks 17. Nothing it reports is shown.",
+                "this skua-tui speaks 18. Nothing it reports is shown.",
             ],
         );
         assert!(!screen.contains("Player") && !screen.contains("Artix"), "{screen}");

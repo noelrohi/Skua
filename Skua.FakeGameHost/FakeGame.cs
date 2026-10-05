@@ -9,7 +9,7 @@ using System.Xml.Linq;
 /// <summary>
 /// The AQW game as skua.swf exposes it over the Bridge, simulated just far enough for the Engine to log in, play and lose the connection:
 /// the login screen, the account login, connecting to a server, the world, the connection message and the kick warning; and to move and
-/// look around: map transfers and jumps, the player, the item stores, the quest tree, the map's players and monsters, and drops. Its
+/// look around: map transfers and jumps, the player, the item stores, the quest tree and its turn-ins, the map's players and monsters, and drops. Its
 /// <c>connectTo</c> connects over TCP to a game server on this Mac only (a loopback address), as the Packet Interceptor has the game do.
 /// </summary>
 /// <remarks>
@@ -54,6 +54,12 @@ internal sealed class FakeGame
     private int _bagSlots = 40;
     private int _slimeSamples = 3;
     private int _slimeCrowns;
+    /// <summary>The quests turned in, which are no longer accepted.</summary>
+    private readonly HashSet<int> _turnedIn = [];
+    /// <summary>The message the game server refuses each quest's next turn-in with.</summary>
+    private readonly Dictionary<int, string> _turnInRefusals = [];
+    /// <summary>The player's achievement fields, the bits the repeating quests' completion is kept in: <c>id0</c> daily, <c>iw0</c> weekly, <c>im0</c> monthly.</summary>
+    private readonly Dictionary<string, int> _achievements = new() { ["id0"] = 0, ["iw0"] = 0, ["im0"] = 0 };
     /// <summary>The player's items, whose equips change as the game equips others.</summary>
     private readonly List<JsonObject> _inventory =
     [
@@ -226,6 +232,15 @@ internal sealed class FakeGame
                     // How many Slime Samples, which Slime Time needs, the temporary inventory holds.
                     _slimeSamples = int.Parse(qty);
                     return true;
+                case ["turnin-refuse", string rest] when rest.Split(' ', 2) is [string id, string message]:
+                    // The game server refuses the quest's next turn-in with this message.
+                    _turnInRefusals[int.Parse(id)] = message;
+                    return true;
+                case ["achievement", string rest] when rest.Split(' ') is [string field, string index, string value]:
+                    // The game server's setAchievement, as it sends it when a daily, weekly or monthly quest is turned in.
+                    int bit = 1 << int.Parse(index);
+                    _achievements[field] = value == "1" ? _achievements.GetValueOrDefault(field) | bit : _achievements.GetValueOrDefault(field) & ~bit;
+                    return true;
                 case ["slime-crowns", string qty]:
                     // How many Slime Crowns, the 1/1 drop Slime Time also needs, the temporary inventory holds.
                     _slimeCrowns = int.Parse(qty);
@@ -306,6 +321,7 @@ internal sealed class FakeGame
         "world.curRoom" => _world ? _roomId : null,
         "world.lock.tfer" => _world ? new JsonObject { ["cd"] = 3000, ["ts"] = 0 } : null,
         "world.lock.equipItem" => _world ? new JsonObject { ["cd"] = 500, ["ts"] = 0 } : null,
+        "world.lock.tryQuestComplete" => _world ? new JsonObject { ["cd"] = 300, ["ts"] = 0 } : null,
         // The game's uoTree is a flash.utils.Dictionary, whose toJSON gives "Dictionary"; the room's names are in areaUsers.
         "world.uoTree" => _world ? "Dictionary" : null,
         "world.areaUsers" => _world ? new JsonArray([.. Players().Select(p => JsonValue.Create(p.Key))]) : null,
@@ -404,6 +420,13 @@ internal sealed class FakeGame
                 _note($"equipItem {itemId}");
                 Equip(int.Parse(itemId));
                 break;
+            case "world.tryQuestComplete" when args is [string id, string reward, ..]:
+                _note($"tryQuestComplete {id} {reward}");
+                TryQuestComplete(int.Parse(id), reward);
+                break;
+            case "world.getAchievement" when args is [string field, string index]:
+                // The game's own: the bit, or -1 for a field the player has none of.
+                return Str(_world && _achievements.TryGetValue(field, out int bits) ? (bits >> int.Parse(index)) & 1 : -1);
             case "world.goto" when args is [string player]:
                 // The /goto command; the player stays where it is.
                 _note($"goto {player}");
@@ -652,6 +675,27 @@ internal sealed class FakeGame
         Packet($"%xt%zm%moveToCell%{_roomId}%Enter%Spawn%");
     }
 
+    /// <summary>
+    /// The game's <c>tryQuestComplete</c>: it sends the packet, and the game server answers with <c>ccqr</c>. It turns in an accepted quest
+    /// whose requirements are met, and refuses any other accepted quest, with no message unless <c>turnin-refuse</c> gave one; a refusal carries
+    /// no quest ID, since the game's handler reads none. It ignores a quest that isn't accepted.
+    /// </summary>
+    private void TryQuestComplete(int id, string reward)
+    {
+        Packet($"%xt%zm%tryQuestComplete%{_roomId}%{id}%{reward}%false%1%wvz%");
+        if (QuestTree()[id.ToString()] is not JsonObject quest || (string?)quest["status"] is not { } status)
+            return;
+        if (_turnInRefusals.Remove(id, out string? message))
+            Pext(new JsonObject { ["cmd"] = "ccqr", ["bSuccess"] = 0, ["msg"] = message });
+        else if (status != "c")
+            Pext(new JsonObject { ["cmd"] = "ccqr", ["bSuccess"] = 0 });
+        else
+        {
+            _turnedIn.Add(id);
+            Pext(new JsonObject { ["cmd"] = "ccqr", ["bSuccess"] = 1, ["QuestID"] = id, ["sName"] = (string?)quest["sName"] });
+        }
+    }
+
     private void Join(string map, string cell, string pad)
     {
         _map = map;
@@ -738,18 +782,34 @@ internal sealed class FakeGame
 
     private static JsonArray HouseItems() => [Item(30, "Wooden Chair", 1, 1, "Floor Item")];
 
-    private static JsonObject QuestTree() => new()
+    private JsonObject QuestTree()
     {
-        ["1001"] = Quest(1001, "Slime Time", "p", member: false, gold: 100, xp: 50,
-            new JsonObject { ["itemsS"] = new JsonObject { ["3"] = Item(3, "Treasure Chest", 1, 1000, "Item") } }, (Item(20, "Slime Sample", 1, 10, "Quest Item", temp: true), 5),
-            (Item(21, "Slime Crown", 1, 1, "Quest Item", temp: true), 1)),
-        ["1002"] = Quest(1002, "Chest Hoarder", "c", member: true, gold: 0, xp: 0, new JsonObject(), (Item(3, "Treasure Chest", 1, 1000, "Item"), 5)),
-        // Shaped like 10238: oItems in the order the server adds them, which Ruffle keeps and Flash doesn't.
-        ["1003"] = Quest(1003, "Not Yet", null, member: false, gold: 10, xp: 10, new JsonObject(),
-            (Item(93555, "Undead Vaughn", 1, 6, "Quest Item", temp: true), 6), (Item(93556, "Wraith's Loyalty", 1, 9, "Quest Item", temp: true), 9)),
-        // Its Bank Relics are all in the bank.
-        ["1004"] = Quest(1004, "Relic Keeper", null, member: false, gold: 0, xp: 0, new JsonObject(), (Item(10, "Bank Relic", 1, 10, "Item"), 2)),
-    };
+        JsonObject tree = new()
+        {
+            ["1001"] = Quest(1001, "Slime Time", "p", member: false, gold: 100, xp: 50,
+                new JsonObject { ["itemsS"] = new JsonObject { ["3"] = Item(3, "Treasure Chest", 1, 1000, "Item") } }, (Item(20, "Slime Sample", 1, 10, "Quest Item", temp: true), 5),
+                (Item(21, "Slime Crown", 1, 1, "Quest Item", temp: true), 1)),
+            ["1002"] = Quest(1002, "Chest Hoarder", "c", member: true, gold: 0, xp: 0, new JsonObject(), (Item(3, "Treasure Chest", 1, 1000, "Item"), 5)),
+            // Shaped like 10238: oItems in the order the server adds them, which Ruffle keeps and Flash doesn't.
+            ["1003"] = Quest(1003, "Not Yet", null, member: false, gold: 10, xp: 10, new JsonObject(),
+                (Item(93555, "Undead Vaughn", 1, 6, "Quest Item", temp: true), 6), (Item(93556, "Wraith's Loyalty", 1, 9, "Quest Item", temp: true), 9)),
+            // Its Bank Relics are all in the bank.
+            ["1004"] = Quest(1004, "Relic Keeper", null, member: false, gold: 0, xp: 0, new JsonObject(), (Item(10, "Bank Relic", 1, 10, "Item"), 2)),
+            // A weekly quest, as the game marks one: its completion this week is bit 3 of the player's iw0.
+            ["1005"] = Repeating(Quest(1005, "Weekly Slimes", null, member: false, gold: 0, xp: 0, new JsonObject(), (Item(20, "Slime Sample", 1, 10, "Quest Item", temp: true), 10)), "iw0", 3),
+        };
+        foreach (int id in _turnedIn)
+            tree[id.ToString()]!["status"] = null;
+        return tree;
+    }
+
+    /// <summary>A daily, weekly or monthly quest: the achievement field and bit its completion is kept in.</summary>
+    private static JsonObject Repeating(JsonObject quest, string field, int index)
+    {
+        quest["sField"] = field;
+        quest["iIndex"] = index;
+        return quest;
+    }
 
     private static JsonObject Quest(int id, string name, string? status, bool member, int gold, int xp, JsonObject rewards, params (JsonObject Item, int Qty)[] requirements)
     {

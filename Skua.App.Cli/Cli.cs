@@ -26,13 +26,14 @@ internal static class Cli
         Notice = line => Console.Error.WriteLine($"skua: {line}"),
     };
 
-    public static async Task<int> RunAsync<T>(bool json, Func<EngineClientOptions, Task<T>> command, Func<T, string> human)
+    /// <param name="exitCode">The exit code for a result, for a command whose result can be a failure; success by default.</param>
+    public static async Task<int> RunAsync<T>(bool json, Func<EngineClientOptions, Task<T>> command, Func<T, string> human, Func<T, int>? exitCode = null)
     {
         try
         {
             T result = await command(Options());
             Console.WriteLine(json ? JsonSerializer.Serialize(result, Output.JsonOptions) : human(result));
-            return ExitCodes.Success;
+            return exitCode?.Invoke(result) ?? ExitCodes.Success;
         }
         catch (ControlException e)
         {

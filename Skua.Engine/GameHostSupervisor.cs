@@ -26,10 +26,11 @@ internal sealed class GameHostSupervisor : IDisposable
     private readonly RespawnWatch _respawn;
     private readonly Timer? _stats;
 
-    private GameHostSupervisor(BridgeFlashUtil flash, GameStateTracker tracker, RespawnWatch respawn, EngineLogs logs)
+    private GameHostSupervisor(BridgeFlashUtil flash, GameStateTracker tracker, QuestTurnIns turnIns, RespawnWatch respawn, EngineLogs logs)
     {
         _flash = flash;
         _tracker = tracker;
+        TurnIns = turnIns;
         _respawn = respawn;
         TimeSpan interval = TimeSpan.FromSeconds(
             int.TryParse(Environment.GetEnvironmentVariable(StatsIntervalVariable), out int seconds) && seconds >= 0 ? seconds : 60);
@@ -39,6 +40,9 @@ internal sealed class GameHostSupervisor : IDisposable
 
     /// <summary>The game state, which this supervisor feeds and owns.</summary>
     public GameStateTracker Tracker => _tracker;
+
+    /// <summary>The quests' turn-ins and the game server's answers, which this supervisor's recorder feeds.</summary>
+    public QuestTurnIns TurnIns { get; }
 
     /// <summary>Prepares the data folder and Core, then starts the Game Host.</summary>
     /// <param name="engineName">Names the Engine in the idle-sleep assertion it holds while logged in.</param>
@@ -55,8 +59,9 @@ internal sealed class GameHostSupervisor : IDisposable
         // skua-engine never shows the game, so nothing is lost by not drawing the world; on again after any login, since a stopped Script turns it off.
         if (keepLagKillerOn)
             tracker.Playing += () => options.LagKiller = true;
+        QuestTurnIns turnIns = new(logs, services.GetRequiredService<IScriptQuest>(), services.GetRequiredService<IScriptPlayer>());
         GameEventRecorder.Start(services.GetRequiredService<IFlashUtil>(), options, services.GetRequiredService<IScriptPlayer>(),
-            services.GetRequiredService<IScriptInventory>(), logs, tracker);
+            services.GetRequiredService<IScriptInventory>(), logs, tracker, turnIns);
         RespawnWatch respawn = new(services.GetRequiredService<IFlashUtil>(), services.GetRequiredService<IScriptPlayer>(),
             services.GetRequiredService<IScriptMap>(), services.GetRequiredService<IScriptSend>(), tracker);
 
@@ -92,7 +97,7 @@ internal sealed class GameHostSupervisor : IDisposable
             }
         };
         flash.InitializeFlash();
-        return new GameHostSupervisor(flash, tracker, respawn, logs);
+        return new GameHostSupervisor(flash, tracker, turnIns, respawn, logs);
     }
 
     /// <summary>

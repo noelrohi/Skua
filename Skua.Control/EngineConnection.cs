@@ -114,6 +114,9 @@ public sealed class EngineConnection : IDisposable
     public Task<QuestsResult> QuestsAsync(QuestFilter filter = QuestFilter.Loaded, CancellationToken cancellationToken = default) =>
         CallAsync(rpc => rpc.QuestsAsync(filter, cancellationToken));
 
+    public Task<QuestCompleteResult> QuestCompleteAsync(int id, int? rewardId = null, int? timeoutSec = null, CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.QuestCompleteAsync(id, rewardId, timeoutSec, cancellationToken));
+
     public Task<MapDto> MapAsync(CancellationToken cancellationToken = default) =>
         CallAsync(rpc => rpc.MapAsync(cancellationToken));
 

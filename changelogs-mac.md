@@ -9,6 +9,8 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 ### New
 * `skua engine list --brief` shows every Engine on one line (class, HP, map and cell, target, Script, run time, kills a minute and deaths), so watching a party takes one command instead of a `skua status` per account. `status` now names the target too. See [Building the macOS Engine and CLI](./BUILD.md#building-the-macos-engine-and-cli).
 * An example Hook, `docs/hooks/game.disconnected`, logs an account back in when the game logs it out unexpectedly, as its idle kick does, and leaves it logged out after `skua logout` or `skua engine stop`. A new `engine.stopping` event says why an Engine stops, and `game.disconnected` names the account and server. See [Hooks](./BUILD.md#hooks).
+* A refused quest turn-in is no longer silent. The game server's answer to every turn-in, a Script's included, is recorded as a `quest.completed` or `quest.rejected` event, and a refusal also as a line in the Script log with the server's reason. `skua quests` shows a quest's last refusal until it is turned in, and `skua quests complete <id>` turns a quest in and prints the server's answer. See [Logs and events](./BUILD.md#logs-and-events).
+* `skua quests` shows whether a daily, weekly or monthly quest has been done since the game last reset it, e.g. `weekly, done this week`. See [Moving and reading the game](./BUILD.md#moving-and-reading-the-game).
 
 ### Changes
 * After installing a new build, `skua` says once per Engine that it kept an Engine from the old build because its Script runs, instead of on every command; `skua status` and `skua engine list` keep showing it.

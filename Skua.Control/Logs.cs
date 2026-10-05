@@ -121,6 +121,18 @@ public static class EventTypes
     public const string QuestStalled = "quest.stalled";
 
     /// <summary>
+    /// The game server turned a quest in: <c>{id, name}</c>. Recorded for every turn-in, a Script's, <c>quest_complete</c>'s or the game's own.
+    /// </summary>
+    public const string QuestCompleted = "quest.completed";
+
+    /// <summary>
+    /// The game server refused to turn a quest in: <c>{id, name, reason}</c>, the reason its message (what the game shows after
+    /// "Quest Complete Failed:") or null when it gave none. The game's refusal carries no quest ID, so the quest is the one last sent for turn-in.
+    /// A Script log line says the same, and <c>quests</c> shows it on the quest until it is turned in.
+    /// </summary>
+    public const string QuestRejected = "quest.rejected";
+
+    /// <summary>
     /// A run started: <c>{run, script, restart}</c>. A restart by Core's auto-relogin is the same run, with <c>restart</c> true.
     /// </summary>
     public const string ScriptStarted = "script.started";
