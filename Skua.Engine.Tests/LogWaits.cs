@@ -28,4 +28,18 @@ public static class LogWaits
     /// <summary>Waits for the first event of <paramref name="type"/> that matches, and returns it.</summary>
     public static async Task<LogEntryDto> WaitForEventAsync(this EngineConnection connection, string type, Func<LogEntryDto, bool>? match = null) =>
         (await connection.WaitForLogsAsync(LogKind.Events, 1, e => e.Type == type && (match?.Invoke(e) ?? true)))[0];
+
+    /// <summary>Waits until the Engine's status meets <paramref name="condition"/>, and returns it.</summary>
+    public static async Task<StatusDto> WaitForStatusAsync(this EngineConnection connection, Func<StatusDto, bool> condition)
+    {
+        Stopwatch waited = Stopwatch.StartNew();
+        while (waited.Elapsed < TimeSpan.FromSeconds(20))
+        {
+            StatusDto status = await connection.StatusAsync(TestContext.Current.CancellationToken);
+            if (condition(status))
+                return status;
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+        }
+        throw new TimeoutException("The status didn't change as expected.");
+    }
 }

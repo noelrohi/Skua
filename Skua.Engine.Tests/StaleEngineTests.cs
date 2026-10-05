@@ -125,6 +125,7 @@ public class StaleEngineTests
         Assert.False(app.ShutdownCalled);
         string notice = Assert.Single(start.Stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries));
         Assert.Equal($"skua: Engine 'default' from another build ({OtherVersionEngine.OtherBuild}, protocol {ControlProtocol.Version}) wasn't replaced: the Skua app hosts it; quit the app to replace it.", notice);
+        Assert.Equal("", (await sandbox.RunCliAsync("engine", "start", "--json")).Stderr);
         using JsonDocument json = JsonDocument.Parse(start.Stdout);
         Assert.Equal(Environment.ProcessId, json.RootElement.GetProperty("pid").GetInt32());
         Assert.Equal("app", json.RootElement.GetProperty("host").GetString());
@@ -178,6 +179,58 @@ public class StaleEngineTests
         Assert.Equal(game.Engine.Id, connection.Hello.Pid);
         Assert.Equal((ScriptState.Running, start.Run), (status.State, status.Run?.Number));
         Assert.Contains("wasn't replaced, because a Script is running in it", Assert.Single(notices));
+    }
+
+    [Fact]
+    public async Task A_kept_Engine_from_another_build_is_noticed_once_per_Engine_and_build()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture game = await GameFixture.StartAsync(sandbox);
+        TestScripts.Write(sandbox, "Tests/Loop.cs", TestScripts.Loop);
+        await game.Connection.ScriptStartAsync("Tests/Loop.cs", cancellationToken: Ct);
+        List<string> notices = [];
+
+        using (await EngineClient.ConnectAsync(Newer(sandbox, notices), Ct))
+        using (await EngineClient.ConnectAsync(Newer(sandbox, notices), Ct))
+            Assert.Contains("wasn't replaced, because a Script is running in it", Assert.Single(notices));
+        using (await EngineClient.ConnectAsync(Newer(sandbox, notices) with { Build = "0.0.0-newest" }, Ct))
+            Assert.Equal(2, notices.Count);
+        using (await EngineClient.ConnectAsync(Newer(sandbox, notices), Ct))
+            Assert.Equal(3, notices.Count);
+    }
+
+    [Fact]
+    public async Task The_CLI_says_once_that_it_kept_an_Engine_from_another_build_and_status_and_engine_list_keep_showing_it()
+    {
+        await using EngineSandbox sandbox = new();
+        await using OtherVersionEngine other = new(sandbox, ControlProtocol.Version, scriptRunning: true, servesStatus: true);
+
+        ProcessResult first = await sandbox.RunCliAsync("engine", "start", "--json");
+        ProcessResult second = await sandbox.RunCliAsync("engine", "start", "--json");
+        ProcessResult engineStatus = await sandbox.RunCliAsync("engine", "status");
+        ProcessResult list = await sandbox.RunCliAsync("engine", "list");
+
+        Assert.Equal((0, 0), (first.ExitCode, second.ExitCode));
+        Assert.Contains("wasn't replaced, because a Script is running in it", Assert.Single(first.Stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries)));
+        Assert.Equal("", second.Stderr);
+        Assert.False(other.ShutdownRequested);
+        Assert.Contains($"{OtherVersionEngine.OtherBuild}, another build than this skua's {ControlProtocol.Build}", engineStatus.Stdout);
+        Assert.Contains($"{OtherVersionEngine.OtherBuild}, another build than this skua's {ControlProtocol.Build}", list.Stdout);
+    }
+
+    [Fact]
+    public async Task Status_and_engine_list_of_an_Engine_kept_from_another_build_say_why_it_runs_on()
+    {
+        await using EngineSandbox sandbox = new();
+        await using OtherVersionEngine other = new(sandbox, ControlProtocol.Version, scriptRunning: true, servesStatus: true);
+
+        ProcessResult status = await sandbox.RunCliAsync("status");
+        ProcessResult list = await sandbox.RunCliAsync("engine", "list");
+
+        Assert.Equal((0, 0), (status.ExitCode, list.ExitCode));
+        string note = $"another build than this skua's {ControlProtocol.Build}; a skua command replaces it once its Script ends";
+        Assert.Contains(note, status.Stdout);
+        Assert.Contains(note, list.Stdout);
     }
 
     /// <summary>The options of a client from a newer build, to which the Engines these tests start are from another build.</summary>

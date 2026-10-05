@@ -417,8 +417,10 @@ engineStop.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), options =
 Command engineStatus = new("status", "Show whether the Engine is running, without starting it.");
 engineStatus.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), options => EngineCommands.StatusAsync(options, ct), Output.Engine));
 
-Command engineList = new("list", "List every Engine in the data folder, in the Skua app or windowless, with its status; starts none.");
-engineList.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), _ => EngineCommands.ListAsync(ct), Output.EngineList));
+Option<bool> engineListBrief = new("--brief") { Description = "One line per Engine: class, HP, map·cell, target, Script, run time, kills/min and deaths." };
+Command engineList = new("list", "List every Engine in the data folder, in the Skua app or windowless, with its status; starts none.") { engineListBrief };
+engineList.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), _ => EngineCommands.ListAsync(ct),
+    parse.GetValue(engineListBrief) ? Output.EngineListBrief : Output.EngineList));
 
 Command engine = new("engine", "Control the Engine's lifetime.") { engineStart, engineStop, engineStatus, engineList };
 

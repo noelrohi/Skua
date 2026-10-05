@@ -19,6 +19,7 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
     private readonly int _protocol;
     private readonly bool _scriptRunning;
     private readonly bool _predatesShutdownIfIdle;
+    private readonly bool _servesStatus;
     private readonly EngineHost? _host;
     private readonly TimeSpan _lockHeldAfterShutdown;
     private readonly EngineLock _lock;
@@ -31,10 +32,12 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
     /// <param name="host">What its <c>hello</c> says hosts it; null, as from an Engine before protocol 10, by default.</param>
     /// <param name="endpoint">Where it serves, and the Engine Name its <c>hello</c> gives; the sandbox's by default.</param>
     /// <param name="lockHeldAfterShutdown">How long it keeps its lock after closing its socket, as an Engine closing its Game Host does.</param>
+    /// <param name="servesStatus">Whether it answers <c>status</c>, as an Engine on this protocol version does; otherwise <c>status</c> fails the test.</param>
     public OtherVersionEngine(
         EngineSandbox sandbox, int protocol = OtherProtocol, bool scriptRunning = false, bool predatesShutdownIfIdle = false, EngineHost? host = null,
-        EngineEndpoint? endpoint = null, TimeSpan lockHeldAfterShutdown = default)
+        EngineEndpoint? endpoint = null, TimeSpan lockHeldAfterShutdown = default, bool servesStatus = false)
     {
+        _servesStatus = servesStatus;
         _lockHeldAfterShutdown = lockHeldAfterShutdown;
         _host = host;
         _endpoint = endpoint ?? sandbox.Endpoint;
@@ -61,6 +64,11 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
     public Task<StatusDto> StatusAsync(CancellationToken cancellationToken)
     {
         StatusCalled = true;
+        if (_servesStatus)
+            return Task.FromResult(new StatusDto(
+                new EngineInfoDto(_endpoint.Name, OtherBuild, _protocol, 60, Environment.ProcessId, _host ?? EngineHost.Engine),
+                new GameStatusDto(true, GameState.LoginScreen, null),
+                new ScriptStatusDto(ScriptState.Running, new ScriptRunDto(1, "Tests/Loop.cs", DateTimeOffset.UtcNow, 0, false, DialogMode.Ask, 120, 30), null), []));
         throw new InvalidOperationException("A client called status after a protocol mismatch.");
     }
 

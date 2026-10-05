@@ -205,9 +205,9 @@ public class QueryTests
         await session.GameHost.DoAsync("die");
         PlayerDto dead = (await session.Connection.StatusAsync(Ct)).Game.Player!;
 
-        Assert.Null(idle.TargetId);
+        Assert.Equal((null, null), (idle.TargetId, idle.Target));
         // The Frogzard with map ID 1, as map lists it.
-        Assert.Equal((true, true, 1), (fighting.Alive, fighting.InCombat, fighting.TargetId));
+        Assert.Equal((true, true, 1, "Frogzard"), (fighting.Alive, fighting.InCombat, fighting.TargetId, fighting.Target));
         Assert.Equal((false, false, 0), (dead.Alive, dead.InCombat, dead.Hp));
     }
 

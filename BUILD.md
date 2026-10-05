@@ -188,7 +188,7 @@ The script needs the .NET 10 SDK (`brew install dotnet`), [Rust](https://rustup.
 
 To update, `git pull` and run it again. A build is the version and the commit, plus the time for uncommitted changes. The script keeps the two builds before the new one, and any build a process still runs from. The next `skua` command finds the old build's Engine and replaces it with one of the same Engine Name, saying so on one line. It never stops an Engine whose Script is running:
 
-- If that Engine speaks the same protocol version, the command still runs against it, with a notice on stderr, and a later command replaces it once the Script ends.
+- If that Engine speaks the same protocol version, the command still runs against it, and a later command replaces it once the Script ends. The notice on stderr comes once per Engine and build (`<SkuaDIR>/engines/<name>.kept` remembers it), not on every command; `skua status`, `skua engine status` and `skua engine list` keep showing that the Engine is from another build. The same goes for the Mac App's Engine below.
 - If it speaks another protocol version, the command fails with `ScriptRunning` (exit 12). Wait for the Script to end, or run `skua engine stop`, which stops the Script too.
 - The Mac App's Engine is never replaced: a `skua` from another build says so (same protocol) or fails with `ProtocolMismatch` and a hint to quit the app (another protocol).
 
@@ -307,6 +307,15 @@ Every `skua` command, `skua mcp` included, takes `--engine <name>`: it talks to 
 
 `skua engine list` names every Engine in the data folder, one per socket in `<SkuaDIR>/engines`, and starts none: one block each with its Engine Name, whether it runs in the Mac App or windowless, and its game, Script and player as `skua status` shows them. An Engine whose socket doesn't answer, such as one that was killed, shows as stopped. `--json` prints an array of `{engine, status}`: `engine` as `skua engine status --json` prints it, and `status` as `skua status --json` does, or null when the Engine isn't running or speaks another protocol.
 
+`skua engine list --brief` prints one line per Engine, for watching a party without a `status` per Engine: Engine Name, class, HP, map·cell, target, Script and run time, kills a minute and deaths, in columns. An Engine that isn't playing shows its game state instead, one that isn't running why, and the line ends with pending Questions and `another build` when there are any. `--brief --json` prints the same array as `--json`, whose `status` carries every field of the line.
+
+```
+alt1  Void Highlord    HP 2400/2600  tercessuinotlim·Boss  Nulgath #1  Nation/Nulgath.cs 1:02:05           6.5 kills/min  2 deaths
+alt2  Legion Revenant  HP 2100/2100  tercessuinotlim·Boss  Nulgath #1  Tools/Butlerv4/Butlerv4.cs 1:01:40  6.5 kills/min  0 deaths
+alt3  loginScreen  no Script
+alt4  stopped
+```
+
 Environment overrides:
 
 | Variable | Overrides |
@@ -411,9 +420,11 @@ The `game` entries are the game's chat, as the Game Client receives it: the mess
 
 `skua chat send <text>` sends zone chat in the player's room, and `skua chat whisper <name> <text>` whispers a player (the `chat_send` op, which MCP doesn't offer: only a developer chats). The text can't be blank, span lines or contain `%`. The game server's echo, or its warning, arrives as `game` entries. Chat works while a Script runs, since it doesn't move the player, and fails with `NotLoggedIn` unless playing.
 
-The `events` entries are typed facts: `game.state`, `game.disconnected`, `map.joined`, `player.death`, `player.afk`, the runs' `script.*` and the Questions' `question.*`, among others. `inventory.full` (`{used, slots, drop}`) says the inventory is full: once as it fills, with `drop` null, and once for each item that drops while it stays full and isn't in the inventory already, with the drop's `id` and `name`, since it has no slot to go to. The Engine checks when an item drops, is added, picked up or bought, and when the player joins a map, not on a timer; a check that finds a free slot, or a new login, re-arms it. What to do about it is up to the Script or whoever reads the events.
+The `events` entries are typed facts: `engine.started`, `engine.stopping`, `game.state`, `game.disconnected`, `map.joined`, `player.death`, `player.afk`, the runs' `script.*` and the Questions' `question.*`, among others. `inventory.full` (`{used, slots, drop}`) says the inventory is full: once as it fills, with `drop` null, and once for each item that drops while it stays full and isn't in the inventory already, with the drop's `id` and `name`, since it has no slot to go to. The Engine checks when an item drops, is added, picked up or bought, and when the player joins a map, not on a timer; a check that finds a free slot, or a new login, re-arms it. What to do about it is up to the Script or whoever reads the events.
 
-While playing, the Engine reads the loaded quests every 5 seconds and keeps track of when each requirement's count last rose. The count is what the player owns: the inventory's and the bank's (once the game has loaded the bank), or the temporary inventory's for a temporary item, so banking an item is no rise, nor is the bank arriving after a login; `quests` gives the bank's part as `inBank`. A count that falls, as at a turn-in or when temporary items are lost to a relogin, doesn't count as progress. `quests` gives each requirement's `idleSec`, the seconds since its count last rose (or since the Engine began watching it), and `gainPerHour` over the last hour watched, which stays null for the first 5 minutes. `status` gives the run's `questIdleSec`: how long since any requirement of an accepted quest not yet done rose, capped at the run's time. The rise that meets a requirement counts, as a 1/1 drop's does. The Engine also counts the monsters the player is credited with killing, one for each `addGoldExp` packet of type `m` the game sends, and `status` gives the run its `kills` and `killsPerMin` over the last 5 minutes (or the run's time, at least a minute). `status` also gives the run its `deaths`, the player's `targetId` (the map ID of the monster it targets, as `map` lists it), and the run's `goal`: what the Script works toward, read from the log lines of CoreBots, which nearly every Script uses (`Doing Quest`, `Farming to buy`, `Bought`, `Farming X (n/m)`, `Killing M for item`, `Death - Resetting`), as `{quest, buy, farm, now, resets, lastResetAt}`, each item with how many the player owns (inventory, temporary inventory and bank) and gains an hour. `quest.stalled` (`{run, script, idleSec, killsPerMin, quests}`, each quest with its unmet `requirements` as `{itemId, name, have, qty}`) is recorded once when that reaches 10 minutes (`SKUA_QUEST_STALL_SEC` sets another time), and a rise or a new run re-arms it. Another account logging in starts the tracking from scratch.
+`game.disconnected` (`{reason, detail?, account, server}`) says the game lost the login. The reason is `gameHostExited`, `connectionLost` (with the game's message as `detail`), `kicked`, `logout` (deliberate: `skua logout` and the logout op, or the in-game button) or `unknown`: logged out with nothing to say why, as the game's idle kick does after about 40 idle minutes. `account` is the account's name as `skua login --account` takes it (null for a login the Engine didn't make, such as one typed into the game), and `server` the one it played on. `engine.stopping` (`{reason, account, server}`) comes first when an Engine stops: `command` (`skua engine stop`), `replaced` (by a `skua` from another build, while idle), `signal` or `quit` (its host quitting, as the Mac App does), with what was playing; the game then closes without a `game.disconnected`.
+
+While playing, the Engine reads the loaded quests every 5 seconds and keeps track of when each requirement's count last rose. The count is what the player owns: the inventory's and the bank's (once the game has loaded the bank), or the temporary inventory's for a temporary item, so banking an item is no rise, nor is the bank arriving after a login; `quests` gives the bank's part as `inBank`. A count that falls, as at a turn-in or when temporary items are lost to a relogin, doesn't count as progress. `quests` gives each requirement's `idleSec`, the seconds since its count last rose (or since the Engine began watching it), and `gainPerHour` over the last hour watched, which stays null for the first 5 minutes. `status` gives the run's `questIdleSec`: how long since any requirement of an accepted quest not yet done rose, capped at the run's time. The rise that meets a requirement counts, as a 1/1 drop's does. The Engine also counts the monsters the player is credited with killing, one for each `addGoldExp` packet of type `m` the game sends, and `status` gives the run its `kills` and `killsPerMin` over the last 5 minutes (or the run's time, at least a minute). `status` also gives the run its `deaths`, the player's `targetId` and `target` (the map ID of the monster it targets, as `map` lists it, and its name), and the run's `goal`: what the Script works toward, read from the log lines of CoreBots, which nearly every Script uses (`Doing Quest`, `Farming to buy`, `Bought`, `Farming X (n/m)`, `Killing M for item`, `Death - Resetting`), as `{quest, buy, farm, now, resets, lastResetAt}`, each item with how many the player owns (inventory, temporary inventory and bank) and gains an hour. `quest.stalled` (`{run, script, idleSec, killsPerMin, quests}`, each quest with its unmet `requirements` as `{itemId, name, have, qty}`) is recorded once when that reaches 10 minutes (`SKUA_QUEST_STALL_SEC` sets another time), and a rise or a new run re-arms it. Another account logging in starts the tracking from scratch.
 
 #### Hooks
 
@@ -424,7 +435,7 @@ Each run is a process of its own, so a slow or failing Hook holds up neither the
 - on stdin, the event as one line of JSON, as `skua logs events -f --json` prints it: `{seq, ts, kind, run, type, data}`;
 - in its environment, `SKUA_ENGINE_NAME` (the Engine the event came from), and `SKUA_DIR` and `SKUA_ENGINE_SOCKET`, so `skua` in the Hook talks to that Engine; its working directory is the data folder.
 
-When it exits, the runner records the run on that Engine as a `hook.ran` event (the `hook_ran` op): `{hook, eventSeq, startedAt, durationMs, exitCode, output}`, `exitCode` null when it couldn't start and `output` the tail of its stdout and stderr (4 KB). `skua logs events` reads them, and the TUI's Hooks tab shows them. No Hook runs for `hook.ran`. Filtering, delays and what to do all belong in the Hook; Skua ships none. For example, `hooks/player.death`:
+When it exits, the runner records the run on that Engine as a `hook.ran` event (the `hook_ran` op): `{hook, eventSeq, startedAt, durationMs, exitCode, output}`, `exitCode` null when it couldn't start and `output` the tail of its stdout and stderr (4 KB). `skua logs events` reads them, and the TUI's Hooks tab shows them. No Hook runs for `hook.ran`. Filtering, delays and what to do all belong in the Hook; Skua runs none of its own. For example, `hooks/player.death`:
 
 ```sh
 #!/bin/sh
@@ -434,6 +445,15 @@ skua status                       # the Engine that died: SKUA_DIR and SKUA_ENGI
 ```
 
 `chmod +x` it, then run `skua hooks` (or `H` in the TUI). Agents may start the runner and read the Hooks, but add or change a Hook only when the developer asks.
+
+`docs/hooks/` has example Hooks to copy. `docs/hooks/game.disconnected` logs an account back in when the game logs it out unexpectedly, as its idle kick does, with `skua --engine <name> login <server> --account <account>` from the event. It leaves it logged out after `skua logout` or the in-game button (`logout`), after `skua engine stop` (which records `engine.stopping`, not `game.disconnected`), during a Script run (Core's auto-relogin handles that), when the event names no account, or when the Engine has stopped; after a kick it waits 70 s first (`SKUA_RELOGIN_KICK_DELAY`), as Core does, so it doesn't fight another login of the account. To enable it:
+
+```sh
+mkdir -p "$SKUA_DIR/hooks" && cp docs/hooks/game.disconnected "$SKUA_DIR/hooks/" && chmod +x "$SKUA_DIR/hooks/game.disconnected"
+skua hooks
+```
+
+With the default data folder, use `~/Library/Application Support/Skua/hooks`. Each relogin is a `hook.ran` event with the login's output.
 
 #### Compile check
 

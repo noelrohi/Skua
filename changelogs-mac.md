@@ -4,6 +4,16 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 
 ---
 
+## October 5, 2026
+
+### New
+* `skua engine list --brief` shows every Engine on one line (class, HP, map and cell, target, Script, run time, kills a minute and deaths), so watching a party takes one command instead of a `skua status` per account. `status` now names the target too. See [Building the macOS Engine and CLI](./BUILD.md#building-the-macos-engine-and-cli).
+* An example Hook, `docs/hooks/game.disconnected`, logs an account back in when the game logs it out unexpectedly, as its idle kick does, and leaves it logged out after `skua logout` or `skua engine stop`. A new `engine.stopping` event says why an Engine stops, and `game.disconnected` names the account and server. See [Hooks](./BUILD.md#hooks).
+
+### Changes
+* After installing a new build, `skua` says once per Engine that it kept an Engine from the old build because its Script runs, instead of on every command; `skua status` and `skua engine list` keep showing it.
+* A logout the game gives no reason for, such as its idle kick, is now a `game.disconnected` with reason `unknown` and leaves the game `disconnected`, instead of passing for a deliberate logout.
+
 ## October 4, 2026
 
 ### New

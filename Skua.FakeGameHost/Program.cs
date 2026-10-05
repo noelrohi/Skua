@@ -21,7 +21,7 @@
 //
 // With `game <username> <password>` it also simulates the AQW game behind skua.swf (see FakeGame.cs), which accepts that
 // account; `servers <json>`, `connect-delay <ms>`, `inventory-delay <ms>` (500 unless set; transfers are refused until then), `reject <server> <message>` and `account <username> <password>` (another account it accepts) configure it, and `lose-connection <message>`,
-// `kick`, `logout-button`, `die`, `respawn-request` (the game's own resPlayerTimed; the game server ignores one within 2 s of the death,
+// `kick`, `idle-logout`, `logout-button`, `die`, `respawn-request` (the game's own resPlayerTimed; the game server ignores one within 2 s of the death,
 // and respawns the player otherwise, as it does for the Engine's), `combat`, `afk`, `join <map>`, `cell <cell>`, `gain <xp> <gold>` (a level up sends `levelUp`), `blip` (the connection reads as dropped until the Engine's game state tracker has read it, i.e. asked isKicked; the call log records `blip read <n>`, from 1), `connection-message <message>`, `broken-login`,
 // `login-response` (the last login's response again), `lock-map <map>` (transfers to it are ignored), `drop <id> <qty> <name>`,
 // `pickup <id>`, `own <id> <category> <name>` (another item in the inventory, unequipped; the game equips an item in place of its

@@ -27,7 +27,10 @@ public sealed record EngineClientOptions
     /// </summary>
     public bool ReplaceStale { get; init; }
 
-    /// <summary>Receives a one-line notice when connecting replaces a stale Engine, or keeps one.</summary>
+    /// <summary>
+    /// Receives a one-line notice when connecting replaces a stale Engine, or keeps one; a kept one is noticed once per Engine and build, since
+    /// <c>status</c> and <c>engine list</c> keep showing it.
+    /// </summary>
     public Action<string>? Notice { get; init; }
 
     /// <summary><c>skua-engine</c> next to this program, unless <c>SKUA_ENGINE</c> overrides it.</summary>
@@ -145,7 +148,7 @@ public static class EngineClient
         {
             // It would refuse anyway; EnsureCompatible refuses an incompatible one, saying to quit the app.
             if (connection.IsCompatible)
-                options.Notice?.Invoke($"{staleEngine} wasn't replaced: the Skua app hosts it; quit the app to replace it.");
+                NoticeKept(options, engine, $"{staleEngine} wasn't replaced: the Skua app hosts it; quit the app to replace it.");
             return null;
         }
 
@@ -155,7 +158,7 @@ public static class EngineClient
             {
                 // EnsureCompatible refuses an incompatible one, with a stop hint.
                 if (connection.IsCompatible)
-                    options.Notice?.Invoke($"{staleEngine} wasn't replaced: it is too old to replace safely; run 'skua engine stop' to replace it.");
+                    NoticeKept(options, engine, $"{staleEngine} wasn't replaced: it is too old to replace safely; run 'skua engine stop' to replace it.");
                 return null;
             }
         }
@@ -166,7 +169,7 @@ public static class EngineClient
                 throw new ControlException(e.Code,
                     $"{kept}, and this skua speaks protocol {ControlProtocol.Version}. Wait for it to finish, or run 'skua engine stop', which stops its Script too; then try again.",
                     e);
-            options.Notice?.Invoke($"{kept}; a later skua command replaces it once it's idle.");
+            NoticeKept(options, engine, $"{kept}; a later skua command replaces it once it's idle.");
             return null;
         }
         catch (ControlException e) when (e.Code == ErrorCode.EngineUnavailable)
@@ -178,6 +181,34 @@ public static class EngineClient
         await WaitUntilStoppedAsync(endpoint, ReplaceTimeout, cancellationToken);
         options.Notice?.Invoke($"Replaced {staleEngine} with build {options.Build}, protocol {ControlProtocol.Version}.");
         return endpoint;
+    }
+
+    /// <summary>
+    /// Says that a stale Engine was kept, unless a client of this build already said so about that Engine (by its pid): every command against
+    /// an Engine whose Script runs for hours would repeat it. Remembered in the data folder, so it holds across commands.
+    /// </summary>
+    private static void NoticeKept(EngineClientOptions options, HelloResult engine, string notice)
+    {
+        if (options.Notice is null)
+            return;
+        string path = StartedAs(options.Endpoint, engine).KeptNoticePath;
+        string kept = $"{engine.Pid} {engine.Build} {options.Build}";
+        try
+        {
+            if (File.Exists(path) && File.ReadAllText(path).Trim() == kept)
+                return;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+        }
+        options.Notice(notice);
+        try
+        {
+            File.WriteAllText(path, kept + "\n");
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
     /// <summary>

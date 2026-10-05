@@ -25,6 +25,8 @@
 
   <ItemGroup>
     <None Include="compile-check-known-failures.txt" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The example Hooks, which HookTests run against a real Engine. -->
+    <None Include="..\docs\hooks\*" Link="hooks\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
