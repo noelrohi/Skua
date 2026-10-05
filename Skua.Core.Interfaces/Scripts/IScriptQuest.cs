@@ -163,17 +163,17 @@ public interface IScriptQuest : INotifyPropertyChanged
     bool IsAvailable(int id);
 
     /// <summary>
-    /// Checks if the specified quest is a completed daily quest.
+    /// Checks if the specified quest is a daily, weekly or monthly quest the player has completed since the game last reset it.
     /// </summary>
     /// <param name="id">ID of the quest.</param>
-    /// <returns><see langword="true"/> if the specified quest is a daily quest that the player has already completed.</returns>
+    /// <returns><see langword="true"/> if the specified quest is a daily, weekly or monthly quest that the player has already completed.</returns>
     bool IsDailyComplete(int id);
 
     /// <summary>
-    /// Checks if the specified quest is a completed daily quest.
+    /// Checks if the specified quest is a daily, weekly or monthly quest the player has completed since the game last reset it.
     /// </summary>
     /// <param name="quest">Quest object to check for.</param>
-    /// <returns><see langword="true"/> if the specified quest is a daily quest that the player has already completed.</returns>
+    /// <returns><see langword="true"/> if the specified quest is a daily, weekly or monthly quest that the player has already completed.</returns>
     bool IsDailyComplete(Quest quest);
 
     /// <summary>

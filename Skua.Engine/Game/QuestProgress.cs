@@ -30,6 +30,7 @@ internal sealed class QuestProgress : IDisposable
 
     private readonly IScriptInterface _api;
     private readonly GameStateTracker _tracker;
+    private readonly QuestTurnIns _turnIns;
     private readonly ScriptRuns _runs;
     private readonly EngineLogs _logs;
     private readonly CombatTally _tally;
@@ -50,8 +51,9 @@ internal sealed class QuestProgress : IDisposable
     /// <summary>The run and idle start <see cref="EventTypes.QuestStalled"/> was last recorded for, so it is recorded once per stall.</summary>
     private (int Run, DateTime Since)? _recordedStall;
 
-    public QuestProgress(IScriptInterface api, GameStateTracker tracker, ScriptRuns runs, EngineLogs logs, CombatTally tally, ScriptGoal goal)
+    public QuestProgress(IScriptInterface api, GameStateTracker tracker, QuestTurnIns turnIns, ScriptRuns runs, EngineLogs logs, CombatTally tally, ScriptGoal goal)
     {
+        _turnIns = turnIns;
         _goal = goal;
         _tally = tally;
         _api = api;
@@ -71,19 +73,44 @@ internal sealed class QuestProgress : IDisposable
         };
     }
 
-    /// <summary>The quests as <c>quests</c> lists them, read now, with what it has watched of each requirement.</summary>
+    /// <summary>
+    /// The quests as <c>quests</c> lists them, read now, with what it has watched of each requirement, a repeating quest's completion and
+    /// each quest's last refused turn-in.
+    /// </summary>
     public List<QuestDto> Read(QuestFilter filter)
     {
         (List<Quest> quests, Stores stores) = ReadGame();
+        List<Quest> listed = filter == QuestFilter.Active ? quests.FindAll(q => q.Active) : quests;
+        Dictionary<int, bool?> repeatDone = listed.Where(q => RepeatOf(q) is not null).ToDictionary(q => q.ID, RepeatDone);
+        Dictionary<int, QuestRejectionDto> rejections = _turnIns.Rejections();
         lock (_lock)
         {
             DateTime now = DateTime.UtcNow;
             Observe(quests, stores, now);
-            if (filter == QuestFilter.Active)
-                quests = quests.FindAll(q => q.Active);
-            return quests.Select(q => ToDto(q, stores, now)).ToList();
+            return listed
+                .Select(q => ToDto(q, stores, now) with { Repeat = RepeatOf(q), RepeatDone = repeatDone.GetValueOrDefault(q.ID), LastRejection = rejections.GetValueOrDefault(q.ID) })
+                .ToList();
         }
     }
+
+    /// <summary>How often the quest repeats, from its achievement field as the game reads it: <c>iw…</c> weekly, <c>im…</c> monthly, any other daily.</summary>
+    private static QuestRepeat? RepeatOf(Quest quest) => quest.Field switch
+    {
+        null or "" => null,
+        ['i', 'w', ..] => QuestRepeat.Weekly,
+        ['i', 'm', ..] => QuestRepeat.Monthly,
+        _ => QuestRepeat.Daily,
+    };
+
+    /// <summary>
+    /// Whether the repeating quest's achievement bit is set, as Core's <c>IsDailyComplete</c> reads it; null when the game has no such field
+    /// for the player, where its <c>getAchievement</c> answers -1.
+    /// </summary>
+    private bool? RepeatDone(Quest quest) => _api.Flash.CallGameFunction<int>("world.getAchievement", quest.Field, quest.Index) switch
+    {
+        < 0 => null,
+        var bit => bit > 0,
+    };
 
     /// <summary><paramref name="run"/> with how long its accepted quests have gone without a rise, at most as long as it has run.</summary>
     public ScriptRunDto? WithQuestIdle(ScriptRunDto? run)

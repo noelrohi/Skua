@@ -203,13 +203,45 @@ internal static class Output
         StringBuilder text = new();
         foreach (QuestDto quest in result.Quests)
         {
-            text.AppendLine($"{quest.Id} {quest.Name}: {Name(quest.Status)}{(quest.MemberOnly ? ", member-only" : "")}");
+            text.AppendLine($"{quest.Id} {quest.Name}: {Name(quest.Status)}{(quest.MemberOnly ? ", member-only" : "")}{Repeat(quest)}");
+            if (quest.LastRejection is { } rejection)
+                text.AppendLine(rejection.Reason is { } reason ? $"    last turn-in refused: {reason}" : "    last turn-in refused, with no reason");
             foreach (QuestRequirementDto requirement in quest.Requirements)
                 text.AppendLine($"    needs {requirement.Name} {requirement.Have}/{requirement.Qty}{(requirement.Temp ? " (temp)" : "")}");
             foreach (QuestRewardDto reward in quest.Rewards)
                 text.AppendLine($"    rewards {reward.Name} x{reward.Qty}");
         }
         return text.ToString().TrimEnd();
+    }
+
+    /// <summary>A repeating quest's period and whether it is done in it, e.g. <c>, weekly, done this week</c>.</summary>
+    private static string Repeat(QuestDto quest)
+    {
+        if (quest.Repeat is not { } repeat)
+            return "";
+        string period = repeat switch
+        {
+            QuestRepeat.Weekly => "this week",
+            QuestRepeat.Monthly => "this month",
+            _ => "today",
+        };
+        string done = quest.RepeatDone switch
+        {
+            true => $"done {period}",
+            false => $"not done {period}",
+            null => $"unknown whether done {period}",
+        };
+        return $", {Name(repeat)}, {done}";
+    }
+
+    public static string QuestComplete(QuestCompleteResult result)
+    {
+        string quest = result.Name is null ? $"quest {result.Id}" : $"quest {result.Id} {result.Name}";
+        if (result.Completed)
+            return $"Turned in {quest}.";
+        return result.Reason is { } reason
+            ? $"The game server refused to turn in {quest}: {reason}"
+            : $"The game server refused to turn in {quest} and gave no reason.";
     }
 
     public static string Map(MapDto map)

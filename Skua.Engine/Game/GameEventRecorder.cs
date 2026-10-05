@@ -9,7 +9,8 @@ namespace Skua.Engine.Game;
 
 /// <summary>
 /// Turns what the game reports into events and tracker edges, all the time and not only while a Script runs: the Game Client's
-/// <c>pext</c> and <c>packet</c> calls, and Core's game-event messages; and records the game's chat as game messages.
+/// <c>pext</c> and <c>packet</c> calls, and Core's game-event messages; and records the game's chat as game messages, and hands quest turn-ins
+/// and the game server's answers to <see cref="QuestTurnIns"/>.
 /// </summary>
 internal sealed class GameEventRecorder
 {
@@ -18,6 +19,7 @@ internal sealed class GameEventRecorder
     private readonly IScriptOption _options;
     private readonly IScriptPlayer _player;
     private readonly IScriptInventory _inventory;
+    private readonly QuestTurnIns _turnIns;
     private readonly object _lock = new();
     private string? _map;
     private string? _cell;
@@ -28,8 +30,9 @@ internal sealed class GameEventRecorder
     /// <summary>The drops recorded as having no slot since then.</summary>
     private readonly HashSet<int> _noSlotDrops = [];
 
-    private GameEventRecorder(EngineLogs logs, GameStateTracker tracker, IScriptOption options, IScriptPlayer player, IScriptInventory inventory)
+    private GameEventRecorder(EngineLogs logs, GameStateTracker tracker, IScriptOption options, IScriptPlayer player, IScriptInventory inventory, QuestTurnIns turnIns)
     {
+        _turnIns = turnIns;
         _logs = logs;
         _tracker = tracker;
         _options = options;
@@ -39,9 +42,9 @@ internal sealed class GameEventRecorder
 
     /// <summary>Starts recording. Call it after Core's Script API is built, so Core has handled each game call first.</summary>
     public static GameEventRecorder Start(
-        IFlashUtil flash, IScriptOption options, IScriptPlayer player, IScriptInventory inventory, EngineLogs logs, GameStateTracker tracker)
+        IFlashUtil flash, IScriptOption options, IScriptPlayer player, IScriptInventory inventory, EngineLogs logs, GameStateTracker tracker, QuestTurnIns turnIns)
     {
-        GameEventRecorder recorder = new(logs, tracker, options, player, inventory);
+        GameEventRecorder recorder = new(logs, tracker, options, player, inventory, turnIns);
         flash.FlashCall += recorder.OnFlashCall;
         // Each login starts a new world, so a full inventory is recorded again.
         tracker.Playing += () =>
@@ -73,6 +76,11 @@ internal sealed class GameEventRecorder
                 case "packet" when args is [string packet] && packet.Split('%', StringSplitOptions.RemoveEmptyEntries) is [_, _, "cmd", _, "logout", ..]:
                     _tracker.LoggedOutInGame();
                     break;
+                // %xt%zm%tryQuestComplete%<room>%<quest>%<reward>%…, whoever sent it.
+                case "packet" when args is [string packet] && packet.Split('%', StringSplitOptions.RemoveEmptyEntries) is [_, _, "tryQuestComplete", _, string id, ..]
+                    && int.TryParse(id, out int quest):
+                    _turnIns.Sent(quest);
+                    break;
             }
         }
         catch (Exception e) when (e is Newtonsoft.Json.JsonException or InvalidCastException or FormatException)
@@ -95,6 +103,11 @@ internal sealed class GameEventRecorder
                 foreach (JObject item in items.Properties().Select(p => p.Value).OfType<JObject>())
                     if ((int?)item["ItemID"] is { } id)
                         CheckInventory(id, ((string?)item["sName"])?.Trim() ?? "");
+                break;
+            // The game server's answer to a turn-in: {bSuccess: 1, QuestID, sName, …}, or {bSuccess: 0, msg?}, which names no quest.
+            case ("json", JObject json) when (string?)json["cmd"] == "ccqr":
+                _turnIns.Answered((int?)json["QuestID"], (int?)json["bSuccess"] == 1, (string?)json["sName"],
+                    (string?)json["msg"] is { } message && !string.IsNullOrWhiteSpace(message) ? message : null);
                 break;
             case ("json", JObject json) when (string?)json["cmd"] is "addItems"
                 || ((string?)json["cmd"] == "getDrop" && (int?)json["bSuccess"] == 1) || ((string?)json["cmd"] == "buyItem" && (int?)json["bitSuccess"] == 1):

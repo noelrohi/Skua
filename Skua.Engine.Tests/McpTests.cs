@@ -124,7 +124,7 @@ public class McpTests
         await client.CallToolAsync("logout", cancellationToken: ct);
         CallToolResult loggedOut = await client.CallToolAsync("map", cancellationToken: ct);
 
-        Assert.Subset(tools.Select(t => t.Name).ToHashSet(), new HashSet<string> { "join", "jump", "inventory", "quests", "map", "drops" });
+        Assert.Subset(tools.Select(t => t.Name).ToHashSet(), new HashSet<string> { "join", "jump", "inventory", "quests", "quest_complete", "map", "drops" });
         Assert.True(loggedOut.IsError);
         Assert.StartsWith("NotLoggedIn: ", ((TextContentBlock)loggedOut.Content.Single()).Text);
         Assert.Equal(new LocationResult("yulgar", "Room", "Spawn", false), JsonSerializer.Deserialize<LocationResult>(((TextContentBlock)join.Content.Single()).Text, ControlJson.Options));

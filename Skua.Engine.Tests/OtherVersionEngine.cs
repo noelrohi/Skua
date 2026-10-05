@@ -153,6 +153,9 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
     public Task<QuestsResult> QuestsAsync(QuestFilter filter, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("A client called quests after a protocol mismatch.");
 
+    public Task<QuestCompleteResult> QuestCompleteAsync(int id, int? rewardId, int? timeoutSec, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called quest_complete after a protocol mismatch.");
+
     public Task<MapDto> MapAsync(CancellationToken cancellationToken) =>
         throw new InvalidOperationException("A client called map after a protocol mismatch.");
 

@@ -251,8 +251,35 @@ public sealed record QuestRequirementDto(
 /// <summary>An item a quest can reward.</summary>
 public sealed record QuestRewardDto(int ItemId, string Name, int Qty);
 
+/// <summary>How often a repeating quest can be turned in; the game resets it daily, weekly (on Friday) or monthly.</summary>
+public enum QuestRepeat
+{
+    Daily,
+    Weekly,
+    Monthly,
+}
+
+/// <summary>The game server's refusal of a quest's last turn-in.</summary>
+/// <param name="Reason">The game server's message, as the game shows it after "Quest Complete Failed:"; null when it gave none.</param>
+/// <param name="At">When the refusal arrived.</param>
+public sealed record QuestRejectionDto(string? Reason, DateTimeOffset At);
+
+/// <param name="Status">Whether the quest is accepted, and whether it is ready to turn in (<see cref="QuestStatus.Completable"/>).</param>
+/// <param name="Repeat">How often the quest can be turned in, or null for a quest that doesn't repeat.</param>
+/// <param name="RepeatDone">
+/// Whether a repeating quest has been turned in since the game last reset it (today, this week or this month), which the game reads from the
+/// player's achievement bits; null for a quest that doesn't repeat, or when the game has no such bits for the player.
+/// </param>
+/// <param name="LastRejection">The game server's refusal of the quest's last turn-in, since which it hasn't been turned in; null when there is none.</param>
 public sealed record QuestDto(
-    int Id, string Name, QuestStatus Status, bool MemberOnly, int Gold, int Xp, IReadOnlyList<QuestRequirementDto> Requirements, IReadOnlyList<QuestRewardDto> Rewards);
+    int Id, string Name, QuestStatus Status, bool MemberOnly, int Gold, int Xp, IReadOnlyList<QuestRequirementDto> Requirements, IReadOnlyList<QuestRewardDto> Rewards,
+    QuestRepeat? Repeat = null, bool? RepeatDone = null, QuestRejectionDto? LastRejection = null);
+
+/// <summary>The reply to <c>quest_complete</c>: the game server's answer to the turn-in.</summary>
+/// <param name="Name">The quest's name, or null when the game hasn't loaded the quest.</param>
+/// <param name="Completed">Whether the game server turned the quest in.</param>
+/// <param name="Reason">Why the game server refused it, as its message says; null when it turned it in or gave no reason.</param>
+public sealed record QuestCompleteResult(int Id, string? Name, bool Completed, string? Reason);
 
 /// <summary>The reply to <c>quests</c>.</summary>
 public sealed record QuestsResult(QuestFilter Filter, IReadOnlyList<QuestDto> Quests);

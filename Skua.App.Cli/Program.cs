@@ -250,6 +250,17 @@ quests.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options
     return await connection.QuestsAsync(parse.GetValue(questsFilter), ct);
 }, Output.Quests));
 
+Argument<int> completeId = new("id") { Description = "The quest's ID, as 'skua quests' lists it." };
+Option<int?> completeReward = new("--reward") { Description = "For a quest whose reward the player picks, the item ID to take." };
+Option<int?> completeTimeout = new("--timeout") { Description = "Seconds to wait for the game server's answer: 10 by default." };
+Command questComplete = new("complete", "Turn a quest in and print the game server's answer; exits with 1 when it refuses.") { completeId, completeReward, completeTimeout };
+questComplete.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
+{
+    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
+    return await connection.QuestCompleteAsync(parse.GetValue(completeId), parse.GetValue(completeReward), parse.GetValue(completeTimeout), ct);
+}, Output.QuestComplete, result => result.Completed ? ExitCodes.Success : ExitCodes.Failure));
+quests.Subcommands.Add(questComplete);
+
 Command map = new("map", "Show the current map: its cells, players and monsters.");
 map.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
 {

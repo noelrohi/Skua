@@ -61,7 +61,7 @@ public class QueryTests
             [new QuestRequirementDto(20, "Slime Sample", 5, 3, true), new QuestRequirementDto(21, "Slime Crown", 1, 0, true)],
             [new QuestRewardDto(3, "Treasure Chest", 1)]);
         Assert.Equal(QuestFilter.Loaded, loaded.Filter);
-        Assert.Equal([1001, 1002, 1003, 1004], loaded.Quests.Select(q => q.Id));
+        Assert.Equal([1001, 1002, 1003, 1004, 1005], loaded.Quests.Select(q => q.Id));
         AssertQuest(slimes, loaded.Quests[0]);
         AssertQuest(new QuestDto(1002, "Chest Hoarder", QuestStatus.Completable, true, 0, 0,
             [new QuestRequirementDto(3, "Treasure Chest", 5, 5, false)], []), loaded.Quests[1]);
