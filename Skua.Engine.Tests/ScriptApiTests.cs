@@ -53,8 +53,10 @@ public class ScriptApiTests
         await session.GameHost.DoAsync("equip-delay 3000");
 
         Stopwatch waited = Stopwatch.StartNew();
-        EvalResult equip = await session.Connection.EvalAsync("Bot.Inventory.EquipItem(4); return Bot.Player.CurrentClass?.Name;", cancellationToken: Ct);
-        TimeSpan returnedAfter = waited.Elapsed;
+        // Timed inside the snippet, so compiling it doesn't count.
+        EvalResult equip = await session.Connection.EvalAsync(
+            "var sw = System.Diagnostics.Stopwatch.StartNew(); Bot.Inventory.EquipItem(4); long ms = sw.ElapsedMilliseconds; return Bot.Player.CurrentClass?.Name + \"|\" + ms;",
+            cancellationToken: Ct);
         EvalResult landed = await session.Connection.EvalAsync("Bot.Wait.ForItemEquip(4, 100); return Bot.Player.CurrentClass?.Name;", cancellationToken: Ct);
         // Past the time EquipItem gives the game server before it warns.
         TimeSpan rest = TimeSpan.FromSeconds(11) - waited.Elapsed;
@@ -63,8 +65,9 @@ public class ScriptApiTests
         LogPage logs = await session.Connection.LogsAsync(LogKind.Script, null, 1000, Ct);
 
         Assert.Null(equip.Error);
-        Assert.Equal("Healer", equip.Value!.Value.GetString());
-        Assert.InRange(returnedAfter, TimeSpan.Zero, TimeSpan.FromSeconds(2.5));
+        string[] returned = equip.Value!.Value.GetString()!.Split('|');
+        Assert.Equal("Healer", returned[0]);
+        Assert.InRange(TimeSpan.FromMilliseconds(long.Parse(returned[1])), TimeSpan.Zero, TimeSpan.FromSeconds(2.5));
         Assert.Empty(equip.Logs);
         Assert.Equal("Rogue", landed.Value!.Value.GetString());
         Assert.DoesNotContain(logs.Entries, e => e.Text!.StartsWith("Equipping", StringComparison.Ordinal));
