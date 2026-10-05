@@ -462,6 +462,8 @@ internal sealed class Engine : IEngineRpc
     /// The shutdown order: the Script stops cooperatively, then the Game Host closes (without logging out), then the connections,
     /// then the socket; the lock goes last.
     /// </summary>
+    private static readonly TimeSpan FollowerGrace = TimeSpan.FromMilliseconds(500);
+
     private async Task StopAsync()
     {
         EngineLog.Write("Shutting down.");
@@ -479,6 +481,9 @@ internal sealed class Engine : IEngineRpc
         }
         _questProgress.Dispose();
         _gameHost.Dispose();
+        // An Engine with nothing to stop gets here within milliseconds; give a follower's subscribe a moment to send it engine.stopping.
+        if (!_connections.IsEmpty)
+            await Task.Delay(FollowerGrace);
         foreach (JsonRpc rpc in _connections.Keys)
             rpc.Dispose();
         File.Delete(_endpoint.SocketPath);
