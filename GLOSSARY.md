@@ -64,6 +64,10 @@ _Avoid_: bot, plugin
 The repository the Engine fetches Scripts from.
 _Avoid_: script repo, scripts folder
 
+**Script Report**:
+A structured result a Script records with `Bot.Report`, seen as a `script.report` event.
+_Avoid_: result log, report line
+
 **Script Dialog**:
 A message a Script raises for a human; it is either a Notice or a Question.
 _Avoid_: message box, popup, prompt
