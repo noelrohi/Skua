@@ -63,6 +63,26 @@ public class ScriptReportTests
     }
 
     [Fact]
+    public async Task Data_within_64_KB_is_kept_whole_whatever_its_fields_are_named()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture game = await GameFixture.StartAsync(sandbox);
+        TestScripts.Write(sandbox, "Tests/LongFields.cs", TestScripts.Main("""
+            bot.Report("long", new { text = new string('t', 20_000), stack = new string('s', 5_000), data = new string('d', 20_000), note = new string('n', 17_000) });
+            """));
+
+        await game.Connection.ScriptStartAsync("Tests/LongFields.cs", cancellationToken: Ct);
+        await game.Connection.ScriptWaitAsync(60, Ct);
+
+        LogEntryDto report = Assert.Single(await ReportsAsync(game.Connection));
+        JsonElement data = Data(report);
+        Assert.Equal((20_000, 5_000, 20_000, 17_000),
+            (data.GetProperty("text").GetString()!.Length, data.GetProperty("stack").GetString()!.Length,
+             data.GetProperty("data").GetString()!.Length, data.GetProperty("note").GetString()!.Length));
+        Assert.False(report.Truncated);
+    }
+
+    [Fact]
     public async Task Data_that_cant_be_serialized_still_reports_with_the_error_and_the_Script_goes_on()
     {
         await using EngineSandbox sandbox = new();

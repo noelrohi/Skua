@@ -85,7 +85,7 @@ internal sealed class EngineLogs : IDisposable
     {
         bool truncated = false;
         JsonNode? node = JsonSerializer.SerializeToNode(data, ControlJson.Options);
-        _scrubber.Data(node, ref truncated);
+        _scrubber.Data(node, ref truncated, type);
         Append(LogKind.Events, null, type, JsonSerializer.SerializeToElement(node, ControlJson.Options), truncated);
         EventRecorded?.Invoke();
     }
