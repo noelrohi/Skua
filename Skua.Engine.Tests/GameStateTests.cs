@@ -94,9 +94,10 @@ public class GameStateTests
         await using EngineSandbox sandbox = new();
         await using GameFixture session = await GameFixture.StartAsync(sandbox);
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
-        string after = (await session.Connection.LogsAsync(LogKind.Events, null, null, 1, Ct)).Next;
         using EngineConnection follower = await sandbox.ConnectAsync();
-        Task<List<LogEntryDto>> followed = FollowUntilGoneAsync(follower, after);
+        TaskCompletionSource following = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<List<LogEntryDto>> followed = FollowUntilGoneAsync(follower, following);
+        await following.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
 
         switch (reason)
         {
@@ -123,7 +124,9 @@ public class GameStateTests
         await using EngineSandbox sandbox = new();
         await using GameFixture session = await GameFixture.StartAsync(sandbox);
         using EngineConnection follower = await sandbox.ConnectAsync();
-        Task<List<LogEntryDto>> followed = FollowUntilGoneAsync(follower, null);
+        TaskCompletionSource following = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<List<LogEntryDto>> followed = FollowUntilGoneAsync(follower, following);
+        await following.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
 
         await session.Connection.ShutdownAsync(Ct);
         LogEntryDto stopping = Assert.Single(await followed.WaitAsync(TimeSpan.FromSeconds(30), Ct), e => e.Type == EventTypes.EngineStopping);
@@ -132,13 +135,17 @@ public class GameStateTests
     }
 
     /// <summary>The events after <paramref name="after"/> until the Engine closes the connection, as the Hook Runner sees them.</summary>
-    private static async Task<List<LogEntryDto>> FollowUntilGoneAsync(EngineConnection connection, string? after)
+    // Follows the events from the start, so the first page proves the follow is open before the Engine is stopped.
+    private static async Task<List<LogEntryDto>> FollowUntilGoneAsync(EngineConnection connection, TaskCompletionSource following)
     {
         List<LogEntryDto> events = [];
         try
         {
-            await foreach (LogPage page in connection.SubscribeAsync([LogKind.Events], after, Ct))
+            await foreach (LogPage page in connection.SubscribeAsync([LogKind.Events], null, Ct))
+            {
                 events.AddRange(page.Entries);
+                following.TrySetResult();
+            }
         }
         catch (ControlException)
         {
