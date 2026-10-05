@@ -1,6 +1,6 @@
 ---
 name: skua
-description: Drive Skua Engines, which play AQW accounts, with the skua CLI. Use when asked how the Engines or accounts are doing, to run or watch a Script, to farm or unlock something on an account, to set up Butlers, or to check quest or item progress.
+description: Drive Skua Engines, which play AQW accounts, with the skua CLI. Use when asked how the Engines or accounts are doing, to run or watch a Script, to farm or unlock something on an account, to set up Butlers, to check quest or item progress, or to test an Ultra Comp.
 ---
 
 # Skua
@@ -62,4 +62,18 @@ Paths below are in the data folder, `<SkuaDIR>`: `~/Library/Application Support/
 
 - **Follow**: `skua --engine <name> logs script -f --tail 20` prints the newest 20 lines, then follows, like `tail -f -n 20`. When a follow ends, start it again.
 - **Filter**: CoreBots' lines read `[HH:mm:ss] (<method>) <message>`: `Killing <monster> for item`, `Farming <item> (n/m)`, `Enhancement Unlocked`, `is now Rank 10`, and `Script ran for` at the end. Match errors as a whole word, `\b[Ee]rror\b`, since monster names contain "Terror".
+- **Script Reports**: a Script that calls `Bot.Report(name, data)` records a structured result as a `script.report` event, `{run, script, name, data}` with `data` as JSON (`{error}` when it couldn't be serialized; a string cut to 64 KB when over it), plus a `[report] <name>` Script log line. Follow them with `skua --engine <name> logs events -f` and read `data` rather than scraping log lines. `run` and `script` are null for a report from `eval`.
 - **Deaths**: `deaths` in `status --json` counts the run's; `skua --engine <name> logs events` has each `player.death`. A death per kill means the account is under-geared for that boss: offer to bring more accounts.
+
+## Testing a Comp
+
+The Scripts fork's [glossary](https://github.com/noelrohi/Scripts/blob/Skua/GLOSSARY.md) defines Comp, Role, Loadout, Party Layout, Attempt and Wipe; its [Ultras v3 Playbook](https://github.com/noelrohi/Scripts/blob/Skua/docs/Skua/Ultras%20v3%20Playbook.md) has each boss's Comps and results table. To test a Comp:
+
+1. **As written**: run the Comp exactly as the developer wrote it. A tweak worth trying goes in the result's note; the Comp's code stays as it is.
+2. **Build**: each of the 4 Engines must run a Skua build with `Bot.Report`; on one without it, `skua --engine <name> eval 'Bot.Report("probe", 1)'` doesn't compile.
+3. **Scripts**: while the Comp is only on an unmerged Scripts branch, pull the Scripts from it: `skua scripts source noelrohi/Scripts@<branch>`, then `skua scripts update`. Both are refused while a Script runs, and every Engine of the data folder shares the result. After testing, put the default back: `skua scripts source --default`, then `skua scripts update`.
+4. **Potions**: the Script buys each Loadout's potions, except Unstable Malevolence Elixir, which the potion buyer can't make. Check with `eval` that the account playing a class whose Loadout has it holds some.
+5. **Options**: a boss Script reads its `<Boss>Comp` and `<Boss>Layout` `DoAllUltras` options, e.g. `UltraNulgathComp=dot-lr-ap-loo` and `UltraNulgathLayout=<account>=<class>; ...`. No command sets them: while no `DoAllUltras` runs, back up `<SkuaDIR>/options/DoAllUltras.cfg` and set its `Options:UltraNulgathComp=` and `Options:UltraNulgathLayout=` lines, adding either line the file lacks. Set the Comp and its layout together: a layout naming a class outside the Comp stops the Script. All four Engines read that one file. A kill spends the boss's quest for its period: before any test of a weekly boss, warn the developer and wait for their go-ahead.
+6. **Start and follow**: on each of the 4 Engines, `skua --engine <name> script start Ultrasv3/IndividualUltras/<boss script>`, e.g. `6UltraNulgathv3.cs`, and follow its `logs events -f` for the `script.report` events named `ultra.attempt`. Their `data` is `{boss, comp, class, role, startedAt, endedAt, outcome, bossHp, bossMaxHp, deaths: [{atSec}]}`, `outcome` being `kill`, `wipe` or `stopped`; Speaker's Script detects no Wipe, so its outcomes are `kill` or `stopped`. Data over 64 KB arrives as a string, its JSON text cut to 64 KB. A Script Report names no account; the Engine it came from does. Each account stamps `startedAt` on its own clock: merge the four accounts' reports into one Attempt by boss, Comp and `startedAt` within a few seconds of each other.
+7. **Stop**: at the first `kill`, or the session's third `wipe`, `skua --engine <name> script stop` on every Engine. A boss Script refights after a Wipe on its own.
+8. **Results**: add one row per Attempt to the boss's results table in the playbook: date, Comp, Party Layout as `alt1=<class>; ...`, outcome, duration (`endedAt` minus `startedAt`), deaths as `<Role> @ <atSec>`, and a note. The playbook is public: write the accounts as `alt1`…`alt4`, the same alt for the same account in every row.

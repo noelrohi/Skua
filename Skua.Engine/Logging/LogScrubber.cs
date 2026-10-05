@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Text.Unicode;
+using Skua.Control;
 
 namespace Skua.Engine.Logging;
 
@@ -22,6 +23,9 @@ internal sealed partial class LogScrubber
     /// <summary>The cap on a Script Dialog's message, a <c>text</c> field in event data, in UTF-8 bytes.</summary>
     public const int MaxDialogTextBytes = 64 * 1024;
 
+    /// <summary>The cap on each string in a Script Report's data, the <c>data</c> of a <c>script.report</c> event, in UTF-8 bytes; as a Notice's text.</summary>
+    public const int MaxReportDataBytes = MaxDialogTextBytes;
+
     /// <summary>Longest first, so a secret that contains another is redacted whole.</summary>
     private ImmutableArray<string> _secrets = [];
 
@@ -37,23 +41,35 @@ internal sealed partial class LogScrubber
     public string Text(string text, ref bool truncated) => Scrub(text, MaxFieldBytes, ref truncated);
 
     /// <summary>
-    /// Scrubs every string in <paramref name="data"/> in place; a string under a <c>stack</c> key gets the stack cap, and one under a <c>text</c>
-    /// key the Script Dialog cap.
+    /// Scrubs every string in an entry's <paramref name="data"/> in place; a string under a <c>stack</c> key gets the stack cap, one under a
+    /// <c>text</c> key the Script Dialog cap. Every string in a <c>script.report</c> event's <c>data</c> gets the Script Report cap, whatever
+    /// its key: <see cref="Scripts.ScriptReports"/> caps that data as a whole.
     /// </summary>
-    public void Data(JsonNode? data, ref bool truncated, string? key = null)
+    public void Data(JsonNode? data, ref bool truncated, string? eventType = null)
     {
-        switch (data)
+        if (eventType == EventTypes.ScriptReport && data is JsonObject obj)
+            foreach ((string name, JsonNode? value) in obj.ToList())
+                Scrub(value, name, name == "data" ? static _ => MaxReportDataBytes : FieldCap, ref truncated);
+        else
+            Scrub(data, null, FieldCap, ref truncated);
+    }
+
+    private static int FieldCap(string? key) => key switch { "stack" => MaxStackBytes, "text" => MaxDialogTextBytes, _ => MaxFieldBytes };
+
+    private void Scrub(JsonNode? node, string? key, Func<string?, int> capOf, ref bool truncated)
+    {
+        switch (node)
         {
             case JsonValue leaf when leaf.TryGetValue(out string? text):
-                leaf.ReplaceWith(Scrub(text, key switch { "stack" => MaxStackBytes, "text" => MaxDialogTextBytes, _ => MaxFieldBytes }, ref truncated));
+                leaf.ReplaceWith(Scrub(text, capOf(key), ref truncated));
                 break;
             case JsonObject obj:
                 foreach ((string name, JsonNode? value) in obj.ToList())
-                    Data(value, ref truncated, name);
+                    Scrub(value, name, capOf, ref truncated);
                 break;
             case JsonArray array:
                 foreach (JsonNode? item in array.ToList())
-                    Data(item, ref truncated, key);
+                    Scrub(item, key, capOf, ref truncated);
                 break;
         }
     }
