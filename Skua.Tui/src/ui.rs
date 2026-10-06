@@ -8,6 +8,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 use serde_json::Value;
 
 use crate::app::{App, Field, KEYS, Modal, Note, Row, Tab, Tone, first_line};
+use crate::bags::{Bags, Kind};
 use crate::discovery::MANAGER_FILE;
 use crate::dto::{GameState, Hello, HookRun, LogEntry, Map, Player, Quest, ScriptGoal, ScriptRun, Status};
 use crate::engine::{Error, NOT_LOGGED_IN, PROTOCOL};
@@ -25,10 +26,17 @@ const PLAYER_H: u16 = 6;
 const PLAYER_W: u16 = 36;
 /// How wide the run's panel must be for its goal tree's lines, rates and times left included.
 const RUN_W: u16 = 84;
-/// How wide Current Quests is beside the run.
-const QUESTS_W: u16 = 40;
+/// How wide Current Quests is, the right column down to the chat, where the run fits beside the player.
+const QUESTS_W: u16 = 46;
+/// How tall the chat strip is at most, its border included.
+const CHAT_H: u16 = 10;
+/// How wide the accounts are, and an account's name in them.
+const ACCOUNTS_W: u16 = 28;
+const NAME_W: usize = 10;
 /// How many players the Overview lists left of the monsters; the rest are counted.
 const MAX_MEMBERS: usize = 4;
+/// How many players outside the player's cell the Room names.
+const MAX_ROOM: usize = 4;
 
 pub fn draw(frame: &mut Frame, app: &App) {
     // The Game tab sets it again while it shows the picture.
@@ -44,7 +52,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
         height: area.height - 3,
         ..area
     };
-    let left = (area.width * 3 / 10).clamp(30, 38).min(area.width / 2);
+    let left = ACCOUNTS_W.min(area.width / 2);
     accounts(frame, app, Rect { width: left, ..body });
     right(
         frame,
@@ -184,17 +192,21 @@ fn account_line(app: &App, row: &Row, selected: bool, width: u16) -> Line<'stati
         Some(Stall::Grinding(sec)) => format!(" {}", short_duration(sec)).yellow(),
         None => Span::raw(""),
     };
-    let fixed = 3 + 2 + 2 + 13 + 1 + stall.content.chars().count();
+    // The dot, the name, a space, the state, then the stall and the flag.
+    let fixed = 2 + NAME_W + 1 + stall.content.chars().count() + 1;
     let state_width = (width as usize).saturating_sub(fixed);
+    // A marked account's name is blue, as the marks' count in the title.
+    let name_style = if marked {
+        Style::new().blue().bold()
+    } else if up {
+        Style::new().bold()
+    } else {
+        Style::new().fg(DIM)
+    };
     let mut line = Line::from(vec![
-        if marked { "[x]".blue().bold() } else { "[ ]".fg(DIM) },
-        " ".into(),
         Span::styled("●", Style::new().fg(color)),
         " ".into(),
-        Span::styled(
-            format!("{:<12}", truncate(&row.name, 12)),
-            if up { Style::new().bold() } else { Style::new().fg(DIM) },
-        ),
+        Span::styled(format!("{:<NAME_W$}", truncate(&row.name, NAME_W)), name_style),
         " ".into(),
         Span::styled(
             format!("{:<state_width$}", truncate(&state, state_width)),
@@ -371,9 +383,9 @@ fn failure(frame: &mut Frame, title: &str, message: &str, area: Rect) {
     frame.render_widget(text.block(block), area);
 }
 
-/// The selected account as the game's screen shows it, in text: the player, its Script's run and its quests across the top; any
-/// Question; the newest quest progress; the accounts on its map and the others in its cell on the left, the cell's monsters on the right;
-/// then the game's chat and who else is on the map.
+/// The selected account as the game's screen shows it, in text: the player and its Script's run across the top; any Question; the newest
+/// quest progress; the accounts on its map and the others in its cell on the left, the cell's monsters on the right; then what the run
+/// gained. Current Quests runs down the right, and the game's chat across the bottom, with who else is on the map in its title.
 fn overview(frame: &mut Frame, app: &App, hello: &Hello, status: &Status, detail: Option<&Detail>, area: Rect) {
     let Some(me) = playing(status) else {
         return frame.render_widget(
@@ -402,29 +414,45 @@ fn overview(frame: &mut Frame, app: &App, hello: &Hello, status: &Status, detail
         (shown as u16 * 3).saturating_sub(1)
     };
     let question_h = status.pending_dialogs.first().map_or(0, |q| q.choices.len() as u16 + 3);
-    // The player, the run and the quests side by side where the run's goal tree fits; else the run goes under the other two.
-    let wide = inner.width >= PLAYER_W + RUN_W + QUESTS_W;
     let run_h = run.len() as u16 + 2;
-    let [top, run_row, question_area, progress_area, cell, rest] = Layout::vertical([
-        Constraint::Length(if wide { run_h.max(PLAYER_H) } else { PLAYER_H }),
+
+    // Current Quests down the right, narrower where the run's goal tree wouldn't fit beside the player and the quests.
+    let quests_w = if inner.width >= PLAYER_W + RUN_W + QUESTS_W {
+        QUESTS_W
+    } else {
+        (inner.width / 3).clamp(26, QUESTS_W)
+    };
+    // The player and the run side by side where the run's goal tree fits; else the run goes under the player.
+    let wide = inner.width.saturating_sub(quests_w) >= PLAYER_W + RUN_W;
+    let top_h = if wide { run_h.max(PLAYER_H) } else { PLAYER_H };
+    let cell_h = members_h.max(4);
+    // The chat strip at the bottom shares what the rest leaves with Bags, and gives way first on a short terminal.
+    let left_over = inner
+        .height
+        .saturating_sub(top_h + if wide { 0 } else { run_h } + question_h + 1 + cell_h);
+    let chat_h = (left_over / 2).clamp(3, CHAT_H);
+    let [upper, chat_area] = Layout::vertical([Constraint::Fill(1), Constraint::Length(chat_h)]).areas(inner);
+    let [left, quests_area] = Layout::horizontal([Constraint::Fill(1), Constraint::Length(quests_w)]).areas(upper);
+    let [top, run_row, question_area, progress_area, cell, bags_area] = Layout::vertical([
+        Constraint::Length(top_h),
         Constraint::Length(if wide { 0 } else { run_h }),
         Constraint::Length(question_h),
         Constraint::Length(1),
-        Constraint::Length(members_h.max(4)),
+        Constraint::Length(cell_h),
         Constraint::Fill(1),
     ])
-    .areas(inner);
-    let (player_area, run_area, quests_area) = if wide {
-        let [player, run, quests] = Layout::horizontal([
-            Constraint::Length(PLAYER_W),
-            Constraint::Fill(1),
-            Constraint::Length(QUESTS_W),
-        ])
-        .areas(top);
-        (player, run, quests)
+    .areas(left);
+    let (player_area, run_area) = if wide {
+        let [player, run] = Layout::horizontal([Constraint::Length(PLAYER_W), Constraint::Fill(1)]).areas(top);
+        (player, run)
     } else {
-        let [player, quests] = Layout::horizontal([Constraint::Length(PLAYER_W), Constraint::Fill(1)]).areas(top);
-        (player, run_row, quests)
+        (
+            Rect {
+                width: PLAYER_W.min(top.width),
+                ..top
+            },
+            run_row,
+        )
     };
     player_frame(frame, me, status, player_area);
     frame.render_widget(Paragraph::new(run).block(panel("Script")), run_area);
@@ -458,7 +486,8 @@ fn overview(frame: &mut Frame, app: &App, hello: &Hello, status: &Status, detail
         );
     }
 
-    let members_width = (cell.width * 11 / 20).clamp(30, 48).min(cell.width.saturating_sub(1));
+    // Wide enough for a member's HP bar and run on one line; the monsters get the rest.
+    let members_width = (cell.width * 11 / 20).clamp(44, 48).min(cell.width.saturating_sub(1));
     let members_area = Rect {
         x: cell.x + 1,
         width: members_width,
@@ -484,7 +513,10 @@ fn overview(frame: &mut Frame, app: &App, hello: &Hello, status: &Status, detail
         Err(line) => frame.render_widget(Paragraph::new(line.clone()), monsters_area),
     }
 
-    let [chat_area, room_area] = Layout::horizontal([Constraint::Fill(1), Constraint::Length(34)]).areas(rest);
+    if let Some(detail) = detail {
+        bags(frame, &detail.bags, bags_area);
+    }
+
     let chat_width = chat_area.width.saturating_sub(2) as usize;
     let mut chat: Vec<Line> = detail
         .map(|d| d.chat.iter().flat_map(|e| chat_lines(e, chat_width)).collect())
@@ -493,12 +525,11 @@ fn overview(frame: &mut Frame, app: &App, hello: &Hello, status: &Status, detail
         chat.push(Line::styled("no chat yet", Style::new().fg(DIM)));
     }
     let skip = chat.len().saturating_sub(chat_area.height.saturating_sub(2) as usize);
-    frame.render_widget(Paragraph::new(chat.split_off(skip)).block(panel("Chat")), chat_area);
-    let room = match &map {
-        Ok(map) => room_lines(me, map, room_area.height.saturating_sub(2) as usize),
-        Err(line) => vec![line.clone()],
+    let block = match &map {
+        Ok(map) => panel("Chat").title_top(room_title(me, map).right_aligned()),
+        Err(_) => panel("Chat"),
     };
-    frame.render_widget(Paragraph::new(room).block(panel("Room")), room_area);
+    frame.render_widget(Paragraph::new(chat.split_off(skip)).block(block), chat_area);
 }
 
 fn not_playing_lines(hello: &Hello, status: &Status) -> Vec<Line<'static>> {
@@ -888,33 +919,129 @@ fn monster_plates(frame: &mut Frame, me: &Player, accounts: &[(String, &Status)]
     }
 }
 
-/// Who else is on the map, as many as fit in `rows`, then how many players the map has, as the game's bottom right says.
-fn room_lines(me: &Player, map: &Map, rows: usize) -> Vec<Line<'static>> {
-    let mut lines: Vec<Line> = map
+/// The Room, as the chat's title: how many players the map has, as the game's bottom right says, then who else is on it outside the
+/// player's cell, as many as `MAX_ROOM` with their cells.
+fn room_title(me: &Player, map: &Map) -> Line<'static> {
+    let mut spans = vec![
+        Span::styled(" Room · ", Style::new().bold()),
+        Span::raw(format!("{} player(s) in ", map.players.len())),
+        Span::styled(room_name(map), Style::new().yellow()),
+    ];
+    let others: Vec<String> = map
         .players
         .iter()
         .filter(|p| p.cell != me.cell)
-        .take(rows.saturating_sub(1))
+        .take(MAX_ROOM)
         .map(|p| {
-            Line::from(vec![
-                Span::raw(format!("{:<16}", truncate(&p.name, 15))),
-                Span::styled(
-                    format!(
-                        "Lv {:<4}{}{}",
-                        p.level,
-                        truncate(&p.cell, 8),
-                        if p.afk { " afk" } else { "" }
-                    ),
-                    Style::new().fg(DIM),
-                ),
-            ])
+            format!(
+                "{} ({}{})",
+                truncate(&p.name, 15),
+                truncate(&p.cell, 8),
+                if p.afk { ", afk" } else { "" }
+            )
         })
         .collect();
-    lines.push(Line::from(vec![
-        Span::raw(format!("{} player(s) in ", map.players.len())),
-        Span::styled(room_name(map), Style::new().yellow()),
-    ]));
-    lines
+    if !others.is_empty() {
+        spans.push(Span::styled(format!(" · {}", others.join(", ")), Style::new().fg(DIM)));
+    }
+    spans.push(" ".into());
+    Line::from(spans)
+}
+
+/// What the run gained, under the cell: each stack it is filling as a bar toward its max stack, with the gain, the rate and when it will be
+/// full at that rate, the fullest first; then what it filled up, what's new and what was spent or banked, a line each. An item that
+/// just changed is yellow.
+fn bags(frame: &mut Frame, bags: &Bags, area: Rect) {
+    const NAME: usize = 24;
+    if area.height < 3 {
+        return;
+    }
+    let since = match bags.start() {
+        Some(start) => {
+            let sec = (now_ms() - start.at_ms) as f64 / 1000.0;
+            match start.run {
+                Some(run) => format!("run {run} · {}", short_duration(sec)),
+                None => format!("since skua-tui opened · {}", short_duration(sec)),
+            }
+        }
+        None => "reading…".into(),
+    };
+    let block = panel(&format!("Bags · {since}"));
+    let inner = block.inner(area);
+    let sec = bags.start().map_or(0.0, |s| (now_ms() - s.at_ms) as f64 / 1000.0);
+    let gains = bags.gains();
+    let of = |kind: Kind| gains.iter().filter(move |g| g.kind == kind);
+    let mut filling: Vec<_> = of(Kind::Filling).collect();
+    filling.sort_by(|a, b| ratio(b.now, b.max).total_cmp(&ratio(a.now, a.max)));
+    // The name, the bar, the gain and the rate share the width; the bar gets what's left.
+    let bar_w = inner.width.saturating_sub(NAME as u16 + 8 + 22).clamp(12, 40);
+    let mut lines: Vec<Line> = filling
+        .iter()
+        .map(|g| {
+            let mut spans = vec![Span::styled(
+                format!("{:<NAME$}", truncate(&g.name, NAME - 1)),
+                if g.fresh {
+                    Style::new().yellow().bold()
+                } else {
+                    Style::new()
+                },
+            )];
+            spans.extend(bar(
+                bar_w,
+                ratio(g.now, g.max),
+                Color::Cyan,
+                format!("{}/{}", g.now, g.max),
+            ));
+            spans.push(Span::styled(format!(" {:>+7}", g.delta()), Style::new().green()));
+            if sec >= 60.0 {
+                let rate = g.delta() as f64 * 3600.0 / sec;
+                let left = (g.max - g.now) as f64 / rate * 3600.0;
+                spans.push(Span::styled(
+                    format!("  +{}/h ~{}", rate_text(rate), short_duration(left)),
+                    Style::new().fg(DIM),
+                ));
+            }
+            Line::from(spans)
+        })
+        .collect();
+    if lines.is_empty() {
+        lines.push(Line::styled("no stack filling yet", Style::new().fg(DIM)));
+    }
+    let listed = |kind: Kind, show: &dyn Fn(&crate::bags::Gain) -> String| -> Option<String> {
+        let names: Vec<String> = of(kind).map(show).collect();
+        (!names.is_empty()).then(|| names.join(", "))
+    };
+    let mut tail = Vec::new();
+    if let Some(names) = listed(Kind::Filled, &|g| format!("{} (+{})", g.name, g.delta())) {
+        tail.push(Line::styled(
+            format!("✓ filled this run: {names}"),
+            Style::new().green(),
+        ));
+    }
+    if let Some(names) = listed(Kind::New, &|g| g.name.clone()) {
+        tail.push(Line::styled(format!("★ new: {names}"), Style::new().magenta()));
+    }
+    if let Some(names) = listed(Kind::Spent, &|g| format!("{} {}", g.name, g.delta())) {
+        tail.push(Line::styled(format!("spent or banked: {names}"), Style::new().fg(DIM)));
+    }
+    // The bars give way to the lines under them, keeping a blank line between.
+    let room = (inner.height as usize).saturating_sub(tail.len() + usize::from(!tail.is_empty()));
+    if lines.len() > room && room > 0 {
+        let hidden = lines.len() - (room - 1);
+        lines.truncate(room - 1);
+        lines.push(Line::styled(format!("… {hidden} more filling"), Style::new().fg(DIM)));
+    }
+    if !tail.is_empty() {
+        lines.push(Line::raw(""));
+        lines.extend(tail);
+    }
+    frame.render_widget(Paragraph::new(lines).block(block), area);
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64)
 }
 
 /// The map's name with its room, as the game names it: `battleon-9999`.

@@ -6,6 +6,7 @@ use common::*;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use ratatui::style::Color;
 use serde_json::{Value, json};
 use skua_tui::app::{App, Tab};
 use skua_tui::engine::PROTOCOL;
@@ -21,6 +22,24 @@ fn manager_file() -> Value {
         ],
         "groups": [{ "name": "Farm", "usernames": ["alice", "bob"] }, { "name": "Butler", "usernames": ["carol"] }]
     })
+}
+
+/// alice's run 3 starting: 800 Atlas Gold, the Chaos Avenger, 2 Vouchers she has since spent, and the Relics as they are now.
+fn run_started() -> Value {
+    let mut items = vec![
+        json!({ "id": 1, "name": "Atlas Gold", "qty": 800 }),
+        json!({ "id": 2, "name": "Chaos Avenger", "qty": 1 }),
+        json!({ "id": 50, "name": "Voucher of Nulgath", "qty": 2 }),
+    ];
+    items.extend((1..=40).map(|n| json!({ "id": 100 + n, "name": format!("Relic {n:02}"), "qty": n })));
+    let mut started = event(
+        1,
+        "script.started",
+        json!({ "run": 3, "script": "Farm/AtlasGold.cs", "restart": false,
+        "inventory": items, "temp": [], "bank": null }),
+    );
+    started["run"] = json!(3);
+    started
 }
 
 /// A fleet in a temp data folder: alice farms with a Script whose quests have stalled, bob's Engine is of another protocol, carol has no
@@ -50,6 +69,7 @@ fn fleet() -> Fleet {
         }
         "logs" if params[0] == "events" => Ok(json!({
             "entries": [
+                run_started(),
                 event(2, "inventory.full", json!({ "used": 120, "slots": 120, "drop": null })),
                 event(3, "hook.ran", json!({ "hook": "player.death", "eventSeq": 1, "startedAt": 1_791_036_000_000i64,
                     "durationMs": 1200, "exitCode": 0, "output": "respawned\n" })),
@@ -129,6 +149,14 @@ fn screen(fleet: &Fleet, app: &mut App, width: u16, height: u16) -> String {
     out
 }
 
+/// The foreground colour of the cell at `x`, `y` as the screen draws now.
+fn app_cell_fg(fleet: &Fleet, app: &mut App, width: u16, height: u16, x: u16, y: u16) -> Color {
+    screen(fleet, app, width, height);
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+    terminal.draw(|frame| skua_tui::ui::draw(frame, app)).unwrap();
+    terminal.backend().buffer()[(x, y)].fg
+}
+
 fn press(app: &mut App, code: KeyCode) {
     app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
 }
@@ -144,7 +172,7 @@ fn the_screen_shows_accounts_by_group_with_their_engines_and_the_selected_ones_o
     let fleet = fleet();
     let mut app = App::new(fleet.dir.path().to_owned());
 
-    let screen = screen(&fleet, &mut app, 120, 32);
+    let screen = screen(&fleet, &mut app, 160, 44);
 
     assert_shows(
         &screen,
@@ -156,11 +184,10 @@ fn the_screen_shows_accounts_by_group_with_their_engines_and_the_selected_ones_o
             "▾ Butler · 1",
             "▾ Ungrouped · 1",
             "▾ Other Engines · 1",
-            "[ ] ● alice        AtlasGold",
-            " 11m▲",
-            "bob          protocol 11",
-            "carol        offline",
-            "default      login screen",
+            "● alice      AtlasGo… 11m▲",
+            "● bob        protocol 11",
+            "● carol      offline",
+            "● default    login screen",
             " Overview │ Inventory │ Quests │ Logs │ Game │",
             "Overview · battleon-9999 · Enter",
             "alice ─",
@@ -189,7 +216,13 @@ fn the_screen_shows_accounts_by_group_with_their_engines_and_the_selected_ones_o
             "Chat",
             "[zone]",
             "anyone for ultra",
-            "1 player(s) in battleon-9999",
+            "Room · 1 player(s) in battleon-9999",
+            "Bags · run 3",
+            "Atlas Gold",
+            "870/1000",
+            "+70",
+            "★ new: Necrotic Sword of Doom",
+            "spent or banked: Voucher of Nulgath -2",
             "acting on: alice",
             "? keys",
         ],
@@ -217,7 +250,7 @@ fn an_engine_of_another_protocol_fails_loudly_on_every_tab_and_shows_none_of_its
                 "Protocol mismatch",
                 "Engine 'bob'",
                 "speaks protocol 11, but",
-                "this skua-tui speaks 18. Nothing it reports is shown.",
+                "skua-tui speaks 18. Nothing it reports is shown.",
             ],
         );
         assert!(!screen.contains("Player") && !screen.contains("Artix"), "{screen}");
@@ -336,7 +369,7 @@ fn the_hooks_tab_shows_the_hook_runner_and_the_engines_hook_runs_newest_first() 
         &[
             "No hook has run for default yet.",
             "named after an event type,",
-            "such as inventory.full. The Hook Runner runs it",
+            "inventory.full. The Hook Runner runs it",
         ],
     );
 }
@@ -354,8 +387,6 @@ fn marks_and_the_command_palette_list_commands_and_run_them_on_the_marked_accoun
         &palette,
         &[
             "2 marked",
-            "[x] ● alice",
-            "[x] ● bob",
             "Commands · on 2 accounts",
             "start Engine",
             "log in…",
@@ -364,6 +395,14 @@ fn marks_and_the_command_palette_list_commands_and_run_them_on_the_marked_accoun
         ],
     );
 
+    for name in ["alice", "bob"] {
+        let (x, y) = find(&palette, &format!("● {name}"));
+        assert_eq!(
+            app_cell_fg(&fleet, &mut app, 120, 32, x + 2, y),
+            Color::Blue,
+            "{name} is marked"
+        );
+    }
     for c in "stscr".chars() {
         press(&mut app, KeyCode::Char(c));
     }
@@ -568,7 +607,7 @@ fn a_stall_while_still_killing_is_grinding_not_an_alert() {
     assert!(rows[carol + 1].contains("312 kills · 5.4/min"), "{screen}");
     let row = screen.lines().find(|l| l.contains("● carol")).unwrap();
     assert!(
-        row.contains("RareDrop") && row.contains("11m") && !row.contains('▲'),
+        row.contains("RareDr") && row.contains("11m") && !row.contains('▲'),
         "{row}"
     );
 }
