@@ -26,7 +26,7 @@ const PLAYER_H: u16 = 6;
 const PLAYER_W: u16 = 36;
 /// How wide the run's panel must be for its goal tree's lines, rates and times left included.
 const RUN_W: u16 = 84;
-/// How wide Current Quests is beside the player, or as the right column down to the chat where the run fits beside the player too.
+/// How wide Current Quests is, beside the player or as the right column down to the chat.
 const QUESTS_W: u16 = 46;
 /// How tall the chat strip is at most, its border included.
 const CHAT_H: u16 = 10;
@@ -423,11 +423,12 @@ fn overview(frame: &mut Frame, app: &App, hello: &Hello, status: &Status, detail
     let question_h = status.pending_dialogs.first().map_or(0, |q| q.choices.len() as u16 + 3);
     let run_h = run.len() as u16 + 2;
 
-    // Where the player, the run's goal tree and the quests fit side by side, Current Quests runs down the right; else the quests sit
-    // beside the player and the run goes under them.
-    let tall_quests = inner.width >= PLAYER_W + RUN_W + QUESTS_W;
-    let top_h = if tall_quests { run_h.max(PLAYER_H) } else { PLAYER_H };
-    let run_row_h = if tall_quests { 0 } else { run_h };
+    // Where the run's goal tree and the quests fit side by side, Current Quests runs down the right, and the run goes beside the player
+    // where it fits there too, else under it. On a narrower terminal the quests sit beside the player and the run goes under them.
+    let tall_quests = inner.width >= RUN_W + QUESTS_W;
+    let run_beside = tall_quests && inner.width >= PLAYER_W + RUN_W + QUESTS_W;
+    let top_h = if run_beside { run_h.max(PLAYER_H) } else { PLAYER_H };
+    let run_row_h = if run_beside { 0 } else { run_h };
     let cell_h = members_h.max(4);
     // The chat strip at the bottom shares what the rest leaves with Bags, and gives way first on a short terminal.
     let left_over = inner.height.saturating_sub(top_h + run_row_h + question_h + 1 + cell_h);
@@ -448,7 +449,11 @@ fn overview(frame: &mut Frame, app: &App, hello: &Hello, status: &Status, detail
     ])
     .areas(left);
     let [player_area, beside] = Layout::horizontal([Constraint::Length(PLAYER_W), Constraint::Fill(1)]).areas(top);
-    let (run_area, quests_area) = if tall_quests { (beside, side) } else { (run_row, beside) };
+    let (run_area, quests_area) = match (run_beside, tall_quests) {
+        (true, _) => (beside, side),
+        (false, true) => (run_row, side),
+        (false, false) => (run_row, beside),
+    };
     player_frame(frame, me, status, player_area);
     frame.render_widget(Paragraph::new(run).block(panel("Script")), run_area);
     let tracker_rows = quests_area.height.saturating_sub(2) as usize;
@@ -950,6 +955,9 @@ fn bags(frame: &mut Frame, bags: &Bags, area: Rect) {
     const NAME_COLUMN: usize = 24;
     const GAIN_W: u16 = 8;
     const RATE_W: u16 = 22;
+    /// How wide a bar is, at least and at most.
+    const BAR_MIN: u16 = 12;
+    const BAR_MAX: u16 = 40;
     if area.height < 3 {
         return;
     }
@@ -983,7 +991,7 @@ fn bags(frame: &mut Frame, bags: &Bags, area: Rect) {
     let bar_w = inner
         .width
         .saturating_sub(NAME_COLUMN as u16 + GAIN_W + RATE_W)
-        .clamp(12, 40);
+        .clamp(BAR_MIN, BAR_MAX);
     let mut bars: Vec<Line> = filling
         .iter()
         .map(|c| {
@@ -1037,22 +1045,37 @@ fn bags(frame: &mut Frame, bags: &Bags, area: Rect) {
     .flatten()
     .collect();
 
-    // The bars give way to the lines under them, a blank line between; on a short terminal those lines alone.
+    // The bars give way to the lines under them, a blank line between; where not even one bar fits with those, a line of counts.
     let rows = inner.height as usize;
     let rows_for_bars = rows.saturating_sub(tail.len() + usize::from(!tail.is_empty()));
-    let mut lines = Vec::new();
-    if rows_for_bars > 0 {
+    let lines = if rows_for_bars == 0 {
+        let count = |kind: Kind, what: &str| {
+            let n = of(kind).count();
+            (n > 0).then(|| format!("{n} {what}"))
+        };
+        let counts: Vec<String> = [
+            count(Kind::Filling, "filling"),
+            count(Kind::Filled, "filled"),
+            count(Kind::New, "new"),
+            count(Kind::Spent, "spent"),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        vec![Line::styled(counts.join(" · "), Style::new().fg(DIM))]
+    } else {
         if bars.len() > rows_for_bars {
             let hidden = bars.len() - (rows_for_bars - 1);
             bars.truncate(rows_for_bars - 1);
             bars.push(Line::styled(format!("… {hidden} more filling"), Style::new().fg(DIM)));
         }
-        lines.extend(bars);
+        let mut lines = bars;
         if !tail.is_empty() {
             lines.push(Line::raw(""));
         }
-    }
-    lines.extend(tail);
+        lines.extend(tail);
+        lines
+    };
     frame.render_widget(Paragraph::new(lines).block(block), area);
 }
 

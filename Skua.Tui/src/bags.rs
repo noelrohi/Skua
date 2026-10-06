@@ -8,10 +8,10 @@ use serde_json::Value;
 
 use crate::dto::{Inventory, LogEntry};
 
-/// The event a run starts with, carrying the inventory as it began (`Logs.ScriptStarted`); a relogin's restart of the same run sends
+/// The event a run starts with, carrying the inventory as it began (`EventTypes.ScriptStarted`); a relogin's restart of the same run sends
 /// it again with `restart: true`.
 pub const SCRIPT_STARTED: &str = "script.started";
-/// The event a run ends with (`Logs.ScriptStopped`).
+/// The event a run ends with (`EventTypes.ScriptStopped`).
 pub const SCRIPT_STOPPED: &str = "script.stopped";
 /// How long an item that just changed stays fresh.
 pub const FRESH: Duration = Duration::from_secs(6);
@@ -48,7 +48,7 @@ struct Held {
 pub struct Start {
     /// The run whose `script.started` it came from; `None` when it is skua-tui's first read.
     pub run: Option<i64>,
-    /// When the run started, else when skua-tui first read the inventory; epoch ms.
+    /// When the run started, else when its inventory was first read; epoch ms.
     pub at_ms: i64,
     /// When the run ended, once its `script.stopped` has been seen; epoch ms.
     pub ended_ms: Option<i64>,
@@ -106,12 +106,13 @@ impl Bags {
         let run = entry.run.or_else(|| data?.get("run")?.as_i64());
         match entry.event_type.as_deref() {
             Some(SCRIPT_STARTED) => {
-                // The same event read again, as after selecting the account again, or the run's restart after a relogin.
+                // The run's restart after a relogin, or a start no newer than the run's: the same event or an older run's, read again
+                // after selecting the account again.
                 let restart = data.and_then(|d| d.get("restart")).and_then(Value::as_bool) == Some(true);
                 if self
                     .start
                     .as_ref()
-                    .is_some_and(|s| s.run == run && (restart || s.at_ms == entry.ts))
+                    .is_some_and(|s| (restart && s.run == run) || (s.run.is_some() && entry.ts <= s.at_ms))
                 {
                     return;
                 }
@@ -168,7 +169,11 @@ impl Bags {
                     items: Some(counts()),
                 })
             }
-            Some(start) if start.items.is_none() => start.items = Some(counts()),
+            // A run that started while the player wasn't playing counts, and is timed, from this read.
+            Some(start) if start.items.is_none() => {
+                start.items = Some(counts());
+                start.at_ms = now_ms;
+            }
             Some(_) => {}
         }
         if let Some((at, before)) = &self.now
@@ -266,7 +271,8 @@ mod tests {
         entry(
             SCRIPT_STARTED,
             run,
-            1_000_000,
+            // A later run starts later.
+            1_000_000 + run * 100_000,
             json!({ "run": run, "script": "Nation/Materials/0MaxBags.cs", "restart": restart, "inventory": inventory,
                 "temp": [], "bank": null }),
         )
@@ -356,6 +362,23 @@ mod tests {
     }
 
     #[test]
+    fn the_events_read_again_after_selecting_the_account_again_keep_the_count() {
+        let mut bags = Bags::default();
+        let older = started(1, false, Some(&[(1, "Diamond of Nulgath", 100)]));
+        let mut current = started(2, false, Some(&[(1, "Diamond of Nulgath", 700)]));
+        current.ts += 60_000;
+        bags.on_entry(&older);
+        bags.on_entry(&current);
+        bags.on_inventory(&inventory(&[(1, "Diamond of Nulgath", 750, 1000)]), 2_000_000);
+
+        bags.on_entry(&older);
+        bags.on_entry(&current);
+
+        assert_eq!(bags.start().and_then(|s| s.run), Some(2));
+        assert_eq!(kinds(&bags), vec![("Diamond of Nulgath".into(), Kind::Filling, 50)]);
+    }
+
+    #[test]
     fn a_run_started_while_not_playing_counts_from_the_next_read_and_its_end_stops_the_clock() {
         let mut bags = Bags::default();
         bags.on_entry(&started(3, false, Some(&[(1, "Diamond of Nulgath", 500)])));
@@ -368,6 +391,7 @@ mod tests {
         );
 
         bags.on_entry(&entry(SCRIPT_STOPPED, 4, 1_600_000, json!({ "run": 4 })));
-        assert_eq!(bags.start().map(|s| s.elapsed_sec(9_000_000)), Some(600.0));
+        // Timed from the read it counts from, to the run's end.
+        assert_eq!(bags.start().map(|s| s.elapsed_sec(9_000_000)), Some(100.0));
     }
 }
