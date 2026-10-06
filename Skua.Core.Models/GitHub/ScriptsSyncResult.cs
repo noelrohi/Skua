@@ -5,10 +5,10 @@ public enum ScriptsSyncMode
     /// <summary>The first sync from this Script Source: every missing or outdated Script was downloaded.</summary>
     Full,
 
-    /// <summary>Only the Scripts changed since the last synced commit were downloaded.</summary>
+    /// <summary>Only the Scripts changed since the last synced commit were downloaded; with verify, those that differed from <c>scripts.json</c>.</summary>
     Incremental,
 
-    /// <summary>The Script Source hasn't changed since the last sync.</summary>
+    /// <summary>The Script Source hasn't changed since the last sync; with verify, every Script on disk matched <c>scripts.json</c>.</summary>
     UpToDate,
 }
 

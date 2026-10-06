@@ -352,18 +352,18 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
         }
     }
 
-    public async Task<ScriptsSyncResult> SyncScriptsAsync(CancellationToken token)
+    public async Task<ScriptsSyncResult> SyncScriptsAsync(bool verify, CancellationToken token)
     {
         ScriptSource source = Source;
         string headSha = await FetchHeadCommitShaAsync(source, token);
         string? storedSha = GetStoredCommitSha(source);
 
-        if (storedSha == headSha)
+        if (storedSha == headSha && !verify)
             return new ScriptsSyncResult(source, ScriptsSyncMode.UpToDate, headSha, 0, [], [], []);
 
         List<ScriptInfo> scripts = await FetchScriptsAsync(source, token);
         List<ScriptInfo> toDownload;
-        if (string.IsNullOrEmpty(storedSha))
+        if (string.IsNullOrEmpty(storedSha) || verify)
         {
             toDownload = scripts.Where(s => !s.Downloaded || s.Outdated).ToList();
         }
@@ -403,7 +403,9 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
 
         return new ScriptsSyncResult(
             source,
-            string.IsNullOrEmpty(storedSha) ? ScriptsSyncMode.Full : ScriptsSyncMode.Incremental,
+            string.IsNullOrEmpty(storedSha) ? ScriptsSyncMode.Full
+                : verify && toDownload.Count == 0 ? ScriptsSyncMode.UpToDate
+                : ScriptsSyncMode.Incremental,
             headSha,
             downloaded,
             failed.Order(StringComparer.Ordinal).ToList(),

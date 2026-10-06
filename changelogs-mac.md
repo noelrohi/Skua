@@ -4,6 +4,15 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 
 ---
 
+## October 6, 2026
+
+### New
+* `skua scripts check <path>` compiles a Script and its includes without running it or starting an Engine, and exits non-zero with each error at its file and line. Given a file in a Scripts checkout, it compiles against that checkout. See [Script Source](./BUILD.md#script-source).
+* `skua scripts update --verify` hashes every local Script against `scripts.json` and downloads each one that differs or is missing, so a Script changed on a branch no longer keeps running its old code.
+
+### Changes
+* `skua scripts` and `skua status` start no Engine. `status` of an Engine that isn't running fails and says how to start it. `scripts update` and `scripts source` are refused while any Engine runs a Script.
+
 ## October 5, 2026
 
 ### New

@@ -11,9 +11,69 @@ namespace Skua.Engine.Tests;
 public class CliTests
 {
     [Fact]
+    public async Task The_commands_that_need_no_Engine_leave_the_Engine_list_unchanged()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeGitHub github = new();
+        github.Commit("noelrohi", "Scripts", "Skua", new FakeScript("Farm/Good.cs", TestScripts.Main("bot.Log(\"good\");"), "Good"));
+        FakeKeychain keychain = new(sandbox);
+        Dictionary<string, string> environment = new(github.Environment());
+        foreach ((string key, string value) in keychain.Environment())
+            environment[key] = value;
+        EngineEndpoint alt1 = EngineEndpoint.Resolve("alt1", sandbox.SkuaDir);
+        string[][] commands =
+        [
+            ["scripts", "source"], ["scripts", "update"], ["scripts", "update", "--verify"], ["scripts", "search", "good"], ["scripts", "list"],
+            ["scripts", "new"], ["scripts", "check", "Farm/Good.cs"], ["scripts", "source", "auqw/Scripts@Skua"], ["scripts", "source", "--default"],
+            ["engine", "list"], ["engine", "list", "--brief"], ["account", "show"], ["status"],
+        ];
+        try
+        {
+            Assert.Equal(0, (await sandbox.RunCliAsync("--engine", "alt1", "engine", "start")).ExitCode);
+            ProcessResult before = await sandbox.RunCliAsync("engine", "list", "--json");
+
+            List<(string Command, ProcessResult Result)> results = [];
+            foreach (string[] command in commands)
+                results.Add((string.Join(' ', command), await sandbox.RunCliAsync(environment, command)));
+            ProcessResult after = await sandbox.RunCliAsync("engine", "list", "--json");
+
+            Assert.All(results.Where(r => r.Command != "status"), r => Assert.True(r.Result.ExitCode == 0, $"{r.Command}: {r.Result.Stderr}"));
+            Assert.Equal(["alt1"], EngineEndpoint.InDataFolder(sandbox.SkuaDir).Select(e => e.Name));
+            Assert.False(EngineLock.IsHeld(sandbox.Endpoint.LockPath));
+            Assert.Equal(EngineNames(before), EngineNames(after));
+        }
+        finally
+        {
+            await EngineClient.StopAsync(alt1, EngineSandbox.StopTimeout);
+        }
+
+        static string?[] EngineNames(ProcessResult list) =>
+            [.. JsonDocument.Parse(list.Stdout).RootElement.EnumerateArray().Select(e => e.GetProperty("engine").GetProperty("name").GetString())];
+    }
+
+    [Fact]
+    public async Task Status_of_an_Engine_that_isnt_running_says_so_and_how_to_start_it()
+    {
+        await using EngineSandbox sandbox = new();
+
+        ProcessResult human = await sandbox.RunCliAsync("status");
+        ProcessResult named = await sandbox.RunCliAsync("--engine", "alt1", "status");
+        ProcessResult json = await sandbox.RunCliAsync("status", "--json");
+
+        Assert.Equal(ExitCodes.For(ErrorCode.EngineUnavailable), human.ExitCode);
+        Assert.Equal("skua: Engine 'default' isn't running; 'skua engine start' starts it.", human.Stderr.Trim());
+        Assert.Equal("skua: Engine 'alt1' isn't running; 'skua --engine alt1 engine start' starts it.", named.Stderr.Trim());
+        Assert.Equal(ExitCodes.For(ErrorCode.EngineUnavailable), json.ExitCode);
+        using (JsonDocument error = JsonDocument.Parse(json.Stdout))
+            Assert.Equal("engineUnavailable", error.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.Empty(EngineEndpoint.InDataFolder(sandbox.SkuaDir));
+    }
+
+    [Fact]
     public async Task Status_json_prints_the_status_DTO()
     {
         await using EngineSandbox sandbox = new();
+        await sandbox.RunCliAsync("engine", "start");
 
         ProcessResult result = await sandbox.RunCliAsync("status", "--json");
 
@@ -31,6 +91,7 @@ public class CliTests
     public async Task Status_prints_human_text_by_default()
     {
         await using EngineSandbox sandbox = new();
+        await sandbox.RunCliAsync("engine", "start");
 
         ProcessResult result = await sandbox.RunCliAsync("status");
 
@@ -445,14 +506,14 @@ public class CliTests
         string otherSocket = Path.Combine(sandbox.SkuaDir, "other.sock");
         try
         {
-            ProcessResult status = await sandbox.RunCliAsync(
-                new Dictionary<string, string> { [EngineEndpoint.SocketVariable] = otherSocket }, "--engine", "farm-1", "status", "--json");
+            ProcessResult started = await sandbox.RunCliAsync(
+                new Dictionary<string, string> { [EngineEndpoint.SocketVariable] = otherSocket }, "--engine", "farm-1", "engine", "start", "--json");
             ProcessResult engineStatus = await sandbox.RunCliAsync("engine", "status", "--engine", "farm-1", "--json");
             ProcessResult invalid = await sandbox.RunCliAsync("status", "--engine", "Not Valid");
 
-            Assert.Equal(0, status.ExitCode);
-            using (JsonDocument json = JsonDocument.Parse(status.Stdout))
-                Assert.Equal("farm-1", json.RootElement.GetProperty("engine").GetProperty("name").GetString());
+            Assert.Equal(0, started.ExitCode);
+            using (JsonDocument json = JsonDocument.Parse(started.Stdout))
+                Assert.Equal("farm-1", json.RootElement.GetProperty("name").GetString());
             Assert.True(File.Exists(named.SocketPath));
             Assert.False(File.Exists(otherSocket));
             Assert.False(File.Exists(sandbox.Endpoint.SocketPath));
@@ -476,12 +537,12 @@ public class CliTests
         EngineEndpoint named = EngineEndpoint.Resolve("alt2", sandbox.SkuaDir, socket);
         try
         {
-            ProcessResult status = await sandbox.RunCliAsync(
-                new Dictionary<string, string> { [EngineEndpoint.SocketVariable] = socket }, "status", "--json");
+            ProcessResult started = await sandbox.RunCliAsync(
+                new Dictionary<string, string> { [EngineEndpoint.SocketVariable] = socket }, "engine", "start", "--json");
 
-            Assert.Equal(0, status.ExitCode);
-            using (JsonDocument json = JsonDocument.Parse(status.Stdout))
-                Assert.Equal("alt2", json.RootElement.GetProperty("engine").GetProperty("name").GetString());
+            Assert.Equal(0, started.ExitCode);
+            using (JsonDocument json = JsonDocument.Parse(started.Stdout))
+                Assert.Equal("alt2", json.RootElement.GetProperty("name").GetString());
             Assert.True(EngineLock.IsHeld(named.LockPath));
             Assert.False(File.Exists(sandbox.Endpoint.LockPath));
         }

@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Skua.Control;
+using Skua.Engine;
 
 namespace Skua.App.Cli;
 
@@ -356,6 +357,8 @@ internal static class Output
             text += $"\n{result.Failed.Count} failed to download; run 'skua scripts update' again: {string.Join(", ", result.Failed)}";
         return text;
     }
+
+    public static string ScriptCheck(ScriptCheckResult result) => $"{result.Script} compiles, with {Count(result.Includes.Count, "include")}.";
 
     /// <summary>What the update before <c>skua script start</c> did, in one line; null when it downloaded nothing and nothing failed.</summary>
     public static string? StartUpdate(ScriptsUpdateResult result) => result switch

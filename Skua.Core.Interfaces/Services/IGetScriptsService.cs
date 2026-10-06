@@ -30,7 +30,11 @@ public interface IGetScriptsService : INotifyPropertyChanged
     /// Syncs the Scripts on disk with the Script Source: the first sync from a Script Source downloads every missing or outdated Script,
     /// later ones only the Scripts changed since the last synced commit. Throws on failure and leaves <see cref="Scripts"/> alone.
     /// </summary>
-    Task<ScriptsSyncResult> SyncScriptsAsync(CancellationToken token);
+    /// <param name="verify">
+    /// Instead of the changes since the last synced commit, download every Script whose file is missing or differs in size or SHA-256 from
+    /// <c>scripts.json</c>, whatever commit was synced last; a Script edited on disk is replaced.
+    /// </param>
+    Task<ScriptsSyncResult> SyncScriptsAsync(bool verify, CancellationToken token);
 
     Task<long> CheckAdvanceSkillSetsUpdates();
 

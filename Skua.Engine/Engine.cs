@@ -70,7 +70,7 @@ internal sealed class Engine : IEngineRpc
         _slot = new();
         _scriptsSlot = new();
         SemaphoreSlim compiling = new(1, 1);
-        _scriptSource = new ScriptSourceOperations(services.GetRequiredService<IGetScriptsService>(), _runs, _scriptsSlot, _shutdown.Token);
+        _scriptSource = new ScriptSourceOperations(services.GetRequiredService<IGetScriptsService>(), _runs.EnsureIdle, _scriptsSlot, _shutdown.Token);
         _screenshots = new ScreenshotOperations(services.GetRequiredService<BridgeFlashUtil>(), services.GetRequiredService<IScriptOption>());
         GameActionSlot gameSlot = new(gameHost.Tracker, _runs, _slot);
         _game = new GameOperations(

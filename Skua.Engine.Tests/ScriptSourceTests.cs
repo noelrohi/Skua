@@ -442,6 +442,72 @@ public class ScriptSourceTests
     }
 
     [Fact]
+    public async Task Scripts_update_verify_downloads_each_local_Script_whose_hash_differs_from_scripts_json_or_that_is_missing()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeGitHub github = new();
+        github.Commit("noelrohi", "Scripts", "Skua", Leveling, Gold, CoreBots);
+        await sandbox.RunCliAsync(github.Environment(), "scripts", "update");
+        // The same size as the Script Source's copy, so only its hash tells them apart.
+        string edited = Path.Combine(sandbox.SkuaDir, "Scripts", Leveling.Path);
+        File.WriteAllText(edited, "// leveling vX");
+        File.Delete(Path.Combine(sandbox.SkuaDir, "Scripts", Gold.Path));
+
+        ProcessResult plain = await sandbox.RunCliAsync(github.Environment(), "scripts", "update");
+        string afterPlain = File.ReadAllText(edited);
+        github.ClearRequests();
+        ProcessResult verify = await sandbox.RunCliAsync(github.Environment(), "scripts", "update", "--verify", "--json");
+        IReadOnlyList<string> downloads = github.ScriptDownloads("noelrohi", "Scripts", "Skua");
+        ProcessResult again = await sandbox.RunCliAsync(github.Environment(), "scripts", "update", "--verify");
+
+        Assert.True(plain.ExitCode == 0, plain.Stderr);
+        Assert.StartsWith("The Scripts are up to date", plain.Stdout);
+        Assert.Equal("// leveling vX", afterPlain);
+        Assert.True(verify.ExitCode == 0, verify.Stderr);
+        using (JsonDocument json = JsonDocument.Parse(verify.Stdout))
+        {
+            Assert.Equal("incremental", json.RootElement.GetProperty("mode").GetString());
+            Assert.Equal(2, json.RootElement.GetProperty("downloaded").GetInt32());
+            Assert.Equal([Gold.Path], json.RootElement.GetProperty("added").EnumerateArray().Select(e => e.GetString()));
+            Assert.Equal([Leveling.Path], json.RootElement.GetProperty("changed").EnumerateArray().Select(e => e.GetString()));
+        }
+        Assert.Equal([Gold.Path, Leveling.Path], downloads.Order(StringComparer.Ordinal));
+        Assert.Equal(Leveling.Content, await ReadScriptAsync(sandbox, Leveling.Path));
+        Assert.Equal(Gold.Content, await ReadScriptAsync(sandbox, Gold.Path));
+        Assert.True(again.ExitCode == 0, again.Stderr);
+        Assert.StartsWith("The Scripts are up to date", again.Stdout);
+        Assert.Contains("--verify", (await sandbox.RunCliAsync("scripts", "update", "--help")).Stdout);
+    }
+
+    [Fact]
+    public async Task The_CLI_refuses_to_update_or_change_the_Script_Source_while_any_Engine_of_the_data_folder_runs_a_Script()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeGitHub github = new();
+        github.Commit("noelrohi", "Scripts", "Skua", Leveling);
+        await using GameFixture game = await GameFixture.StartAsync(sandbox);
+        TestScripts.Write(sandbox, "Tests/Loop.cs", TestScripts.Loop);
+        await game.Connection.ScriptStartAsync("Tests/Loop.cs", cancellationToken: Ct);
+
+        ProcessResult update = await sandbox.RunCliAsync(github.Environment(), "--engine", "alt1", "scripts", "update");
+        ProcessResult source = await sandbox.RunCliAsync(github.Environment(), "scripts", "source", "auqw/Scripts@Skua");
+        ProcessResult search = await sandbox.RunCliAsync(github.Environment(), "scripts", "search", "leveling");
+        bool downloadedWhileRunning = File.Exists(Path.Combine(sandbox.SkuaDir, "Scripts", Leveling.Path));
+        await game.Connection.ScriptStopAsync(Ct);
+        ProcessResult stopped = await sandbox.RunCliAsync(github.Environment(), "scripts", "update");
+
+        Assert.Equal(ExitCodes.For(ErrorCode.ScriptRunning), update.ExitCode);
+        Assert.Equal("skua: Can't update the Scripts while Engine 'default' runs Tests/Loop.cs; stop it first with 'skua script stop'.", update.Stderr.Trim());
+        Assert.Equal(ExitCodes.For(ErrorCode.ScriptRunning), source.ExitCode);
+        Assert.Contains("Can't change the Script Source while Engine 'default' runs Tests/Loop.cs", source.Stderr);
+        Assert.True(search.ExitCode == 0, search.Stderr);
+        Assert.True(stopped.ExitCode == 0, stopped.Stderr);
+        Assert.False(downloadedWhileRunning);
+        Assert.Equal(Leveling.Content, await ReadScriptAsync(sandbox, Leveling.Path));
+        Assert.Equal(["default"], EngineEndpoint.InDataFolder(sandbox.SkuaDir).Select(e => e.Name));
+    }
+
+    [Fact]
     public async Task The_CLI_exits_with_the_Script_Source_code_when_it_is_unreachable()
     {
         await using EngineSandbox sandbox = new();

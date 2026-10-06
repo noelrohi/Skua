@@ -3,6 +3,7 @@ using System.Runtime.Versioning;
 using Skua.App.Cli;
 using Skua.App.Cli.Mcp;
 using Skua.Control;
+using Skua.Engine;
 
 [assembly: UnsupportedOSPlatform("windows")]
 
@@ -24,10 +25,10 @@ engineName.Validators.Add(result =>
         result.AddError($"Engine Name '{name}' is invalid; it must match [a-z0-9-]{{1,16}}.");
 });
 
-Command status = new("status", "Show the Engine, its game and the running Script; auto-starts the Engine.");
+Command status = new("status", "Show a running Engine, its game and its Script; it starts none, and fails when the Engine isn't running.");
 status.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
 {
-    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
+    using EngineConnection connection = await Cli.ConnectToRunningAsync(options, ct);
     return await connection.StatusAsync(ct);
 }, Output.Status));
 
@@ -39,18 +40,19 @@ Argument<string> scriptsQuery = new("query")
 };
 Option<string?> scriptsTag = new("--tag") { Description = "Only Scripts with this tag." };
 Command scriptsSearch = new("search", "Search the Script Source for Scripts, with whether each is downloaded or outdated.") { scriptsQuery, scriptsTag };
-scriptsSearch.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
-{
-    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
-    return await connection.ScriptsSearchAsync(parse.GetValue(scriptsQuery)!, parse.GetValue(scriptsTag), ct);
-}, Output.ScriptsSearch));
+scriptsSearch.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json),
+    _ => ScriptsCommands.SearchAsync(parse.GetValue(scriptsQuery)!, parse.GetValue(scriptsTag), ct), Output.ScriptsSearch));
 
-Command scriptsUpdate = new("update", "Sync the Scripts with the Script Source: a full download the first time, then only changed Scripts.");
-scriptsUpdate.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
+Option<bool> scriptsVerify = new("--verify")
 {
-    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
-    return await connection.ScriptsUpdateAsync(ct);
-}, Output.ScriptsUpdate));
+    Description = "Also hash every local Script against the Script Source's scripts.json and download each one that differs or is missing, "
+        + "whatever was synced last; a Script edited on disk is replaced.",
+};
+Command scriptsUpdate = new("update", "Sync the Scripts with the Script Source: a full download the first time, then only changed Scripts; refused while any Engine runs a Script.")
+{
+    scriptsVerify,
+};
+scriptsUpdate.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), _ => ScriptsCommands.UpdateAsync(parse.GetValue(scriptsVerify), ct), Output.ScriptsUpdate));
 
 Argument<string?> scriptsFolder = new("folder")
 {
@@ -58,19 +60,11 @@ Argument<string?> scriptsFolder = new("folder")
     Arity = ArgumentArity.ZeroOrOne,
 };
 Command scriptsList = new("list", "Browse a folder of the Script Source: its subfolders, and its Scripts with their descriptions.") { scriptsFolder };
-scriptsList.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
-{
-    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
-    return await connection.ScriptsListAsync(parse.GetValue(scriptsFolder), ct);
-}, Output.ScriptsList));
+scriptsList.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), _ => ScriptsCommands.ListAsync(parse.GetValue(scriptsFolder), ct), Output.ScriptsList));
 
 Option<string?> scriptsSince = new("--since") { Description = "A date or time in local time (e.g. 2026-09-01 for local midnight, or 2026-09-01T00:00Z for UTC), or a recorded commit: the last 7 days by default." };
 Command scriptsNew = new("new", "List the Scripts that recent Scripts updates, or the Script Source's commits before the first download, added or changed, and when.") { scriptsSince };
-scriptsNew.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
-{
-    using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
-    return await connection.ScriptsNewAsync(parse.GetValue(scriptsSince), ct);
-}, Output.ScriptsNew));
+scriptsNew.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), _ => Task.FromResult(ScriptsCommands.New(parse.GetValue(scriptsSince))), Output.ScriptsNew));
 
 Argument<string?> scriptsSourceValue = new("source")
 {
@@ -78,7 +72,7 @@ Argument<string?> scriptsSourceValue = new("source")
     Arity = ArgumentArity.ZeroOrOne,
 };
 Option<bool> scriptsSourceDefault = new("--default") { Description = "Reset the Script Source to the default." };
-Command scriptsSource = new("source", "Show or set the Script Source; a new one takes effect at once, but not while a Script runs.")
+Command scriptsSource = new("source", "Show or set the Script Source; a new one takes effect at once, but not while any Engine runs a Script.")
 {
     scriptsSourceValue, scriptsSourceDefault,
 };
@@ -91,14 +85,26 @@ scriptsSource.SetAction((parse, ct) =>
 {
     string? source = parse.GetValue(scriptsSourceValue);
     bool change = source is not null || parse.GetValue(scriptsSourceDefault);
-    return Cli.RunAsync(parse.GetValue(json), async options =>
-    {
-        using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
-        return change ? await connection.ScriptsSourceSetAsync(source, ct) : await connection.ScriptsSourceAsync(ct);
-    }, change ? Output.ScriptSourceChanged : Output.ScriptSource);
+    return Cli.RunAsync(parse.GetValue(json), _ => change ? ScriptsCommands.SetSourceAsync(source, ct) : Task.FromResult(ScriptsCommands.Source()),
+        change ? Output.ScriptSourceChanged : Output.ScriptSource);
 });
 
-Command scripts = new("scripts", "Find, browse and sync Scripts from the Script Source.") { scriptsSearch, scriptsList, scriptsUpdate, scriptsNew, scriptsSource };
+Argument<string> scriptsCheckPath = new("path")
+{
+    Description = "The Script's file, absolute or from here, e.g. in a Scripts checkout; else its path in the data folder's Scripts, e.g. Farm/Leveling.cs.",
+};
+Command scriptsCheck = new("check",
+    "Compile a Script and its includes as a start would, without running it or starting an Engine; exits non-zero with each error at its file and line.")
+{
+    scriptsCheckPath,
+};
+scriptsCheck.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json),
+    _ => Task.FromResult(ScriptCheck.Run(parse.GetValue(scriptsCheckPath)!, EngineEndpoint.DefaultSkuaDir())), Output.ScriptCheck));
+
+Command scripts = new("scripts", "Find, browse, sync and check Scripts from the Script Source; these start no Engine.")
+{
+    scriptsSearch, scriptsList, scriptsUpdate, scriptsNew, scriptsSource, scriptsCheck,
+};
 
 Argument<LogKind[]> logKinds = new("kind")
 {

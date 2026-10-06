@@ -13,18 +13,19 @@ namespace Skua.Engine;
 internal sealed class ScriptSourceOperations
 {
     private readonly IGetScriptsService _scriptsService;
-    private readonly ScriptRuns _runs;
+    private readonly Action<string> _ensureIdle;
     private readonly ActionSlot _scriptsSlot;
     private readonly CancellationToken _shutdown;
     private readonly SemaphoreSlim _updating = new(1, 1);
     private readonly ScriptHistory _history = new();
 
+    /// <param name="ensureIdle">Refuses the action it is given while a Script runs, as <see cref="ScriptRuns.EnsureIdle"/> does.</param>
     /// <param name="scriptsSlot">The Engine's Scripts slot, which a Script's compile takes too.</param>
     /// <param name="shutdown">Ends an update in flight; a client disconnecting doesn't.</param>
-    public ScriptSourceOperations(IGetScriptsService scriptsService, ScriptRuns runs, ActionSlot scriptsSlot, CancellationToken shutdown)
+    public ScriptSourceOperations(IGetScriptsService scriptsService, Action<string> ensureIdle, ActionSlot scriptsSlot, CancellationToken shutdown)
     {
         _scriptsService = scriptsService;
-        _runs = runs;
+        _ensureIdle = ensureIdle;
         _scriptsSlot = scriptsSlot;
         _shutdown = shutdown;
     }
@@ -81,15 +82,16 @@ internal sealed class ScriptSourceOperations
     /// Refused while a Script runs, and holds the Engine's Scripts slot, so a Script's files never change under it and no Script compiles
     /// until the update ends; a login or another game action goes ahead meanwhile.
     /// </remarks>
-    public Task<ScriptsUpdateResult> UpdateAsync() => SyncAsync("update the Scripts", reset: false);
+    /// <param name="verify">Download every Script whose file differs from <c>scripts.json</c> or is missing, rather than the changes since the last synced commit.</param>
+    public Task<ScriptsUpdateResult> UpdateAsync(bool verify = false) => SyncAsync("update the Scripts", reset: false, verify);
 
     /// <summary>
     /// Deletes the Scripts folder's contents, the junk items list aside, then downloads every Script from the Script Source again, as the
     /// Windows Manager's Reset Scripts does; a Script edited or added on disk is gone. Refused as <see cref="UpdateAsync"/> is.
     /// </summary>
-    public Task<ScriptsUpdateResult> ResetAsync() => SyncAsync("reset the Scripts", reset: true);
+    public Task<ScriptsUpdateResult> ResetAsync() => SyncAsync("reset the Scripts", reset: true, verify: false);
 
-    private async Task<ScriptsUpdateResult> SyncAsync(string action, bool reset)
+    private async Task<ScriptsUpdateResult> SyncAsync(string action, bool reset, bool verify)
     {
         if (!_updating.Wait(0))
             throw RpcErrors.Of(ErrorCode.Busy, "A Scripts update is already running.");
@@ -98,11 +100,11 @@ internal sealed class ScriptSourceOperations
         {
             // The slot first: a Script's start holds it until its run has begun, so no start slips in after the check.
             using IDisposable lease = _scriptsSlot.Take(action);
-            _runs.EnsureIdle(action);
+            _ensureIdle(action);
             if (reset)
                 DeleteLocalScripts();
             ScriptSource source = _scriptsService.Source;
-            ScriptsSyncResult result = await FromScriptSourceAsync(source, () => _scriptsService.SyncScriptsAsync(_shutdown));
+            ScriptsSyncResult result = await FromScriptSourceAsync(source, () => _scriptsService.SyncScriptsAsync(verify, _shutdown));
             if (result.Mode == ScriptsSyncMode.Full)
                 await RecordFullDownloadAsync(result);
             else if (result.Added.Count > 0 || result.Changed.Count > 0)
@@ -180,7 +182,7 @@ internal sealed class ScriptSourceOperations
         try
         {
             using IDisposable lease = _scriptsSlot.Take("change the Script Source");
-            _runs.EnsureIdle("change the Script Source");
+            _ensureIdle("change the Script Source");
             try
             {
                 ScriptSourceSetting.Write(ClientFileSources.SkuaDIR, source is null ? null : ScriptSourceSetting.Parse(source));
