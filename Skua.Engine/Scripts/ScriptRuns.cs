@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Reflection;
 using CommunityToolkit.Mvvm.Messaging;
+using Skua.Engine.Game;
 using Skua.Engine.Logging;
 using Skua.Control;
 using Skua.Core.Interfaces;
@@ -29,6 +30,7 @@ internal sealed class ScriptRuns
     private readonly IScriptManager _manager;
     private readonly IScriptOption _options;
     private readonly ScriptDialogBroker _dialogs;
+    private readonly Func<HeldItems?> _held;
     private readonly bool _keepLagKillerOn;
 
     private ScriptState _state = ScriptState.Idle;
@@ -47,9 +49,11 @@ internal sealed class ScriptRuns
 
     private TaskCompletionSource _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+    /// <param name="held">What the player holds, which <c>script.started</c> carries; read outside the lock, as it reads the game.</param>
     /// <param name="keepLagKillerOn">Turns the lag killer back on after each run, for an Engine that never shows the game.</param>
-    public ScriptRuns(EngineLogs logs, IScriptManager manager, IScriptOption options, ScriptDialogBroker dialogs, bool keepLagKillerOn)
+    public ScriptRuns(EngineLogs logs, IScriptManager manager, IScriptOption options, ScriptDialogBroker dialogs, Func<HeldItems?> held, bool keepLagKillerOn)
     {
+        _held = held;
         _keepLagKillerOn = keepLagKillerOn;
         _logs = logs;
         _manager = manager;
@@ -114,9 +118,16 @@ internal sealed class ScriptRuns
     /// <summary>Core has launched the Script Thread of the run <see cref="Begin"/> started.</summary>
     public void Launched()
     {
+        // Core's started message, sent before the thread starts, has normally reported it started.
+        lock (_lock)
+        {
+            if (_run is not { Started: false })
+                return;
+        }
+        HeldItems? held = _held();
         bool ended;
         lock (_lock)
-            ended = StartOursLocked();
+            ended = StartOursLocked(held);
         if (ended)
             TurnLagKillerBackOn();
     }
@@ -193,12 +204,13 @@ internal sealed class ScriptRuns
 
     private void OnStarted()
     {
+        HeldItems? held = _held();
         bool ended = false;
         lock (_lock)
         {
             if (_state == ScriptState.Compiling)
             {
-                ended = StartOursLocked();
+                ended = StartOursLocked(held);
             }
             else if (_run is { ReloginPending: true })
             {
@@ -207,7 +219,7 @@ internal sealed class ScriptRuns
                 _run.ThreadToldToStop = false;
                 _run.Relogins++;
                 _dialogs.Reopen(_run.Number);
-                _logs.Event(EventTypes.ScriptStarted, new { run = _run.Number, script = _run.Script, restart = true });
+                LogStarted(_run, restart: true, held);
                 SetState(ScriptState.Running);
             }
             else if (_run is null && !_stuck)
@@ -216,7 +228,7 @@ internal sealed class ScriptRuns
                 _run = new Run(++_lastNumber, ScriptPaths.Name(_manager.LoadedScript), DialogMode.Ask, ScriptOperations.DefaultDialogTimeoutSec) { Asked = _windowStarting };
                 _windowStarting = false;
                 _logs.Run = _run.Number;
-                ended = StartOursLocked();
+                ended = StartOursLocked(held);
             }
         }
         if (ended)
@@ -322,20 +334,23 @@ internal sealed class ScriptRuns
     }
 
     /// <summary>Reports a start the Engine made (or first saw) as started; returns whether its thread had already ended, which ends the run.</summary>
-    private bool StartOursLocked()
+    private bool StartOursLocked(HeldItems? held)
     {
         if (_run is not { Started: false } run)
             return false;
         run.Started = true;
         run.StartedAt = DateTimeOffset.UtcNow;
         run.Clock.Restart();
-        _logs.Event(EventTypes.ScriptStarted, new { run = run.Number, script = run.Script, restart = false });
+        LogStarted(run, restart: false, held);
         SetState(ScriptState.Running);
         if (!run.ThreadEnded)
             return false;
         FinishLocked(Outcome(run));
         return true;
     }
+
+    private void LogStarted(Run run, bool restart, HeldItems? held) => _logs.Event(EventTypes.ScriptStarted,
+        new { run = run.Number, script = run.Script, restart, inventory = held?.Inventory, temp = held?.Temp, bank = held?.Bank });
 
     /// <remarks>A Script that stops itself is stopped, unless it threw; <c>script_stop</c> wins over an error it causes.</remarks>
     private static ScriptOutcome Outcome(Run run) =>

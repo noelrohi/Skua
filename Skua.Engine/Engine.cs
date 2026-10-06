@@ -65,7 +65,7 @@ internal sealed class Engine : IEngineRpc
         IScriptManager manager = services.GetRequiredService<IScriptManager>();
         ScriptDialogBroker broker = services.GetRequiredService<ScriptDialogBroker>();
         _dialogs = new DialogOperations(broker, logs);
-        _runs = new(logs, manager, services.GetRequiredService<IScriptOption>(), broker, keepLagKillerOn: options.IsHeadless);
+        _runs = new(logs, manager, services.GetRequiredService<IScriptOption>(), broker, () => _queries.Held(), keepLagKillerOn: options.IsHeadless);
         _reports = new ScriptReports(logs, _runs);
         _slot = new();
         _scriptsSlot = new();
