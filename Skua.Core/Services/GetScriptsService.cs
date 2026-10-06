@@ -362,19 +362,14 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
             return new ScriptsSyncResult(source, ScriptsSyncMode.UpToDate, headSha, 0, [], [], []);
 
         List<ScriptInfo> scripts = await FetchScriptsAsync(source, token);
-        List<ScriptInfo> toDownload;
-        if (string.IsNullOrEmpty(storedSha) || verify)
-        {
-            toDownload = scripts.Where(s => !s.Downloaded || s.Outdated).ToList();
-        }
-        else
-        {
-            HashSet<string> changedFiles = await FetchChangedFilesAsync(source, storedSha, headSha, token);
-            // GitHub's compare lists at most 300 files; past that, every Script that differs from scripts.json is fetched instead.
-            toDownload = changedFiles.Count >= _compareFileLimit
-                ? scripts.Where(s => !s.Downloaded || s.Outdated).ToList()
-                : scripts.Where(s => changedFiles.Contains(s.FilePath)).ToList();
-        }
+        bool full = string.IsNullOrEmpty(storedSha);
+        HashSet<string> changedFiles = full || storedSha == headSha ? [] : await FetchChangedFilesAsync(source, storedSha!, headSha, token);
+        // GitHub's compare lists at most 300 files; past that, every Script that differs from scripts.json is fetched instead.
+        bool compared = changedFiles.Count < _compareFileLimit;
+        bool fetchDiffering = full || verify || !compared;
+        List<ScriptInfo> toDownload = scripts
+            .Where(s => (compared && changedFiles.Contains(s.FilePath)) || (fetchDiffering && (!s.Downloaded || s.Outdated)))
+            .ToList();
 
         ConcurrentBag<string> failed = new();
         ConcurrentBag<ScriptInfo> added = new();
@@ -401,11 +396,13 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
         if (failed.IsEmpty)
             await StoreCommitShaAsync(source, headSha);
 
+        ScriptsSyncMode mode = full ? ScriptsSyncMode.Full : ScriptsSyncMode.Incremental;
+        // A verify that found every Script on disk matching is up to date, even when the Script Source moved on.
+        if (!full && verify && toDownload.Count == 0)
+            mode = ScriptsSyncMode.UpToDate;
         return new ScriptsSyncResult(
             source,
-            string.IsNullOrEmpty(storedSha) ? ScriptsSyncMode.Full
-                : verify && toDownload.Count == 0 ? ScriptsSyncMode.UpToDate
-                : ScriptsSyncMode.Incremental,
+            mode,
             headSha,
             downloaded,
             failed.Order(StringComparer.Ordinal).ToList(),

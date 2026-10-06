@@ -358,7 +358,8 @@ internal static class Output
         return text;
     }
 
-    public static string ScriptCheck(ScriptCheckResult result) => $"{result.Script} compiles, with {Count(result.Includes.Count, "include")}.";
+    public static string ScriptCheck(ScriptCheckResult result) =>
+        string.Join('\n', [$"{result.Script} compiles, with {Count(result.Includes.Count, "include")}.", .. result.Warnings]);
 
     /// <summary>What the update before <c>skua script start</c> did, in one line; null when it downloaded nothing and nothing failed.</summary>
     public static string? StartUpdate(ScriptsUpdateResult result) => result switch

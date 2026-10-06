@@ -15,7 +15,8 @@ namespace Skua.Engine;
 /// <param name="Script">The Script's file.</param>
 /// <param name="ScriptsFolder">The folder its includes were found in: the data folder's Scripts, or the Scripts checkout the Script is in.</param>
 /// <param name="Includes">The files it includes, directly or through another include.</param>
-public sealed record ScriptCheckResult(string Script, string ScriptsFolder, IReadOnlyList<string> Includes);
+/// <param name="Warnings">An include that doesn't exist, which Core skips as the Engine does, at its file and line.</param>
+public sealed record ScriptCheckResult(string Script, string ScriptsFolder, IReadOnlyList<string> Includes, IReadOnlyList<string> Warnings);
 
 /// <summary>
 /// <c>skua scripts check</c>: compiles a Script and its includes as a start would, through Core's compiler, in the caller's process with no
@@ -39,29 +40,28 @@ public static class ScriptCheck
         string script = Find(path, dataScripts);
         string root = ScriptsFolder(script, dataScripts);
         Closure closure = Includes(script, root);
-        if (closure.Missing.Count > 0)
-            throw RpcErrors.ToControlException(CompileFailure.Of(script, string.Join('\n', closure.Missing)));
 
         string stage = Directory.CreateTempSubdirectory("skua-check-").FullName;
         try
         {
-            string stagedScripts = Path.Combine(stage, "Scripts");
-            foreach (string file in closure.Files.Prepend(script))
-                File.WriteAllText(Staged(file), WithLineDirectives(File.ReadAllText(file), file));
-            foreach (string reference in closure.References)
-                File.Copy(reference, Staged(reference));
+            // A file in the Scripts folder keeps its place in it; an include from outside it gets a folder of its own.
+            Dictionary<string, string> staged = closure.Files.Prepend(script).Concat(closure.References).Select((file, i) => (file, staged:
+                    InFolder(file, root) ? Path.Combine(stage, "Scripts", Path.GetRelativePath(root, file)) : Path.Combine(stage, "External", $"{i}", Path.GetFileName(file))))
+                .ToDictionary(f => f.file, f => f.staged);
+            foreach ((string file, string copy) in staged)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(copy)!);
+                if (closure.Includes.TryGetValue(file, out Dictionary<int, string>? includes))
+                    File.WriteAllText(copy, Staged(File.ReadAllLines(file), file, includes, staged));
+                else
+                    File.Copy(file, copy);
+            }
             if (Directory.Exists(Path.Combine(skuaDir, "plugins")))
                 Directory.CreateSymbolicLink(Path.Combine(stage, "plugins"), Path.Combine(skuaDir, "plugins"));
 
-            Compile(Staged(script), stage, script, message => message.Replace(stagedScripts, root, StringComparison.Ordinal));
-            return new ScriptCheckResult(script, root, closure.Files);
-
-            string Staged(string file)
-            {
-                string staged = Path.Combine(stagedScripts, Path.GetRelativePath(root, file));
-                Directory.CreateDirectory(Path.GetDirectoryName(staged)!);
-                return staged;
-            }
+            Compile(staged[script], stage, script, closure.Warnings,
+                message => staged.OrderByDescending(f => f.Value.Length).Aggregate(message, (text, f) => text.Replace(f.Value, f.Key, StringComparison.Ordinal)));
+            return new ScriptCheckResult(script, root, closure.Files, closure.Warnings);
         }
         finally
         {
@@ -96,21 +96,23 @@ public static class ScriptCheck
     }
 
     /// <param name="Files">The included files, in the order they were found.</param>
-    /// <param name="References">The assemblies a <c>//cs_ref</c> names, which Core references when they exist.</param>
-    /// <param name="Missing">An error for each include that doesn't exist, at its line.</param>
-    private sealed record Closure(List<string> Files, List<string> References, List<string> Missing);
+    /// <param name="References">The assemblies in the Scripts folder that a <c>//cs_ref</c> names; Core finds any other itself.</param>
+    /// <param name="Includes">For the Script and each include, the file each of its <c>//cs_include</c> lines names, by line index.</param>
+    /// <param name="Warnings">An include that doesn't exist, at its line.</param>
+    private sealed record Closure(
+        List<string> Files, List<string> References, Dictionary<string, Dictionary<int, string>> Includes, List<string> Warnings);
 
     /// <summary>
-    /// Every file the Script includes, as Core finds them: from each <c>//cs_include</c> line of the Script, and of an include up to its first
-    /// <c>using</c> line, as a path in the Scripts folder.
+    /// Every file the Script includes, as Core finds them: from each <c>//cs_</c> line of the Script, and of an include up to its first
+    /// <c>using</c> line, resolved as Core resolves them, in the Scripts folder or else as a path of their own.
     /// </summary>
     private static Closure Includes(string script, string root)
     {
-        Closure closure = new([], [], []);
-        HashSet<string> seen = [script];
+        Closure closure = new([], [], [], []);
         Queue<string> pending = new([script]);
         while (pending.TryDequeue(out string? file))
         {
+            Dictionary<int, string> includes = closure.Includes[file] = [];
             string[] lines = File.ReadAllLines(file);
             for (int i = 0; i < lines.Length; i++)
             {
@@ -119,23 +121,22 @@ public static class ScriptCheck
                     break;
                 if (!line.StartsWith("//cs_", StringComparison.Ordinal) || line.Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries) is not [string directive, string target])
                     continue;
-                string local = Path.GetFullPath(Path.Combine(root, target.Replace("Scripts/", "")));
-                string at = $"{file}({i + 1},1): error";
-                bool inRoot = local.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+                string? resolved = ScriptDirectives.Resolve(root, target) is { } found ? Path.GetFullPath(found) : null;
                 switch (directive[5..])
                 {
-                    case "include" when !File.Exists(local):
-                        closure.Missing.Add($"{at}: the include {target} doesn't exist in {root}");
+                    case "include" when resolved is null:
+                        closure.Warnings.Add($"{file}({i + 1},1): warning: the include {target} doesn't exist in {root}, so it is skipped");
                         break;
-                    case "include" when !inRoot:
-                        closure.Missing.Add($"{at}: the include {target} is outside {root}, where the check can't compile it");
+                    case "include":
+                        includes[i] = resolved;
+                        if (resolved != script && !closure.Includes.ContainsKey(resolved) && !pending.Contains(resolved))
+                        {
+                            closure.Files.Add(resolved);
+                            pending.Enqueue(resolved);
+                        }
                         break;
-                    case "include" when seen.Add(local):
-                        closure.Files.Add(local);
-                        pending.Enqueue(local);
-                        break;
-                    case "ref" when File.Exists(local) && inRoot && !closure.References.Contains(local):
-                        closure.References.Add(local);
+                    case "ref" when resolved is not null && InFolder(resolved, root) && !closure.References.Contains(resolved):
+                        closure.References.Add(resolved);
                         break;
                 }
             }
@@ -143,17 +144,18 @@ public static class ScriptCheck
         return closure;
     }
 
+    private static bool InFolder(string file, string folder) => file.StartsWith(folder + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+
     /// <summary>
-    /// The source with a <c>#line</c> directive at the top and after each <c>//cs_</c> line, which Core removes, so every line keeps its number
-    /// in <paramref name="file"/>.
+    /// The staged copy of <paramref name="file"/>: each <c>//cs_include</c> line names its include's staged copy, and a <c>#line</c> directive at
+    /// the top and after each <c>//cs_</c> line, which Core removes, keeps every line's number in <paramref name="file"/>.
     /// </summary>
-    private static string WithLineDirectives(string source, string file)
+    private static string Staged(string[] lines, string file, Dictionary<int, string> includes, Dictionary<string, string> staged)
     {
-        string[] lines = source.Split('\n');
         List<string> marked = [$"#line 1 \"{file}\""];
         for (int i = 0; i < lines.Length; i++)
         {
-            marked.Add(lines[i]);
+            marked.Add(includes.TryGetValue(i, out string? include) ? $"//cs_include {staged[include]}" : lines[i]);
             if (lines[i].Trim().StartsWith("//cs_", StringComparison.Ordinal))
                 marked.Add($"#line {i + 2} \"{file}\"");
         }
@@ -162,7 +164,8 @@ public static class ScriptCheck
 
     /// <summary>Compiles the staged Script with Core's compiler, with <paramref name="stage"/> as Core's data folder.</summary>
     /// <param name="unstage">Turns the staged files' paths in Core's messages back into the originals.</param>
-    private static void Compile(string staged, string stage, string script, Func<string, string> unstage)
+    /// <param name="warnings">Lead the errors when it doesn't compile, since a missing include is a likely cause.</param>
+    private static void Compile(string staged, string stage, string script, IReadOnlyList<string> warnings, Func<string, string> unstage)
     {
         Environment.SetEnvironmentVariable(ClientFileSources.SkuaDirEnvironmentVariable, stage);
         if (ClientFileSources.SkuaDIR != stage)
@@ -182,7 +185,7 @@ public static class ScriptCheck
         }
         catch (Exception e) when (CompileErrors(e) is { } errors)
         {
-            failure = CompileFailure.Of(script, unstage(errors));
+            failure = CompileFailure.Of(script, string.Join('\n', warnings.Append(unstage(errors))));
         }
         if (failure is not null)
             throw RpcErrors.ToControlException(failure);

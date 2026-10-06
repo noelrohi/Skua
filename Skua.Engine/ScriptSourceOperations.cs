@@ -82,29 +82,43 @@ internal sealed class ScriptSourceOperations
     /// Refused while a Script runs, and holds the Engine's Scripts slot, so a Script's files never change under it and no Script compiles
     /// until the update ends; a login or another game action goes ahead meanwhile.
     /// </remarks>
-    /// <param name="verify">Download every Script whose file differs from <c>scripts.json</c> or is missing, rather than the changes since the last synced commit.</param>
-    public Task<ScriptsUpdateResult> UpdateAsync(bool verify = false) => SyncAsync("update the Scripts", reset: false, verify);
+    /// <param name="verify">Also download every Script whose file differs from <c>scripts.json</c> or is missing, whatever commit was synced last.</param>
+    public Task<ScriptsUpdateResult> UpdateAsync(bool verify = false) => SyncAsync(verify ? Sync.Verify : Sync.Update);
 
     /// <summary>
     /// Deletes the Scripts folder's contents, the junk items list aside, then downloads every Script from the Script Source again, as the
     /// Windows Manager's Reset Scripts does; a Script edited or added on disk is gone. Refused as <see cref="UpdateAsync"/> is.
     /// </summary>
-    public Task<ScriptsUpdateResult> ResetAsync() => SyncAsync("reset the Scripts", reset: true, verify: false);
+    public Task<ScriptsUpdateResult> ResetAsync() => SyncAsync(Sync.Reset);
 
-    private async Task<ScriptsUpdateResult> SyncAsync(string action, bool reset, bool verify)
+    /// <summary>How a sync brings the Scripts on disk up to date with the Script Source.</summary>
+    private enum Sync
+    {
+        /// <summary>The Scripts changed since the last synced commit.</summary>
+        Update,
+
+        /// <summary>Those, and every Script whose file differs from <c>scripts.json</c> or is missing.</summary>
+        Verify,
+
+        /// <summary>Every Script, after deleting the local ones.</summary>
+        Reset,
+    }
+
+    private async Task<ScriptsUpdateResult> SyncAsync(Sync sync)
     {
         if (!_updating.Wait(0))
             throw RpcErrors.Of(ErrorCode.Busy, "A Scripts update is already running.");
 
         try
         {
+            string action = sync == Sync.Reset ? "reset the Scripts" : "update the Scripts";
             // The slot first: a Script's start holds it until its run has begun, so no start slips in after the check.
             using IDisposable lease = _scriptsSlot.Take(action);
             _ensureIdle(action);
-            if (reset)
+            if (sync == Sync.Reset)
                 DeleteLocalScripts();
             ScriptSource source = _scriptsService.Source;
-            ScriptsSyncResult result = await FromScriptSourceAsync(source, () => _scriptsService.SyncScriptsAsync(verify, _shutdown));
+            ScriptsSyncResult result = await FromScriptSourceAsync(source, () => _scriptsService.SyncScriptsAsync(sync == Sync.Verify, _shutdown));
             if (result.Mode == ScriptsSyncMode.Full)
                 await RecordFullDownloadAsync(result);
             else if (result.Added.Count > 0 || result.Changed.Count > 0)

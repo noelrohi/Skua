@@ -20,14 +20,14 @@ internal static class ScriptsCommands
         return await new DataFolderScripts(cancellationToken).UpdateAsync(verify);
     }
 
-    public static ScriptsNewResult New(string? since) => new DataFolderScripts(CancellationToken.None).New(since);
+    public static Task<ScriptsNewResult> NewAsync(string? since) => new DataFolderScripts(CancellationToken.None).NewAsync(since);
 
     public static ScriptSourceResult Source() => new DataFolderScripts(CancellationToken.None).Source();
 
     public static async Task<ScriptSourceResult> SetSourceAsync(string? source, CancellationToken cancellationToken)
     {
         await EnsureNoScriptRunsAsync("change the Script Source", cancellationToken);
-        return new DataFolderScripts(cancellationToken).SetSource(source);
+        return await new DataFolderScripts(cancellationToken).SetSourceAsync(source);
     }
 
     /// <summary>

@@ -1,6 +1,6 @@
 # The Engine runs as its own long-lived process; Control Surfaces talk to it over JSON-RPC on a Unix socket
 
-On macOS the Engine runs as a standalone process (`skua-engine`) that owns its Game Host as a child process. The CLI (`skua`) and the MCP server (`skua mcp`) are short-lived clients. They connect over JSON-RPC 2.0 (StreamJsonRpc) on a per-user Unix domain socket at `<SkuaDIR>/engines/<engine-name>.sock`, and auto-start the Engine if it isn't running, but never log in on their own. We chose this so that a logged-in game and long-running Scripts outlive any single agent session, and so that the CLI and every MCP session share the same game (and the Test Account is logged in once).
+On macOS the Engine runs as a standalone process (`skua-engine`) that owns its Game Host as a child process. The CLI (`skua`) and the MCP server (`skua mcp`) are short-lived clients. They connect over JSON-RPC 2.0 (StreamJsonRpc) on a per-user Unix domain socket at `<SkuaDIR>/engines/<engine-name>.sock`, and auto-start the Engine if it isn't running, but never log in on their own. We chose this so that a logged-in game and long-running Scripts outlive any single agent session, and so that the CLI and every MCP session share the same game (and the Test Account is logged in once). (ADR 0007 amends this: the commands that need no Engine, `skua scripts` and `skua status` among them, start none, and the `scripts` commands run the Engine's code in the `skua` process.)
 
 ## Considered Options
 

@@ -34,31 +34,20 @@ public sealed class DataFolderScripts
     public Task<ScriptsUpdateResult> UpdateAsync(bool verify) => CallAsync(() => _operations.UpdateAsync(verify));
 
     /// <exception cref="ControlException"><paramref name="since"/> is neither a date nor a recorded commit.</exception>
-    public ScriptsNewResult New(string? since) => Call(() => _operations.New(since));
+    public Task<ScriptsNewResult> NewAsync(string? since) => CallAsync(() => Task.FromResult(_operations.New(since)));
 
     public ScriptSourceResult Source() => _operations.Source();
 
     /// <param name="source"><c>owner/repo@branch</c>, or null for the default.</param>
     /// <exception cref="ControlException">The Script Source isn't <c>owner/repo@branch</c>.</exception>
-    public ScriptSourceResult SetSource(string? source) => Call(() => _operations.SetSource(source));
+    public Task<ScriptSourceResult> SetSourceAsync(string? source) => CallAsync(() => Task.FromResult(_operations.SetSource(source)));
 
+    /// <summary>Runs an operation, turning its failure into the one a Control Surface sees over the socket.</summary>
     private static async Task<T> CallAsync<T>(Func<Task<T>> operation)
     {
         try
         {
             return await operation();
-        }
-        catch (LocalRpcException e)
-        {
-            throw RpcErrors.ToControlException(e);
-        }
-    }
-
-    private static T Call<T>(Func<T> operation)
-    {
-        try
-        {
-            return operation();
         }
         catch (LocalRpcException e)
         {

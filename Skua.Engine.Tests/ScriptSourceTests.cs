@@ -481,6 +481,27 @@ public class ScriptSourceTests
     }
 
     [Fact]
+    public async Task Scripts_update_verify_also_downloads_the_Scripts_changed_since_the_last_sync_when_scripts_json_wasnt_updated()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeGitHub github = new();
+        github.Commit("noelrohi", "Scripts", "Skua", Leveling, Gold);
+        await sandbox.RunCliAsync(github.Environment(), "scripts", "update");
+        using HttpClient http = new();
+        string stale = await http.GetStringAsync($"{github.BaseUrl}raw/noelrohi/Scripts/refs/heads/Skua/scripts.json", Ct);
+        // A commit that changed a Script but not its scripts.json entry, as when the generator wasn't run.
+        github.Commit("noelrohi", "Scripts", "Skua", Leveling with { Content = "// leveling v2" });
+        github.Put("noelrohi", "Scripts", "Skua", "scripts.json", stale);
+        github.ClearRequests();
+
+        ProcessResult verify = await sandbox.RunCliAsync(github.Environment(), "scripts", "update", "--verify", "--json");
+
+        Assert.True(verify.ExitCode == 0, verify.Stderr);
+        Assert.Equal([Leveling.Path], github.ScriptDownloads("noelrohi", "Scripts", "Skua"));
+        Assert.Equal("// leveling v2", await ReadScriptAsync(sandbox, Leveling.Path));
+    }
+
+    [Fact]
     public async Task A_Script_with_a_BOM_or_a_zero_width_space_matches_scripts_json_as_the_generator_hashes_it()
     {
         await using EngineSandbox sandbox = new();

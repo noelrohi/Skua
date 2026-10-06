@@ -64,7 +64,7 @@ scriptsList.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), _ => Scr
 
 Option<string?> scriptsSince = new("--since") { Description = "A date or time in local time (e.g. 2026-09-01 for local midnight, or 2026-09-01T00:00Z for UTC), or a recorded commit: the last 7 days by default." };
 Command scriptsNew = new("new", "List the Scripts that recent Scripts updates, or the Script Source's commits before the first download, added or changed, and when.") { scriptsSince };
-scriptsNew.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), _ => Task.FromResult(ScriptsCommands.New(parse.GetValue(scriptsSince))), Output.ScriptsNew));
+scriptsNew.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), _ => ScriptsCommands.NewAsync(parse.GetValue(scriptsSince)), Output.ScriptsNew));
 
 Argument<string?> scriptsSourceValue = new("source")
 {

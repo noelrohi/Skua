@@ -31,8 +31,8 @@ public interface IGetScriptsService : INotifyPropertyChanged
     /// later ones only the Scripts changed since the last synced commit. Throws on failure and leaves <see cref="Scripts"/> alone.
     /// </summary>
     /// <param name="verify">
-    /// Instead of the changes since the last synced commit, download every Script whose file is missing or differs in size or SHA-256 from
-    /// <c>scripts.json</c>, whatever commit was synced last; a Script edited on disk is replaced.
+    /// Also download every Script whose file is missing or differs in size or SHA-256 from <c>scripts.json</c>, whatever commit was synced
+    /// last; a Script edited on disk is replaced.
     /// </param>
     Task<ScriptsSyncResult> SyncScriptsAsync(bool verify, CancellationToken token);
 
