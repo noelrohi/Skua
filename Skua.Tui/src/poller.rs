@@ -5,10 +5,10 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use crate::app::Tab;
-use crate::bags::Bags;
+use crate::bags::{Bags, now_ms};
 use crate::discovery::{self, ManagerAccounts};
 use crate::dto::{Hello, Inventory, LogEntry, Map, Quests, Screenshot, Status};
 use crate::engine::{Engine, Error};
@@ -19,8 +19,6 @@ const MAX_LOG_LINES: usize = 2000;
 
 /// The event that records a Hook's run (`EventTypes.HookRan`).
 pub const HOOK_RAN: &str = "hook.ran";
-/// The event a run starts with, carrying the inventory as it began.
-const SCRIPT_STARTED: &str = "script.started";
 /// How many of the latest Hook runs the Hooks tab keeps.
 const MAX_HOOK_RUNS: usize = 200;
 /// How often the Game tab's picture is read, and how wide: the game's own width, which a terminal scales down.
@@ -64,7 +62,7 @@ pub struct Detail {
     pub map: Option<Result<Map, Error>>,
     /// The game's picture, read every 2 s while the Game tab shows.
     pub picture: Option<Result<Screenshot, Error>>,
-    /// What its run has gained, for the Overview's Bags.
+    /// What its run has changed in the inventory, for the Overview's Bags.
     pub bags: Bags,
 }
 
@@ -87,6 +85,8 @@ pub struct Poller {
     pictured: Option<Instant>,
     /// When the quests were last read, so a rise is only told against a read just before it.
     quests_read: Option<Instant>,
+    /// Each Engine's Bags, kept while another account is selected.
+    bags: HashMap<String, Bags>,
 }
 
 impl Poller {
@@ -99,6 +99,7 @@ impl Poller {
             cursor: None,
             pictured: None,
             quests_read: None,
+            bags: HashMap::new(),
         }
     }
 
@@ -106,6 +107,7 @@ impl Poller {
         let accounts = discovery::load_accounts(&self.skua_dir);
         let names = discovery::engine_names(&self.skua_dir);
         self.connections.retain(|name, _| names.contains(name));
+        self.bags.retain(|name, _| names.contains(name));
         let engines = names.iter().map(|name| (name.clone(), self.view(name))).collect();
 
         if self.detail.engine != focus.engine {
@@ -119,6 +121,7 @@ impl Poller {
         }
         if let Some(name) = &focus.engine {
             self.read_detail(&name.clone(), focus.tab);
+            self.detail.bags = self.bags.get(name).cloned().unwrap_or_default();
         }
         Snapshot {
             accounts,
@@ -155,8 +158,9 @@ impl Poller {
         };
         let page = match &self.cursor {
             None => engine.events(LOG_TAIL).and_then(|events| {
-                if let Some(started) = events.entries.iter().rfind(|e| is_event(e, SCRIPT_STARTED)) {
-                    self.detail.bags.on_entry(started);
+                let bags = self.bags.entry(name.to_owned()).or_default();
+                for entry in &events.entries {
+                    bags.on_entry(entry);
                 }
                 self.detail.hook_runs = events.entries.into_iter().filter(is_hook_run).collect();
                 self.detail.script_line = engine
@@ -190,8 +194,9 @@ impl Poller {
                     .extend(page.entries.iter().filter(|e| e.kind == "game").cloned());
                 let excess = self.detail.chat.len().saturating_sub(MAX_CHAT as usize);
                 self.detail.chat.drain(..excess);
-                for entry in page.entries.iter().filter(|e| is_event(e, SCRIPT_STARTED)) {
-                    self.detail.bags.on_entry(entry);
+                let bags = self.bags.entry(name.to_owned()).or_default();
+                for entry in &page.entries {
+                    bags.on_entry(entry);
                 }
                 self.detail.logs.extend(page.entries);
                 let excess = self.detail.logs.len().saturating_sub(MAX_LOG_LINES);
@@ -212,7 +217,10 @@ impl Poller {
                 self.detail.map = Some(engine.map());
                 let inventory = engine.inventory();
                 if let Ok(inventory) = &inventory {
-                    self.detail.bags.on_inventory(inventory, now_ms());
+                    self.bags
+                        .entry(name.to_owned())
+                        .or_default()
+                        .on_inventory(inventory, now_ms());
                 }
                 self.detail.inventory = Some(inventory);
                 self.read_quests(name);
@@ -265,17 +273,7 @@ fn progress(before: &Quests, now: &Quests) -> Option<String> {
 }
 
 fn is_hook_run(entry: &LogEntry) -> bool {
-    is_event(entry, HOOK_RAN)
-}
-
-fn is_event(entry: &LogEntry, event_type: &str) -> bool {
-    entry.event_type.as_deref() == Some(event_type)
-}
-
-fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_millis() as i64)
+    entry.event_type.as_deref() == Some(HOOK_RAN)
 }
 
 /// Marks where entries were missed: evicted from the Engine's buffer, or lost to a restart.

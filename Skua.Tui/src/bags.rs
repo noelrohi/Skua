@@ -1,36 +1,66 @@
-//! What a run has gained: the inventory now against the inventory as the run started, from its `script.started` event, else as
-//! skua-tui first read it.
+//! What a run has changed in the inventory: the inventory now against the inventory as the run started, from its `script.started` event,
+//! else as skua-tui first read it.
 
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
 
 use crate::dto::{Inventory, LogEntry};
 
+/// The event a run starts with, carrying the inventory as it began (`Logs.ScriptStarted`); a relogin's restart of the same run sends
+/// it again with `restart: true`.
+pub const SCRIPT_STARTED: &str = "script.started";
+/// The event a run ends with (`Logs.ScriptStopped`).
+pub const SCRIPT_STOPPED: &str = "script.stopped";
 /// How long an item that just changed stays fresh.
 pub const FRESH: Duration = Duration::from_secs(6);
+/// A read older than this is too old to tell what just changed against: another tab showed meanwhile.
+const RECENT: Duration = Duration::from_secs(5);
 
+/// Now, in epoch ms, as the Engine stamps its entries.
+pub fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64)
+}
+
+/// The inventory's changes since a run started, as the Overview's Bags shows them.
 #[derive(Debug, Clone, Default)]
 pub struct Bags {
     start: Option<Start>,
-    /// What the newest read held, by item id: its name, count and max stack.
-    now: HashMap<i64, (String, i64, i64)>,
-    /// Whether `now` has been read.
-    read: bool,
-    /// When each item's count last changed between two reads.
+    /// The newest read, by item id, and when it was read.
+    now: Option<(Instant, HashMap<i64, Held>)>,
+    /// When each item's count last changed between two recent reads.
     changed: HashMap<i64, Instant>,
 }
 
-/// The inventory the gains count from.
+/// One item as a read held it.
+#[derive(Debug, Clone)]
+struct Held {
+    name: String,
+    qty: i64,
+    max: i64,
+}
+
+/// What the changes count from.
 #[derive(Debug, Clone)]
 pub struct Start {
     /// The run whose `script.started` it came from; `None` when it is skua-tui's first read.
     pub run: Option<i64>,
-    /// Epoch ms.
+    /// When the run started, else when skua-tui first read the inventory; epoch ms.
     pub at_ms: i64,
-    /// By item id: its name and count.
-    items: HashMap<i64, (String, i64)>,
+    /// When the run ended, once its `script.stopped` has been seen; epoch ms.
+    pub ended_ms: Option<i64>,
+    /// By item id, its name and count; `None` until a read fills it in for a run that started while the player wasn't playing.
+    items: Option<HashMap<i64, (String, i64)>>,
+}
+
+impl Start {
+    /// How long the run has gone, or went.
+    pub fn elapsed_sec(&self, now_ms: i64) -> f64 {
+        (self.ended_ms.unwrap_or(now_ms) - self.at_ms) as f64 / 1000.0
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,8 +75,9 @@ pub enum Kind {
     Spent,
 }
 
+/// One item held in another count than at the start.
 #[derive(Debug, Clone)]
-pub struct Gain {
+pub struct Change {
     pub name: String,
     pub start: i64,
     pub now: i64,
@@ -56,7 +87,8 @@ pub struct Gain {
     pub fresh: bool,
 }
 
-impl Gain {
+impl Change {
+    /// How many more than at the start; fewer is negative.
     pub fn delta(&self) -> i64 {
         self.now - self.start
     }
@@ -67,105 +99,136 @@ impl Bags {
         self.start.as_ref()
     }
 
-    /// A `script.started` that carries the inventory starts the count over from it.
+    /// A run's `script.started` starts the count over, from the inventory it carries, else from the next read; a relogin's restart of
+    /// the run being counted leaves the count alone. Its `script.stopped` stops the clock.
     pub fn on_entry(&mut self, entry: &LogEntry) {
-        if entry.event_type.as_deref() != Some("script.started") {
-            return;
+        let data = entry.data.as_ref();
+        let run = entry.run.or_else(|| data?.get("run")?.as_i64());
+        match entry.event_type.as_deref() {
+            Some(SCRIPT_STARTED) => {
+                // The same event read again, as after selecting the account again, or the run's restart after a relogin.
+                let restart = data.and_then(|d| d.get("restart")).and_then(Value::as_bool) == Some(true);
+                if self
+                    .start
+                    .as_ref()
+                    .is_some_and(|s| s.run == run && (restart || s.at_ms == entry.ts))
+                {
+                    return;
+                }
+                let items = data
+                    .and_then(|d| d.get("inventory"))
+                    .and_then(Value::as_array)
+                    .map(|items| {
+                        items
+                            .iter()
+                            .filter_map(|i| {
+                                let name = i.get("name")?.as_str()?.to_owned();
+                                Some((i.get("id")?.as_i64()?, (name, i.get("qty")?.as_i64()?)))
+                            })
+                            .collect()
+                    });
+                self.start = Some(Start {
+                    run,
+                    at_ms: entry.ts,
+                    ended_ms: None,
+                    items,
+                });
+                self.changed.clear();
+            }
+            Some(SCRIPT_STOPPED) => {
+                if let Some(start) = self.start.as_mut().filter(|s| s.run.is_some() && s.run == run) {
+                    start.ended_ms = Some(entry.ts);
+                }
+            }
+            _ => {}
         }
-        let Some(items) = entry
-            .data
-            .as_ref()
-            .and_then(|d| d.get("inventory"))
-            .and_then(Value::as_array)
-        else {
-            return;
-        };
-        let items = items
-            .iter()
-            .filter_map(|i| {
-                let name = i.get("name")?.as_str()?.to_owned();
-                Some((i.get("id")?.as_i64()?, (name, i.get("qty")?.as_i64()?)))
-            })
-            .collect();
-        self.start = Some(Start {
-            run: entry.run.or_else(|| entry.data.as_ref()?.get("run")?.as_i64()),
-            at_ms: entry.ts,
-            items,
-        });
-        self.changed.clear();
     }
 
-    /// A read of the inventory at `now_ms`; the first starts the count when no run's start has.
+    /// A read of the inventory at `now_ms`; it fills in a start that has no inventory yet, or is the start when no run's is known.
     pub fn on_inventory(&mut self, inventory: &Inventory, now_ms: i64) {
-        let now: HashMap<i64, (String, i64, i64)> = inventory
+        let held: HashMap<i64, Held> = inventory
             .items
             .iter()
-            .map(|i| (i.id, (i.name.clone(), i.qty, i.max_stack)))
+            .map(|i| {
+                let item = Held {
+                    name: i.name.clone(),
+                    qty: i.qty,
+                    max: i.max_stack,
+                };
+                (i.id, item)
+            })
             .collect();
-        if self.start.is_none() {
-            self.start = Some(Start {
-                run: None,
-                at_ms: now_ms,
-                items: now
-                    .iter()
-                    .map(|(id, (name, qty, _))| (*id, (name.clone(), *qty)))
-                    .collect(),
-            });
+        let counts = || held.iter().map(|(id, h)| (*id, (h.name.clone(), h.qty))).collect();
+        match &mut self.start {
+            None => {
+                self.start = Some(Start {
+                    run: None,
+                    at_ms: now_ms,
+                    ended_ms: None,
+                    items: Some(counts()),
+                })
+            }
+            Some(start) if start.items.is_none() => start.items = Some(counts()),
+            Some(_) => {}
         }
-        if self.read {
-            let ids = now.keys().chain(self.now.keys());
-            let changed: Vec<i64> = ids
-                .filter(|id| now.get(*id).map(|i| i.1) != self.now.get(*id).map(|i| i.1))
+        if let Some((at, before)) = &self.now
+            && at.elapsed() < RECENT
+        {
+            let qty = |items: &HashMap<i64, Held>, id: &i64| items.get(id).map(|h| h.qty);
+            let changed: Vec<i64> = held
+                .keys()
+                .chain(before.keys())
+                .filter(|id| qty(&held, id) != qty(before, id))
                 .copied()
                 .collect();
             for id in changed {
                 self.changed.insert(id, Instant::now());
             }
         }
-        self.now = now;
-        self.read = true;
+        self.now = Some((Instant::now(), held));
     }
 
     /// Every item held in another count than at the start, the most recently changed first.
-    pub fn gains(&self) -> Vec<Gain> {
-        let Some(start) = &self.start else {
+    pub fn changes(&self) -> Vec<Change> {
+        let (Some(start), Some((_, now))) = (&self.start, &self.now) else {
             return Vec::new();
         };
-        let mut ids: Vec<i64> = self.now.keys().chain(start.items.keys()).copied().collect();
+        let Some(began) = &start.items else {
+            return Vec::new();
+        };
+        let mut ids: Vec<i64> = now.keys().chain(began.keys()).copied().collect();
         ids.sort_unstable();
         ids.dedup();
-        let mut gains: Vec<(Option<Instant>, Gain)> = ids
+        let mut changes: Vec<(Option<Instant>, Change)> = ids
             .into_iter()
             .filter_map(|id| {
-                let (name, now, max) = match (self.now.get(&id), start.items.get(&id)) {
-                    (Some((name, qty, max)), _) => (name.clone(), *qty, *max),
+                let (name, qty, max) = match (now.get(&id), began.get(&id)) {
+                    (Some(held), _) => (held.name.clone(), held.qty, held.max),
                     (None, Some((name, _))) => (name.clone(), 0, 0),
                     (None, None) => return None,
                 };
-                let begun = start.items.get(&id).map_or(0, |(_, qty)| *qty);
-                let kind = match now - begun {
+                let start = began.get(&id).map_or(0, |(_, qty)| *qty);
+                let kind = match qty - start {
                     0 => return None,
                     d if d < 0 => Kind::Spent,
                     _ if max <= 1 => Kind::New,
-                    _ if now >= max => Kind::Filled,
+                    _ if qty >= max => Kind::Filled,
                     _ => Kind::Filling,
                 };
                 let changed = self.changed.get(&id).copied();
-                Some((
-                    changed,
-                    Gain {
-                        name,
-                        start: begun,
-                        now,
-                        max,
-                        kind,
-                        fresh: changed.is_some_and(|at| at.elapsed() < FRESH),
-                    },
-                ))
+                let change = Change {
+                    name,
+                    start,
+                    now: qty,
+                    max,
+                    kind,
+                    fresh: changed.is_some_and(|at| at.elapsed() < FRESH),
+                };
+                Some((changed, change))
             })
             .collect();
-        gains.sort_by(|(a, x), (b, y)| b.cmp(a).then(y.delta().cmp(&x.delta())).then(x.name.cmp(&y.name)));
-        gains.into_iter().map(|(_, gain)| gain).collect()
+        changes.sort_by(|(a, x), (b, y)| b.cmp(a).then(y.delta().cmp(&x.delta())).then(x.name.cmp(&y.name)));
+        changes.into_iter().map(|(_, change)| change).collect()
     }
 }
 
@@ -186,24 +249,37 @@ mod tests {
         .unwrap()
     }
 
-    fn started(run: i64, items: &[(i64, &str, i64)]) -> LogEntry {
-        serde_json::from_value(json!({
-            "seq": 1, "ts": 1_000_000, "kind": "events", "run": run, "type": "script.started",
-            "data": { "run": run, "script": "Nation/Materials/0MaxBags.cs", "restart": false,
-                "inventory": items.iter().map(|(id, name, qty)| json!({ "id": id, "name": name, "qty": qty })).collect::<Vec<_>>(),
-                "temp": [], "bank": null }
-        }))
+    fn entry(event_type: &str, run: i64, ts: i64, data: Value) -> LogEntry {
+        serde_json::from_value(
+            json!({ "seq": 1, "ts": ts, "kind": "events", "run": run, "type": event_type, "data": data }),
+        )
         .unwrap()
     }
 
+    fn started(run: i64, restart: bool, items: Option<&[(i64, &str, i64)]>) -> LogEntry {
+        let inventory = items.map(|items| {
+            items
+                .iter()
+                .map(|(id, name, qty)| json!({ "id": id, "name": name, "qty": qty }))
+                .collect::<Vec<_>>()
+        });
+        entry(
+            SCRIPT_STARTED,
+            run,
+            1_000_000,
+            json!({ "run": run, "script": "Nation/Materials/0MaxBags.cs", "restart": restart, "inventory": inventory,
+                "temp": [], "bank": null }),
+        )
+    }
+
     fn kinds(bags: &Bags) -> Vec<(String, Kind, i64)> {
-        let mut gains: Vec<_> = bags
-            .gains()
+        let mut changes: Vec<_> = bags
+            .changes()
             .into_iter()
-            .map(|g| (g.name.clone(), g.kind, g.delta()))
+            .map(|c| (c.name.clone(), c.kind, c.delta()))
             .collect();
-        gains.sort_by(|a, b| a.0.cmp(&b.0));
-        gains
+        changes.sort_by(|a, b| a.0.cmp(&b.0));
+        changes
     }
 
     #[test]
@@ -211,12 +287,13 @@ mod tests {
         let mut bags = Bags::default();
         bags.on_entry(&started(
             4,
-            &[
+            false,
+            Some(&[
                 (1, "Diamond of Nulgath", 800),
                 (2, "Dark Crystal Shard", 990),
                 (3, "Unidentified 10", 760),
                 (4, "Voucher of Nulgath", 1),
-            ],
+            ]),
         ));
         bags.on_inventory(
             &inventory(&[
@@ -248,7 +325,7 @@ mod tests {
             &inventory(&[(1, "Diamond of Nulgath", 800, 1000), (2, "Gem of Nulgath", 5, 1000)]),
             1_000,
         );
-        assert!(bags.gains().is_empty());
+        assert!(bags.changes().is_empty());
         assert_eq!(bags.start().map(|s| (s.run, s.at_ms)), Some((None, 1_000)));
 
         bags.on_inventory(
@@ -256,22 +333,41 @@ mod tests {
             2_000,
         );
 
-        let gains = bags.gains();
-        assert_eq!(gains.len(), 1);
+        let changes = bags.changes();
+        assert_eq!(changes.len(), 1);
         assert_eq!(
-            (gains[0].name.as_str(), gains[0].delta(), gains[0].fresh),
+            (changes[0].name.as_str(), changes[0].delta(), changes[0].fresh),
             ("Diamond of Nulgath", 3, true)
         );
     }
 
     #[test]
-    fn a_new_run_starts_the_count_over() {
+    fn a_new_run_starts_the_count_over_but_a_relogins_restart_of_it_does_not() {
         let mut bags = Bags::default();
-        bags.on_entry(&started(1, &[(1, "Diamond of Nulgath", 700)]));
+        bags.on_entry(&started(1, false, Some(&[(1, "Diamond of Nulgath", 700)])));
         bags.on_inventory(&inventory(&[(1, "Diamond of Nulgath", 800, 1000)]), 2_000_000);
-        bags.on_entry(&started(2, &[(1, "Diamond of Nulgath", 800)]));
 
+        bags.on_entry(&started(1, true, Some(&[(1, "Diamond of Nulgath", 800)])));
+        assert_eq!(kinds(&bags), vec![("Diamond of Nulgath".into(), Kind::Filling, 100)]);
+
+        bags.on_entry(&started(2, false, Some(&[(1, "Diamond of Nulgath", 800)])));
         assert_eq!(bags.start().and_then(|s| s.run), Some(2));
-        assert!(bags.gains().is_empty());
+        assert!(bags.changes().is_empty());
+    }
+
+    #[test]
+    fn a_run_started_while_not_playing_counts_from_the_next_read_and_its_end_stops_the_clock() {
+        let mut bags = Bags::default();
+        bags.on_entry(&started(3, false, Some(&[(1, "Diamond of Nulgath", 500)])));
+        bags.on_entry(&started(4, false, None));
+        bags.on_inventory(&inventory(&[(1, "Diamond of Nulgath", 600, 1000)]), 1_500_000);
+        assert_eq!(bags.start().map(|s| s.run), Some(Some(4)));
+        assert!(
+            bags.changes().is_empty(),
+            "run 4 counts from this read, not run 3's start"
+        );
+
+        bags.on_entry(&entry(SCRIPT_STOPPED, 4, 1_600_000, json!({ "run": 4 })));
+        assert_eq!(bags.start().map(|s| s.elapsed_sec(9_000_000)), Some(600.0));
     }
 }

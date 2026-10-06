@@ -8,7 +8,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 use serde_json::Value;
 
 use crate::app::{App, Field, KEYS, Modal, Note, Row, Tab, Tone, first_line};
-use crate::bags::{Bags, Kind};
+use crate::bags::{Bags, Change, Kind, now_ms};
 use crate::discovery::MANAGER_FILE;
 use crate::dto::{GameState, Hello, HookRun, LogEntry, Map, Player, Quest, ScriptGoal, ScriptRun, Status};
 use crate::engine::{Error, NOT_LOGGED_IN, PROTOCOL};
@@ -26,13 +26,13 @@ const PLAYER_H: u16 = 6;
 const PLAYER_W: u16 = 36;
 /// How wide the run's panel must be for its goal tree's lines, rates and times left included.
 const RUN_W: u16 = 84;
-/// How wide Current Quests is, the right column down to the chat, where the run fits beside the player.
+/// How wide Current Quests is beside the player, or as the right column down to the chat where the run fits beside the player too.
 const QUESTS_W: u16 = 46;
 /// How tall the chat strip is at most, its border included.
 const CHAT_H: u16 = 10;
-/// How wide the accounts are, and an account's name in them.
-const ACCOUNTS_W: u16 = 28;
-const NAME_W: usize = 10;
+/// How wide the accounts are, and an account's name in them at most.
+const ACCOUNTS_W: u16 = 24;
+const NAME_W: usize = 11;
 /// How many players the Overview lists left of the monsters; the rest are counted.
 const MAX_MEMBERS: usize = 4;
 /// How many players outside the player's cell the Room names.
@@ -139,6 +139,13 @@ fn accounts(frame: &mut Frame, app: &App, area: Rect) {
     if app.snapshot.is_none() {
         lines.push(Line::styled("reading…", Style::new().fg(DIM)));
     }
+    // The names take as much as the longest needs, up to NAME_W; the state gets the rest.
+    let name_w = rows
+        .iter()
+        .map(|r| r.name.chars().count())
+        .max()
+        .unwrap_or(0)
+        .clamp(4, NAME_W);
     let mut selected_line = 0;
     let mut row_lines = Vec::new();
     let mut group: Option<&str> = None;
@@ -155,7 +162,7 @@ fn accounts(frame: &mut Frame, app: &App, area: Rect) {
             selected_line = lines.len();
         }
         row_lines.push((lines.len(), i));
-        lines.push(account_line(app, row, i == app.selected, inner.width));
+        lines.push(account_line(app, row, i == app.selected, name_w, inner.width));
     }
     let scroll = (selected_line + 1).saturating_sub(inner.height as usize) as u16;
     {
@@ -170,7 +177,7 @@ fn accounts(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(Paragraph::new(lines).scroll((scroll, 0)), inner);
 }
 
-fn account_line(app: &App, row: &Row, selected: bool, width: u16) -> Line<'static> {
+fn account_line(app: &App, row: &Row, selected: bool, name_w: usize, width: u16) -> Line<'static> {
     let marked = app.marks.contains(&row.name);
     let view = app.engine(&row.name);
     let (state, color) = row_state(view);
@@ -193,7 +200,7 @@ fn account_line(app: &App, row: &Row, selected: bool, width: u16) -> Line<'stati
         None => Span::raw(""),
     };
     // The dot, the name, a space, the state, then the stall and the flag.
-    let fixed = 2 + NAME_W + 1 + stall.content.chars().count() + 1;
+    let fixed = 2 + name_w + 1 + stall.content.chars().count() + 1;
     let state_width = (width as usize).saturating_sub(fixed);
     // A marked account's name is blue, as the marks' count in the title.
     let name_style = if marked {
@@ -206,7 +213,7 @@ fn account_line(app: &App, row: &Row, selected: bool, width: u16) -> Line<'stati
     let mut line = Line::from(vec![
         Span::styled("●", Style::new().fg(color)),
         " ".into(),
-        Span::styled(format!("{:<NAME_W$}", truncate(&row.name, NAME_W)), name_style),
+        Span::styled(format!("{:<name_w$}", truncate(&row.name, name_w)), name_style),
         " ".into(),
         Span::styled(
             format!("{:<state_width$}", truncate(&state, state_width)),
@@ -416,44 +423,32 @@ fn overview(frame: &mut Frame, app: &App, hello: &Hello, status: &Status, detail
     let question_h = status.pending_dialogs.first().map_or(0, |q| q.choices.len() as u16 + 3);
     let run_h = run.len() as u16 + 2;
 
-    // Current Quests down the right, narrower where the run's goal tree wouldn't fit beside the player and the quests.
-    let quests_w = if inner.width >= PLAYER_W + RUN_W + QUESTS_W {
-        QUESTS_W
-    } else {
-        (inner.width / 3).clamp(26, QUESTS_W)
-    };
-    // The player and the run side by side where the run's goal tree fits; else the run goes under the player.
-    let wide = inner.width.saturating_sub(quests_w) >= PLAYER_W + RUN_W;
-    let top_h = if wide { run_h.max(PLAYER_H) } else { PLAYER_H };
+    // Where the player, the run's goal tree and the quests fit side by side, Current Quests runs down the right; else the quests sit
+    // beside the player and the run goes under them.
+    let tall_quests = inner.width >= PLAYER_W + RUN_W + QUESTS_W;
+    let top_h = if tall_quests { run_h.max(PLAYER_H) } else { PLAYER_H };
+    let run_row_h = if tall_quests { 0 } else { run_h };
     let cell_h = members_h.max(4);
     // The chat strip at the bottom shares what the rest leaves with Bags, and gives way first on a short terminal.
-    let left_over = inner
-        .height
-        .saturating_sub(top_h + if wide { 0 } else { run_h } + question_h + 1 + cell_h);
+    let left_over = inner.height.saturating_sub(top_h + run_row_h + question_h + 1 + cell_h);
     let chat_h = (left_over / 2).clamp(3, CHAT_H);
     let [upper, chat_area] = Layout::vertical([Constraint::Fill(1), Constraint::Length(chat_h)]).areas(inner);
-    let [left, quests_area] = Layout::horizontal([Constraint::Fill(1), Constraint::Length(quests_w)]).areas(upper);
+    let [left, side] = Layout::horizontal([
+        Constraint::Fill(1),
+        Constraint::Length(if tall_quests { QUESTS_W } else { 0 }),
+    ])
+    .areas(upper);
     let [top, run_row, question_area, progress_area, cell, bags_area] = Layout::vertical([
         Constraint::Length(top_h),
-        Constraint::Length(if wide { 0 } else { run_h }),
+        Constraint::Length(run_row_h),
         Constraint::Length(question_h),
         Constraint::Length(1),
         Constraint::Length(cell_h),
         Constraint::Fill(1),
     ])
     .areas(left);
-    let (player_area, run_area) = if wide {
-        let [player, run] = Layout::horizontal([Constraint::Length(PLAYER_W), Constraint::Fill(1)]).areas(top);
-        (player, run)
-    } else {
-        (
-            Rect {
-                width: PLAYER_W.min(top.width),
-                ..top
-            },
-            run_row,
-        )
-    };
+    let [player_area, beside] = Layout::horizontal([Constraint::Length(PLAYER_W), Constraint::Fill(1)]).areas(top);
+    let (run_area, quests_area) = if tall_quests { (beside, side) } else { (run_row, beside) };
     player_frame(frame, me, status, player_area);
     frame.render_widget(Paragraph::new(run).block(panel("Script")), run_area);
     let tracker_rows = quests_area.height.saturating_sub(2) as usize;
@@ -486,8 +481,7 @@ fn overview(frame: &mut Frame, app: &App, hello: &Hello, status: &Status, detail
         );
     }
 
-    // Wide enough for a member's HP bar and run on one line; the monsters get the rest.
-    let members_width = (cell.width * 11 / 20).clamp(44, 48).min(cell.width.saturating_sub(1));
+    let members_width = (cell.width * 11 / 20).clamp(30, 48).min(cell.width.saturating_sub(1));
     let members_area = Rect {
         x: cell.x + 1,
         width: members_width,
@@ -948,54 +942,65 @@ fn room_title(me: &Player, map: &Map) -> Line<'static> {
     Line::from(spans)
 }
 
-/// What the run gained, under the cell: each stack it is filling as a bar toward its max stack, with the gain, the rate and when it will be
-/// full at that rate, the fullest first; then what it filled up, what's new and what was spent or banked, a line each. An item that
-/// just changed is yellow.
+/// What the run changed in the inventory, under the cell: each stack it is filling as a bar toward its max stack, with the gain, the rate
+/// and when it will be full at that rate, the fullest first; then what it filled up, what's new and what was spent or banked, a line
+/// each, which keep their place before the bars on a short terminal. An item that just changed is yellow.
 fn bags(frame: &mut Frame, bags: &Bags, area: Rect) {
-    const NAME: usize = 24;
+    /// The name's column, and what the gain and the rate take after the bar.
+    const NAME_COLUMN: usize = 24;
+    const GAIN_W: u16 = 8;
+    const RATE_W: u16 = 22;
     if area.height < 3 {
         return;
     }
-    let since = match bags.start() {
+    let now = now_ms();
+    let title = match bags.start() {
         Some(start) => {
-            let sec = (now_ms() - start.at_ms) as f64 / 1000.0;
-            match start.run {
-                Some(run) => format!("run {run} · {}", short_duration(sec)),
-                None => format!("since skua-tui opened · {}", short_duration(sec)),
+            let took = short_duration(start.elapsed_sec(now));
+            match (start.run, start.ended_ms) {
+                (Some(run), None) => format!("Bags · run {run} · {took}"),
+                (Some(run), Some(_)) => format!("Bags · run {run} · ended after {took}"),
+                (None, _) => format!("Bags · since skua-tui opened · {took}"),
             }
         }
-        None => "reading…".into(),
+        None => "Bags · reading…".into(),
     };
-    let block = panel(&format!("Bags · {since}"));
+    let block = panel(&title);
     let inner = block.inner(area);
-    let sec = bags.start().map_or(0.0, |s| (now_ms() - s.at_ms) as f64 / 1000.0);
-    let gains = bags.gains();
-    let of = |kind: Kind| gains.iter().filter(move |g| g.kind == kind);
-    let mut filling: Vec<_> = of(Kind::Filling).collect();
+    let sec = bags.start().map_or(0.0, |s| s.elapsed_sec(now));
+    let changes = bags.changes();
+    let of = |kind: Kind| changes.iter().filter(move |c| c.kind == kind);
+    let name_style = |change: &Change| {
+        if change.fresh {
+            Style::new().yellow().bold()
+        } else {
+            Style::new()
+        }
+    };
+
+    let mut filling: Vec<&Change> = of(Kind::Filling).collect();
     filling.sort_by(|a, b| ratio(b.now, b.max).total_cmp(&ratio(a.now, a.max)));
-    // The name, the bar, the gain and the rate share the width; the bar gets what's left.
-    let bar_w = inner.width.saturating_sub(NAME as u16 + 8 + 22).clamp(12, 40);
-    let mut lines: Vec<Line> = filling
+    let bar_w = inner
+        .width
+        .saturating_sub(NAME_COLUMN as u16 + GAIN_W + RATE_W)
+        .clamp(12, 40);
+    let mut bars: Vec<Line> = filling
         .iter()
-        .map(|g| {
+        .map(|c| {
             let mut spans = vec![Span::styled(
-                format!("{:<NAME$}", truncate(&g.name, NAME - 1)),
-                if g.fresh {
-                    Style::new().yellow().bold()
-                } else {
-                    Style::new()
-                },
+                format!("{:<NAME_COLUMN$}", truncate(&c.name, NAME_COLUMN - 1)),
+                name_style(c),
             )];
             spans.extend(bar(
                 bar_w,
-                ratio(g.now, g.max),
+                ratio(c.now, c.max),
                 Color::Cyan,
-                format!("{}/{}", g.now, g.max),
+                format!("{}/{}", c.now, c.max),
             ));
-            spans.push(Span::styled(format!(" {:>+7}", g.delta()), Style::new().green()));
+            spans.push(Span::styled(format!(" {:>+7}", c.delta()), Style::new().green()));
             if sec >= 60.0 {
-                let rate = g.delta() as f64 * 3600.0 / sec;
-                let left = (g.max - g.now) as f64 / rate * 3600.0;
+                let rate = c.delta() as f64 * 3600.0 / sec;
+                let left = (c.max - c.now) as f64 / rate * 3600.0;
                 spans.push(Span::styled(
                     format!("  +{}/h ~{}", rate_text(rate), short_duration(left)),
                     Style::new().fg(DIM),
@@ -1004,44 +1009,51 @@ fn bags(frame: &mut Frame, bags: &Bags, area: Rect) {
             Line::from(spans)
         })
         .collect();
-    if lines.is_empty() {
-        lines.push(Line::styled("no stack filling yet", Style::new().fg(DIM)));
+    if bars.is_empty() {
+        bars.push(Line::styled("no stack filling yet", Style::new().fg(DIM)));
     }
-    let listed = |kind: Kind, show: &dyn Fn(&crate::bags::Gain) -> String| -> Option<String> {
-        let names: Vec<String> = of(kind).map(show).collect();
-        (!names.is_empty()).then(|| names.join(", "))
-    };
-    let mut tail = Vec::new();
-    if let Some(names) = listed(Kind::Filled, &|g| format!("{} (+{})", g.name, g.delta())) {
-        tail.push(Line::styled(
-            format!("✓ filled this run: {names}"),
-            Style::new().green(),
-        ));
-    }
-    if let Some(names) = listed(Kind::New, &|g| g.name.clone()) {
-        tail.push(Line::styled(format!("★ new: {names}"), Style::new().magenta()));
-    }
-    if let Some(names) = listed(Kind::Spent, &|g| format!("{} {}", g.name, g.delta())) {
-        tail.push(Line::styled(format!("spent or banked: {names}"), Style::new().fg(DIM)));
-    }
-    // The bars give way to the lines under them, keeping a blank line between.
-    let room = (inner.height as usize).saturating_sub(tail.len() + usize::from(!tail.is_empty()));
-    if lines.len() > room && room > 0 {
-        let hidden = lines.len() - (room - 1);
-        lines.truncate(room - 1);
-        lines.push(Line::styled(format!("… {hidden} more filling"), Style::new().fg(DIM)));
-    }
-    if !tail.is_empty() {
-        lines.push(Line::raw(""));
-        lines.extend(tail);
-    }
-    frame.render_widget(Paragraph::new(lines).block(block), area);
-}
 
-fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_millis() as i64)
+    // A line each for what filled up, what's new and what was spent, each item named as `show` says.
+    let listed = |kind: Kind, head: Span<'static>, show: &dyn Fn(&Change) -> String| -> Option<Line<'static>> {
+        let mut spans = vec![head];
+        for (i, c) in of(kind).enumerate() {
+            if i > 0 {
+                spans.push(Span::raw(", "));
+            }
+            spans.push(Span::styled(show(c), name_style(c)));
+        }
+        (spans.len() > 1).then(|| Line::from(spans))
+    };
+    let tail: Vec<Line> = [
+        listed(Kind::Filled, "✓ filled this run: ".green(), &|c| {
+            format!("{} (+{})", c.name, c.delta())
+        }),
+        listed(Kind::New, "★ new: ".magenta(), &|c| c.name.clone()),
+        listed(Kind::Spent, "spent or banked: ".fg(DIM), &|c| {
+            format!("{} {}", c.name, c.delta())
+        }),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    // The bars give way to the lines under them, a blank line between; on a short terminal those lines alone.
+    let rows = inner.height as usize;
+    let rows_for_bars = rows.saturating_sub(tail.len() + usize::from(!tail.is_empty()));
+    let mut lines = Vec::new();
+    if rows_for_bars > 0 {
+        if bars.len() > rows_for_bars {
+            let hidden = bars.len() - (rows_for_bars - 1);
+            bars.truncate(rows_for_bars - 1);
+            bars.push(Line::styled(format!("… {hidden} more filling"), Style::new().fg(DIM)));
+        }
+        lines.extend(bars);
+        if !tail.is_empty() {
+            lines.push(Line::raw(""));
+        }
+    }
+    lines.extend(tail);
+    frame.render_widget(Paragraph::new(lines).block(block), area);
 }
 
 /// The map's name with its room, as the game names it: `battleon-9999`.
@@ -1352,10 +1364,7 @@ fn doing(run: &ScriptRun, detail: Option<&Detail>) -> Line<'static> {
         Some((stamp, rest)) if stamp.starts_with('[') && stamp.len() == 9 => rest,
         _ => text,
     };
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_millis() as i64);
-    let age = (now - entry.ts) as f64 / 1000.0;
+    let age = (now_ms() - entry.ts) as f64 / 1000.0;
     Line::from(vec![
         Span::styled(
             format!("{} ago · ", short_duration(age)),

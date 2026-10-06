@@ -442,7 +442,7 @@ fn a_question_is_shown_with_its_choices_and_answered_with_a_number() {
     let mut tui = Tui::new();
     assert_shows(
         &tui.screen(),
-        &["Question · Inventory full · d to answer", "● alice      AtlasGold   ?"],
+        &["Question · Inventory full · d to answer", "● alice AtlasGold    ?"],
     );
     tui.key(KeyCode::Char('d'));
     tui.run_jobs();
@@ -593,7 +593,10 @@ fn an_engine_of_another_protocol_is_never_acted_on() {
     assert_eq!(Tui::calls_but_reads(&tui.dave), Vec::<String>::new());
     assert_shows(
         &tui.screen(),
-        &["dave: left alone: Protocol mismatch: Engine 'dave'", "protocol 11 !"],
+        &[
+            "dave: left alone: Protocol mismatch: Engine 'dave'",
+            "● dave  protocol 11  !",
+        ],
     );
 }
 
