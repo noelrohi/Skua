@@ -5,7 +5,9 @@ use std::time::Duration;
 use common::*;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
+use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use ratatui::style::Color;
 use serde_json::{Value, json};
 use skua_tui::app::{App, Tab};
 use skua_tui::engine::PROTOCOL;
@@ -21,6 +23,26 @@ fn manager_file() -> Value {
         ],
         "groups": [{ "name": "Farm", "usernames": ["alice", "bob"] }, { "name": "Butler", "usernames": ["carol"] }]
     })
+}
+
+/// alice's run 3 starting: 800 Atlas Gold, 990 Dark Crystal Shards, the Chaos Avenger, 2 Vouchers she has since spent, and the Relics
+/// as they are now.
+fn run_started() -> Value {
+    let mut items = vec![
+        json!({ "id": 1, "name": "Atlas Gold", "qty": 800 }),
+        json!({ "id": 2, "name": "Chaos Avenger", "qty": 1 }),
+        json!({ "id": 4, "name": "Dark Crystal Shard", "qty": 990 }),
+        json!({ "id": 50, "name": "Voucher of Nulgath", "qty": 2 }),
+    ];
+    items.extend((1..=40).map(|n| json!({ "id": 100 + n, "name": format!("Relic {n:02}"), "qty": n })));
+    let mut started = event(
+        1,
+        "script.started",
+        json!({ "run": 3, "script": "Farm/AtlasGold.cs", "restart": false,
+        "inventory": items, "temp": [], "bank": null }),
+    );
+    started["run"] = json!(3);
+    started
 }
 
 /// A fleet in a temp data folder: alice farms with a Script whose quests have stalled, bob's Engine is of another protocol, carol has no
@@ -50,6 +72,7 @@ fn fleet() -> Fleet {
         }
         "logs" if params[0] == "events" => Ok(json!({
             "entries": [
+                run_started(),
                 event(2, "inventory.full", json!({ "used": 120, "slots": 120, "drop": null })),
                 event(3, "hook.ran", json!({ "hook": "player.death", "eventSeq": 1, "startedAt": 1_791_036_000_000i64,
                     "durationMs": 1200, "exitCode": 0, "output": "respawned\n" })),
@@ -73,13 +96,14 @@ fn fleet() -> Fleet {
         "inventory" => {
             let mut items = vec![
                 json!({ "id": 1, "name": "Atlas Gold", "qty": 870, "maxStack": 1000, "category": "Item", "equipped": false, "enhancementLevel": 0 }),
+                json!({ "id": 4, "name": "Dark Crystal Shard", "qty": 1000, "maxStack": 1000, "category": "Item", "equipped": false, "enhancementLevel": 0 }),
                 json!({ "id": 2, "name": "Chaos Avenger", "qty": 1, "maxStack": 1, "category": "Class", "equipped": true, "enhancementLevel": 0 }),
                 json!({ "id": 3, "name": "Necrotic Sword of Doom", "qty": 1, "maxStack": 1, "category": "Sword", "equipped": false, "enhancementLevel": 0 }),
             ];
             items.extend((1..=40).map(|n| {
                 json!({ "id": 100 + n, "name": format!("Relic {n:02}"), "qty": n, "maxStack": 99, "category": "Quest Item", "equipped": false, "enhancementLevel": null })
             }));
-            Ok(json!({ "kind": "inventory", "usedSlots": 43, "totalSlots": 120, "items": items }))
+            Ok(json!({ "kind": "inventory", "usedSlots": 44, "totalSlots": 120, "items": items }))
         }
         "quests" => Ok(
             json!({ "filter": "loaded", "quests": [{ "id": 7551, "name": "Tainted Gem Exchange", "status": "inProgress",
@@ -112,12 +136,17 @@ fn fleet() -> Fleet {
 
 /// Polls the fleet for the app's focus, twice so the selected Engine's tab is read, and draws the screen.
 fn screen(fleet: &Fleet, app: &mut App, width: u16, height: u16) -> String {
+    screen_and_buffer(fleet, app, width, height).0
+}
+
+/// The screen as text, and as cells with their styles.
+fn screen_and_buffer(fleet: &Fleet, app: &mut App, width: u16, height: u16) -> (String, Buffer) {
     let mut poller = Poller::new(fleet.dir.path().to_owned(), Duration::from_secs(5));
     app.set_snapshot(poller.poll(&app.focus()));
     app.set_snapshot(poller.poll(&app.focus()));
     let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
     terminal.draw(|frame| skua_tui::ui::draw(frame, app)).unwrap();
-    let buffer = terminal.backend().buffer();
+    let buffer = terminal.backend().buffer().clone();
     let mut out = String::new();
     for y in 0..height {
         for x in 0..width {
@@ -126,7 +155,7 @@ fn screen(fleet: &Fleet, app: &mut App, width: u16, height: u16) -> String {
         out.push('\n');
     }
     println!("{out}");
-    out
+    (out, buffer)
 }
 
 fn press(app: &mut App, code: KeyCode) {
@@ -144,7 +173,7 @@ fn the_screen_shows_accounts_by_group_with_their_engines_and_the_selected_ones_o
     let fleet = fleet();
     let mut app = App::new(fleet.dir.path().to_owned());
 
-    let screen = screen(&fleet, &mut app, 120, 32);
+    let screen = screen(&fleet, &mut app, 200, 50);
 
     assert_shows(
         &screen,
@@ -156,11 +185,10 @@ fn the_screen_shows_accounts_by_group_with_their_engines_and_the_selected_ones_o
             "▾ Butler · 1",
             "▾ Ungrouped · 1",
             "▾ Other Engines · 1",
-            "[ ] ● alice        AtlasGold",
-            " 11m▲",
-            "bob          protocol 11",
-            "carol        offline",
-            "default      login screen",
+            "● alice   AtlasG… 11m▲",
+            "● bob     protocol 11▲",
+            "● carol   offline",
+            "● default login scre…",
             " Overview │ Inventory │ Quests │ Logs │ Game │",
             "Overview · battleon-9999 · Enter",
             "alice ─",
@@ -189,11 +217,32 @@ fn the_screen_shows_accounts_by_group_with_their_engines_and_the_selected_ones_o
             "Chat",
             "[zone]",
             "anyone for ultra",
-            "1 player(s) in battleon-9999",
+            "Room · 1 player(s) in battleon-9999",
+            "Bags · run 3",
+            "Atlas Gold",
+            "870/1000",
+            "+70",
+            "✓ filled this run: Dark Crystal Shard (+10)",
+            "★ new: Necrotic Sword of Doom",
+            "spent or banked: Voucher of Nulgath -2",
             "acting on: alice",
             "? keys",
         ],
     );
+    // Current Quests runs down the right, past Bags, to the chat.
+    let (quests_x, _) = find(&screen, "Current Quests");
+    let (_, bags_y) = find(&screen, "Bags · run 3");
+    let (_, chat_y) = find(&screen, "╭ Chat");
+    let column = |y: u16| {
+        screen
+            .lines()
+            .nth(y as usize)
+            .unwrap()
+            .chars()
+            .nth(quests_x as usize - 2)
+            .unwrap()
+    };
+    assert_eq!((column(bags_y + 1), column(chat_y - 1)), ('│', '╰'), "{screen}");
     let rows: Vec<&str> = screen.lines().collect();
     let farm = rows.iter().position(|l| l.contains("▾ Farm")).unwrap();
     let butler = rows.iter().position(|l| l.contains("▾ Butler")).unwrap();
@@ -217,7 +266,7 @@ fn an_engine_of_another_protocol_fails_loudly_on_every_tab_and_shows_none_of_its
                 "Protocol mismatch",
                 "Engine 'bob'",
                 "speaks protocol 11, but",
-                "this skua-tui speaks 18. Nothing it reports is shown.",
+                "Nothing it reports is shown.",
             ],
         );
         assert!(!screen.contains("Player") && !screen.contains("Artix"), "{screen}");
@@ -256,7 +305,7 @@ fn the_tabs_show_inventory_quests_logs_and_the_map_with_the_picture() {
     press(&mut app, KeyCode::Tab);
     assert_shows(
         &screen(&fleet, &mut app, 120, 32),
-        &["43/120", "Atlas Gold", "870/1000", "Chaos Avenger ✓", "Class"],
+        &["44/120", "Atlas Gold", "870/1000", "Chaos Avenger ✓", "Class"],
     );
     press(&mut app, KeyCode::Tab);
     // Only the quest in progress, with its unmet requirements in columns; the quest that isn't accepted is only counted.
@@ -336,7 +385,7 @@ fn the_hooks_tab_shows_the_hook_runner_and_the_engines_hook_runs_newest_first() 
         &[
             "No hook has run for default yet.",
             "named after an event type,",
-            "such as inventory.full. The Hook Runner runs it",
+            "inventory.full. The Hook Runner runs it",
         ],
     );
 }
@@ -349,13 +398,11 @@ fn marks_and_the_command_palette_list_commands_and_run_them_on_the_marked_accoun
     press(&mut app, KeyCode::Char('a'));
     press(&mut app, KeyCode::Char(':'));
 
-    let palette = screen(&fleet, &mut app, 120, 32);
+    let (palette, buffer) = screen_and_buffer(&fleet, &mut app, 120, 32);
     assert_shows(
         &palette,
         &[
             "2 marked",
-            "[x] ● alice",
-            "[x] ● bob",
             "Commands · on 2 accounts",
             "start Engine",
             "log in…",
@@ -364,6 +411,10 @@ fn marks_and_the_command_palette_list_commands_and_run_them_on_the_marked_accoun
         ],
     );
 
+    for name in ["alice", "bob"] {
+        let (x, y) = find(&palette, &format!("● {name}"));
+        assert_eq!(buffer[(x + 2, y)].fg, Color::Blue, "{name} is marked");
+    }
     for c in "stscr".chars() {
         press(&mut app, KeyCode::Char(c));
     }
@@ -444,12 +495,12 @@ fn the_inventory_splits_into_categories_scrolls_and_takes_clicks() {
     assert_shows(
         &all,
         &[
-            " All 43 ",
+            " All 44 ",
             " Weapons 1 ",
             " Classes 1 ",
-            " Items 1 ",
+            " Items 2 ",
             " Quest items 40 ",
-            "1–23 of 43",
+            "1–23 of 44",
             "Atlas Gold",
         ],
     );
@@ -460,7 +511,7 @@ fn the_inventory_splits_into_categories_scrolls_and_takes_clicks() {
     let weapons = screen(&fleet, &mut app, 120, 32);
     assert_shows(&weapons, &["Necrotic Sword of Doom"]);
     assert!(
-        !weapons.contains("Atlas Gold") && !weapons.contains("of 43"),
+        !weapons.contains("Atlas Gold") && !weapons.contains("of 44"),
         "{weapons}"
     );
     mouse(
@@ -568,7 +619,7 @@ fn a_stall_while_still_killing_is_grinding_not_an_alert() {
     assert!(rows[carol + 1].contains("312 kills · 5.4/min"), "{screen}");
     let row = screen.lines().find(|l| l.contains("● carol")).unwrap();
     assert!(
-        row.contains("RareDrop") && row.contains("11m") && !row.contains('▲'),
+        row.contains("RareDr") && row.contains("11m") && !row.contains('▲'),
         "{row}"
     );
 }

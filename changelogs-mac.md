@@ -7,10 +7,12 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 ## October 6, 2026
 
 ### New
+* `skua-tui`'s Overview shows **Bags**: what the run changed in the inventory since it started, each stack it is filling as a bar toward its max with its rate and when it will be full, then what it filled up, what's new and what was spent or banked. See [The TUI](./BUILD.md#the-tui-skua-tui).
 * `skua scripts check <path>` compiles a Script and its includes without running it or starting an Engine, and exits non-zero with each error at its file and line. Given a file in a Scripts checkout, it compiles against that checkout. See [Script Source](./BUILD.md#script-source).
 * `skua scripts update --verify` hashes every local Script against `scripts.json` and downloads each one that differs or is missing, so a Script changed on a branch no longer keeps running its old code.
 
 ### Changes
+* `skua-tui`'s Overview gives Current Quests the full height on the right on a wide terminal, and turns the chat into a strip across the bottom with the Room in its title, which gives way first on a short terminal. The accounts list is narrower, and a marked account shows its name in blue instead of `[x]`.
 * `skua scripts` and `skua status` start no Engine. `status` of an Engine that isn't running fails and says how to start it. `scripts update` and `scripts source` are refused while any Engine runs a Script.
 
 ### Fixes

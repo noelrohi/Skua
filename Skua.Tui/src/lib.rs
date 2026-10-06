@@ -3,6 +3,7 @@
 
 pub mod actions;
 pub mod app;
+pub mod bags;
 pub mod chat;
 pub mod discovery;
 pub mod dto;

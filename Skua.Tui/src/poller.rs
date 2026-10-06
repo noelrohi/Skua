@@ -8,6 +8,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::app::Tab;
+use crate::bags::{Bags, now_ms};
 use crate::discovery::{self, ManagerAccounts};
 use crate::dto::{Hello, Inventory, LogEntry, Map, Quests, Screenshot, Status};
 use crate::engine::{Engine, Error};
@@ -61,6 +62,8 @@ pub struct Detail {
     pub map: Option<Result<Map, Error>>,
     /// The game's picture, read every 2 s while the Game tab shows.
     pub picture: Option<Result<Screenshot, Error>>,
+    /// What its run has changed in the inventory, for the Overview's Bags.
+    pub bags: Bags,
 }
 
 #[derive(Debug, Clone)]
@@ -82,6 +85,8 @@ pub struct Poller {
     pictured: Option<Instant>,
     /// When the quests were last read, so a rise is only told against a read just before it.
     quests_read: Option<Instant>,
+    /// Each Engine's Bags, kept while another account is selected.
+    bags: HashMap<String, Bags>,
 }
 
 impl Poller {
@@ -94,6 +99,7 @@ impl Poller {
             cursor: None,
             pictured: None,
             quests_read: None,
+            bags: HashMap::new(),
         }
     }
 
@@ -101,6 +107,7 @@ impl Poller {
         let accounts = discovery::load_accounts(&self.skua_dir);
         let names = discovery::engine_names(&self.skua_dir);
         self.connections.retain(|name, _| names.contains(name));
+        self.bags.retain(|name, _| names.contains(name));
         let engines = names.iter().map(|name| (name.clone(), self.view(name))).collect();
 
         if self.detail.engine != focus.engine {
@@ -114,6 +121,7 @@ impl Poller {
         }
         if let Some(name) = &focus.engine {
             self.read_detail(&name.clone(), focus.tab);
+            self.detail.bags = self.bags.get(name).cloned().unwrap_or_default();
         }
         Snapshot {
             accounts,
@@ -150,6 +158,10 @@ impl Poller {
         };
         let page = match &self.cursor {
             None => engine.events(LOG_TAIL).and_then(|events| {
+                let bags = self.bags.entry(name.to_owned()).or_default();
+                for entry in &events.entries {
+                    bags.on_entry(entry);
+                }
                 self.detail.hook_runs = events.entries.into_iter().filter(is_hook_run).collect();
                 self.detail.script_line = engine
                     .logs_of("script", None, Some(1))?
@@ -182,6 +194,10 @@ impl Poller {
                     .extend(page.entries.iter().filter(|e| e.kind == "game").cloned());
                 let excess = self.detail.chat.len().saturating_sub(MAX_CHAT as usize);
                 self.detail.chat.drain(..excess);
+                let bags = self.bags.entry(name.to_owned()).or_default();
+                for entry in &page.entries {
+                    bags.on_entry(entry);
+                }
                 self.detail.logs.extend(page.entries);
                 let excess = self.detail.logs.len().saturating_sub(MAX_LOG_LINES);
                 self.detail.logs.drain(..excess);
@@ -196,9 +212,17 @@ impl Poller {
         match tab {
             Tab::Inventory => self.detail.inventory = Some(engine.inventory()),
             Tab::Quests => self.read_quests(name),
-            // The Overview shows the quests in progress, and the players and monsters in the player's cell.
+            // The Overview shows the quests in progress, the players and monsters in the player's cell, and what the run gained.
             Tab::Overview => {
                 self.detail.map = Some(engine.map());
+                let inventory = engine.inventory();
+                if let Ok(inventory) = &inventory {
+                    self.bags
+                        .entry(name.to_owned())
+                        .or_default()
+                        .on_inventory(inventory, now_ms());
+                }
+                self.detail.inventory = Some(inventory);
                 self.read_quests(name);
             }
             Tab::Game => {
