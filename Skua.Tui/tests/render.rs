@@ -302,14 +302,15 @@ fn a_bags_bar_rates_its_item_from_its_first_rise_once_it_has_risen_for_ten_minut
     ]);
     let mut bags = Bags::default();
     bags.on_entry(&serde_json::from_value::<LogEntry>(started).unwrap());
+    // Each rise is seen between two reads 2 s apart.
     for (at, counts) in [
-        (55, (830, 100, 10)),
-        (30, (900, 100, 10)),
-        (29, (900, 130, 10)),
-        (6, (900, 130, 10)),
-        (5, (900, 130, 20)),
+        (min(60) + 2_000, (830, 100, 10)),
+        (min(30), (900, 100, 10)),
+        (min(30) + 2_000, (900, 130, 10)),
+        (min(5), (900, 130, 10)),
+        (min(5) + 2_000, (900, 130, 20)),
     ] {
-        bags.on_inventory(&read(counts.0, counts.1, counts.2), min(at));
+        bags.on_inventory(&read(counts.0, counts.1, counts.2), at);
     }
 
     let mut poller = Poller::new(fleet.dir.path().to_owned(), Duration::from_secs(5));

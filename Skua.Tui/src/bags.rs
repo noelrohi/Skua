@@ -15,8 +15,8 @@ pub const SCRIPT_STARTED: &str = "script.started";
 pub const SCRIPT_STOPPED: &str = "script.stopped";
 /// How long an item that just changed stays fresh.
 pub const FRESH: Duration = Duration::from_secs(6);
-/// How long an item is measured from its first rise before its rate says, as the Engine's goal waits (`SKUA_GOAL_RATE_SEC`): a farm loop
-/// gains in bursts, so its first minutes swing widely.
+/// How long an item is measured from its first rise before it gives a rate, the 10 minutes the Engine's goal waits by default: a farm
+/// loop gains in bursts, so its first minutes swing widely.
 pub const RATE_AFTER: Duration = Duration::from_secs(600);
 /// A read older than this is too old to tell what just changed against: another tab showed meanwhile.
 const RECENT: Duration = Duration::from_secs(5);
@@ -32,12 +32,26 @@ pub fn now_ms() -> i64 {
 #[derive(Debug, Clone, Default)]
 pub struct Bags {
     start: Option<Start>,
-    /// The newest read, by item id, and when it was read, also in epoch ms.
-    now: Option<(Instant, i64, HashMap<i64, Held>)>,
+    now: Option<Read>,
     /// When each item's count last changed between two recent reads.
     changed: HashMap<i64, Instant>,
-    /// When each item first rose in the run, in epoch ms: the read before the one that saw it higher, else the run's start.
-    rose: HashMap<i64, i64>,
+    /// What each item's rate counts from, once it has risen in the run.
+    rose: HashMap<i64, Rise>,
+}
+
+/// The newest read, by item id, and when it was read.
+#[derive(Debug, Clone)]
+struct Read {
+    at: Instant,
+    at_ms: i64,
+    items: HashMap<i64, Held>,
+}
+
+/// Where an item's rate counts from: the count it held, and when, just before it first rose; epoch ms.
+#[derive(Debug, Clone, Copy)]
+pub struct Rise {
+    pub at_ms: i64,
+    pub qty: i64,
 }
 
 /// One item as a read held it.
@@ -64,7 +78,12 @@ pub struct Start {
 impl Start {
     /// How long the run has gone, or went.
     pub fn elapsed_sec(&self, now_ms: i64) -> f64 {
-        (self.ended_ms.unwrap_or(now_ms) - self.at_ms) as f64 / 1000.0
+        (self.end_ms(now_ms) - self.at_ms) as f64 / 1000.0
+    }
+
+    /// When the run ended, else `now_ms`.
+    pub fn end_ms(&self, now_ms: i64) -> i64 {
+        self.ended_ms.unwrap_or(now_ms)
     }
 }
 
@@ -90,8 +109,8 @@ pub struct Change {
     pub kind: Kind,
     /// Whether it changed within `FRESH`.
     pub fresh: bool,
-    /// When it first rose in the run, in epoch ms.
-    pub rose_ms: Option<i64>,
+    /// What its rate counts from, once it has risen in the run.
+    pub rose: Option<Rise>,
 }
 
 impl Change {
@@ -105,10 +124,12 @@ impl Change {
         self.start == 1 && self.now == 0
     }
 
-    /// Its gain an hour, since it first rose until `now_ms` or the run's end; `None` until it has been measured for `RATE_AFTER`.
-    pub fn per_hour(&self, start: &Start, now_ms: i64) -> Option<f64> {
-        let sec = (start.ended_ms.unwrap_or(now_ms) - self.rose_ms?) as f64 / 1000.0;
-        (self.delta() > 0 && sec >= RATE_AFTER.as_secs_f64()).then(|| self.delta() as f64 * 3600.0 / sec)
+    /// Its gain an hour since it first rose, until `end_ms`; `None` until it has been measured for `RATE_AFTER`.
+    pub fn per_hour(&self, end_ms: i64) -> Option<f64> {
+        let rose = self.rose?;
+        let sec = (end_ms - rose.at_ms) as f64 / 1000.0;
+        let gain = self.now - rose.qty;
+        (gain > 0 && sec >= RATE_AFTER.as_secs_f64()).then(|| gain as f64 * 3600.0 / sec)
     }
 }
 
@@ -194,24 +215,33 @@ impl Bags {
                 start.at_ms = now_ms;
             }
             Some(start) => {
-                // Against the read before, else, for the run's first read, the run's start.
+                // Against the read before, else, for the run's first read, the run's start. An item missing from it can't tell.
                 let (base_ms, base): (i64, HashMap<i64, i64>) = match &self.now {
-                    Some((_, ms, before)) if *ms >= start.at_ms => {
-                        (*ms, before.iter().map(|(id, h)| (*id, h.qty)).collect())
+                    Some(read) if read.at_ms >= start.at_ms => {
+                        (read.at_ms, read.items.iter().map(|(id, h)| (*id, h.qty)).collect())
                     }
                     _ => (
                         start.at_ms,
                         start.items.iter().flatten().map(|(id, (_, qty))| (*id, *qty)).collect(),
                     ),
                 };
+                // Over a longer gap, as while another tab showed, it rose at some time in it: its rate counts from this read.
+                let recent = now_ms - base_ms < RECENT.as_millis() as i64;
                 for (id, h) in &held {
-                    if h.qty > base.get(id).copied().unwrap_or(0) {
-                        self.rose.entry(*id).or_insert(base_ms);
-                    }
+                    match base.get(id) {
+                        Some(&qty) if h.qty > qty && recent => {
+                            self.rose.entry(*id).or_insert(Rise { at_ms: base_ms, qty })
+                        }
+                        Some(&qty) if h.qty > qty => self.rose.entry(*id).or_insert(Rise {
+                            at_ms: now_ms,
+                            qty: h.qty,
+                        }),
+                        _ => continue,
+                    };
                 }
             }
         }
-        if let Some((at, _, before)) = &self.now
+        if let Some(Read { at, items: before, .. }) = &self.now
             && at.elapsed() < RECENT
         {
             let qty = |items: &HashMap<i64, Held>, id: &i64| items.get(id).map(|h| h.qty);
@@ -225,12 +255,16 @@ impl Bags {
                 self.changed.insert(id, Instant::now());
             }
         }
-        self.now = Some((Instant::now(), now_ms, held));
+        self.now = Some(Read {
+            at: Instant::now(),
+            at_ms: now_ms,
+            items: held,
+        });
     }
 
     /// Every item held in another count than at the start, the most recently changed first.
     pub fn changes(&self) -> Vec<Change> {
-        let (Some(start), Some((_, _, now))) = (&self.start, &self.now) else {
+        let (Some(start), Some(Read { items: now, .. })) = (&self.start, &self.now) else {
             return Vec::new();
         };
         let Some(began) = &start.items else {
@@ -263,7 +297,7 @@ impl Bags {
                     max,
                     kind,
                     fresh: changed.is_some_and(|at| at.elapsed() < FRESH),
-                    rose_ms: self.rose.get(&id).copied(),
+                    rose: self.rose.get(&id).copied(),
                 };
                 Some((changed, change))
             })
@@ -412,6 +446,68 @@ mod tests {
 
         assert_eq!(bags.start().and_then(|s| s.run), Some(2));
         assert_eq!(kinds(&bags), vec![("Diamond of Nulgath".into(), Kind::Filling, 50)]);
+    }
+
+    #[test]
+    fn a_rate_counts_from_the_read_before_the_first_rise_or_after_a_gap_from_the_read_that_saw_it() {
+        let mut bags = Bags::default();
+        let mut start = started(
+            1,
+            false,
+            Some(&[(1, "Diamond of Nulgath", 100), (2, "Gem of Nulgath", 10)]),
+        );
+        start.ts = 0;
+        bags.on_entry(&start);
+        let read = |bags: &mut Bags, diamonds, gems: Option<i64>, at_ms| {
+            let mut items = vec![(1, "Diamond of Nulgath", diamonds, 1000)];
+            items.extend(gems.map(|g| (2, "Gem of Nulgath", g, 1000)));
+            bags.on_inventory(&inventory(&items), at_ms);
+        };
+        let rose = |bags: &Bags, name: &str| {
+            let change = bags.changes().into_iter().find(|c| c.name == name)?;
+            change.rose.map(|r| (r.at_ms, r.qty))
+        };
+
+        read(&mut bags, 100, Some(10), 1_000);
+        read(&mut bags, 120, Some(10), 3_000);
+        assert_eq!(rose(&bags, "Diamond of Nulgath"), Some((1_000, 100)));
+
+        // A minute without a read: the Gems rose at some time in it, so their rate counts from the read that saw them higher.
+        read(&mut bags, 130, Some(15), 63_000);
+        assert_eq!(rose(&bags, "Gem of Nulgath"), Some((63_000, 15)));
+        assert_eq!(rose(&bags, "Diamond of Nulgath"), Some((1_000, 100)));
+        // 30 Diamonds in the 10 minutes since the read before they rose.
+        let diamonds = bags
+            .changes()
+            .into_iter()
+            .find(|c| c.name == "Diamond of Nulgath")
+            .unwrap();
+        assert_eq!(diamonds.per_hour(601_000), Some(180.0));
+        assert_eq!(diamonds.per_hour(600_000), None);
+    }
+
+    #[test]
+    fn an_item_missing_from_the_read_before_has_not_risen() {
+        let mut bags = Bags::default();
+        let mut start = started(
+            1,
+            false,
+            Some(&[(1, "Diamond of Nulgath", 100), (2, "Gem of Nulgath", 10)]),
+        );
+        start.ts = 0;
+        bags.on_entry(&start);
+        bags.on_inventory(&inventory(&[(1, "Diamond of Nulgath", 100, 1000)]), 1_000);
+        bags.on_inventory(
+            &inventory(&[(1, "Diamond of Nulgath", 100, 1000), (2, "Gem of Nulgath", 12, 1000)]),
+            3_000,
+        );
+        bags.on_inventory(
+            &inventory(&[(1, "Diamond of Nulgath", 100, 1000), (2, "Gem of Nulgath", 14, 1000)]),
+            5_000,
+        );
+
+        let gems = bags.changes().into_iter().find(|c| c.name == "Gem of Nulgath").unwrap();
+        assert_eq!(gems.rose.map(|r| (r.at_ms, r.qty)), Some((3_000, 12)));
     }
 
     #[test]

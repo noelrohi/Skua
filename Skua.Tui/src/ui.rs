@@ -947,10 +947,10 @@ fn room_title(me: &Player, map: &Map) -> Line<'static> {
     Line::from(spans)
 }
 
-/// What the run changed in the inventory, under the cell: each stack it is filling as a bar toward its max stack, with the gain, and the
-/// rate since it first rose and when it will be full at that rate once it has risen for `RATE_AFTER`, the fullest first; then what it
-/// filled up and what's new, a line each, and what was spent or banked on one line that fits, the most spent first; those keep their
-/// place before the bars on a short terminal. An item that just changed is yellow.
+/// What the run changed in the inventory, under the cell: each stack it is filling as a bar toward its max stack, with the gain, the rate
+/// (`Change::per_hour`) and when it will be full at that rate, the fullest first; then what it filled up and what's new, a line each, and
+/// what was spent or banked on one line that fits, the most spent first; those keep their place before the bars on a short terminal. An
+/// item that just changed is yellow.
 fn bags(frame: &mut Frame, bags: &Bags, area: Rect) {
     /// The name's column, and what the gain and the rate take after the bar.
     const NAME_COLUMN: usize = 24;
@@ -1006,7 +1006,7 @@ fn bags(frame: &mut Frame, bags: &Bags, area: Rect) {
                 format!("{}/{}", c.now, c.max),
             ));
             spans.push(Span::styled(format!(" {:>+7}", c.delta()), Style::new().green()));
-            if let Some(rate) = bags.start().and_then(|s| c.per_hour(s, now)) {
+            if let Some(rate) = bags.start().and_then(|s| c.per_hour(s.end_ms(now))) {
                 let left = (c.max - c.now) as f64 / rate * 3600.0;
                 spans.push(Span::styled(
                     format!("  +{}/h ~{}", rate_text(rate), short_duration(left)),

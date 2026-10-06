@@ -16,7 +16,7 @@ namespace Skua.Engine.Scripts;
 /// </remarks>
 internal sealed class ScriptGoal
 {
-    /// <summary>How long a step is measured before its rate says: 600 s unless set.</summary>
+    /// <summary>How long a step is measured before it gives a rate: 600 s unless set.</summary>
     public const string RateVariable = "SKUA_GOAL_RATE_SEC";
 
     private readonly object _lock = new();
