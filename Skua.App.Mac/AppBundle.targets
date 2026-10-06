@@ -80,8 +80,10 @@
     <Exec Command="mkdir -p &quot;$(_SkuaAppBundle)Contents/Frameworks&quot; &amp;&amp; ditto &quot;$(_SkuaSparkle)/Sparkle.framework&quot; &quot;$(_SkuaAppBundle)Contents/Frameworks/Sparkle.framework&quot;" />
     <!-- Ad-hoc: macOS runs it without a Developer ID, and notarising is out of scope. Every file in MacOS and Helpers gets a signature. -->
     <Exec Command="codesign --force --deep --sign - &quot;$(_SkuaAppBundle)&quot;" />
-    <!-- After signing, as a clone keeps the signature its source has in its extended attributes; a disk without clones keeps the copies. -->
-    <Exec Command="cd &quot;$(_SkuaAppBundle)Contents&quot; &amp;&amp; for f in Helpers/*; do a=&quot;MacOS/${f#Helpers/}&quot;; if [ -f &quot;$f&quot; ] &amp;&amp; cmp -s &quot;$f&quot; &quot;$a&quot;; then cp -c &quot;$a&quot; &quot;$f.clone&quot; 2&gt;/dev/null &amp;&amp; mv -f &quot;$f.clone&quot; &quot;$f&quot;; fi; done; true" />
+    <!-- After signing, as a clone keeps the signature its source has in its extended attributes; a disk without clones keeps the copies.
+         Only a file of the same name in the same case: on a case-insensitive disk MacOS/skua.runtimeconfig.json opens Skua.runtimeconfig.json,
+         whose signature names Skua.runtimeconfig and so doesn't hold for skua.runtimeconfig.json; find -name matches the stored case. -->
+    <Exec Command="cd &quot;$(_SkuaAppBundle)Contents&quot; &amp;&amp; for f in Helpers/*; do a=&quot;MacOS/${f#Helpers/}&quot;; if [ -f &quot;$f&quot; ] &amp;&amp; [ -n &quot;$(find MacOS -maxdepth 1 -name &quot;${f#Helpers/}&quot; -print -quit)&quot; ] &amp;&amp; cmp -s &quot;$f&quot; &quot;$a&quot;; then cp -c &quot;$a&quot; &quot;$f.clone&quot; 2&gt;/dev/null &amp;&amp; mv -f &quot;$f.clone&quot; &quot;$f&quot;; fi; done; true" />
     <Exec Command="codesign --verify --deep --strict &quot;$(_SkuaAppBundle)&quot;" />
     <Message Importance="high" Text="Skua.app -> $(_SkuaAppBundle)" />
   </Target>
