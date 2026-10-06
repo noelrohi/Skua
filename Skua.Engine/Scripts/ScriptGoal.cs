@@ -16,7 +16,11 @@ namespace Skua.Engine.Scripts;
 /// </remarks>
 internal sealed class ScriptGoal
 {
+    /// <summary>How long a step is measured before its rate says: 600 s unless set.</summary>
+    public const string RateVariable = "SKUA_GOAL_RATE_SEC";
+
     private readonly object _lock = new();
+    private readonly TimeSpan _rateAfter;
     private Step? _quest;
     private Item? _buy;
     private Item? _farm;
@@ -26,6 +30,10 @@ internal sealed class ScriptGoal
 
     public ScriptGoal(EngineLogs logs)
     {
+        // A farm loop gains in bursts, kills until the quest items drop and then several turn-ins at once, so its first minutes swing
+        // widely; ten minutes spans several of those rounds.
+        _rateAfter = TimeSpan.FromSeconds(
+            int.TryParse(Environment.GetEnvironmentVariable(RateVariable), out int sec) && sec > 0 ? sec : 600);
         logs.TextWritten += (kind, text) =>
         {
             if (kind == LogKind.Script)
@@ -67,9 +75,9 @@ internal sealed class ScriptGoal
     private GoalItemDto ToDto(Item item, DateTime now)
     {
         int? have = _owned.Count > 0 ? _owned.GetValueOrDefault(item.Name) : null;
-        // The pace since the Script logged the step, from the count it logged then, once there is a gain and a minute to measure it over.
-        double hours = (now - item.At).TotalHours;
-        double? perHour = have is int h && h > item.Start && hours >= 1 / 60.0 ? Math.Round((h - item.Start) / hours, 1) : null;
+        // The pace since the Script logged the step, from the count it logged then, once there is a gain and it has been measured long enough.
+        TimeSpan measured = now - item.At;
+        double? perHour = have is int h && h > item.Start && measured >= _rateAfter ? Math.Round((h - item.Start) / measured.TotalHours, 1) : null;
         return new GoalItemDto(item.Name, item.Want, have, perHour);
     }
 

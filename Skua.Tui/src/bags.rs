@@ -15,6 +15,9 @@ pub const SCRIPT_STARTED: &str = "script.started";
 pub const SCRIPT_STOPPED: &str = "script.stopped";
 /// How long an item that just changed stays fresh.
 pub const FRESH: Duration = Duration::from_secs(6);
+/// How long an item is measured from its first rise before its rate says, as the Engine's goal waits (`SKUA_GOAL_RATE_SEC`): a farm loop
+/// gains in bursts, so its first minutes swing widely.
+pub const RATE_AFTER: Duration = Duration::from_secs(600);
 /// A read older than this is too old to tell what just changed against: another tab showed meanwhile.
 const RECENT: Duration = Duration::from_secs(5);
 
@@ -29,10 +32,12 @@ pub fn now_ms() -> i64 {
 #[derive(Debug, Clone, Default)]
 pub struct Bags {
     start: Option<Start>,
-    /// The newest read, by item id, and when it was read.
-    now: Option<(Instant, HashMap<i64, Held>)>,
+    /// The newest read, by item id, and when it was read, also in epoch ms.
+    now: Option<(Instant, i64, HashMap<i64, Held>)>,
     /// When each item's count last changed between two recent reads.
     changed: HashMap<i64, Instant>,
+    /// When each item first rose in the run, in epoch ms: the read before the one that saw it higher, else the run's start.
+    rose: HashMap<i64, i64>,
 }
 
 /// One item as a read held it.
@@ -85,6 +90,8 @@ pub struct Change {
     pub kind: Kind,
     /// Whether it changed within `FRESH`.
     pub fresh: bool,
+    /// When it first rose in the run, in epoch ms.
+    pub rose_ms: Option<i64>,
 }
 
 impl Change {
@@ -96,6 +103,12 @@ impl Change {
     /// Whether the run held one of it and holds none now: mostly a dud Unidentified turned in at Swindle's.
     pub fn is_single(&self) -> bool {
         self.start == 1 && self.now == 0
+    }
+
+    /// Its gain an hour, since it first rose until `now_ms` or the run's end; `None` until it has been measured for `RATE_AFTER`.
+    pub fn per_hour(&self, start: &Start, now_ms: i64) -> Option<f64> {
+        let sec = (start.ended_ms.unwrap_or(now_ms) - self.rose_ms?) as f64 / 1000.0;
+        (self.delta() > 0 && sec >= RATE_AFTER.as_secs_f64()).then(|| self.delta() as f64 * 3600.0 / sec)
     }
 }
 
@@ -140,6 +153,7 @@ impl Bags {
                     items,
                 });
                 self.changed.clear();
+                self.rose.clear();
             }
             Some(SCRIPT_STOPPED) => {
                 if let Some(start) = self.start.as_mut().filter(|s| s.run.is_some() && s.run == run) {
@@ -179,9 +193,25 @@ impl Bags {
                 start.items = Some(counts());
                 start.at_ms = now_ms;
             }
-            Some(_) => {}
+            Some(start) => {
+                // Against the read before, else, for the run's first read, the run's start.
+                let (base_ms, base): (i64, HashMap<i64, i64>) = match &self.now {
+                    Some((_, ms, before)) if *ms >= start.at_ms => {
+                        (*ms, before.iter().map(|(id, h)| (*id, h.qty)).collect())
+                    }
+                    _ => (
+                        start.at_ms,
+                        start.items.iter().flatten().map(|(id, (_, qty))| (*id, *qty)).collect(),
+                    ),
+                };
+                for (id, h) in &held {
+                    if h.qty > base.get(id).copied().unwrap_or(0) {
+                        self.rose.entry(*id).or_insert(base_ms);
+                    }
+                }
+            }
         }
-        if let Some((at, before)) = &self.now
+        if let Some((at, _, before)) = &self.now
             && at.elapsed() < RECENT
         {
             let qty = |items: &HashMap<i64, Held>, id: &i64| items.get(id).map(|h| h.qty);
@@ -195,12 +225,12 @@ impl Bags {
                 self.changed.insert(id, Instant::now());
             }
         }
-        self.now = Some((Instant::now(), held));
+        self.now = Some((Instant::now(), now_ms, held));
     }
 
     /// Every item held in another count than at the start, the most recently changed first.
     pub fn changes(&self) -> Vec<Change> {
-        let (Some(start), Some((_, now))) = (&self.start, &self.now) else {
+        let (Some(start), Some((_, _, now))) = (&self.start, &self.now) else {
             return Vec::new();
         };
         let Some(began) = &start.items else {
@@ -233,6 +263,7 @@ impl Bags {
                     max,
                     kind,
                     fresh: changed.is_some_and(|at| at.elapsed() < FRESH),
+                    rose_ms: self.rose.get(&id).copied(),
                 };
                 Some((changed, change))
             })
