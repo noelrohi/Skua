@@ -346,6 +346,7 @@ internal sealed class FakeGame
         "world.curRoom" => _world ? _roomId : null,
         "world.lock.tfer" => _world ? new JsonObject { ["cd"] = 3000, ["ts"] = 0 } : null,
         "world.lock.equipItem" => _world ? new JsonObject { ["cd"] = 500, ["ts"] = 0 } : null,
+        "world.lock.acceptQuest" => _world ? new JsonObject { ["cd"] = 300, ["ts"] = 0 } : null,
         "world.lock.tryQuestComplete" => _world ? new JsonObject { ["cd"] = 300, ["ts"] = 0 } : null,
         "world.lock.loadShop" => _world ? new JsonObject { ["cd"] = 500, ["ts"] = 0 } : null,
         "world.lock.buyItem" => _world ? new JsonObject { ["cd"] = 500, ["ts"] = 0 } : null,
@@ -452,6 +453,9 @@ internal sealed class FakeGame
             case "world.sendEquipItemRequest" when args is [string itemId]:
                 _note($"equipItem {itemId}");
                 Equip(int.Parse(itemId));
+                break;
+            case "world.acceptQuest" when args is [string id]:
+                _note($"acceptQuest {id}");
                 break;
             case "world.tryQuestComplete" when args is [string id, string reward, ..]:
                 _note($"tryQuestComplete {id} {reward}");

@@ -31,7 +31,7 @@
 // handed to the game as SmartFox does) act in it.
 // The call log adds ` lag-killed` to a screenshot taken while the game's lag killer hides the world, and records what the game did:
 // `tfer <map> <cell> <pad>` for each map transfer, `jump <cell> <pad>`, `getBank` and `loadBank` (which the game server ignores),
-// `respawn` or `respawn ignored` for each resPlayerTimed, `toggleBank open` or `toggleBank closed` for the bank panel, `loadShop <id>`, `buy <item id> <qty>` for each item bought, `rejectExcept <whitelist>`, `attack <monster>` for each attackMonsterName (which it refuses), `showQuests <ids>`, `equipItem <id>`, `send <packet>` and
+// `respawn` or `respawn ignored` for each resPlayerTimed, `toggleBank open` or `toggleBank closed` for the bank panel, `loadShop <id>`, `buy <item id> <qty>` for each item bought, `rejectExcept <whitelist>`, `attack <monster>` for each attackMonsterName (which it refuses), `showQuests <ids>`, `acceptQuest <id>`, `equipItem <id>`, `send <packet>` and
 // `sendJson <packet>` for each packet sent to the server, `clientPacket <type> <packet>` for each handed to the game as the server's, and
 // `connectTo <ip> <port>` (or with ` failed` or ` refused`) for the game's connectTo. connectTo connects over TCP to a game server on a
 // loopback address, as the Packet Interceptor has it do, and refuses any other address; see FakeGame.ConnectTo.

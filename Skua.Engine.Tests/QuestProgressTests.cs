@@ -70,6 +70,39 @@ public class QuestProgressTests
     }
 
     [Fact]
+    public async Task A_stall_accepts_the_quests_it_lists_again()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox, environment: Fast);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        TestScripts.Write(sandbox, "Tests/Loop.cs", TestScripts.Loop);
+
+        await session.Connection.ScriptStartAsync("Tests/Loop.cs", cancellationToken: Ct);
+        LogEntryDto stalled = await session.Connection.WaitForEventAsync(EventTypes.QuestStalled);
+        string[] calls = await session.GameHost.WaitForCallAsync("acceptQuest 1001");
+
+        Assert.Equal([1001], Reaccepted(stalled));
+        // Only Slime Time is listed: Chest Hoarder is completable and Not Yet isn't accepted, so neither is accepted again.
+        Assert.Equal(["acceptQuest 1001"], calls.Where(c => c.StartsWith("acceptQuest ", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task A_stall_accepts_nothing_again_when_turned_off()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox, environment: new Dictionary<string, string>(Fast) { ["SKUA_QUEST_STALL_REACCEPT"] = "0" });
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        TestScripts.Write(sandbox, "Tests/Loop.cs", TestScripts.Loop);
+
+        await session.Connection.ScriptStartAsync("Tests/Loop.cs", cancellationToken: Ct);
+        LogEntryDto stalled = await session.Connection.WaitForEventAsync(EventTypes.QuestStalled);
+        await Task.Delay(1000, Ct);
+
+        Assert.Empty(Reaccepted(stalled));
+        Assert.DoesNotContain(await session.GameHost.CallsAsync(), c => c.StartsWith("acceptQuest ", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task A_requirement_counts_what_the_bank_holds_once_it_has_loaded_and_its_arrival_is_no_rise()
     {
         await using EngineSandbox sandbox = new();
@@ -169,6 +202,9 @@ public class QuestProgressTests
         }
         return value;
     }
+
+    private static List<int> Reaccepted(LogEntryDto stalled) =>
+        stalled.Data!.Value.GetProperty("reaccepted").EnumerateArray().Select(id => id.GetInt32()).ToList();
 
     private static List<(string?, int, int)> Unmet(JsonElement quest) =>
         quest.GetProperty("requirements").EnumerateArray()

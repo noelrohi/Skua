@@ -12,6 +12,7 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 * `skua scripts update --verify` hashes every local Script against `scripts.json` and downloads each one that differs or is missing, so a Script changed on a branch no longer keeps running its old code.
 
 ### Changes
+* When a run's quests stall (`quest.stalled`), the Engine accepts them again, since the game server can drop a quest the client still shows accepted and then stop counting its drops; the event's `reaccepted` lists them. `SKUA_QUEST_STALL_REACCEPT=0` turns it off. See [Logs and events](./BUILD.md#logs-and-events).
 * `skua-tui`'s Overview gives Current Quests the full height on the right on a wide terminal, and turns the chat into a strip across the bottom with the Room in its title, which gives way first on a short terminal. The accounts list is narrower, and a marked account shows its name in blue instead of `[x]`.
 * `skua scripts` and `skua status` start no Engine. `status` of an Engine that isn't running fails and says how to start it. `scripts update` and `scripts source` are refused while any Engine runs a Script.
 
