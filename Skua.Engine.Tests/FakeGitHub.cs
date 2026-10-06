@@ -6,6 +6,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Skua.Core.Models.GitHub;
 
 namespace Skua.Engine.Tests;
@@ -271,9 +272,12 @@ public sealed class FakeGitHub : IAsyncDisposable
             return _history.Skip(start + 1).Take(end - start).SelectMany(c => c.Changes.Select(f => f.Path)).Distinct().ToList();
         }
 
+        /// <remarks>
+        /// Each size and SHA-256 is the Scripts generator's (<c>SkuaScriptsJsonWriter</c>): of the file's UTF-8 text without U+200B and U+FEFF.
+        /// </remarks>
         public byte[] ScriptsJson() => JsonSerializer.SerializeToUtf8Bytes(Head.Files.Values.Select(s =>
         {
-            byte[] bytes = Encoding.UTF8.GetBytes(s.Content);
+            byte[] bytes = Encoding.UTF8.GetBytes(Regex.Replace(s.Content, @"\u200B|\uFEFF", ""));
             string fileName = s.Path.Split('/')[^1];
             return new
             {

@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -477,6 +478,29 @@ public class ScriptSourceTests
         Assert.True(again.ExitCode == 0, again.Stderr);
         Assert.StartsWith("The Scripts are up to date", again.Stdout);
         Assert.Contains("--verify", (await sandbox.RunCliAsync("scripts", "update", "--help")).Stdout);
+    }
+
+    [Fact]
+    public async Task A_Script_with_a_BOM_or_a_zero_width_space_matches_scripts_json_as_the_generator_hashes_it()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeGitHub github = new();
+        FakeScript bom = new("Farm/Bom.cs", "\uFEFF// starts with a BOM");
+        FakeScript zeroWidth = new("Farm/ZeroWidth.cs", "// a zero\u200Bwidth space");
+        github.Commit("noelrohi", "Scripts", "Skua", bom, zeroWidth, Gold);
+        await sandbox.RunCliAsync(github.Environment(), "scripts", "update");
+        github.ClearRequests();
+
+        ProcessResult verify = await sandbox.RunCliAsync(github.Environment(), "scripts", "update", "--verify");
+        IReadOnlyList<string> downloads = github.ScriptDownloads("noelrohi", "Scripts", "Skua");
+        ProcessResult search = await sandbox.RunCliAsync(github.Environment(), "scripts", "search", "--json");
+
+        Assert.True(verify.ExitCode == 0, verify.Stderr);
+        Assert.StartsWith("The Scripts are up to date", verify.Stdout);
+        Assert.Empty(downloads);
+        Assert.Equal(Encoding.UTF8.GetBytes(bom.Content), await File.ReadAllBytesAsync(Path.Combine(sandbox.SkuaDir, "Scripts", bom.Path), Ct));
+        using JsonDocument json = JsonDocument.Parse(search.Stdout);
+        Assert.All(json.RootElement.GetProperty("scripts").EnumerateArray(), s => Assert.False(s.GetProperty("outdated").GetBoolean(), s.GetProperty("path").GetString()));
     }
 
     [Fact]

@@ -13,6 +13,9 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 ### Changes
 * `skua scripts` and `skua status` start no Engine. `status` of an Engine that isn't running fails and says how to start it. `scripts update` and `scripts source` are refused while any Engine runs a Script.
 
+### Fixes
+* A Script with a byte order mark or a zero-width space no longer shows as outdated, and is no longer downloaded again on every update: Skua now measures a Script as the Scripts generator does for `scripts.json`.
+
 ## October 5, 2026
 
 ### New
