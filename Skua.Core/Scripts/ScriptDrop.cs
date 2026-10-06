@@ -67,10 +67,10 @@ public partial class ScriptDrop : ObservableRecipient, IScriptDrop, IAsyncDispos
 
     public void Pickup(string name)
     {
-        if (!CurrentDrops.Contains(name, StringComparer.OrdinalIgnoreCase))
+        ItemBase? drop = _currentDropInfos.Find(d => ItemNameComparer.OrdinalIgnoreCase.Equals(d.Name, name));
+        if (drop is null)
             return;
 
-        ItemBase drop = _currentDropInfos.Find(d => d.Name.ToLowerInvariant() == name.ToLowerInvariant())!;
         Send.Packet($"%xt%zm%getDrop%{Map.RoomID}%{drop.ID}%");
         _currentDropInfos.Remove(drop);
         OnPropertyChanged(nameof(CurrentDropInfos));
@@ -126,15 +126,20 @@ public partial class ScriptDrop : ObservableRecipient, IScriptDrop, IAsyncDispos
     {
         if (Options.AcceptACDrops)
             PickupACItems();
-        Flash.Call("rejectExcept", names.Join(',').ToLower());
+        CallRejectExcept(names);
     }
 
     public void RejectExcept(params int[] ids)
     {
         if (Options.AcceptACDrops)
             PickupACItems();
-        IEnumerable<string> items = CurrentDropInfos.Where(d => ids.Contains(d.ID)).Select(d => d.Name);
-        Flash.Call("rejectExcept", items.Join(',').ToLower());
+        CallRejectExcept(CurrentDropInfos.Where(d => ids.Contains(d.ID)).Select(d => d.Name));
+    }
+
+    /// <summary>skua.swf keeps the drops named as the game holds them, so it gets each name with both spellings of <c>&amp;</c>.</summary>
+    private void CallRejectExcept(IEnumerable<string> names)
+    {
+        Flash.Call("rejectExcept", names.SelectMany(ItemNameComparer.Spellings).Distinct().Join(',').ToLower());
     }
 
     public void RejectAll(bool skipWait = false)
@@ -182,7 +187,7 @@ public partial class ScriptDrop : ObservableRecipient, IScriptDrop, IAsyncDispos
 
     public void Add(params string[] names)
     {
-        _toPickup.AddRange(names.Except(_toPickup.Items));
+        _toPickup.AddRange(names.Distinct(ItemNameComparer.Ordinal).Except(_toPickup.Items, ItemNameComparer.Ordinal));
         OnPropertyChanged(nameof(ToPickup));
         Broadcast(null, ToPickup, nameof(ToPickup));
     }
@@ -206,7 +211,7 @@ public partial class ScriptDrop : ObservableRecipient, IScriptDrop, IAsyncDispos
 
     public void Remove(params string[] names)
     {
-        _toPickup.Remove(names.Contains);
+        _toPickup.Remove(n => names.Contains(n, ItemNameComparer.Ordinal));
         OnPropertyChanged(nameof(ToPickup));
         Broadcast(null, ToPickup, nameof(ToPickup));
     }

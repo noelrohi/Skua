@@ -1,6 +1,7 @@
 ﻿using CommunityToolkit.Mvvm.Messaging;
 using Skua.Core.Interfaces;
 using Skua.Core.Messaging;
+using Skua.Core.Models.Items;
 using Skua.Core.Models.Monsters;
 using Skua.Core.Utils;
 
@@ -188,7 +189,7 @@ public class ScriptKill : IScriptKill
 
     private void ItemDropped(ScriptKill recipient, ItemDroppedMessage message)
     {
-        if (message.Item.Name != recipient._item.name)
+        if (!ItemNameComparer.Ordinal.Equals(message.Item.Name, recipient._item.name))
             return;
 
         if (message.AddedToInv && !message.Item.Temp && message.QuantityNow >= recipient._item.quantity)

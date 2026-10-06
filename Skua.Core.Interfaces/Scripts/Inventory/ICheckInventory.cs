@@ -24,7 +24,7 @@ public interface ICheckInventory<T> : IItemContainer<T> where T : ItemBase
     /// <returns><see langword="true"/> if the player has the specified item stack.</returns>
     bool Contains(string name, int quantity = 1)
     {
-        return quantity == 0 || Items.Contains(i => i.Name == name && (i.Quantity >= quantity || i.Category == ItemCategory.Class));
+        return quantity == 0 || Items.Contains(i => ItemNameComparer.Ordinal.Equals(i.Name, name) && (i.Quantity >= quantity || i.Category == ItemCategory.Class));
     }
 
     /// <summary>
@@ -119,7 +119,7 @@ public interface ICheckInventory<T> : IItemContainer<T> where T : ItemBase
     /// <returns>The <see cref="T"/> with the specified <paramref name="name"/> or <see langword="null"/> if it doesn't exist.</returns>
     T? GetItem(string name)
     {
-        return Items?.Find(x => x.Name == name);
+        return Items?.Find(x => ItemNameComparer.Ordinal.Equals(x.Name, name));
     }
 
     /// <summary>
