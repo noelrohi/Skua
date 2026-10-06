@@ -89,7 +89,7 @@ public static class EngineClient
         if (replaced is not null)
         {
             connection.Dispose();
-            // A replacement isn't a new Engine, so it starts without AutoStart too.
+            // A replacement isn't a new Engine, so it starts even with AutoStart off.
             connection = await ConnectOrStartAsync(options with { Endpoint = replaced, AutoStart = true }, cancellationToken);
         }
 
