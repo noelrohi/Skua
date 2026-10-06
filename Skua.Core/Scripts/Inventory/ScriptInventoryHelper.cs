@@ -75,10 +75,10 @@ public class ScriptInventoryHelper : IScriptInventoryHelper
 
         Bank.Load();
 
-        Dictionary<string, InventoryItem> bank = Bank.Items.ToDictionary(i => i.Name, i => i, ItemNameComparer.Ordinal);
-        Dictionary<string, int> inv = Inventory.Items.ToDictionary(i => i.Name, i => i.Quantity, ItemNameComparer.Ordinal);
-        Dictionary<string, int> tempInv = TempInv.Items.ToDictionary(i => i.Name, i => i.Quantity, ItemNameComparer.Ordinal);
-        Dictionary<string, int> houseInv = HouseInv.Items.ToDictionary(i => i.Name, i => i.Quantity, ItemNameComparer.Ordinal);
+        Dictionary<string, InventoryItem> bank = ByName(Bank.Items, i => i);
+        Dictionary<string, int> inv = ByName(Inventory.Items, i => i.Quantity);
+        Dictionary<string, int> tempInv = ByName(TempInv.Items, i => i.Quantity);
+        Dictionary<string, int> houseInv = ByName(HouseInv.Items, i => i.Quantity);
 
         foreach (string name in enumerable)
         {
@@ -112,10 +112,10 @@ public class ScriptInventoryHelper : IScriptInventoryHelper
 
         Bank.Load();
 
-        Dictionary<string, InventoryItem> bank = Bank.Items.ToDictionary(i => i.Name, i => i, ItemNameComparer.Ordinal);
-        Dictionary<string, int> inv = Inventory.Items.ToDictionary(i => i.Name, i => i.Quantity, ItemNameComparer.Ordinal);
-        Dictionary<string, int> tempInv = TempInv.Items.ToDictionary(i => i.Name, i => i.Quantity, ItemNameComparer.Ordinal);
-        Dictionary<string, int> houseInv = HouseInv.Items.ToDictionary(i => i.Name, i => i.Quantity, ItemNameComparer.Ordinal);
+        Dictionary<string, InventoryItem> bank = ByName(Bank.Items, i => i);
+        Dictionary<string, int> inv = ByName(Inventory.Items, i => i.Quantity);
+        Dictionary<string, int> tempInv = ByName(TempInv.Items, i => i.Quantity);
+        Dictionary<string, int> houseInv = ByName(HouseInv.Items, i => i.Quantity);
 
         foreach (string name in enumerable)
         {
@@ -209,5 +209,14 @@ public class ScriptInventoryHelper : IScriptInventoryHelper
                 return true;
         }
         return false;
+    }
+
+    /// <summary>The items by name; of two whose names differ only in the spelling of <c>&amp;</c>, the first.</summary>
+    private static Dictionary<string, TValue> ByName<T, TValue>(IEnumerable<T> items, Func<T, TValue> value) where T : ItemBase
+    {
+        Dictionary<string, TValue> byName = new(ItemNameComparer.Ordinal);
+        foreach (T item in items)
+            byName.TryAdd(item.Name, value(item));
+        return byName;
     }
 }

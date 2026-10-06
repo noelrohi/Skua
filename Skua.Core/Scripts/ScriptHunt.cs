@@ -2,6 +2,7 @@
 using Skua.Core.Interfaces;
 using Skua.Core.Messaging;
 using Skua.Core.Models;
+using Skua.Core.Models.Items;
 using Skua.Core.Models.Monsters;
 using Skua.Core.Utils;
 
@@ -369,7 +370,7 @@ public class ScriptHunt : IScriptHunt
 
     private void ItemDropped(ScriptHunt recipient, ItemDroppedMessage message)
     {
-        if (message.Item.Name != recipient._item.name)
+        if (!ItemNameComparer.Ordinal.Equals(message.Item.Name, recipient._item.name))
             return;
 
         if (message is { AddedToInv: true, Item.Temp: false } && message.QuantityNow >= recipient._item.quantity)

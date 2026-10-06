@@ -67,7 +67,7 @@ public partial class ScriptDrop : ObservableRecipient, IScriptDrop, IAsyncDispos
 
     public void Pickup(string name)
     {
-        ItemBase? drop = _currentDropInfos.Find(d => ItemNameComparer.OrdinalIgnoreCase.Equals(d.Name.Trim(), name));
+        ItemBase? drop = _currentDropInfos.Find(d => ItemNameComparer.OrdinalIgnoreCase.Equals(d.Name, name));
         if (drop is null)
             return;
 
@@ -139,8 +139,7 @@ public partial class ScriptDrop : ObservableRecipient, IScriptDrop, IAsyncDispos
     /// <summary>skua.swf keeps the drops named as the game holds them, so it gets each name with both spellings of <c>&amp;</c>.</summary>
     private void CallRejectExcept(IEnumerable<string> names)
     {
-        IEnumerable<string> spellings = names.Select(ItemNameComparer.Normalize).SelectMany(n => new[] { n, n.Replace("&", "&amp;") }).Distinct();
-        Flash.Call("rejectExcept", spellings.Join(',').ToLower());
+        Flash.Call("rejectExcept", names.SelectMany(ItemNameComparer.Spellings).Distinct().Join(',').ToLower());
     }
 
     public void RejectAll(bool skipWait = false)
@@ -188,7 +187,7 @@ public partial class ScriptDrop : ObservableRecipient, IScriptDrop, IAsyncDispos
 
     public void Add(params string[] names)
     {
-        _toPickup.AddRange(names.Except(_toPickup.Items));
+        _toPickup.AddRange(names.Distinct(ItemNameComparer.Ordinal).Except(_toPickup.Items, ItemNameComparer.Ordinal));
         OnPropertyChanged(nameof(ToPickup));
         Broadcast(null, ToPickup, nameof(ToPickup));
     }
@@ -212,7 +211,7 @@ public partial class ScriptDrop : ObservableRecipient, IScriptDrop, IAsyncDispos
 
     public void Remove(params string[] names)
     {
-        _toPickup.Remove(names.Contains);
+        _toPickup.Remove(n => names.Contains(n, ItemNameComparer.Ordinal));
         OnPropertyChanged(nameof(ToPickup));
         Broadcast(null, ToPickup, nameof(ToPickup));
     }

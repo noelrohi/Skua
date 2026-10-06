@@ -139,6 +139,8 @@ internal sealed class FakeGame
                 ("jumpCorrectRoom", [string cell, string pad, ..]) => Jump(cell, pad),
                 ("selectArrayObjects", ["world.map.currentScene.labels", "name"]) => _world ? Str(new JsonArray([.. Cells(_map).Select(c => JsonValue.Create(c))]).ToJsonString()) : "<undefined/>",
                 ("getMonsters", _) => Str((_world ? Monsters(_map) : []).ToJsonString()),
+                // The monsters in the player's cell.
+                ("availableMonsters", _) => Str(new JsonArray([.. (_world ? Monsters(_map) : []).Where(m => (string)m!["strFrame"]! == _cell).Select(m => m!.DeepClone())]).ToJsonString()),
                 // An empty monster without a target, as the game answers.
                 ("getTargetMonster", _) => Str((Monsters(_map).OfType<JsonObject>().FirstOrDefault(m => _world && (int)m["MonMapID"]! == _target) ?? []).ToJsonString()),
                 ("sendClientPacket", [string packet, string type]) => ClientPacket(packet, type),
@@ -147,6 +149,8 @@ internal sealed class FakeGame
                 ("buyItemByID", [string id, string shopItemId, string qty]) =>
                     Buy(_shopItems.FirstOrDefault(i => (int)i["ItemID"]! == int.Parse(id) && (shopItemId == "-1" || (int)i["ShopItemID"]! == int.Parse(shopItemId))), qty),
                 ("rejectExcept", [string whitelist]) => Note($"rejectExcept {whitelist}"),
+                // The fake doesn't fight: it refuses every attack.
+                ("attackMonsterName", [string monster]) => Note($"attack {monster}", Str(false)),
                 _ => null,
             };
         }
@@ -486,10 +490,10 @@ internal sealed class FakeGame
         return "<undefined/>";
     }
 
-    private string Note(string call)
+    private string Note(string call, string reply = "<undefined/>")
     {
         _note(call);
-        return "<undefined/>";
+        return reply;
     }
 
     private string ConnectToServer(string json)

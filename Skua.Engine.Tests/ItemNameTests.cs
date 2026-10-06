@@ -4,7 +4,7 @@ using Skua.Core.Models.Items;
 namespace Skua.Engine.Tests;
 
 /// <summary>
-/// Item names spelled with <c>&amp;amp;</c>, as the Windows client reads them and Scripts write them, against the mac's plain <c>&amp;</c>,
+/// Item names spelled with <c>&amp;amp;</c>, as the Windows client reads them and Scripts write them, against the Mac App's plain <c>&amp;</c>,
 /// and the reverse (#214). The fake Game Host's game (see FakeGame.cs) holds one item of each spelling in every store.
 /// </summary>
 public class ItemNameTests
@@ -40,6 +40,16 @@ public class ItemNameTests
     {
         Assert.False(ItemNameComparer.Ordinal.Equals("crag &amp; bamboozle", "Crag & Bamboozle"));
         Assert.True(ItemNameComparer.OrdinalIgnoreCase.Equals("crag &amp; bamboozle", "Crag & Bamboozle"));
+    }
+
+    [Theory]
+    [InlineData("Crag & Bamboozle", new[] { "Crag & Bamboozle", "Crag &amp; Bamboozle" })]
+    [InlineData("Crag &amp; Bamboozle", new[] { "Crag & Bamboozle", "Crag &amp; Bamboozle" })]
+    [InlineData("Crag &amp; Bamboozle &amp; Co", new[] { "Crag & Bamboozle & Co", "Crag &amp; Bamboozle &amp; Co" })]
+    [InlineData("Treasure Chest", new[] { "Treasure Chest" })]
+    public void Spellings_are_the_name_with_each_spelling_of_the_ampersand(string name, string[] spellings)
+    {
+        Assert.Equal(spellings, ItemNameComparer.Spellings(name));
     }
 
     [Fact]
@@ -83,6 +93,84 @@ public class ItemNameTests
                 "helper True True True",
             ],
             found.Value!.Value.EnumerateArray().Select(e => e.GetString()));
+    }
+
+    [Fact]
+    public async Task InvHelper_takes_a_store_holding_an_item_in_both_spellings()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        await session.GameHost.DoAsync("own 4845 Pet Crag & Bamboozle");
+        await session.GameHost.DoAsync("own 4847 Item Crag &amp; Bamboozle");
+        foreach (string store in new[] { "bank", "temp", "house" })
+        {
+            await session.GameHost.DoAsync($"stock {store} 4845 Crag & Bamboozle");
+            await session.GameHost.DoAsync($"stock {store} 4847 Crag &amp; Bamboozle");
+        }
+
+        EvalResult found = await session.Connection.EvalAsync(
+            """
+            Bot.Wait.ForTrue(() => Bot.Inventory.Contains(4847), 20);
+            Bot.Bank.Load();
+            Bot.Wait.ForTrue(() => Bot.Bank.Contains(4847), 20);
+            string[] names = ["Crag & Bamboozle", "Treasure Chest"];
+            return $"{Bot.InvHelper.HasAll(names, 1, false)} {Bot.InvHelper.HasAny(names, 1, false)} {Bot.InvHelper.HasAll(["Crag & Bamboozle", "Nothing"], 1, false)}";
+            """,
+            cancellationToken: Ct);
+
+        Assert.Null(found.Error);
+        Assert.Equal("True True False", found.Value!.Value.GetString());
+    }
+
+    [Fact]
+    public async Task Drops_pickup_list_takes_a_name_once_whichever_its_spelling()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+
+        EvalResult list = await session.Connection.EvalAsync(
+            """
+            Bot.Drops.Add("Crag &amp; Bamboozle", "Cysero & Alina");
+            Bot.Drops.Add("Crag & Bamboozle", "Cysero &amp; Alina");
+            string added = string.Join("|", Bot.Drops.ToPickup);
+            Bot.Drops.Remove("Crag & Bamboozle", "Cysero &amp; Alina");
+            return $"{added}/{string.Join("|", Bot.Drops.ToPickup)}";
+            """,
+            cancellationToken: Ct);
+
+        Assert.Null(list.Error);
+        Assert.Equal("Crag &amp; Bamboozle|Cysero & Alina/", list.Value!.Value.GetString());
+    }
+
+    [Theory]
+    [InlineData("Kill", "Crag &amp; Bamboozle", "Crag & Bamboozle")]
+    [InlineData("Kill", "Crag & Bamboozle", "Crag &amp; Bamboozle")]
+    [InlineData("Hunt", "Crag &amp; Bamboozle", "Crag & Bamboozle")]
+    [InlineData("Hunt", "Crag & Bamboozle", "Crag &amp; Bamboozle")]
+    public async Task ForItem_stops_once_the_item_drops_under_either_spelling(string api, string asked, string dropped)
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+
+        Task<EvalResult> farming = session.Connection.EvalAsync(
+            $"""
+            Bot.{api}.ForItem("Frogzard", "{asked}", 1, true);
+            return Bot.TempInv.GetQuantity("{asked}");
+            """,
+            timeoutSec: 15, cancellationToken: Ct);
+        // ForItem is attacking, so it is watching the drops.
+        await session.GameHost.WaitForCallAsync("attack Frogzard");
+        await session.GameHost.DoAsync($"stock temp 4845 {dropped}");
+        await session.GameHost.DoAsync($"drop 4845 1 {dropped}");
+        EvalResult farmed = await farming;
+        string[] calls = await session.GameHost.CallsAsync();
+
+        Assert.Null(farmed.Error);
+        Assert.Equal(1, farmed.Value!.Value.GetInt32());
+        Assert.Contains(calls, c => c.StartsWith("send %xt%zm%getDrop%", StringComparison.Ordinal) && c.EndsWith("%4845%", StringComparison.Ordinal));
     }
 
     [Fact]
