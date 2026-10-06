@@ -133,7 +133,9 @@ public static class EventTypes
     public const string QuestRejected = "quest.rejected";
 
     /// <summary>
-    /// A run started: <c>{run, script, restart}</c>. A restart by Core's auto-relogin is the same run, with <c>restart</c> true.
+    /// A run started: <c>{run, script, restart, inventory, temp, bank}</c>. A restart by Core's auto-relogin is the same run, with <c>restart</c> true.
+    /// <c>inventory</c>, <c>temp</c> and <c>bank</c> are what the player holds, each a list of <c>{id, name, qty}</c>, and null while not playing;
+    /// <c>bank</c> is null until the game has loaded the bank.
     /// </summary>
     public const string ScriptStarted = "script.started";
 

@@ -51,6 +51,36 @@ public class ScriptRunTests
     }
 
     [Fact]
+    public async Task Script_started_carries_what_the_player_holds_and_the_bank_once_the_game_has_it()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture game = await GameFixture.StartAsync(sandbox);
+        TestScripts.Write(sandbox, "Tests/Hello.cs", TestScripts.Main("""bot.Log("hello");"""));
+
+        async Task<JsonElement> StartedAsync()
+        {
+            ScriptStartResult start = await game.Connection.ScriptStartAsync("Tests/Hello.cs", cancellationToken: Ct);
+            await game.Connection.ScriptWaitAsync(60, Ct);
+            return (await ScriptEvents.AllAsync(game.Connection)).Single(e => e.Type == EventTypes.ScriptStarted && e.Run == start.Run).Data!.Value;
+        }
+        static string[] Held(JsonElement data, string store) =>
+            [.. data.GetProperty(store).EnumerateArray().Select(i => $"{i.GetProperty("id")} {i.GetProperty("name")} x{i.GetProperty("qty")}")];
+
+        JsonElement loggedOut = await StartedAsync();
+        await game.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        JsonElement noBank = await StartedAsync();
+        await game.Connection.InventoryAsync(InventoryKind.Bank, Ct);
+        JsonElement withBank = await StartedAsync();
+
+        Assert.All(["inventory", "temp", "bank"], store => Assert.Equal(JsonValueKind.Null, loggedOut.GetProperty(store).ValueKind));
+        Assert.Equal(["1 Default Sword x1", "2 Healer x1", "3 Treasure Chest x5"], Held(noBank, "inventory"));
+        Assert.Equal(["20 Slime Sample x3"], Held(noBank, "temp"));
+        Assert.Equal(JsonValueKind.Null, noBank.GetProperty("bank").ValueKind);
+        Assert.Equal(["10 Bank Relic x2"], Held(withBank, "bank"));
+        Assert.Equal(Held(noBank, "inventory"), Held(withBank, "inventory"));
+    }
+
+    [Fact]
     public async Task A_broken_Script_fails_with_CompileFailed_and_its_diagnostics_and_starts_no_run()
     {
         await using EngineSandbox sandbox = new();
