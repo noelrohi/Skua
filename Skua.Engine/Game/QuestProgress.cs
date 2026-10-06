@@ -13,7 +13,7 @@ namespace Skua.Engine.Game;
 /// without a rise in any of their requirements. A requirement's count is what the player owns of it: the inventory and bank's, or the
 /// temporary inventory's for a temporary item. So banking an item is no progress, and a count that falls (a turn-in, or temporary items
 /// lost to a relogin) is none either. It records <see cref="EventTypes.QuestStalled"/> once a run's quests have gone without a rise for
-/// the stall time.
+/// the stall time, and accepts the quests it lists again.
 /// </summary>
 /// <remarks>What it remembers is the account's: another account logging in starts it afresh.</remarks>
 internal sealed class QuestProgress : IDisposable
@@ -23,6 +23,9 @@ internal sealed class QuestProgress : IDisposable
 
     /// <summary>How long a run's quests go without a rise before <see cref="EventTypes.QuestStalled"/>: 600 s unless set.</summary>
     public const string StallVariable = "SKUA_QUEST_STALL_SEC";
+
+    /// <summary>Whether the Engine accepts the quests <see cref="EventTypes.QuestStalled"/> lists again: on unless set; 0 turns it off.</summary>
+    public const string ReacceptVariable = "SKUA_QUEST_STALL_REACCEPT";
 
     /// <summary>The window <see cref="QuestRequirementDto.GainPerHour"/> counts over, and how long it watches before it says.</summary>
     private static readonly TimeSpan RateWindow = TimeSpan.FromHours(1);
@@ -36,6 +39,7 @@ internal sealed class QuestProgress : IDisposable
     private readonly CombatTally _tally;
     private readonly ScriptGoal _goal;
     private readonly TimeSpan _stallAfter;
+    private readonly bool _reacceptOnStall;
     private readonly Timer _poll;
     private readonly object _lock = new();
     private readonly Dictionary<(int Id, bool Temp), Watch> _watches = [];
@@ -62,6 +66,7 @@ internal sealed class QuestProgress : IDisposable
         _logs = logs;
         _stallAfter = TimeSpan.FromSeconds(
             int.TryParse(Environment.GetEnvironmentVariable(StallVariable), out int sec) && sec > 0 ? sec : 600);
+        _reacceptOnStall = Environment.GetEnvironmentVariable(ReacceptVariable) != "0";
         TimeSpan interval = TimeSpan.FromMilliseconds(
             int.TryParse(Environment.GetEnvironmentVariable(SampleVariable), out int ms) && ms > 0 ? ms : 5_000);
         _poll = new Timer(_ => Poll(), null, interval, interval);
@@ -134,15 +139,18 @@ internal sealed class QuestProgress : IDisposable
                 return;
             (List<Quest> quests, Stores stores) = ReadGame();
             ScriptRunDto? run = _tally.WithTally(_runs.Status().Run);
-            object? stalled;
+            Stall? stall;
             lock (_lock)
             {
                 DateTime now = DateTime.UtcNow;
                 Observe(quests, stores, now);
-                stalled = run is null ? null : Stalled(run, quests, stores, now);
+                stall = run is null ? null : Stalled(run, quests, stores, now);
             }
-            if (stalled is not null)
-                _logs.Event(EventTypes.QuestStalled, stalled);
+            if (stall is not null)
+            {
+                _logs.Event(EventTypes.QuestStalled, stall.Data);
+                Reaccept(stall.ReacceptIds);
+            }
         }
         catch (Exception e)
         {
@@ -202,33 +210,69 @@ internal sealed class QuestProgress : IDisposable
             .Max();
     }
 
-    /// <summary>The <see cref="EventTypes.QuestStalled"/> event's data when a run's quests have just stalled, else null.</summary>
-    private object? Stalled(ScriptRunDto run, List<Quest> quests, Stores stores, DateTime now)
+    /// <summary>
+    /// Accepts the stalled quests again (#224). The game server can drop a quest the client still shows accepted, and stop counting its
+    /// requirements, which a Script that accepts a quest only once the client shows it not in progress never notices; an accept of a quest
+    /// the server still has changes nothing. It stops when the player isn't playing, as after a logout since the stall.
+    /// </summary>
+    private void Reaccept(int[] questIds)
+    {
+        List<string> accepted = [];
+        try
+        {
+            foreach (int id in questIds)
+            {
+                if (_tracker.State != GameState.Playing)
+                {
+                    EngineLog.Write($"Didn't accept the stalled quest {id} again: not playing.");
+                    break;
+                }
+                if (accepted.Count > 0)
+                    Thread.Sleep(_api.Options.ActionDelay);
+                accepted.Add($"{id} {(_api.Quests.Accept(id) ? "in progress" : "not in progress")}");
+            }
+        }
+        catch (Exception e)
+        {
+            EngineLog.Write($"Couldn't accept the stalled quests again: {e.Message}");
+        }
+        if (accepted.Count > 0)
+            EngineLog.Write($"Accepted the stalled quests again: {string.Join(", ", accepted)}.");
+    }
+
+    /// <summary>
+    /// The <see cref="EventTypes.QuestStalled"/> event's data when a run's quests have just stalled, with the quests to accept again, else
+    /// null.
+    /// </summary>
+    private Stall? Stalled(ScriptRunDto run, List<Quest> quests, Stores stores, DateTime now)
     {
         if (_questsIdleSince is not { } since || IdleSec(run, now) is not { } idleSec || idleSec < _stallAfter.TotalSeconds
             || _recordedStall == (run.Number, since))
             return null;
         _recordedStall = (run.Number, since);
-        return new
+        var stalledQuests = quests
+            .Where(q => q.Active)
+            .Select(q => new
+            {
+                id = q.ID,
+                name = q.Name,
+                requirements = q.Requirements
+                    .Where(r => stores.Owned(r) < r.Quantity)
+                    .Select(r => new { itemId = r.ID, name = r.Name, have = stores.Have(r), inBank = stores.InBank(r), qty = r.Quantity })
+                    .ToList(),
+            })
+            .Where(q => q.requirements.Count > 0)
+            .ToList();
+        int[] reacceptIds = _reacceptOnStall ? stalledQuests.Select(q => q.id).ToArray() : [];
+        return new Stall(new
         {
             run = run.Number,
             script = run.Script,
             idleSec,
             killsPerMin = run.KillsPerMin,
-            quests = quests
-                .Where(q => q.Active)
-                .Select(q => new
-                {
-                    id = q.ID,
-                    name = q.Name,
-                    requirements = q.Requirements
-                        .Where(r => stores.Owned(r) < r.Quantity)
-                        .Select(r => new { itemId = r.ID, name = r.Name, have = stores.Have(r), inBank = stores.InBank(r), qty = r.Quantity })
-                        .ToList(),
-                })
-                .Where(q => q.requirements.Count > 0)
-                .ToList(),
-        };
+            quests = stalledQuests,
+            reaccepted = reacceptIds,
+        }, reacceptIds);
     }
 
     private double? IdleSec(ScriptRunDto run, DateTime now) =>
@@ -251,6 +295,9 @@ internal sealed class QuestProgress : IDisposable
             }).ToList(),
             quest.Rewards.Select(r => new QuestRewardDto(r.ID, r.Name, r.Quantity)).ToList());
     }
+
+    /// <summary>A <see cref="EventTypes.QuestStalled"/> event's data, and the quests it says the Engine accepts again.</summary>
+    private sealed record Stall(object Data, int[] ReacceptIds);
 
     /// <summary>What the player holds, by item ID: the bank's only once the game has loaded it.</summary>
     private sealed record Stores(Dictionary<int, int> Inventory, Dictionary<int, int> Temp, Dictionary<int, int> Bank)
