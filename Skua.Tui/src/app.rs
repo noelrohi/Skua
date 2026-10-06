@@ -345,6 +345,8 @@ pub struct App {
     /// Where the last draw put what a click can hit.
     pub hits: RefCell<Hits>,
     pub quit: bool,
+    /// PROTOTYPE: which Overview layout draws, cycled with [ and ]; SKUA_TUI_LAYOUT=0..3 picks the first.
+    pub layout: u8,
 }
 
 /// What the screen showed where, as the last draw left it, for the mouse.
@@ -382,6 +384,7 @@ impl App {
             inventory_focused: false,
             hits: RefCell::default(),
             quit: false,
+            layout: std::env::var("SKUA_TUI_LAYOUT").ok().and_then(|v| v.parse().ok()).unwrap_or(1) % crate::ui::LAYOUTS.len() as u8,
         }
     }
 
@@ -555,6 +558,10 @@ impl App {
                 self.marks.clear();
                 self.filter.clear();
                 self.activity.retain(|_, note| note.tone == Tone::Pending);
+            }
+            KeyCode::Char(']') => self.layout = (self.layout + 1) % crate::ui::LAYOUTS.len() as u8,
+            KeyCode::Char('[') => {
+                self.layout = (self.layout + crate::ui::LAYOUTS.len() as u8 - 1) % crate::ui::LAYOUTS.len() as u8
             }
             KeyCode::Char(c) => self.press(c),
             _ => {}

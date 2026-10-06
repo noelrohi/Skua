@@ -386,7 +386,13 @@ fn overview(frame: &mut Frame, app: &App, hello: &Hello, status: &Status, detail
         Ok(map) => format!("{} · {}", room_name(map), me.cell),
         Err(_) => format!("{} · {}", me.map, me.cell),
     };
-    let block = panel(&format!("Overview · {place}"));
+    let block = panel(&format!("Overview · {place}")).title_top(
+        Line::styled(
+            format!(" PROTOTYPE layout {} · {} · [ ] to switch ", app.layout, LAYOUTS[app.layout as usize]),
+            Style::new().black().on_magenta().bold(),
+        )
+        .right_aligned(),
+    );
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -402,103 +408,269 @@ fn overview(frame: &mut Frame, app: &App, hello: &Hello, status: &Status, detail
         (shown as u16 * 3).saturating_sub(1)
     };
     let question_h = status.pending_dialogs.first().map_or(0, |q| q.choices.len() as u16 + 3);
-    // The player, the run and the quests side by side where the run's goal tree fits; else the run goes under the other two.
-    let wide = inner.width >= PLAYER_W + RUN_W + QUESTS_W;
     let run_h = run.len() as u16 + 2;
-    let [top, run_row, question_area, progress_area, cell, rest] = Layout::vertical([
-        Constraint::Length(if wide { run_h.max(PLAYER_H) } else { PLAYER_H }),
-        Constraint::Length(if wide { 0 } else { run_h }),
-        Constraint::Length(question_h),
-        Constraint::Length(1),
-        Constraint::Length(members_h.max(4)),
-        Constraint::Fill(1),
-    ])
-    .areas(inner);
-    let (player_area, run_area, quests_area) = if wide {
-        let [player, run, quests] = Layout::horizontal([
-            Constraint::Length(PLAYER_W),
-            Constraint::Fill(1),
-            Constraint::Length(QUESTS_W),
-        ])
-        .areas(top);
-        (player, run, quests)
-    } else {
-        let [player, quests] = Layout::horizontal([Constraint::Length(PLAYER_W), Constraint::Fill(1)]).areas(top);
-        (player, run_row, quests)
-    };
-    player_frame(frame, me, status, player_area);
-    frame.render_widget(Paragraph::new(run).block(panel("Script")), run_area);
-    let tracker_rows = quests_area.height.saturating_sub(2) as usize;
-    frame.render_widget(
-        Paragraph::new(tracker_lines(detail, tracker_rows)).block(panel("Current Quests")),
-        quests_area,
-    );
+    let cell_h = members_h.max(4);
 
-    if let Some(question) = status.pending_dialogs.first() {
-        let block = panel(&format!("Question · {} · d to answer", question.caption))
-            .border_style(Style::new().yellow())
-            .title_style(Style::new().yellow().bold());
-        let mut lines = vec![Line::styled(question.text.clone(), Style::new().yellow().bold())];
-        lines.extend(
-            question
-                .choices
-                .iter()
-                .enumerate()
-                .map(|(i, c)| Line::raw(format!("  {}  {c}", i + 1))),
-        );
-        frame.render_widget(Paragraph::new(lines).block(block), question_area);
-    }
-    if let Some((text, _)) = detail
-        .and_then(|d| d.progress.as_ref())
-        .filter(|(_, at)| at.elapsed() < PROGRESS_SHOWN)
-    {
+    // PROTOTYPE: each piece draws into whatever Rect the layout gives it.
+    let draw_top = |frame: &mut Frame, area: Rect| -> Rect {
+        // The player and the run side by side; returns what's left when the run's goal tree doesn't fit beside the player.
+        let [player, run_area] = Layout::horizontal([Constraint::Length(PLAYER_W), Constraint::Fill(1)]).areas(area);
+        player_frame(frame, me, status, player);
+        frame.render_widget(Paragraph::new(run.clone()).block(panel("Script")), run_area);
+        area
+    };
+    let draw_quests = |frame: &mut Frame, area: Rect| {
+        let rows = area.height.saturating_sub(2) as usize;
         frame.render_widget(
-            Paragraph::new(Line::styled(text.clone(), Style::new().yellow().bold()).centered()),
-            progress_area,
+            Paragraph::new(tracker_lines(detail, rows)).block(panel("Current Quests")),
+            area,
         );
-    }
-
-    let members_width = (cell.width * 11 / 20).clamp(30, 48).min(cell.width.saturating_sub(1));
-    let members_area = Rect {
-        x: cell.x + 1,
-        width: members_width,
-        ..cell
     };
-    let mut lines = Vec::new();
-    for member in &members[..shown] {
-        lines.extend(member_lines(member));
-        lines.push(Line::raw(""));
-    }
-    lines.pop();
-    if hidden > 0 {
-        lines.push(Line::styled(format!("+{hidden} more here"), Style::new().fg(DIM)));
-    }
-    frame.render_widget(Paragraph::new(lines), members_area);
-    let monsters_area = Rect {
-        x: members_area.right() + 2,
-        width: cell.right().saturating_sub(members_area.right() + 2),
-        ..cell
+    let draw_question = |frame: &mut Frame, area: Rect| {
+        if let Some(question) = status.pending_dialogs.first() {
+            let block = panel(&format!("Question · {} · d to answer", question.caption))
+                .border_style(Style::new().yellow())
+                .title_style(Style::new().yellow().bold());
+            let mut lines = vec![Line::styled(question.text.clone(), Style::new().yellow().bold())];
+            lines.extend(
+                question
+                    .choices
+                    .iter()
+                    .enumerate()
+                    .map(|(i, c)| Line::raw(format!("  {}  {c}", i + 1))),
+            );
+            frame.render_widget(Paragraph::new(lines).block(block), area);
+        }
     };
-    match &map {
-        Ok(map) => monster_plates(frame, me, &accounts, map, monsters_area),
-        Err(line) => frame.render_widget(Paragraph::new(line.clone()), monsters_area),
-    }
-
-    let [chat_area, room_area] = Layout::horizontal([Constraint::Fill(1), Constraint::Length(34)]).areas(rest);
-    let chat_width = chat_area.width.saturating_sub(2) as usize;
-    let mut chat: Vec<Line> = detail
-        .map(|d| d.chat.iter().flat_map(|e| chat_lines(e, chat_width)).collect())
-        .unwrap_or_default();
-    if chat.is_empty() {
-        chat.push(Line::styled("no chat yet", Style::new().fg(DIM)));
-    }
-    let skip = chat.len().saturating_sub(chat_area.height.saturating_sub(2) as usize);
-    frame.render_widget(Paragraph::new(chat.split_off(skip)).block(panel("Chat")), chat_area);
-    let room = match &map {
-        Ok(map) => room_lines(me, map, room_area.height.saturating_sub(2) as usize),
+    let draw_progress = |frame: &mut Frame, area: Rect| {
+        if let Some((text, _)) = detail
+            .and_then(|d| d.progress.as_ref())
+            .filter(|(_, at)| at.elapsed() < PROGRESS_SHOWN)
+        {
+            frame.render_widget(
+                Paragraph::new(Line::styled(text.clone(), Style::new().yellow().bold()).centered()),
+                area,
+            );
+        }
+    };
+    let draw_cell = |frame: &mut Frame, cell: Rect| {
+        let members_width = (cell.width * 11 / 20).clamp(30, 48).min(cell.width.saturating_sub(1));
+        let members_area = Rect {
+            x: cell.x + 1,
+            width: members_width,
+            ..cell
+        };
+        let mut lines = Vec::new();
+        for member in &members[..shown] {
+            lines.extend(member_lines(member));
+            lines.push(Line::raw(""));
+        }
+        lines.pop();
+        if hidden > 0 {
+            lines.push(Line::styled(format!("+{hidden} more here"), Style::new().fg(DIM)));
+        }
+        frame.render_widget(Paragraph::new(lines), members_area);
+        let monsters_area = Rect {
+            x: members_area.right() + 2,
+            width: cell.right().saturating_sub(members_area.right() + 2),
+            ..cell
+        };
+        match &map {
+            Ok(map) => monster_plates(frame, me, &accounts, map, monsters_area),
+            Err(line) => frame.render_widget(Paragraph::new(line.clone()), monsters_area),
+        }
+    };
+    let draw_chat = |frame: &mut Frame, area: Rect, block: Block<'static>| {
+        let width = area.width.saturating_sub(2) as usize;
+        let mut chat: Vec<Line> = detail
+            .map(|d| d.chat.iter().flat_map(|e| chat_lines(e, width)).collect())
+            .unwrap_or_default();
+        if chat.is_empty() {
+            chat.push(Line::styled("no chat yet", Style::new().fg(DIM)));
+        }
+        let skip = chat.len().saturating_sub(area.height.saturating_sub(2) as usize);
+        frame.render_widget(Paragraph::new(chat.split_off(skip)).block(block), area);
+    };
+    let room = |rows: usize| match &map {
+        Ok(map) => room_lines(me, map, rows),
         Err(line) => vec![line.clone()],
     };
-    frame.render_widget(Paragraph::new(room).block(panel("Room")), room_area);
+    // The Room panel as tall as its lines, up to 6 players.
+    let room_h = room(7).len() as u16 + 2;
+
+    match app.layout {
+        // 0 · Current: as master draws it.
+        0 => {
+            let wide = inner.width >= PLAYER_W + RUN_W + QUESTS_W;
+            let [top, run_row, question_area, progress_area, cell, rest] = Layout::vertical([
+                Constraint::Length(if wide { run_h.max(PLAYER_H) } else { PLAYER_H }),
+                Constraint::Length(if wide { 0 } else { run_h }),
+                Constraint::Length(question_h),
+                Constraint::Length(1),
+                Constraint::Length(cell_h),
+                Constraint::Fill(1),
+            ])
+            .areas(inner);
+            if wide {
+                let [left, quests] = Layout::horizontal([Constraint::Fill(1), Constraint::Length(QUESTS_W)]).areas(top);
+                draw_top(frame, left);
+                draw_quests(frame, quests);
+            } else {
+                let [player, quests] = Layout::horizontal([Constraint::Length(PLAYER_W), Constraint::Fill(1)]).areas(top);
+                player_frame(frame, me, status, player);
+                frame.render_widget(Paragraph::new(run.clone()).block(panel("Script")), run_row);
+                draw_quests(frame, quests);
+            }
+            draw_question(frame, question_area);
+            draw_progress(frame, progress_area);
+            draw_cell(frame, cell);
+            let [chat_area, room_area] = Layout::horizontal([Constraint::Fill(1), Constraint::Length(34)]).areas(rest);
+            draw_chat(frame, chat_area, panel("Chat"));
+            let rows = room_area.height.saturating_sub(2) as usize;
+            frame.render_widget(Paragraph::new(room(rows)).block(panel("Room")), room_area);
+        }
+        // 1 · Quests sidebar: Current Quests runs the full height on the right with a small Room under it; chat is a short strip.
+        1 => {
+            let [left, right] = Layout::horizontal([Constraint::Fill(1), Constraint::Length(QUESTS_W + 6)]).areas(inner);
+            let [quests, room_area] = Layout::vertical([Constraint::Fill(1), Constraint::Length(room_h)]).areas(right);
+            draw_quests(frame, quests);
+            let rows = room_area.height.saturating_sub(2) as usize;
+            frame.render_widget(Paragraph::new(room(rows)).block(panel("Room")), room_area);
+            let [top, question_area, progress_area, cell, chat_area] = Layout::vertical([
+                Constraint::Length(run_h.max(PLAYER_H)),
+                Constraint::Length(question_h),
+                Constraint::Length(1),
+                Constraint::Fill(1),
+                Constraint::Length(CHAT_H),
+            ])
+            .areas(left);
+            draw_top(frame, top);
+            draw_question(frame, question_area);
+            draw_progress(frame, progress_area);
+            draw_cell(frame, cell);
+            draw_chat(frame, chat_area, panel("Chat"));
+        }
+        // 2 · Quests band: Current Quests is a wide middle band, its quests in columns; chat and room share a short bottom row.
+        2 => {
+            let [top, question_area, progress_area, cell, quests, bottom] = Layout::vertical([
+                Constraint::Length(run_h.max(PLAYER_H)),
+                Constraint::Length(question_h),
+                Constraint::Length(1),
+                Constraint::Length(cell_h),
+                Constraint::Fill(1),
+                Constraint::Length(CHAT_H.max(room_h)),
+            ])
+            .areas(inner);
+            draw_top(frame, top);
+            draw_question(frame, question_area);
+            draw_progress(frame, progress_area);
+            draw_cell(frame, cell);
+            quest_columns(frame, detail, quests);
+            let [chat_area, room_area] = Layout::horizontal([Constraint::Fill(1), Constraint::Length(34)]).areas(bottom);
+            draw_chat(frame, chat_area, panel("Chat"));
+            let rows = room_area.height.saturating_sub(2) as usize;
+            frame.render_widget(Paragraph::new(room(rows)).block(panel("Room")), room_area);
+        }
+        // 3 · Chat strip: Current Quests fills the right column down to a full-width chat strip; the room is one line in the chat's title.
+        _ => {
+            let [upper, chat_area] = Layout::vertical([Constraint::Fill(1), Constraint::Length(CHAT_H)]).areas(inner);
+            let [left, quests] = Layout::horizontal([Constraint::Fill(1), Constraint::Length(QUESTS_W + 6)]).areas(upper);
+            draw_quests(frame, quests);
+            let [top, question_area, progress_area, cell] = Layout::vertical([
+                Constraint::Length(run_h.max(PLAYER_H)),
+                Constraint::Length(question_h),
+                Constraint::Length(1),
+                Constraint::Fill(1),
+            ])
+            .areas(left);
+            draw_top(frame, top);
+            draw_question(frame, question_area);
+            draw_progress(frame, progress_area);
+            draw_cell(frame, cell);
+            let block = match &map {
+                Ok(map) => panel("Chat").title_top(room_strip(me, map).right_aligned()),
+                Err(_) => panel("Chat"),
+            };
+            draw_chat(frame, chat_area, block);
+        }
+    }
+}
+
+/// PROTOTYPE: the Overview's layouts, by `App::layout`.
+pub const LAYOUTS: [&str; 4] = ["Current", "Quests sidebar", "Quests band", "Chat strip"];
+/// PROTOTYPE: how tall the chat strip is, its border included.
+const CHAT_H: u16 = 10;
+
+/// PROTOTYPE: Current Quests as a wide band, each quest kept whole in columns 44 wide, left to right.
+fn quest_columns(frame: &mut Frame, detail: Option<&Detail>, area: Rect) {
+    let block = panel("Current Quests");
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let rows = inner.height as usize;
+    if rows == 0 {
+        return;
+    }
+    let mut quests: Vec<Vec<Line>> = Vec::new();
+    for line in tracker_lines(detail, usize::MAX) {
+        let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+        if text.starts_with("  ") && !quests.is_empty() {
+            quests.last_mut().unwrap().push(line);
+        } else {
+            quests.push(vec![line]);
+        }
+    }
+    const COLUMN_W: u16 = 44;
+    let columns = (inner.width / COLUMN_W).max(1) as usize;
+    let mut column = 0;
+    let mut lines: Vec<Line> = Vec::new();
+    let mut left = 0;
+    for (i, quest) in quests.iter().enumerate() {
+        if lines.len() + quest.len() > rows && !lines.is_empty() {
+            frame.render_widget(Paragraph::new(std::mem::take(&mut lines)), column_rect(inner, column, COLUMN_W));
+            column += 1;
+        }
+        if column >= columns {
+            left = quests.len() - i;
+            break;
+        }
+        lines.extend(quest.iter().cloned());
+    }
+    if left > 0 {
+        let last = column_rect(inner, columns - 1, COLUMN_W);
+        let at = Rect { y: last.bottom().saturating_sub(1), height: 1, ..last };
+        frame.render_widget(Paragraph::new(Line::styled(format!("… {left} more quests"), Style::new().fg(DIM))), at);
+    } else if !lines.is_empty() && column < columns {
+        frame.render_widget(Paragraph::new(lines), column_rect(inner, column, COLUMN_W));
+    }
+}
+
+fn column_rect(inner: Rect, column: usize, width: u16) -> Rect {
+    Rect {
+        x: inner.x + column as u16 * width,
+        width: width.min(inner.right().saturating_sub(inner.x + column as u16 * width)),
+        ..inner
+    }
+}
+
+/// PROTOTYPE: the Room panel as one line: how many players, the room, and who else is on the map outside the player's cell.
+fn room_strip(me: &Player, map: &Map) -> Line<'static> {
+    let mut spans = vec![
+        Span::styled(" Room · ", Style::new().bold()),
+        Span::raw(format!("{} player(s) in ", map.players.len())),
+        Span::styled(room_name(map), Style::new().yellow()),
+    ];
+    let others: Vec<String> = map
+        .players
+        .iter()
+        .filter(|p| p.cell != me.cell)
+        .take(4)
+        .map(|p| format!("{} ({})", truncate(&p.name, 12), truncate(&p.cell, 8)))
+        .collect();
+    if !others.is_empty() {
+        spans.push(Span::styled(format!(" · {}", others.join(", ")), Style::new().fg(DIM)));
+    }
+    spans.push(Span::raw(" "));
+    Line::from(spans)
 }
 
 fn not_playing_lines(hello: &Hello, status: &Status) -> Vec<Line<'static>> {
