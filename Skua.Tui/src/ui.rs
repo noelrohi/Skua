@@ -44,8 +44,15 @@ pub fn draw(frame: &mut Frame, app: &App) {
         height: area.height - 3,
         ..area
     };
-    let left = (area.width * 3 / 10).clamp(30, 38).min(area.width / 2);
-    accounts(frame, app, Rect { width: left, ..body });
+    // PROTOTYPE: the sidebar's width by `App::sidebar`.
+    let left = match app.sidebar {
+        0 => (area.width * 3 / 10).clamp(30, 38).min(area.width / 2),
+        1 => 24.min(area.width / 2),
+        _ => 0,
+    };
+    if left > 0 {
+        accounts(frame, app, Rect { width: left, ..body });
+    }
     right(
         frame,
         app,
@@ -184,17 +191,32 @@ fn account_line(app: &App, row: &Row, selected: bool, width: u16) -> Line<'stati
         Some(Stall::Grinding(sec)) => format!(" {}", short_duration(sec)).yellow(),
         None => Span::raw(""),
     };
-    let fixed = 3 + 2 + 2 + 13 + 1 + stall.content.chars().count();
+    let compact = app.sidebar == 1;
+    let fixed = if compact { 2 + 11 + 1 } else { 3 + 2 + 2 + 13 } + 1 + stall.content.chars().count();
     let state_width = (width as usize).saturating_sub(fixed);
-    let mut line = Line::from(vec![
-        if marked { "[x]".blue().bold() } else { "[ ]".fg(DIM) },
-        " ".into(),
-        Span::styled("●", Style::new().fg(color)),
-        " ".into(),
-        Span::styled(
-            format!("{:<12}", truncate(&row.name, 12)),
-            if up { Style::new().bold() } else { Style::new().fg(DIM) },
-        ),
+    let name_style = if marked {
+        Style::new().blue().bold()
+    } else if up {
+        Style::new().bold()
+    } else {
+        Style::new().fg(DIM)
+    };
+    let mut line = Line::from(if compact {
+        vec![
+            Span::styled("●", Style::new().fg(color)),
+            " ".into(),
+            Span::styled(format!("{:<11}", truncate(&row.name, 11)), name_style),
+        ]
+    } else {
+        vec![
+            if marked { "[x]".blue().bold() } else { "[ ]".fg(DIM) },
+            " ".into(),
+            Span::styled("●", Style::new().fg(color)),
+            " ".into(),
+            Span::styled(format!("{:<12}", truncate(&row.name, 12)), name_style),
+        ]
+    });
+    line.spans.extend([
         " ".into(),
         Span::styled(
             format!("{:<state_width$}", truncate(&state, state_width)),
@@ -398,7 +420,30 @@ fn overview(frame: &mut Frame, app: &App, hello: &Hello, status: &Status, detail
 
     let run = run_lines(status, detail);
     let accounts = on_map(app, me, status);
-    let members = members(me, &accounts, map.as_ref().ok().copied());
+    let mut members = members(me, &accounts, map.as_ref().ok().copied());
+    if app.fake_party {
+        // PROTOTYPE: three made-up accounts in the player's cell, healthy, hurt and dead.
+        let run = status.script.run.as_ref();
+        for (name, class, hp, max_hp) in [
+            ("alt2", "Legion Revenant", 3150, 3150),
+            ("alt3", "Lord Of Order", 1240, 2980),
+            ("alt4", "ArchPaladin", 0, 2610),
+        ] {
+            members.insert(
+                members.len().min(accounts.len()),
+                Member {
+                    name: name.into(),
+                    about: class.into(),
+                    hp,
+                    max_hp,
+                    alive: hp > 0,
+                    selected: false,
+                    afk: false,
+                    run,
+                },
+            );
+        }
+    }
     let shown = members.len().min(MAX_MEMBERS);
     let hidden = members.len() - shown;
     // A member takes two rows and a blank one; the count of those that don't fit goes under the last.
@@ -2458,7 +2503,8 @@ fn bag_goals(frame: &mut Frame, tracker: Option<&crate::tracker::Tracker>, area:
     let rows = inner.height as usize;
     let sec = tracker.elapsed_sec();
     let gains = tracker.gains();
-    let bar_w = (inner.width as usize).saturating_sub(24 + 12 + 30).clamp(10, 40);
+    // The name, the count, the gain and the pace take 24 + 12 + 7 + 28.
+    let bar_w = (inner.width as usize).saturating_sub(24 + 12 + 7 + 28).clamp(6, 40);
     let mut filling: Vec<_> = gains.iter().filter(|g| g.delta() > 0 && g.max > 1 && g.now < g.max).collect();
     filling.sort_by(|a, b| (b.now * 1000 / b.max).cmp(&(a.now * 1000 / a.max)));
     let maxed: Vec<_> = gains.iter().filter(|g| g.delta() > 0 && g.max > 1 && g.now >= g.max).collect();
@@ -2477,7 +2523,7 @@ fn bag_goals(frame: &mut Frame, tracker: Option<&crate::tracker::Tracker>, area:
             Span::raw(format!(" {:>11}", format!("{}/{}", g.now, g.max))),
             Span::styled(format!(" {:>+6}", g.delta()), Style::new().green()),
             Span::styled(
-                format!("  {rate:>7}{}", if eta.is_empty() { String::new() } else { format!(" · full in {eta}") }),
+                format!("  {rate:>7}{}", match eta.as_str() { "" => String::new(), "full" => " · full".into(), _ => format!(" · full {eta}") }),
                 Style::new().fg(DIM),
             ),
         ]));
@@ -2499,5 +2545,5 @@ fn bag_goals(frame: &mut Frame, tracker: Option<&crate::tracker::Tracker>, area:
         lines.push(Line::styled(format!("spent or banked: {}", names.join(", ")), Style::new().fg(DIM)));
     }
     lines.truncate(rows);
-    frame.render_widget(Paragraph::new(lines).block(block).wrap(Wrap { trim: false }), area);
+    frame.render_widget(Paragraph::new(lines).block(block), area);
 }

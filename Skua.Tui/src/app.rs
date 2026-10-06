@@ -347,6 +347,10 @@ pub struct App {
     pub quit: bool,
     /// PROTOTYPE: which Overview layout draws, cycled with [ and ]; SKUA_TUI_LAYOUT=0..3 picks the first.
     pub layout: u8,
+    /// PROTOTYPE: the accounts sidebar: 0 as on master, 1 compact, 2 hidden; cycled with \\.
+    pub sidebar: u8,
+    /// PROTOTYPE: three made-up accounts beside the player in the Overview, toggled with =; SKUA_TUI_FAKE_PARTY=1 starts with them.
+    pub fake_party: bool,
 }
 
 /// What the screen showed where, as the last draw left it, for the mouse.
@@ -384,6 +388,8 @@ impl App {
             inventory_focused: false,
             hits: RefCell::default(),
             quit: false,
+            sidebar: 1,
+            fake_party: std::env::var("SKUA_TUI_FAKE_PARTY").is_ok_and(|v| v == "1"),
             layout: std::env::var("SKUA_TUI_LAYOUT").ok().and_then(|v| v.parse().ok()).unwrap_or(1) % crate::ui::LAYOUTS.len() as u8,
         }
     }
@@ -559,6 +565,8 @@ impl App {
                 self.filter.clear();
                 self.activity.retain(|_, note| note.tone == Tone::Pending);
             }
+            KeyCode::Char('\\') => self.sidebar = (self.sidebar + 1) % 3,
+            KeyCode::Char('=') => self.fake_party = !self.fake_party,
             KeyCode::Char(']') => self.layout = (self.layout + 1) % crate::ui::LAYOUTS.len() as u8,
             KeyCode::Char('[') => {
                 self.layout = (self.layout + crate::ui::LAYOUTS.len() as u8 - 1) % crate::ui::LAYOUTS.len() as u8
