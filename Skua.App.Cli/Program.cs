@@ -132,6 +132,16 @@ logs.SetAction((parse, ct) =>
         }, Output.Logs);
 });
 
+Option<int?> gainsRun = new("--run") { Description = "The run, by its number in the log: the last run by default." };
+Option<string?> gainsFile = new("--file") { Description = "A session log to read: by default the Engine's newest, in <SKUA_DIR>/engines/logs/<engine>/." };
+Command logsGains = new("gains",
+    "Attribute every item gain of a run to the quest turn-in that paid it, or to monster drops, with what turn-ins took, totals and rates an hour.")
+{
+    gainsRun, gainsFile,
+};
+logsGains.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), _ => LogGains.ReadAsync(parse.GetValue(gainsFile), parse.GetValue(gainsRun), ct), Output.Gains));
+logs.Subcommands.Add(logsGains);
+
 Command servers = new("servers", "List the game servers: players, member-only and language. Works before login.");
 servers.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
 {

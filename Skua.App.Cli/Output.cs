@@ -451,6 +451,35 @@ internal static class Output
     private static string Source(ScriptSourceDto source) => ScriptSourceSetting.Format(source);
 
 
+    /// <summary>
+    /// A header with the run's Script and length, then each source with what it paid (+) and what its turn-ins took (−), and the net per item,
+    /// each with its rate an hour.
+    /// </summary>
+    public static string Gains(GainsResult result)
+    {
+        StringBuilder text = new($"Run {result.Run}{(result.Script is { } script ? $", {script}" : "")}: {Duration(result.DurationSec)} in {result.File}\n");
+        foreach (GainSource source in result.Sources)
+        {
+            text.Append('\n').AppendLine(source.Kind == GainSourceKind.Quest
+                ? $"{source.Name} (quest {source.QuestId}): {Count(source.TurnIns!.Value, "turn-in")}{(source.TurnInsPerHour is { } rate ? $", {rate:0}/h" : "")}"
+                : source.Name);
+            foreach (ItemCount item in source.Gained)
+                text.AppendLine(GainRow(item.ItemId, item.Name, item.Qty, item.PerHour));
+            foreach (ItemCount item in source.Spent)
+                text.AppendLine(GainRow(item.ItemId, item.Name, -item.Qty, -item.PerHour));
+        }
+        text.Append("\nNet");
+        foreach (ItemGains item in result.Items.Where(i => i.Net != 0))
+            text.Append('\n').Append(GainRow(item.ItemId, item.Name, item.Net, item.NetPerHour));
+        return text.ToString();
+    }
+
+    private static string GainRow(int itemId, string? name, long qty, double? perHour)
+    {
+        string rate = perHour is { } value ? $"{value:+0;-0;0}/h" : "";
+        return $"  {qty,8:+0;-0;0}  {rate,10}  {name ?? $"item {itemId}"}";
+    }
+
     public const string GapNotice = "gap: entries after the cursor are no longer held (evicted, or the Engine restarted).";
 
     public static string Logs(LogPage page)

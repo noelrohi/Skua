@@ -27,6 +27,8 @@
     <None Include="compile-check-known-failures.txt" CopyToOutputDirectory="PreserveNewest" />
     <!-- The example Hooks, which HookTests run against a real Engine. -->
     <None Include="..\docs\hooks\*" Link="hooks\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Trimmed session logs, which name their accounts alt1…altN. -->
+    <None Include="fixtures\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
