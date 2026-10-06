@@ -4,6 +4,11 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 
 ---
 
+## October 7, 2026
+
+### Changes
+* A run's goal gives its `farm` and `buy` rates only once the step has been measured for 10 minutes, so a few minutes of bursty gains no longer give a wrong ETA; `SKUA_GOAL_RATE_SEC` sets another time. `skua-tui`'s Bags rates each item from when it first rose in the run rather than from the run's start, and shows its rate and ETA only after the same 10 minutes. See [Logs and events](./BUILD.md#logs-and-events) and [The TUI](./BUILD.md#the-tui-skua-tui).
+
 ## October 6, 2026
 
 ### New

@@ -197,10 +197,37 @@ public class QuestProgressTests
         Assert.Null(next.Goal);
     }
 
-    private static async Task<T> WaitForAsync<T>(Func<Task<T>> read, Func<T, bool> done)
+    [Fact]
+    public async Task A_goals_rate_waits_out_the_burst_its_step_starts_with_then_counts_from_the_steps_line()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox,
+            environment: new Dictionary<string, string>(Fast) { ["SKUA_GOAL_RATE_SEC"] = "3" });
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        // The player holds 3 Slime Samples as the step logs 1: a burst of 2 the moment it starts.
+        TestScripts.Write(sandbox, "Tests/Farm.cs", TestScripts.Main("""
+            bot.Log("[00:00:01] (BuyAllMerge) Farming Slime Sample (1/5)");
+            while (!bot.ShouldExit)
+                Thread.Sleep(50);
+            """));
+
+        DateTime started = DateTime.UtcNow;
+        await session.Connection.ScriptStartAsync("Tests/Farm.cs", cancellationToken: Ct);
+        GoalItemDto early = (await WaitForAsync(async () => (await session.Connection.StatusAsync(Ct)).Script.Run!,
+            r => r.Goal is { Farm.Have: not null })).Goal!.Farm!;
+        GoalItemDto measured = (await WaitForAsync(async () => (await session.Connection.StatusAsync(Ct)).Script.Run!,
+            r => r.Goal is { Farm.PerHour: not null }, tries: 200)).Goal!.Farm!;
+        double since = (DateTime.UtcNow - started).TotalHours;
+
+        Assert.Equal((3, (double?)null), (early.Have, early.PerHour));
+        // The 2 gained since the line, over at least the 3 s measured and at most the time since the run started.
+        Assert.InRange(measured.PerHour!.Value, Math.Floor(2 / since), 2 * 3600 / 3.0);
+    }
+
+    private static async Task<T> WaitForAsync<T>(Func<Task<T>> read, Func<T, bool> done, int tries = 40)
     {
         T value = await read();
-        for (int i = 0; i < 40 && !done(value); i++)
+        for (int i = 0; i < tries && !done(value); i++)
         {
             await Task.Delay(50, Ct);
             value = await read();

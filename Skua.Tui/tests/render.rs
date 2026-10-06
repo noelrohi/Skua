@@ -10,6 +10,8 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, Mo
 use ratatui::style::Color;
 use serde_json::{Value, json};
 use skua_tui::app::{App, Tab};
+use skua_tui::bags::{Bags, now_ms};
+use skua_tui::dto::{Inventory, LogEntry};
 use skua_tui::engine::PROTOCOL;
 use skua_tui::poller::Poller;
 
@@ -270,6 +272,74 @@ fn the_screen_shows_accounts_by_group_with_their_engines_and_the_selected_ones_o
     let butler = rows.iter().position(|l| l.contains("▾ Butler")).unwrap();
     let other = rows.iter().position(|l| l.contains("▾ Other Engines")).unwrap();
     assert!(farm < butler && butler < other);
+}
+
+#[test]
+fn a_bags_bar_rates_its_item_from_its_first_rise_once_it_has_risen_for_ten_minutes() {
+    let fleet = fleet();
+    let mut app = App::new(fleet.dir.path().to_owned());
+    let now = now_ms();
+    let min = |m: i64| now - m * 60_000;
+    let read = |diamonds: i64, unidentified: i64, gems: i64| -> Inventory {
+        let items = [
+            (1, "Diamond of Nulgath", diamonds),
+            (2, "Unidentified 10", unidentified),
+            (3, "Gem of Nulgath", gems),
+        ];
+        serde_json::from_value(
+            json!({ "usedSlots": 3, "totalSlots": 120, "items": items.map(|(id, name, qty)| json!({
+            "id": id, "name": name, "qty": qty, "maxStack": 1000, "category": "Item", "equipped": false })) }),
+        )
+        .unwrap()
+    };
+    // Run 3 started an hour ago and farmed Diamonds; Unidentified 10 first rose half an hour in, and Gems five minutes ago.
+    let mut started = run_spending(&[]);
+    started["ts"] = json!(min(60));
+    started["data"]["inventory"] = json!([
+        { "id": 1, "name": "Diamond of Nulgath", "qty": 800 },
+        { "id": 2, "name": "Unidentified 10", "qty": 100 },
+        { "id": 3, "name": "Gem of Nulgath", "qty": 10 }
+    ]);
+    let mut bags = Bags::default();
+    bags.on_entry(&serde_json::from_value::<LogEntry>(started).unwrap());
+    // Each rise is seen between two reads 2 s apart.
+    for (at, counts) in [
+        (min(60) + 2_000, (830, 100, 10)),
+        (min(30), (900, 100, 10)),
+        (min(30) + 2_000, (900, 130, 10)),
+        (min(5), (900, 130, 10)),
+        (min(5) + 2_000, (900, 130, 20)),
+    ] {
+        bags.on_inventory(&read(counts.0, counts.1, counts.2), at);
+    }
+
+    let mut poller = Poller::new(fleet.dir.path().to_owned(), Duration::from_secs(5));
+    app.set_snapshot(poller.poll(&app.focus()));
+    let mut snapshot = poller.poll(&app.focus());
+    snapshot.detail.bags = bags;
+    app.set_snapshot(snapshot);
+    let mut terminal = Terminal::new(TestBackend::new(120, 50)).unwrap();
+    terminal.draw(|frame| skua_tui::ui::draw(frame, &app)).unwrap();
+    let screen: String = (0..50)
+        .map(|y| {
+            (0..120)
+                .map(|x| terminal.backend().buffer()[(x, y)].symbol())
+                .collect::<String>()
+                + "\n"
+        })
+        .collect();
+
+    // 30 in the half hour since it first rose, not the run's 30 an hour; 100 in the hour since the run started.
+    assert!(
+        panel_line(&screen, "Unidentified 10").ends_with("+30  +60/h ~14h30m"),
+        "{screen}"
+    );
+    assert!(
+        panel_line(&screen, "Diamond of Nulgath").ends_with("+100  +100/h ~1h00m"),
+        "{screen}"
+    );
+    // Five minutes of Gems say no rate yet.
+    assert!(panel_line(&screen, "Gem of Nulgath").ends_with("+10"), "{screen}");
 }
 
 #[test]
