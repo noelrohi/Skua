@@ -457,6 +457,9 @@ internal sealed class FakeGame
             case "world.acceptQuest" when args is [string id]:
                 _note($"acceptQuest {id}");
                 break;
+            case "world.isQuestInProgress" when args is [string id]:
+                // The game's own: whether the quest is accepted, completable or not.
+                return Str(_world && QuestTree()[id] is JsonObject quest && quest["status"] is not null);
             case "world.tryQuestComplete" when args is [string id, string reward, ..]:
                 _note($"tryQuestComplete {id} {reward}");
                 TryQuestComplete(int.Parse(id), reward);
