@@ -8,7 +8,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 use serde_json::Value;
 
 use crate::app::{App, Field, KEYS, Modal, Note, Row, Tab, Tone, first_line};
-use crate::bags::{Bags, Change, Kind, now_ms};
+use crate::bags::{Change, Kind, now_ms};
 use crate::discovery::MANAGER_FILE;
 use crate::dto::{GameState, Hello, HookRun, LogEntry, Map, Player, Quest, ScriptGoal, ScriptRun, Status};
 use crate::engine::{Error, NOT_LOGGED_IN, PROTOCOL};
@@ -513,7 +513,7 @@ fn overview(frame: &mut Frame, app: &App, hello: &Hello, status: &Status, detail
     }
 
     if let Some(detail) = detail {
-        bags(frame, &detail.bags, bags_area);
+        bags(frame, detail, app.spent_variant, bags_area);
     }
 
     let chat_width = chat_area.width.saturating_sub(2) as usize;
@@ -947,10 +947,13 @@ fn room_title(me: &Player, map: &Map) -> Line<'static> {
     Line::from(spans)
 }
 
+/// PROTOTYPE: the ways the Bags panel can show what was spent, cycled with [ and ] on the Overview.
+pub const SPENT_VARIANTS: [&str; 5] = ["A one line (now)", "B top movers", "C columns", "D by quest", "E spent bars"];
+
 /// What the run changed in the inventory, under the cell: each stack it is filling as a bar toward its max stack, with the gain, the rate
-/// and when it will be full at that rate, the fullest first; then what it filled up, what's new and what was spent or banked, a line
-/// each, which keep their place before the bars on a short terminal. An item that just changed is yellow.
-fn bags(frame: &mut Frame, bags: &Bags, area: Rect) {
+/// and when it will be full at that rate, the fullest first; then what it filled up, what's new and what was spent or banked.
+/// PROTOTYPE: `variant` picks how the spent part shows.
+fn bags(frame: &mut Frame, detail: &Detail, variant: usize, area: Rect) {
     /// The name's column, and what the gain and the rate take after the bar.
     const NAME_COLUMN: usize = 24;
     const GAIN_W: u16 = 8;
@@ -958,6 +961,7 @@ fn bags(frame: &mut Frame, bags: &Bags, area: Rect) {
     /// How wide a bar is, at least and at most.
     const BAR_MIN: u16 = 12;
     const BAR_MAX: u16 = 40;
+    let bags = &detail.bags;
     if area.height < 3 {
         return;
     }
@@ -973,8 +977,9 @@ fn bags(frame: &mut Frame, bags: &Bags, area: Rect) {
         }
         None => "Bags · reading…".into(),
     };
-    let block = panel(&title);
+    let block = panel(&format!("{title} · [ ] {}", SPENT_VARIANTS[variant]));
     let inner = block.inner(area);
+    let width = inner.width as usize;
     let sec = bags.start().map_or(0.0, |s| s.elapsed_sec(now));
     let changes = bags.changes();
     let of = |kind: Kind| changes.iter().filter(move |c| c.kind == kind);
@@ -985,6 +990,7 @@ fn bags(frame: &mut Frame, bags: &Bags, area: Rect) {
             Style::new()
         }
     };
+    let per_hour = |delta: i64| if sec >= 60.0 { Some(delta as f64 * 3600.0 / sec) } else { None };
 
     let mut filling: Vec<&Change> = of(Kind::Filling).collect();
     filling.sort_by(|a, b| ratio(b.now, b.max).total_cmp(&ratio(a.now, a.max)));
@@ -999,15 +1005,9 @@ fn bags(frame: &mut Frame, bags: &Bags, area: Rect) {
                 format!("{:<NAME_COLUMN$}", truncate(&c.name, NAME_COLUMN - 1)),
                 name_style(c),
             )];
-            spans.extend(bar(
-                bar_w,
-                ratio(c.now, c.max),
-                Color::Cyan,
-                format!("{}/{}", c.now, c.max),
-            ));
+            spans.extend(bar(bar_w, ratio(c.now, c.max), Color::Cyan, format!("{}/{}", c.now, c.max)));
             spans.push(Span::styled(format!(" {:>+7}", c.delta()), Style::new().green()));
-            if sec >= 60.0 {
-                let rate = c.delta() as f64 * 3600.0 / sec;
+            if let Some(rate) = per_hour(c.delta()) {
                 let left = (c.max - c.now) as f64 / rate * 3600.0;
                 spans.push(Span::styled(
                     format!("  +{}/h ~{}", rate_text(rate), short_duration(left)),
@@ -1017,11 +1017,35 @@ fn bags(frame: &mut Frame, bags: &Bags, area: Rect) {
             Line::from(spans)
         })
         .collect();
+
+    // What was spent: the stacks, most spent first, and the single items (held one, now none) apart, which are mostly dud Unidentifieds
+    // turned in at Swindle's.
+    let mut spent: Vec<&Change> = of(Kind::Spent).collect();
+    spent.sort_by_key(|c| c.delta());
+    let (singles, stacks): (Vec<&Change>, Vec<&Change>) = spent.iter().partition(|c| c.start <= 1);
+    let single_names = compact_names(&singles.iter().map(|c| c.name.as_str()).collect::<Vec<_>>());
+    let red = Style::new().red();
+
+    // E: the spent stacks are bars too, red, under the filling ones.
+    if variant == 4 {
+        for c in &stacks {
+            let mut spans = vec![Span::styled(
+                format!("{:<NAME_COLUMN$}", truncate(&c.name, NAME_COLUMN - 1)),
+                name_style(c),
+            )];
+            spans.extend(bar(bar_w, ratio(c.now, c.max), Color::Red, format!("{}/{}", c.now, c.max)));
+            spans.push(Span::styled(format!(" {:>+7}", c.delta()), red));
+            if let Some(rate) = per_hour(c.delta()) {
+                spans.push(Span::styled(format!("  {}/h", rate_text(rate)), Style::new().fg(DIM)));
+            }
+            bars.push(Line::from(spans));
+        }
+    }
     if bars.is_empty() {
         bars.push(Line::styled("no stack filling yet", Style::new().fg(DIM)));
     }
 
-    // A line each for what filled up, what's new and what was spent, each item named as `show` says.
+    // A line each for what filled up and what's new, each item named as `show` says.
     let listed = |kind: Kind, head: Span<'static>, show: &dyn Fn(&Change) -> String| -> Option<Line<'static>> {
         let mut spans = vec![head];
         for (i, c) in of(kind).enumerate() {
@@ -1032,51 +1056,160 @@ fn bags(frame: &mut Frame, bags: &Bags, area: Rect) {
         }
         (spans.len() > 1).then(|| Line::from(spans))
     };
-    let tail: Vec<Line> = [
-        listed(Kind::Filled, "✓ filled this run: ".green(), &|c| {
-            format!("{} (+{})", c.name, c.delta())
-        }),
-        listed(Kind::New, "★ new: ".magenta(), &|c| c.name.clone()),
-        listed(Kind::Spent, "spent or banked: ".fg(DIM), &|c| {
-            format!("{} {}", c.name, c.delta())
-        }),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
+    let filled_line = listed(Kind::Filled, "✓ filled this run: ".green(), &|c| format!("{} (+{})", c.name, c.delta()));
+    let new_line = listed(Kind::New, "★ new: ".magenta(), &|c| c.name.clone());
 
-    // The bars give way to the lines under them, a blank line between; where not even one bar fits with those, a line of counts.
-    let rows = inner.height as usize;
-    let rows_for_bars = rows.saturating_sub(tail.len() + usize::from(!tail.is_empty()));
-    let lines = if rows_for_bars == 0 {
-        let count = |kind: Kind, what: &str| {
-            let n = of(kind).count();
-            (n > 0).then(|| format!("{n} {what}"))
-        };
-        let counts: Vec<String> = [
-            count(Kind::Filling, "filling"),
-            count(Kind::Filled, "filled"),
-            count(Kind::New, "new"),
-            count(Kind::Spent, "spent"),
+    let tail: Vec<Line> = match variant {
+        // A: as it is now, every spent item on one line.
+        0 => [
+            filled_line,
+            new_line,
+            listed(Kind::Spent, "spent or banked: ".fg(DIM), &|c| format!("{} {}", c.name, c.delta())),
         ]
         .into_iter()
         .flatten()
-        .collect();
-        vec![Line::styled(counts.join(" · "), Style::new().fg(DIM))]
-    } else {
-        if bars.len() > rows_for_bars {
-            let hidden = bars.len() - (rows_for_bars - 1);
-            bars.truncate(rows_for_bars - 1);
-            bars.push(Line::styled(format!("… {hidden} more filling"), Style::new().fg(DIM)));
+        .collect(),
+        // B: one line that fits: the most spent first, the single items as one, then how many more.
+        1 => {
+            let mut pieces: Vec<(String, Style)> = stacks.iter().map(|c| (format!("{} {}", c.name, c.delta()), name_style(c))).collect();
+            if !singles.is_empty() {
+                pieces.push((format!("{} turned in", single_names), Style::new()));
+            }
+            let head = "▼ spent: ";
+            let mut spans = vec![Span::styled(head, red)];
+            let mut used = head.chars().count();
+            let total = pieces.len();
+            for (i, (text, style)) in pieces.into_iter().enumerate() {
+                let more = format!(" +{} more", total - i);
+                let sep = if i > 0 { " · " } else { "" };
+                if used + sep.len() + text.chars().count() + more.len() > width {
+                    spans.push(Span::styled(more, Style::new().fg(DIM)));
+                    break;
+                }
+                used += sep.len() + text.chars().count();
+                spans.push(Span::styled(sep, Style::new().fg(DIM)));
+                spans.push(Span::styled(text, style));
+            }
+            [filled_line, new_line, (total > 0).then(|| Line::from(spans))].into_iter().flatten().collect()
         }
-        let mut lines = bars;
-        if !tail.is_empty() {
-            lines.push(Line::raw(""));
+        // C: gained on the left, spent on the right, an item a row.
+        2 => {
+            let half = width / 2;
+            let mut left: Vec<Line> = vec![Line::styled("▲ gained", Style::new().green().bold())];
+            left.extend(of(Kind::Filled).map(|c| Line::from(vec![Span::styled(format!("✓ {}", c.name), name_style(c)), Span::styled(format!(" +{}", c.delta()), Style::new().green())])));
+            left.extend(of(Kind::New).map(|c| Line::from(vec![Span::styled(format!("★ {}", c.name), name_style(c).magenta())])));
+            let mut right: Vec<Line> = vec![Line::styled("▼ spent", red.bold())];
+            right.extend(stacks.iter().map(|c| {
+                Line::from(vec![
+                    Span::styled(format!("{:<w$}", truncate(&c.name, half.saturating_sub(10)), w = half.saturating_sub(9)), name_style(c)),
+                    Span::styled(format!("{:>8}", c.delta()), red),
+                ])
+            }));
+            if !singles.is_empty() {
+                right.push(Line::styled(truncate(&format!("{} turned in", single_names), half.saturating_sub(1)), Style::new().fg(DIM)));
+            }
+            (0..left.len().max(right.len()))
+                .map(|i| {
+                    let mut spans: Vec<Span> = left.get(i).map(|l| l.spans.clone()).unwrap_or_default();
+                    let used: usize = spans.iter().map(|s| s.content.chars().count()).sum();
+                    spans.push(Span::raw(" ".repeat(half.saturating_sub(used))));
+                    spans.extend(right.get(i).map(|l| l.spans.clone()).unwrap_or_default());
+                    Line::from(spans)
+                })
+                .collect()
         }
-        lines.extend(tail);
-        lines
+        // D: what was spent under the quest that takes it; what no loaded quest takes may have been sold or banked.
+        3 => {
+            // The accepted quests first: the loaded ones include many that merely share a requirement.
+            let mut quests: Vec<&Quest> = detail.quests.as_ref().and_then(|q| q.as_ref().ok()).map(|q| q.quests.iter().collect()).unwrap_or_default();
+            quests.sort_by_key(|q| q.status == "notAccepted");
+            let mut groups: Vec<(String, Vec<&Change>)> = Vec::new();
+            for c in &spent {
+                let quest = quests
+                    .iter()
+                    .find(|q| q.requirements.iter().any(|r| r.name.eq_ignore_ascii_case(&c.name)))
+                    .map_or("not a loaded quest's (sold or banked?)".to_string(), |q| q.name.clone());
+                match groups.iter_mut().find(|(name, _)| *name == quest) {
+                    Some((_, items)) => items.push(c),
+                    None => groups.push((quest, vec![c])),
+                }
+            }
+            let mut lines: Vec<Line> = [filled_line, new_line].into_iter().flatten().collect();
+            for (quest, items) in groups {
+                let (one, many): (Vec<&Change>, Vec<&Change>) = items.iter().partition(|c| c.start <= 1);
+                let mut text: Vec<String> = many.iter().map(|c| format!("{} {}", c.name, c.delta())).collect();
+                if !one.is_empty() {
+                    text.push(format!("{} turned in", compact_names(&one.iter().map(|c| c.name.as_str()).collect::<Vec<_>>())));
+                }
+                let head = format!("▼ {}: ", truncate(&quest, 32));
+                let body = truncate(&text.join(" · "), width.saturating_sub(head.chars().count()));
+                lines.push(Line::from(vec![Span::styled(head, red), Span::raw(body)]));
+            }
+            lines
+        }
+        // E: the stacks are bars above; the single items as one line.
+        _ => [
+            filled_line,
+            new_line,
+            (!singles.is_empty()).then(|| {
+                Line::from(vec![
+                    Span::styled("▼ turned in: ", red),
+                    Span::raw(truncate(&format!("{single_names} (1 each)"), width.saturating_sub(13))),
+                ])
+            }),
+        ]
+        .into_iter()
+        .flatten()
+        .collect(),
     };
+
+    // The bars give way to the lines under them, a blank line between, but keep at least 3; the lines under them are cut to fit.
+    let rows = inner.height as usize;
+    let mut tail = tail;
+    let tail_max = rows.saturating_sub(bars.len().min(3) + 1).max(1);
+    if tail.len() > tail_max {
+        let hidden = tail.len() - (tail_max - 1);
+        tail.truncate(tail_max - 1);
+        tail.push(Line::styled(format!("… {hidden} more lines"), Style::new().fg(DIM)));
+    }
+    let rows_for_bars = rows.saturating_sub(tail.len() + usize::from(!tail.is_empty()));
+    if bars.len() > rows_for_bars && rows_for_bars > 0 {
+        let hidden = bars.len() - (rows_for_bars - 1);
+        bars.truncate(rows_for_bars - 1);
+        bars.push(Line::styled(format!("… {hidden} more bars"), Style::new().fg(DIM)));
+    }
+    let mut lines = if rows_for_bars == 0 { Vec::new() } else { bars };
+    if !tail.is_empty() && !lines.is_empty() {
+        lines.push(Line::raw(""));
+    }
+    lines.extend(tail);
     frame.render_widget(Paragraph::new(lines).block(block), area);
+}
+
+/// PROTOTYPE: names that share all but a trailing number, as one: `Unidentified 1, 6, 9`.
+fn compact_names(names: &[&str]) -> String {
+    let mut groups: Vec<(String, Vec<u32>)> = Vec::new();
+    for name in names {
+        match name.rsplit_once(' ').and_then(|(stem, n)| Some((stem, n.parse::<u32>().ok()?))) {
+            Some((stem, n)) => match groups.iter_mut().find(|(s, ns)| s == stem && !ns.is_empty()) {
+                Some((_, ns)) => ns.push(n),
+                None => groups.push((stem.to_string(), vec![n])),
+            },
+            None => groups.push((name.to_string(), Vec::new())),
+        }
+    }
+    groups
+        .into_iter()
+        .map(|(stem, mut ns)| {
+            ns.sort();
+            if ns.is_empty() {
+                stem
+            } else {
+                format!("{stem} {}", ns.iter().map(u32::to_string).collect::<Vec<_>>().join(", "))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" · ")
 }
 
 /// The map's name with its room, as the game names it: `battleon-9999`.

@@ -345,6 +345,8 @@ pub struct App {
     /// Where the last draw put what a click can hit.
     pub hits: RefCell<Hits>,
     pub quit: bool,
+    /// PROTOTYPE: which way the Bags panel shows what was spent; [ and ] cycle it.
+    pub spent_variant: usize,
 }
 
 /// What the screen showed where, as the last draw left it, for the mouse.
@@ -380,6 +382,7 @@ impl App {
             shelf: Shelf::default(),
             inventory_scroll: 0,
             inventory_focused: false,
+            spent_variant: 0,
             hits: RefCell::default(),
             quit: false,
         }
@@ -565,6 +568,9 @@ impl App {
     fn press(&mut self, c: char) {
         match c {
             'q' => self.quit = true,
+            // PROTOTYPE: cycle the Bags panel's spent variants.
+            '[' => self.spent_variant = (self.spent_variant + crate::ui::SPENT_VARIANTS.len() - 1) % crate::ui::SPENT_VARIANTS.len(),
+            ']' => self.spent_variant = (self.spent_variant + 1) % crate::ui::SPENT_VARIANTS.len(),
             ' ' => {
                 if let Some(row) = self.selected_row()
                     && !self.marks.remove(&row.name)

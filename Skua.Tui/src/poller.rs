@@ -157,7 +157,7 @@ impl Poller {
             return;
         };
         let page = match &self.cursor {
-            None => engine.events(LOG_TAIL).and_then(|events| {
+            None => engine.events(1000 /* PROTOTYPE: reach the run's script.started */).and_then(|events| {
                 let bags = self.bags.entry(name.to_owned()).or_default();
                 for entry in &events.entries {
                     bags.on_entry(entry);
