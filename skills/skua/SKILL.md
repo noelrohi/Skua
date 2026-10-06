@@ -7,7 +7,7 @@ description: Drive Skua Engines, which play AQW accounts, with the skua CLI. Use
 
 An Engine plays one AQW account and runs Scripts on it; `skua` drives it. The installed binary is the authority on syntax: `skua --help` and `skua <command> --help`. Add `--json` to any command to read its result as JSON.
 
-Every command takes `--engine <name>`, the Engine Name; without it, a command talks to the Engine named `default`. A command that drives an Engine auto-starts it where none runs, so a mistyped name starts a new, empty one. `status`, `engine list`, `account` and `scripts` start none; `status` of an Engine that isn't running exits non-zero and says so.
+Every command takes `--engine <name>`, the Engine Name; without it, a command talks to the Engine named `default`. A command that drives an Engine auto-starts it where none runs, so a mistyped name starts a new, empty one. `status`, `engine list`, `account` and `scripts` start none; `status` of an Engine that isn't running exits non-zero and says so. Over MCP (`skua mcp`), `status`, `engine_list` and the `scripts_*` tools start none either, and `status` fails with `EngineUnavailable`.
 
 Paths below are in the data folder, `<SkuaDIR>`: `~/Library/Application Support/Skua` on macOS, or `$SKUA_DIR` when set.
 

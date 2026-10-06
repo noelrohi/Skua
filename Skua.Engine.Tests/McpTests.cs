@@ -8,9 +8,10 @@ namespace Skua.Engine.Tests;
 public class McpTests
 {
     [Fact]
-    public async Task Skua_mcp_exposes_status_as_a_tool_that_auto_starts_the_Engine()
+    public async Task Skua_mcp_exposes_status_as_a_tool_that_answers_for_a_running_Engine()
     {
         await using EngineSandbox sandbox = new();
+        Assert.Equal(0, (await sandbox.RunCliAsync("engine", "start")).ExitCode);
         await using McpClient client = await ConnectAsync(sandbox);
 
         IList<McpClientTool> tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
@@ -21,6 +22,58 @@ public class McpTests
         StatusDto status = JsonSerializer.Deserialize<StatusDto>(((TextContentBlock)result.Content.Single()).Text, ControlJson.Options)!;
         Assert.Equal("default", status.Engine.Name);
         Assert.Equal("default", result.StructuredContent?.GetProperty("engine").GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task The_tools_that_need_no_Engine_leave_the_Engine_list_unchanged()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeGitHub github = new();
+        github.Commit("noelrohi", "Scripts", "Skua", new FakeScript("Farm/Good.cs", TestScripts.Main("bot.Log(\"good\");"), "Good"));
+        EngineEndpoint alt1 = EngineEndpoint.Resolve("alt1", sandbox.SkuaDir);
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        (string Tool, Dictionary<string, object?>? Arguments)[] calls =
+        [
+            ("scripts_source", null), ("scripts_update", null), ("scripts_search", new() { ["query"] = "good" }), ("scripts_list", null),
+            ("scripts_new", null), ("engine_list", null), ("status", null),
+        ];
+        try
+        {
+            Assert.Equal(0, (await sandbox.RunCliAsync("--engine", "alt1", "engine", "start")).ExitCode);
+            await using McpClient client = await ConnectAsync(sandbox, github.Environment());
+
+            IList<McpClientTool> tools = await client.ListToolsAsync(cancellationToken: ct);
+            Dictionary<string, CallToolResult> results = [];
+            foreach ((string tool, Dictionary<string, object?>? arguments) in calls)
+                results[tool] = await client.CallToolAsync(tool, arguments, cancellationToken: ct);
+
+            Assert.True(tools.Single(t => t.Name == "engine_list").ProtocolTool.Annotations?.ReadOnlyHint);
+            Assert.All(results.Where(r => r.Key != "status"), r => Assert.True(r.Value.IsError != true, $"{r.Key}: {((TextContentBlock)r.Value.Content[0]).Text}"));
+            Assert.True(results["status"].IsError);
+            Assert.Equal("EngineUnavailable: Engine 'default' isn't running; 'skua engine start' starts it.", ((TextContentBlock)results["status"].Content.Single()).Text);
+            JsonElement listed = Assert.Single(results["engine_list"].StructuredContent!.Value.GetProperty("engines").EnumerateArray());
+            Assert.Equal("alt1", listed.GetProperty("engine").GetProperty("name").GetString());
+            Assert.Equal("running", listed.GetProperty("engine").GetProperty("state").GetString());
+            Assert.Equal("alt1", listed.GetProperty("status").GetProperty("engine").GetProperty("name").GetString());
+            Assert.Equal(["alt1"], EngineEndpoint.InDataFolder(sandbox.SkuaDir).Select(e => e.Name));
+            Assert.False(EngineLock.IsHeld(sandbox.Endpoint.LockPath));
+        }
+        finally
+        {
+            await EngineClient.StopAsync(alt1, EngineSandbox.StopTimeout);
+        }
+    }
+
+    [Fact]
+    public async Task A_tool_that_drives_the_game_auto_starts_the_Engine()
+    {
+        await using EngineSandbox sandbox = new();
+        await using McpClient client = await ConnectAsync(sandbox);
+
+        CallToolResult result = await client.CallToolAsync("script_status", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotEqual(true, result.IsError);
+        Assert.Equal("idle", result.StructuredContent?.GetProperty("state").GetString());
         Assert.True(EngineLock.IsHeld(sandbox.Endpoint.LockPath));
     }
 

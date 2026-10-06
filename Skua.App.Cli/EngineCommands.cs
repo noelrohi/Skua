@@ -18,6 +18,9 @@ public sealed record EngineStateDto(string Name, EngineState State, int? Pid, st
 /// <param name="Status">Its <c>status</c>; null when it isn't running, speaks another protocol, or didn't answer in time.</param>
 public sealed record EngineListEntry(EngineStateDto Engine, StatusDto? Status);
 
+/// <summary>What MCP's <c>engine_list</c> returns: <c>skua engine list --json</c>'s array, as an object.</summary>
+public sealed record EngineListResult(IReadOnlyList<EngineListEntry> Engines);
+
 /// <summary>
 /// <c>skua engine start|stop|status|list</c>: the lifetime of <c>skua-engine</c>, which only the CLI controls; the Mac App's Engine stops with the app.
 /// </summary>
