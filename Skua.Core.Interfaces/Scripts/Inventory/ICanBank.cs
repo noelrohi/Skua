@@ -126,7 +126,7 @@ public interface ICanBank : ICheckInventory<InventoryItem>, ILimitedInventory
     /// <remarks>If using from the <see cref="IScriptHouseInv"/>, make sure you have joined your house first.</remarks>
     void BankAllCoinItems(params string[] excludeNames)
     {
-        Items.Where(i => i is { Coins: true, Equipped: false } && i.Name != "treasure potion" && !excludeNames.Contains(i.Name)).ForEach(i => ToBank(i));
+        Items.Where(i => i is { Coins: true, Equipped: false } && i.Name != "treasure potion" && !excludeNames.Contains(i.Name, ItemNameComparer.Ordinal)).ForEach(i => ToBank(i));
     }
 
     /// <summary>

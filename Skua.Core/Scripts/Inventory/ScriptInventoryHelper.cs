@@ -75,10 +75,10 @@ public class ScriptInventoryHelper : IScriptInventoryHelper
 
         Bank.Load();
 
-        Dictionary<string, InventoryItem> bank = Bank.Items.ToDictionary(i => i.Name, i => i);
-        Dictionary<string, int> inv = Inventory.Items.ToDictionary(i => i.Name, i => i.Quantity);
-        Dictionary<string, int> tempInv = TempInv.Items.ToDictionary(i => i.Name, i => i.Quantity);
-        Dictionary<string, int> houseInv = HouseInv.Items.ToDictionary(i => i.Name, i => i.Quantity);
+        Dictionary<string, InventoryItem> bank = Bank.Items.ToDictionary(i => i.Name, i => i, ItemNameComparer.Ordinal);
+        Dictionary<string, int> inv = Inventory.Items.ToDictionary(i => i.Name, i => i.Quantity, ItemNameComparer.Ordinal);
+        Dictionary<string, int> tempInv = TempInv.Items.ToDictionary(i => i.Name, i => i.Quantity, ItemNameComparer.Ordinal);
+        Dictionary<string, int> houseInv = HouseInv.Items.ToDictionary(i => i.Name, i => i.Quantity, ItemNameComparer.Ordinal);
 
         foreach (string name in enumerable)
         {
@@ -112,10 +112,10 @@ public class ScriptInventoryHelper : IScriptInventoryHelper
 
         Bank.Load();
 
-        Dictionary<string, InventoryItem> bank = Bank.Items.ToDictionary(i => i.Name, i => i);
-        Dictionary<string, int> inv = Inventory.Items.ToDictionary(i => i.Name, i => i.Quantity);
-        Dictionary<string, int> tempInv = TempInv.Items.ToDictionary(i => i.Name, i => i.Quantity);
-        Dictionary<string, int> houseInv = HouseInv.Items.ToDictionary(i => i.Name, i => i.Quantity);
+        Dictionary<string, InventoryItem> bank = Bank.Items.ToDictionary(i => i.Name, i => i, ItemNameComparer.Ordinal);
+        Dictionary<string, int> inv = Inventory.Items.ToDictionary(i => i.Name, i => i.Quantity, ItemNameComparer.Ordinal);
+        Dictionary<string, int> tempInv = TempInv.Items.ToDictionary(i => i.Name, i => i.Quantity, ItemNameComparer.Ordinal);
+        Dictionary<string, int> houseInv = HouseInv.Items.ToDictionary(i => i.Name, i => i.Quantity, ItemNameComparer.Ordinal);
 
         foreach (string name in enumerable)
         {

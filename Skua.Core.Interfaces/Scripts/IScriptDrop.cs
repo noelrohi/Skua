@@ -102,7 +102,7 @@ public interface IScriptDrop : INotifyPropertyChanged
     /// <returns><see langword="true"/> if a drop with the specified <paramref name="name"/> exists.</returns>
     bool Exists(string name)
     {
-        return (name == "*" && CurrentDrops.Any()) || CurrentDrops.Contains(name, StringComparer.OrdinalIgnoreCase);
+        return (name == "*" && CurrentDrops.Any()) || CurrentDrops.Contains(name, ItemNameComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>

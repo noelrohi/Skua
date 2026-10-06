@@ -75,7 +75,7 @@ public partial class ScriptShop : IScriptShop
     public void BuyItem(string name, int quantity = -1)
     {
         Wait.ForActionCooldown(GameActions.BuyItem);
-        Flash.Call("buyItemByName", name, quantity);
+        CallBuyItem(name, quantity);
         Wait.ForItemBuy();
     }
 
@@ -91,7 +91,7 @@ public partial class ScriptShop : IScriptShop
         Flash.CallGameFunction("world.sendLoadShopRequest", shopId);
         Wait.ForActionCooldown(GameActions.LoadShop);
         Wait.ForTrue(() => IsLoaded && ID == shopId, 20);
-        Flash.Call("buyItemByName", itemName, quantity);
+        CallBuyItem(itemName, quantity);
         Wait.ForActionCooldown(GameActions.BuyItem);
         Wait.ForItemBuy();
     }
@@ -126,6 +126,15 @@ public partial class ScriptShop : IScriptShop
         Wait.ForActionCooldown(GameActions.SellItem);
         Send.Packet($"%xt%zm%sellItem%{Map.RoomID}%{item!.ID}%{sellQuantity}%{item.CharItemID}%");
         Wait.ForItemSell();
+    }
+
+    /// <summary>skua.swf buys by the name as the game holds it, so an item it sells under the other spelling of <c>&amp;</c> is bought by its IDs.</summary>
+    private void CallBuyItem(string name, int quantity)
+    {
+        if (Items.Find(i => ItemNameComparer.OrdinalIgnoreCase.Equals(i.Name, name)) is ShopItem item)
+            Flash.Call("buyItemByID", item.ID, item.ShopItemID, quantity);
+        else
+            Flash.Call("buyItemByName", name, quantity);
     }
 
     [MethodCallBinding("world.sendLoadHairShopRequest", RunMethodPre = true, GameFunction = true)]

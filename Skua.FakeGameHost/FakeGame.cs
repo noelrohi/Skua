@@ -67,6 +67,12 @@ internal sealed class FakeGame
         Item(2, "Healer", 1, 1, "Class", equipped: true),
         Item(3, "Treasure Chest", 5, 1000, "Item"),
     ];
+    /// <summary>More items in the bank, the temporary inventory and the house, by store, after the ones each always holds.</summary>
+    private readonly Dictionary<string, List<JsonObject>> _stocked = new() { ["bank"] = [], ["temp"] = [], ["house"] = [] };
+    /// <summary>The items every shop sells.</summary>
+    private readonly List<JsonObject> _shopItems = [];
+    /// <summary>The shop the game has loaded, or null for none.</summary>
+    private int? _shopId;
     /// <summary>How long the game server takes to equip an item, or null when it never does.</summary>
     private int? _equipDelay = 0;
     /// <summary>The map ID of the monster the player targets, or null for none.</summary>
@@ -136,6 +142,11 @@ internal sealed class FakeGame
                 // An empty monster without a target, as the game answers.
                 ("getTargetMonster", _) => Str((Monsters(_map).OfType<JsonObject>().FirstOrDefault(m => _world && (int)m["MonMapID"]! == _target) ?? []).ToJsonString()),
                 ("sendClientPacket", [string packet, string type]) => ClientPacket(packet, type),
+                // skua.swf's: the shop item whose lower-cased name is the one asked for.
+                ("buyItemByName", [string itemName, string qty]) => Buy(_shopItems.FirstOrDefault(i => ((string)i["sName"]!).ToLowerInvariant() == itemName.ToLowerInvariant()), qty),
+                ("buyItemByID", [string id, string shopItemId, string qty]) =>
+                    Buy(_shopItems.FirstOrDefault(i => (int)i["ItemID"]! == int.Parse(id) && (shopItemId == "-1" || (int)i["ShopItemID"]! == int.Parse(shopItemId))), qty),
+                ("rejectExcept", [string whitelist]) => Note($"rejectExcept {whitelist}"),
                 _ => null,
             };
         }
@@ -253,6 +264,16 @@ internal sealed class FakeGame
                     // Another item in the inventory, unequipped, as after buying it.
                     _inventory.Add(Item(int.Parse(id), name, 1, 1, category));
                     return true;
+                case ["stock", string rest] when rest.Split(' ', 3) is [string store, string id, string name] && _stocked.TryGetValue(store, out List<JsonObject>? stocked):
+                    // Another item in the bank, the temporary inventory or the house.
+                    stocked.Add(Item(int.Parse(id), name, 1, 10, "Item", temp: store == "temp"));
+                    return true;
+                case ["shop-item", string rest] when rest.Split(' ', 2) is [string id, string name]:
+                    // Another item every shop sells.
+                    JsonObject shopItem = Item(int.Parse(id), name, 1, 10, "Item");
+                    shopItem["ShopItemID"] = int.Parse(id) + 1000;
+                    _shopItems.Add(shopItem);
+                    return true;
                 case ["equip-delay", string delay]:
                     _equipDelay = delay == "never" ? null : int.Parse(delay);
                     return true;
@@ -322,6 +343,12 @@ internal sealed class FakeGame
         "world.lock.tfer" => _world ? new JsonObject { ["cd"] = 3000, ["ts"] = 0 } : null,
         "world.lock.equipItem" => _world ? new JsonObject { ["cd"] = 500, ["ts"] = 0 } : null,
         "world.lock.tryQuestComplete" => _world ? new JsonObject { ["cd"] = 300, ["ts"] = 0 } : null,
+        "world.lock.loadShop" => _world ? new JsonObject { ["cd"] = 500, ["ts"] = 0 } : null,
+        "world.lock.buyItem" => _world ? new JsonObject { ["cd"] = 500, ["ts"] = 0 } : null,
+        "world.shopinfo" => _world && _shopId is not null ? new JsonObject() : null,
+        "world.shopinfo.ShopID" => _world ? _shopId : null,
+        "world.shopinfo.sName" => _world && _shopId is not null ? "Fake Shop" : null,
+        "world.shopinfo.items" => _world && _shopId is not null ? new JsonArray([.. _shopItems.Select(i => i.DeepClone())]) : null,
         // The game's uoTree is a flash.utils.Dictionary, whose toJSON gives "Dictionary"; the room's names are in areaUsers.
         "world.uoTree" => _world ? "Dictionary" : null,
         "world.areaUsers" => _world ? new JsonArray([.. Players().Select(p => JsonValue.Create(p.Key))]) : null,
@@ -412,6 +439,8 @@ internal sealed class FakeGame
                 break;
             case "world.sendLoadShopRequest" when args is [string shop]:
                 _note($"loadShop {shop}");
+                _shopId = int.Parse(shop);
+                Pext(new JsonObject { ["cmd"] = "loadShop" });
                 break;
             case "world.showQuests" when args is [string quests, ..]:
                 _note($"showQuests {quests}");
@@ -443,6 +472,23 @@ internal sealed class FakeGame
                 WriteSocket(packet);
                 break;
         }
+        return "<undefined/>";
+    }
+
+    /// <summary>Buys the shop item, as the game server does, or does nothing for none; the call log records <c>buy &lt;item ID&gt; &lt;quantity&gt;</c>.</summary>
+    private string Buy(JsonObject? item, string qty)
+    {
+        if (item is not null)
+        {
+            _note($"buy {item["ItemID"]} {qty}");
+            Pext(new JsonObject { ["cmd"] = "buyItem", ["bitSuccess"] = 1, ["CharItemID"] = (int)item["ItemID"]! + 100 });
+        }
+        return "<undefined/>";
+    }
+
+    private string Note(string call)
+    {
+        _note(call);
         return "<undefined/>";
     }
 
@@ -775,12 +821,14 @@ internal sealed class FakeGame
 
     private JsonArray Inventory() => [.. _inventory.Select(i => i.DeepClone())];
 
-    private static JsonArray Bank() => [Item(10, "Bank Relic", 2, 10, "Item")];
+    private JsonArray Bank() => [Item(10, "Bank Relic", 2, 10, "Item"), .. Stocked("bank")];
 
     private JsonArray TempItems() =>
-        [Item(20, "Slime Sample", _slimeSamples, 10, "Quest Item", temp: true), .. _slimeCrowns > 0 ? [Item(21, "Slime Crown", _slimeCrowns, 1, "Quest Item", temp: true)] : Array.Empty<JsonObject>()];
+        [Item(20, "Slime Sample", _slimeSamples, 10, "Quest Item", temp: true), .. _slimeCrowns > 0 ? [Item(21, "Slime Crown", _slimeCrowns, 1, "Quest Item", temp: true)] : Array.Empty<JsonObject>(), .. Stocked("temp")];
 
-    private static JsonArray HouseItems() => [Item(30, "Wooden Chair", 1, 1, "Floor Item")];
+    private JsonArray HouseItems() => [Item(30, "Wooden Chair", 1, 1, "Floor Item"), .. Stocked("house")];
+
+    private IEnumerable<JsonNode> Stocked(string store) => _stocked[store].Select(i => i.DeepClone());
 
     private JsonObject QuestTree()
     {
