@@ -1021,7 +1021,7 @@ fn bags(frame: &mut Frame, bags: &Bags, area: Rect) {
         bars.push(Line::styled("no stack filling yet", Style::new().fg(DIM)));
     }
 
-    // A line each for what filled up, what's new and what was spent, each item named as `show` says.
+    // A line each for what filled up and what's new, each item named as `show` says.
     let listed = |kind: Kind, head: Span<'static>, show: &dyn Fn(&Change) -> String| -> Option<Line<'static>> {
         let mut spans = vec![head];
         for (i, c) in of(kind).enumerate() {
@@ -1032,14 +1032,51 @@ fn bags(frame: &mut Frame, bags: &Bags, area: Rect) {
         }
         (spans.len() > 1).then(|| Line::from(spans))
     };
+    // What was spent, on one line that fits: the stacks, most spent first, then the single items (held one, now none), mostly dud
+    // Unidentifieds turned in at Swindle's, as one; what doesn't fit is counted at the end.
+    let mut spent: Vec<&Change> = of(Kind::Spent).collect();
+    spent.sort_by_key(|c| c.delta());
+    let (singles, stacks): (Vec<&Change>, Vec<&Change>) = spent.into_iter().partition(|c| c.start == 1);
+    let mut pieces: Vec<(String, Style)> = stacks
+        .iter()
+        .map(|c| (format!("{} {}", c.name, c.delta()), name_style(c)))
+        .collect();
+    if !singles.is_empty() {
+        let names: Vec<&str> = singles.iter().map(|c| c.name.as_str()).collect();
+        let style = singles.iter().find(|c| c.fresh).map_or(Style::new(), |c| name_style(c));
+        pieces.push((format!("{} turned in", compact_names(&names)), style));
+    }
+    let spent_line = (!pieces.is_empty()).then(|| {
+        let head = "▼ spent: ";
+        let mut spans = vec![Span::styled(head, Style::new().red())];
+        let mut used = head.chars().count();
+        let total = pieces.len();
+        for (i, (text, style)) in pieces.into_iter().enumerate() {
+            let sep = if i == 0 { "" } else { " · " };
+            // A piece before the last leaves room to count the rest after it.
+            let rest = total - i - 1;
+            let room = if rest > 0 {
+                format!(" · +{rest} more").chars().count()
+            } else {
+                0
+            };
+            if used + sep.chars().count() + text.chars().count() + room > inner.width as usize {
+                spans.push(Span::styled(format!("{sep}+{} more", total - i), Style::new().fg(DIM)));
+                break;
+            }
+            used += sep.chars().count() + text.chars().count();
+            spans.push(Span::styled(sep, Style::new().fg(DIM)));
+            spans.push(Span::styled(text, style));
+        }
+        Line::from(spans)
+    });
+
     let tail: Vec<Line> = [
         listed(Kind::Filled, "✓ filled this run: ".green(), &|c| {
             format!("{} (+{})", c.name, c.delta())
         }),
         listed(Kind::New, "★ new: ".magenta(), &|c| c.name.clone()),
-        listed(Kind::Spent, "spent or banked: ".fg(DIM), &|c| {
-            format!("{} {}", c.name, c.delta())
-        }),
+        spent_line,
     ]
     .into_iter()
     .flatten()
@@ -1077,6 +1114,35 @@ fn bags(frame: &mut Frame, bags: &Bags, area: Rect) {
         lines
     };
     frame.render_widget(Paragraph::new(lines).block(block), area);
+}
+
+/// Names that differ only by a trailing number, as one, the numbers in order: `Unidentified 1, 6, 9`; the others as they are.
+fn compact_names(names: &[&str]) -> String {
+    let mut groups: Vec<(&str, Vec<u32>)> = Vec::new();
+    for name in names {
+        match name
+            .rsplit_once(' ')
+            .and_then(|(stem, n)| Some((stem, n.parse::<u32>().ok()?)))
+        {
+            Some((stem, n)) => match groups.iter_mut().find(|(s, ns)| *s == stem && !ns.is_empty()) {
+                Some((_, ns)) => ns.push(n),
+                None => groups.push((stem, vec![n])),
+            },
+            None => groups.push((name, Vec::new())),
+        }
+    }
+    groups
+        .into_iter()
+        .map(|(stem, mut ns)| {
+            if ns.is_empty() {
+                return stem.to_owned();
+            }
+            ns.sort_unstable();
+            let ns: Vec<String> = ns.iter().map(u32::to_string).collect();
+            format!("{stem} {}", ns.join(", "))
+        })
+        .collect::<Vec<_>>()
+        .join(" · ")
 }
 
 /// The map's name with its room, as the game names it: `battleon-9999`.
