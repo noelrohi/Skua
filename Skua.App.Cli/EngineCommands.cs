@@ -18,9 +18,6 @@ public sealed record EngineStateDto(string Name, EngineState State, int? Pid, st
 /// <param name="Status">Its <c>status</c>; null when it isn't running, speaks another protocol, or didn't answer in time.</param>
 public sealed record EngineListEntry(EngineStateDto Engine, StatusDto? Status);
 
-/// <summary>What MCP's <c>engine_list</c> returns: <c>skua engine list --json</c>'s array, as an object.</summary>
-public sealed record EngineListResult(IReadOnlyList<EngineListEntry> Engines);
-
 /// <summary>
 /// <c>skua engine start|stop|status|list</c>: the lifetime of <c>skua-engine</c>, which only the CLI controls; the Mac App's Engine stops with the app.
 /// </summary>
@@ -48,6 +45,22 @@ internal static class EngineCommands
     {
         using EngineConnection? connection = await EngineClient.TryConnectAsync(options.Endpoint, cancellationToken);
         return connection is not null ? Running(options.Endpoint, connection) : NotRunning(options.Endpoint);
+    }
+
+    /// <summary>
+    /// <c>skua status</c> and MCP's <c>status</c>: the Engine's status when it runs or is starting; otherwise it fails with
+    /// <see cref="ErrorCode.EngineUnavailable"/>, saying how to start it. It never starts one, even when the Engine exits after the check.
+    /// </summary>
+    public static async Task<StatusDto> StatusOfRunningAsync(EngineClientOptions options, CancellationToken cancellationToken)
+    {
+        EngineEndpoint endpoint = options.Endpoint;
+        using (EngineConnection? running = await EngineClient.TryConnectAsync(endpoint, cancellationToken))
+        {
+            if (running is null && !EngineLock.IsHeld(endpoint.LockPath))
+                throw new ControlException(ErrorCode.EngineUnavailable, $"Engine '{endpoint.Name}' isn't running; '{Cli.Command(endpoint.Name, "engine start")}' starts it.");
+        }
+        using EngineConnection connection = await EngineClient.ConnectAsync(options with { AutoStart = false }, cancellationToken);
+        return await connection.StatusAsync(cancellationToken);
     }
 
     /// <summary>Every Engine in the data folder, by name, without starting any; one whose socket doesn't answer is listed as not running.</summary>

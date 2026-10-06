@@ -26,11 +26,7 @@ engineName.Validators.Add(result =>
 });
 
 Command status = new("status", "Show a running Engine, its game and its Script; it starts none, and fails when the Engine isn't running.");
-status.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
-{
-    using EngineConnection connection = await Cli.ConnectToRunningAsync(options, ct);
-    return await connection.StatusAsync(ct);
-}, Output.Status));
+status.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), options => EngineCommands.StatusOfRunningAsync(options, ct), Output.Status));
 
 Argument<string> scriptsQuery = new("query")
 {

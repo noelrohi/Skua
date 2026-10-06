@@ -19,7 +19,8 @@ internal static class McpServer
         builder.Services
             // Unlike the CLI, it never replaces a stale Engine: it outlives an update, and would replace the newer Engine with its own.
             .AddSingleton(() => new EngineClientOptions { Endpoint = Cli.Endpoint() })
-            // As an Engine's own, an update in flight ends with the server, not with the call.
+            // One for the server, as an Engine has one. An update in flight runs to its end even when the client cancels the call, and stops
+            // only when the server does.
             .AddSingleton(_ => new DataFolderScripts(cancellationToken))
             .AddMcpServer(options => options.ServerInfo = new Implementation
             {

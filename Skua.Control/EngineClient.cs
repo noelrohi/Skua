@@ -28,6 +28,13 @@ public sealed record EngineClientOptions
     public bool ReplaceStale { get; init; }
 
     /// <summary>
+    /// Whether connecting starts the Engine when none runs: true by default. Without it, connecting fails with
+    /// <see cref="ErrorCode.EngineUnavailable"/> instead, though it still waits for an Engine that is starting, and still starts the replacement
+    /// of a stale Engine it stopped.
+    /// </summary>
+    public bool AutoStart { get; init; } = true;
+
+    /// <summary>
     /// Receives a one-line notice when connecting replaces a stale Engine, or keeps one; a kept one is noticed once per Engine and build, since
     /// <c>status</c> and <c>engine list</c> keep showing it.
     /// </summary>
@@ -57,7 +64,8 @@ public static class EngineClient
     private static readonly TimeSpan ReplaceTimeout = TimeSpan.FromSeconds(60);
 
     /// <summary>
-    /// Connects to the Engine, auto-starting it if needed, and checks its protocol version; with <see cref="EngineClientOptions.ReplaceStale"/>,
+    /// Connects to the Engine, auto-starting it if needed unless <see cref="EngineClientOptions.AutoStart"/> is off, and checks its protocol
+    /// version; with <see cref="EngineClientOptions.ReplaceStale"/>,
     /// it first replaces an idle Engine from another build with one of the same Engine Name.
     /// </summary>
     /// <exception cref="ControlException">
@@ -81,7 +89,8 @@ public static class EngineClient
         if (replaced is not null)
         {
             connection.Dispose();
-            connection = await ConnectOrStartAsync(options with { Endpoint = replaced }, cancellationToken);
+            // A replacement isn't a new Engine, so it starts without AutoStart too.
+            connection = await ConnectOrStartAsync(options with { Endpoint = replaced, AutoStart = true }, cancellationToken);
         }
 
         try
@@ -231,7 +240,10 @@ public static class EngineClient
         }
     }
 
-    /// <summary>Connects to the Engine, auto-starting it if needed, without checking its protocol version.</summary>
+    /// <summary>
+    /// Connects to the Engine, auto-starting it if needed unless <see cref="EngineClientOptions.AutoStart"/> is off, without checking its protocol
+    /// version.
+    /// </summary>
     public static async Task<EngineConnection> ConnectOrStartAsync(EngineClientOptions options, CancellationToken cancellationToken = default)
     {
         EngineEndpoint endpoint = options.Endpoint;
@@ -239,7 +251,10 @@ public static class EngineClient
             return running;
 
         // The new Engine removes the stale socket itself, once it holds the lock. If another client wins the race to start one, it exits at once.
-        using Process? started = EngineLock.IsHeld(endpoint.LockPath) ? null : Start(options);
+        bool starting = EngineLock.IsHeld(endpoint.LockPath);
+        if (!starting && !options.AutoStart)
+            throw new ControlException(ErrorCode.EngineUnavailable, $"Engine '{endpoint.Name}' isn't running.");
+        using Process? started = starting ? null : Start(options);
         Stopwatch waited = Stopwatch.StartNew();
         while (waited.Elapsed < options.StartTimeout)
         {

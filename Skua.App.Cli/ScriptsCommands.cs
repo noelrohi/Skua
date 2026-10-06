@@ -14,10 +14,12 @@ internal static class ScriptsCommands
     public static Task<ScriptsListResult> ListAsync(string? folder, CancellationToken cancellationToken) =>
         new DataFolderScripts(cancellationToken).ListAsync(folder, cancellationToken);
 
-    public static Task<ScriptsUpdateResult> UpdateAsync(bool verify, CancellationToken cancellationToken) =>
-        UpdateAsync(new DataFolderScripts(cancellationToken), verify, cancellationToken);
+    public static Task<ScriptsUpdateResult> UpdateAsync(bool verify, CancellationToken cancellationToken)
+    {
+        return UpdateAsync(new DataFolderScripts(cancellationToken), verify, cancellationToken);
+    }
 
-    /// <summary>Updates through <paramref name="scripts"/>, which refuses an update while another of its own runs.</summary>
+    /// <summary>Updates through <paramref name="scripts"/>, which refuses an update while another of its own runs, e.g. MCP's one for the server.</summary>
     public static async Task<ScriptsUpdateResult> UpdateAsync(DataFolderScripts scripts, bool verify, CancellationToken cancellationToken)
     {
         await EnsureNoScriptRunsAsync("update the Scripts", cancellationToken);

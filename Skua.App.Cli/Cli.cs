@@ -30,21 +30,6 @@ internal static class Cli
     public static string Command(string engine, string command) =>
         engine == Control.EngineName.Default ? $"skua {command}" : $"skua --engine {engine} {command}";
 
-    /// <summary>
-    /// Connects to the Engine only when it runs or is starting, for a command that can answer without one; otherwise it fails with
-    /// <see cref="ErrorCode.EngineUnavailable"/>, saying how to start it.
-    /// </summary>
-    public static async Task<EngineConnection> ConnectToRunningAsync(EngineClientOptions options, CancellationToken cancellationToken)
-    {
-        using (EngineConnection? running = await EngineClient.TryConnectAsync(options.Endpoint, cancellationToken))
-        {
-            if (running is null && !EngineLock.IsHeld(options.Endpoint.LockPath))
-                throw new ControlException(ErrorCode.EngineUnavailable,
-                    $"Engine '{options.Endpoint.Name}' isn't running; '{Command(options.Endpoint.Name, "engine start")}' starts it.");
-        }
-        return await EngineClient.ConnectAsync(options, cancellationToken);
-    }
-
     /// <param name="exitCode">The exit code for a result, for a command whose result can be a failure; success by default.</param>
     public static async Task<int> RunAsync<T>(bool json, Func<EngineClientOptions, Task<T>> command, Func<T, string> human, Func<T, int>? exitCode = null)
     {
