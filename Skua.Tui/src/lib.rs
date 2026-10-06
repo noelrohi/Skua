@@ -11,4 +11,5 @@ pub mod inventory;
 pub mod picture;
 pub mod poller;
 pub mod rpc;
+pub mod tracker;
 pub mod ui;

@@ -61,6 +61,8 @@ pub struct Detail {
     pub map: Option<Result<Map, Error>>,
     /// The game's picture, read every 2 s while the Game tab shows.
     pub picture: Option<Result<Screenshot, Error>>,
+    /// PROTOTYPE: the inventory's gains since the run started.
+    pub tracker: crate::tracker::Tracker,
 }
 
 #[derive(Debug, Clone)]
@@ -150,6 +152,13 @@ impl Poller {
         };
         let page = match &self.cursor {
             None => engine.events(LOG_TAIL).and_then(|events| {
+                if let Some(started) = events
+                    .entries
+                    .iter()
+                    .rfind(|e| e.event_type.as_deref() == Some("script.started"))
+                {
+                    self.detail.tracker.on_event(started);
+                }
                 self.detail.hook_runs = events.entries.into_iter().filter(is_hook_run).collect();
                 self.detail.script_line = engine
                     .logs_of("script", None, Some(1))?
@@ -182,6 +191,9 @@ impl Poller {
                     .extend(page.entries.iter().filter(|e| e.kind == "game").cloned());
                 let excess = self.detail.chat.len().saturating_sub(MAX_CHAT as usize);
                 self.detail.chat.drain(..excess);
+                for entry in &page.entries {
+                    self.detail.tracker.on_event(entry);
+                }
                 self.detail.logs.extend(page.entries);
                 let excess = self.detail.logs.len().saturating_sub(MAX_LOG_LINES);
                 self.detail.logs.drain(..excess);
@@ -199,6 +211,11 @@ impl Poller {
             // The Overview shows the quests in progress, and the players and monsters in the player's cell.
             Tab::Overview => {
                 self.detail.map = Some(engine.map());
+                let inventory = engine.inventory();
+                if let Ok(inventory) = &inventory {
+                    self.detail.tracker.on_inventory(inventory);
+                }
+                self.detail.inventory = Some(inventory);
                 self.read_quests(name);
             }
             Tab::Game => {

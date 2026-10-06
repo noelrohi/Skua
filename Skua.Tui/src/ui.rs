@@ -572,21 +572,36 @@ fn overview(frame: &mut Frame, app: &App, hello: &Hello, status: &Status, detail
             frame.render_widget(Paragraph::new(room(rows)).block(panel("Room")), room_area);
         }
         // 3 · Chat strip: Current Quests fills the right column down to a full-width chat strip; the room is one line in the chat's title.
+        // 4–6 · the same, with an item tracker: 4 a gains table under the cell, 5 a pickup feed under the quests, 6 bag goals under the cell.
         _ => {
+            let tracker = detail.map(|d| &d.tracker);
             let [upper, chat_area] = Layout::vertical([Constraint::Fill(1), Constraint::Length(CHAT_H)]).areas(inner);
-            let [left, quests] = Layout::horizontal([Constraint::Fill(1), Constraint::Length(QUESTS_W + 6)]).areas(upper);
-            draw_quests(frame, quests);
-            let [top, question_area, progress_area, cell] = Layout::vertical([
+            let [left, right] = Layout::horizontal([Constraint::Fill(1), Constraint::Length(QUESTS_W + 6)]).areas(upper);
+            if app.layout == 5 {
+                let [quests, feed] = Layout::vertical([Constraint::Fill(1), Constraint::Percentage(55)]).areas(right);
+                draw_quests(frame, quests);
+                pickup_feed(frame, tracker, feed);
+            } else {
+                draw_quests(frame, right);
+            }
+            let tracked = matches!(app.layout, 4 | 6);
+            let [top, question_area, progress_area, cell, items] = Layout::vertical([
                 Constraint::Length(run_h.max(PLAYER_H)),
                 Constraint::Length(question_h),
                 Constraint::Length(1),
-                Constraint::Fill(1),
+                if tracked { Constraint::Length(cell_h) } else { Constraint::Fill(1) },
+                if tracked { Constraint::Fill(1) } else { Constraint::Length(0) },
             ])
             .areas(left);
             draw_top(frame, top);
             draw_question(frame, question_area);
             draw_progress(frame, progress_area);
             draw_cell(frame, cell);
+            match app.layout {
+                4 => gains_table(frame, tracker, items),
+                6 => bag_goals(frame, tracker, items),
+                _ => {}
+            }
             let block = match &map {
                 Ok(map) => panel("Chat").title_top(room_strip(me, map).right_aligned()),
                 Err(_) => panel("Chat"),
@@ -597,7 +612,15 @@ fn overview(frame: &mut Frame, app: &App, hello: &Hello, status: &Status, detail
 }
 
 /// PROTOTYPE: the Overview's layouts, by `App::layout`.
-pub const LAYOUTS: [&str; 4] = ["Current", "Quests sidebar", "Quests band", "Chat strip"];
+pub const LAYOUTS: [&str; 7] = [
+    "Current",
+    "Quests sidebar",
+    "Quests band",
+    "Chat strip",
+    "Chat strip + gains table",
+    "Chat strip + pickup feed",
+    "Chat strip + bag goals",
+];
 /// PROTOTYPE: how tall the chat strip is, its border included.
 const CHAT_H: u16 = 10;
 
@@ -2311,4 +2334,170 @@ fn thousands(n: i64) -> String {
         out.push(c);
     }
     if n < 0 { format!("-{out}") } else { out }
+}
+
+/// PROTOTYPE: how long a changed item stays highlighted.
+const FRESH: std::time::Duration = std::time::Duration::from_secs(6);
+
+/// PROTOTYPE: the tracker's title: which run, and for how long.
+fn tracker_title(name: &str, tracker: &crate::tracker::Tracker) -> String {
+    let since = match &tracker.start {
+        Some(start) if start.from_event => format!("run {} · {}", start.run.unwrap_or(0), duration(tracker.elapsed_sec())),
+        Some(_) => format!("since skua-tui opened · {}", duration(tracker.elapsed_sec())),
+        None => "waiting for the inventory".into(),
+    };
+    format!("{name} · {since}")
+}
+
+/// Per hour, and how long until `max` at that rate, from a gain over `sec`.
+fn pace(delta: i64, now: i64, max: i64, sec: f64) -> (String, String) {
+    if sec < 30.0 || delta == 0 {
+        return (String::new(), String::new());
+    }
+    let per_hour = delta as f64 * 3600.0 / sec;
+    let rate = format!("{per_hour:+.0}/h");
+    let eta = if now >= max && max > 1 {
+        "full".to_owned()
+    } else if per_hour > 0.0 && max > 1 {
+        duration((max - now) as f64 / per_hour * 3600.0)
+    } else {
+        String::new()
+    };
+    (rate, eta)
+}
+
+fn mini_bar(now: i64, max: i64, width: usize) -> String {
+    if max <= 1 {
+        return " ".repeat(width);
+    }
+    let filled = ((now.min(max) as f64 / max as f64) * width as f64).round() as usize;
+    format!("{}{}", "█".repeat(filled), "·".repeat(width - filled))
+}
+
+/// PROTOTYPE 4: every item that changed since the start, newest change first, as a table.
+fn gains_table(frame: &mut Frame, tracker: Option<&crate::tracker::Tracker>, area: Rect) {
+    let Some(tracker) = tracker else { return };
+    let block = panel(&tracker_title("Items", tracker));
+    let rows = block.inner(area).height as usize;
+    let sec = tracker.elapsed_sec();
+    let mut lines = vec![Line::styled(
+        format!("{:<30} {:>7}  {:<10} {:>11}  {:>7}  {:>7}", "item", "+/-", "", "now / max", "/h", "full in"),
+        Style::new().fg(DIM),
+    )];
+    let gains = tracker.gains();
+    if gains.is_empty() {
+        lines.push(Line::styled("nothing gained yet", Style::new().fg(DIM)));
+    }
+    for g in gains.iter().take(rows.saturating_sub(1)) {
+        let fresh = g.changed.is_some_and(|at| at.elapsed() < FRESH);
+        let (rate, eta) = pace(g.delta(), g.now, g.max, sec);
+        let delta_style = if g.delta() > 0 { Style::new().green() } else { Style::new().red().dim() };
+        let name_style = if fresh { Style::new().yellow().bold() } else { Style::new() };
+        lines.push(Line::from(vec![
+            Span::styled(format!("{:<30} ", truncate(&g.name, 29)), name_style),
+            Span::styled(format!("{:>+7}  ", g.delta()), delta_style),
+            Span::styled(mini_bar(g.now, g.max, 10), Style::new().fg(if g.now >= g.max { Color::Green } else { DIM })),
+            Span::raw(format!(" {:>11}", format!("{}/{}", g.now, g.max))),
+            Span::styled(format!("  {rate:>7}  {eta:>7}"), Style::new().fg(DIM)),
+        ]));
+    }
+    if gains.len() > rows.saturating_sub(1) && rows > 1 {
+        lines.truncate(rows - 1);
+        lines.push(Line::styled(format!("… {} more", gains.len() - (rows - 2)), Style::new().fg(DIM)));
+    }
+    frame.render_widget(Paragraph::new(lines).block(block), area);
+}
+
+/// PROTOTYPE 5: each pickup as it arrives, newest first, with the run's totals in the title.
+fn pickup_feed(frame: &mut Frame, tracker: Option<&crate::tracker::Tracker>, area: Rect) {
+    let Some(tracker) = tracker else { return };
+    let block = panel(&tracker_title("Pickups", tracker));
+    let rows = block.inner(area).height as usize;
+    let now = crate::tracker::now_ms();
+    let mut lines: Vec<Line> = Vec::new();
+    // The run's top gains first, on one line.
+    let top: Vec<String> = tracker
+        .gains()
+        .iter()
+        .filter(|g| g.delta() > 0)
+        .take(3)
+        .map(|g| format!("+{} {}", g.delta(), truncate(&g.name, 14)))
+        .collect();
+    if !top.is_empty() {
+        lines.push(Line::styled(top.join(" · "), Style::new().green().bold()));
+    }
+    if tracker.pickups.is_empty() {
+        lines.push(Line::styled("no pickups since skua-tui opened", Style::new().fg(DIM)));
+    }
+    for p in tracker.pickups.iter().rev().take(rows.saturating_sub(lines.len())) {
+        let ago = duration((now - p.at_ms) as f64 / 1000.0);
+        let fresh = now - p.at_ms < FRESH.as_millis() as i64;
+        let (sign, style) = if p.delta > 0 { ("+", Style::new().green()) } else { ("", Style::new().red().dim()) };
+        lines.push(Line::from(vec![
+            Span::styled(format!("{ago:>6} "), Style::new().fg(DIM)),
+            Span::styled(format!("{sign}{:<5}", p.delta), style),
+            Span::styled(
+                format!("{:<22}", truncate(&p.name, 21)),
+                if fresh { Style::new().yellow().bold() } else { Style::new() },
+            ),
+            Span::styled(
+                if p.max > 1 { format!(" {}/{}", p.qty, p.max) } else { String::new() },
+                Style::new().fg(DIM),
+            ),
+        ]));
+    }
+    frame.render_widget(Paragraph::new(lines).block(block), area);
+}
+
+/// PROTOTYPE 6: the stacks the run is filling, as bars toward their max with when they'll be full; what filled up and what was spent
+/// on one line each.
+fn bag_goals(frame: &mut Frame, tracker: Option<&crate::tracker::Tracker>, area: Rect) {
+    let Some(tracker) = tracker else { return };
+    let block = panel(&tracker_title("Bags", tracker));
+    let inner = block.inner(area);
+    let rows = inner.height as usize;
+    let sec = tracker.elapsed_sec();
+    let gains = tracker.gains();
+    let bar_w = (inner.width as usize).saturating_sub(24 + 12 + 30).clamp(10, 40);
+    let mut filling: Vec<_> = gains.iter().filter(|g| g.delta() > 0 && g.max > 1 && g.now < g.max).collect();
+    filling.sort_by(|a, b| (b.now * 1000 / b.max).cmp(&(a.now * 1000 / a.max)));
+    let maxed: Vec<_> = gains.iter().filter(|g| g.delta() > 0 && g.max > 1 && g.now >= g.max).collect();
+    let singles: Vec<_> = gains.iter().filter(|g| g.delta() > 0 && g.max <= 1).collect();
+    let spent: Vec<_> = gains.iter().filter(|g| g.delta() < 0).collect();
+    let mut lines = Vec::new();
+    for g in &filling {
+        let fresh = g.changed.is_some_and(|at| at.elapsed() < FRESH);
+        let (rate, eta) = pace(g.delta(), g.now, g.max, sec);
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!("{:<24}", truncate(&g.name, 23)),
+                if fresh { Style::new().yellow().bold() } else { Style::new() },
+            ),
+            Span::styled(mini_bar(g.now, g.max, bar_w), Style::new().cyan()),
+            Span::raw(format!(" {:>11}", format!("{}/{}", g.now, g.max))),
+            Span::styled(format!(" {:>+6}", g.delta()), Style::new().green()),
+            Span::styled(
+                format!("  {rate:>7}{}", if eta.is_empty() { String::new() } else { format!(" · full in {eta}") }),
+                Style::new().fg(DIM),
+            ),
+        ]));
+    }
+    if filling.is_empty() {
+        lines.push(Line::styled("no stack filling yet", Style::new().fg(DIM)));
+    }
+    lines.push(Line::raw(""));
+    if !maxed.is_empty() {
+        let names: Vec<String> = maxed.iter().map(|g| format!("{} (+{})", g.name, g.delta())).collect();
+        lines.push(Line::styled(format!("✓ filled this run: {}", names.join(", ")), Style::new().green()));
+    }
+    if !singles.is_empty() {
+        let names: Vec<String> = singles.iter().map(|g| g.name.clone()).collect();
+        lines.push(Line::styled(format!("★ new: {}", names.join(", ")), Style::new().magenta()));
+    }
+    if !spent.is_empty() {
+        let names: Vec<String> = spent.iter().map(|g| format!("{} {}", g.name, g.delta())).collect();
+        lines.push(Line::styled(format!("spent or banked: {}", names.join(", ")), Style::new().fg(DIM)));
+    }
+    lines.truncate(rows);
+    frame.render_widget(Paragraph::new(lines).block(block).wrap(Wrap { trim: false }), area);
 }
