@@ -20,6 +20,7 @@ public sealed record EngineListEntry(EngineStateDto Engine, StatusDto? Status);
 
 /// <summary>
 /// <c>skua engine start|stop|status|list</c>: the lifetime of <c>skua-engine</c>, which only the CLI controls; the Mac App's Engine stops with the app.
+/// Also <c>skua status</c> and MCP's <c>status</c> and <c>engine_list</c>, which start no Engine.
 /// </summary>
 internal static class EngineCommands
 {
@@ -45,6 +46,29 @@ internal static class EngineCommands
     {
         using EngineConnection? connection = await EngineClient.TryConnectAsync(options.Endpoint, cancellationToken);
         return connection is not null ? Running(options.Endpoint, connection) : NotRunning(options.Endpoint);
+    }
+
+    /// <summary>
+    /// <c>skua status</c> and MCP's <c>status</c>: the Engine's status when it runs or is starting; otherwise it fails with
+    /// <see cref="ErrorCode.EngineUnavailable"/>, saying how to start it. It never starts one.
+    /// </summary>
+    public static async Task<StatusDto> StatusOfRunningAsync(EngineClientOptions options, CancellationToken cancellationToken)
+    {
+        EngineEndpoint endpoint = options.Endpoint;
+        EngineConnection connection;
+        try
+        {
+            connection = await EngineClient.ConnectAsync(options with { AutoStart = false }, cancellationToken);
+        }
+        // An Engine that is starting or hung still holds its lock, and keeps its own message.
+        catch (ControlException e) when (e.Code == ErrorCode.EngineUnavailable && !EngineLock.IsHeld(endpoint.LockPath))
+        {
+            throw new ControlException(ErrorCode.EngineUnavailable, $"Engine '{endpoint.Name}' isn't running; '{Cli.Command(endpoint.Name, "engine start")}' starts it.", e);
+        }
+        using (connection)
+        {
+            return await connection.StatusAsync(cancellationToken);
+        }
     }
 
     /// <summary>Every Engine in the data folder, by name, without starting any; one whose socket doesn't answer is listed as not running.</summary>

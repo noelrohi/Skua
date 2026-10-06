@@ -3,20 +3,32 @@ using System.Text.Json;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Skua.Control;
+using Skua.Engine;
 
 namespace Skua.App.Cli.Mcp;
 
 /// <summary>
 /// The MCP tools: one snake_case tool per Control Surface method, with the same arguments and DTOs, except that <c>screenshot</c> returns its PNG
-/// as an image block.
+/// as an image block. The tools whose CLI commands start no Engine (<c>status</c>, <c>engine_list</c> and the <c>scripts_*</c> tools) start none
+/// either, and share those commands' code; every other tool auto-starts the Engine.
 /// </summary>
+/// <param name="scripts">
+/// The data folder's Scripts, one for the server as an Engine has one: every <c>scripts_*</c> tool uses it, so that an update refuses another
+/// in flight. <c>scripts_update</c> goes through <see cref="ScriptsCommands"/> for the CLI's check that no Engine runs a Script; the others are
+/// its plain reads.
+/// </param>
 [McpServerToolType]
-internal sealed class EngineTools(Func<EngineClientOptions> options)
+internal sealed class EngineTools(Func<EngineClientOptions> options, DataFolderScripts scripts)
 {
     [McpServerTool(Name = "status", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(StatusDto))]
-    [Description("Liveness and a summary of the Skua Engine, with its host (engine for skua-engine, app for the Skua Mac App, which only quitting the app stops), and its game, with the player (name, level, class, hp/mp, gold, map/cell/pad, alive, inCombat, xp, requiredXp and xpPercent toward the next level) while playing, the running Script with its elapsedSec, and the pending Questions (pendingDialogs). Never fails; fields that don't apply are null. Starts the Engine if it isn't running, but never logs in.")]
+    [Description("Liveness and a summary of the Skua Engine, with its host (engine for skua-engine, app for the Skua Mac App, which only quitting the app stops), and its game, with the player (name, level, class, hp/mp, gold, map/cell/pad, alive, inCombat, xp, requiredXp and xpPercent toward the next level) while playing, the running Script with its elapsedSec, and the pending Questions (pendingDialogs). Fields that don't apply are null. Starts no Engine: fails with EngineUnavailable when it isn't running (engine_list lists the Engines; a tool that drives the game starts it).")]
     public Task<CallToolResult> Status(CancellationToken cancellationToken) =>
-        CallAsync(connection => connection.StatusAsync(cancellationToken), cancellationToken);
+        WithoutAutoStartAsync(() => EngineCommands.StatusOfRunningAsync(options(), cancellationToken));
+
+    [McpServerTool(Name = "engine_list", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(EngineListResult))]
+    [Description("Every Engine in the data folder, in the Skua app or windowless, as engines: each with engine (name, state running, stopped or startingOrHung, pid, build, protocol, host) and status, as the status tool returns it, or null when the Engine isn't running, speaks another protocol or didn't answer in time. Starts no Engine. The other tools talk to the one this server was started for, with skua --engine <name> mcp, or else default.")]
+    public Task<CallToolResult> EngineList(CancellationToken cancellationToken) =>
+        WithoutAutoStartAsync(async () => new EngineListResult(await EngineCommands.ListAsync(cancellationToken)));
 
     [McpServerTool(Name = "servers", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(ServersResult))]
     [Description("The game servers, fresh from the game's servers API: name, online, player count and max, member-only, language. Works before login.")]
@@ -95,36 +107,37 @@ internal sealed class EngineTools(Func<EngineClientOptions> options)
         CallAsync(connection => connection.DropsAsync(cancellationToken), cancellationToken);
 
     [McpServerTool(Name = "scripts_search", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(ScriptsSearchResult))]
-    [Description("Search the Script Source's scripts.json for Scripts. Every word of the query must appear in a Script's name, description, tags or path, ignoring case; an empty query matches every Script. Returns at most 100 Scripts, plus how many matched, each with whether it is downloaded and whether the Script Source has a newer version (outdated). Identify a Script by its path.")]
+    [Description("Search the Script Source's scripts.json for Scripts. Every word of the query must appear in a Script's name, description, tags or path, ignoring case; an empty query matches every Script. Returns at most 100 Scripts, plus how many matched, each with whether it is downloaded and whether the Script Source has a newer version (outdated). Identify a Script by its path. Starts no Engine.")]
     public Task<CallToolResult> ScriptsSearch(
         [Description("Words to search for, e.g. \"leveling\" or \"farm gold\"; empty matches every Script.")] string query = "",
         [Description("Only Scripts with this tag, ignoring case.")] string? tag = null,
         CancellationToken cancellationToken = default) =>
-        CallAsync(connection => connection.ScriptsSearchAsync(query, tag, cancellationToken), cancellationToken);
+        WithoutAutoStartAsync(() => scripts.SearchAsync(query, tag, cancellationToken));
 
     [McpServerTool(Name = "scripts_update", UseStructuredContent = true, OutputSchemaType = typeof(ScriptsUpdateResult))]
-    [Description("Sync the Scripts on disk with the Script Source. The first sync downloads every Script (full); later ones download only the Scripts changed since the last synced commit (incremental), or nothing (upToDate). added and changed list the downloaded Scripts that were new on disk or replaced an older copy; scripts_new lists them later. A full sync also records the Script Source's commits of the last 7 days for scripts_new. Fails with Busy while another update runs.")]
+    [Description("Sync the Scripts on disk with the Script Source. The first sync downloads every Script (full); later ones download only the Scripts changed since the last synced commit (incremental), or nothing (upToDate). added and changed list the downloaded Scripts that were new on disk or replaced an older copy; scripts_new lists them later. A full sync also records the Script Source's commits of the last 7 days for scripts_new. Starts no Engine. Fails with ScriptRunning while any Engine of the data folder runs a Script, since they share its Scripts, or Busy while another update runs.")]
     public Task<CallToolResult> ScriptsUpdate(CancellationToken cancellationToken) =>
-        CallAsync(connection => connection.ScriptsUpdateAsync(cancellationToken), cancellationToken);
+        WithoutAutoStartAsync(() => ScriptsCommands.UpdateAsync(scripts, verify: false, cancellationToken));
 
     [McpServerTool(Name = "scripts_list", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(ScriptsListResult))]
-    [Description("Browse one folder of the Script Source's scripts.json: its subfolders (path and how many Scripts each holds) and the Scripts directly in it, with name, description, tags, downloaded and outdated. Fails with InvalidArgument when no Script is in the folder.")]
+    [Description("Browse one folder of the Script Source's scripts.json: its subfolders (path and how many Scripts each holds) and the Scripts directly in it, with name, description, tags, downloaded and outdated. Starts no Engine. Fails with InvalidArgument when no Script is in the folder.")]
     public Task<CallToolResult> ScriptsList(
         [Description("A folder's path, e.g. \"Farm\" or \"Farm/Special\", ignoring case; omit it for the top.")] string? folder = null,
         CancellationToken cancellationToken = default) =>
-        CallAsync(connection => connection.ScriptsListAsync(folder, cancellationToken), cancellationToken);
+        WithoutAutoStartAsync(() => scripts.ListAsync(folder, cancellationToken));
 
     [McpServerTool(Name = "scripts_new", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(ScriptsNewResult))]
-    [Description("The Scripts that scripts_update added or changed on disk since a point, the latest first: path, name, change (added or changed), when and the commit. A full download isn't news, but the Script Source commits of the week before it are: it recorded them from GitHub, and updates counts the updates while commits counts those commits. historyFrom is when the record starts (null when there is none yet); nothing before it is known, so an empty list with a later historyFrom doesn't mean nothing changed. Reads the Engine's record, so it works offline.")]
+    [Description("The Scripts that scripts_update added or changed on disk since a point, the latest first: path, name, change (added or changed), when and the commit. A full download isn't news, but the Script Source commits of the week before it are: it recorded them from GitHub, and updates counts the updates while commits counts those commits. historyFrom is when the record starts (null when there is none yet); nothing before it is known, so an empty list with a later historyFrom doesn't mean nothing changed. Reads the data folder's record, so it works offline, and starts no Engine.")]
     public Task<CallToolResult> ScriptsNew(
-        [Description("A date or time, in the Engine's local time unless it has an offset (e.g. \"2026-09-01\" is local midnight, \"2026-09-01T00:00Z\" is UTC), or a recorded commit (its first 7 characters or more); omit it for the last 7 days.")] string? since = null,
-        CancellationToken cancellationToken = default) =>
-        CallAsync(connection => connection.ScriptsNewAsync(since, cancellationToken), cancellationToken);
+        [Description("A date or time, in local time unless it has an offset (e.g. \"2026-09-01\" is local midnight, \"2026-09-01T00:00Z\" is UTC), or a recorded commit (its first 7 characters or more); omit it for the last 7 days.")] string? since = null) =>
+        WithoutAutoStartAsync(() => scripts.NewAsync(since));
 
     [McpServerTool(Name = "scripts_source", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(ScriptSourceResult))]
-    [Description("The Script Source that scripts_search, scripts_list and scripts_update use (owner, repo, branch), whether it is the default (isDefault), and the default. Only a developer changes it, with 'skua scripts source'. Works offline.")]
-    public Task<CallToolResult> ScriptsSource(CancellationToken cancellationToken) =>
-        CallAsync(connection => connection.ScriptsSourceAsync(cancellationToken), cancellationToken);
+    [Description("The Script Source that scripts_search, scripts_list and scripts_update use (owner, repo, branch), whether it is the default (isDefault), and the default. Only a developer changes it, with 'skua scripts source'. Works offline, and starts no Engine.")]
+    public Task<CallToolResult> ScriptsSource()
+    {
+        return WithoutAutoStartAsync(() => Task.FromResult(scripts.Source()));
+    }
 
     [McpServerTool(Name = "script_options", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(ScriptOptionsResult))]
     [Description("Compile a Script and list its options: key (what script_start's options take), group, name, type (bool, int, number, string, enum), the stored value (or the default), the default, an enum's choices, and whether it is transient (resets every start, so can't be set). Fails with ScriptNotFound (run scripts_update), CompileFailed with diagnostics, or ScriptRunning while a Script runs.")]
@@ -221,12 +234,30 @@ internal sealed class EngineTools(Func<EngineClientOptions> options)
     }
 
     /// <summary>Calls the Engine and turns its reply into a result, or returns the error code and message with isError.</summary>
-    private async Task<CallToolResult> CallAsync<T>(Func<EngineConnection, Task<T>> call, Func<T, CallToolResult> toResult, CancellationToken cancellationToken)
+    private Task<CallToolResult> CallAsync<T>(Func<EngineConnection, Task<T>> call, Func<T, CallToolResult> toResult, CancellationToken cancellationToken)
     {
-        try
+        return ReplyAsync(async () =>
         {
             using EngineConnection connection = await EngineClient.ConnectAsync(options(), cancellationToken);
             return toResult(await call(connection));
+        });
+    }
+
+    /// <summary>
+    /// Runs a tool that starts no Engine, as its CLI command does: it runs here, or connects only to a running Engine. Returns its DTO as
+    /// <see cref="Structured"/> does, or the error code and message with isError.
+    /// </summary>
+    private static Task<CallToolResult> WithoutAutoStartAsync<T>(Func<Task<T>> tool)
+    {
+        return ReplyAsync(async () => Structured(await tool()));
+    }
+
+    /// <summary>The tool's result, or the error code and message with isError.</summary>
+    private static async Task<CallToolResult> ReplyAsync(Func<Task<CallToolResult>> tool)
+    {
+        try
+        {
+            return await tool();
         }
         catch (ControlException e)
         {
@@ -238,3 +269,6 @@ internal sealed class EngineTools(Func<EngineClientOptions> options)
         }
     }
 }
+
+/// <summary>What <c>engine_list</c> returns: <c>skua engine list --json</c>'s array, as an object, since MCP's structured content must be one.</summary>
+public sealed record EngineListResult(IReadOnlyList<EngineListEntry> Engines);

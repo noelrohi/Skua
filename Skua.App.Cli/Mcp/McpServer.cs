@@ -3,11 +3,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using ModelContextProtocol.Protocol;
 using Skua.Control;
+using Skua.Engine;
 
 namespace Skua.App.Cli.Mcp;
 
 /// <summary>
-/// <c>skua mcp</c>: the Control Surface as a stdio MCP server. Each tool is one Engine call; the Engine auto-starts on the first one.
+/// <c>skua mcp</c>: the Control Surface as a stdio MCP server. Each tool is one Engine call, and the Engine auto-starts on the first one that
+/// drives it; the tools whose CLI commands start no Engine start none (ADR 0007).
 /// </summary>
 internal static class McpServer
 {
@@ -17,6 +19,9 @@ internal static class McpServer
         builder.Services
             // Unlike the CLI, it never replaces a stale Engine: it outlives an update, and would replace the newer Engine with its own.
             .AddSingleton(() => new EngineClientOptions { Endpoint = Cli.Endpoint() })
+            // One for the server, as an Engine has one. An update in flight runs to its end even when the client cancels the call, and stops
+            // only when the server does.
+            .AddSingleton(_ => new DataFolderScripts(cancellationToken))
             .AddMcpServer(options => options.ServerInfo = new Implementation
             {
                 Name = "skua",

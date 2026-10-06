@@ -25,6 +25,20 @@ public class EngineLifecycleTests
     }
 
     [Fact]
+    public async Task Connecting_without_AutoStart_fails_when_no_Engine_runs_and_starts_none()
+    {
+        await using EngineSandbox sandbox = new();
+
+        ControlException e = await Assert.ThrowsAsync<ControlException>(() =>
+            EngineClient.ConnectAsync(sandbox.ClientOptions with { AutoStart = false }, TestContext.Current.CancellationToken));
+
+        Assert.Equal(ErrorCode.EngineUnavailable, e.Code);
+        Assert.Equal("Engine 'default' isn't running.", e.Message);
+        Assert.Empty(EngineEndpoint.InDataFolder(sandbox.SkuaDir));
+        Assert.False(EngineLock.IsHeld(sandbox.Endpoint.LockPath));
+    }
+
+    [Fact]
     public async Task An_auto_started_Engine_outlives_its_connection()
     {
         await using EngineSandbox sandbox = new();

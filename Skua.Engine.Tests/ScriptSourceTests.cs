@@ -553,6 +553,33 @@ public class ScriptSourceTests
     }
 
     [Fact]
+    public async Task Mcp_scripts_update_is_refused_while_any_Engine_of_the_data_folder_runs_a_Script_and_starts_no_Engine()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeGitHub github = new();
+        github.Commit("noelrohi", "Scripts", "Skua", Leveling);
+        await using GameFixture game = await GameFixture.StartAsync(sandbox);
+        TestScripts.Write(sandbox, "Tests/Loop.cs", TestScripts.Loop);
+        await game.Connection.ScriptStartAsync("Tests/Loop.cs", cancellationToken: Ct);
+        Dictionary<string, string> environment = new(github.Environment())
+        {
+            [EngineEndpoint.SocketVariable] = EngineEndpoint.Resolve("alt1", sandbox.SkuaDir).SocketPath,
+        };
+        await using McpClient client = await McpTests.ConnectAsync(sandbox, environment);
+
+        CallToolResult update = await client.CallToolAsync("scripts_update", cancellationToken: Ct);
+        await game.Connection.ScriptStopAsync(Ct);
+        CallToolResult stopped = await client.CallToolAsync("scripts_update", cancellationToken: Ct);
+
+        Assert.True(update.IsError);
+        Assert.Equal("ScriptRunning: Can't update the Scripts while Engine 'default' runs Tests/Loop.cs; stop it first with 'skua script stop'.",
+            ((TextContentBlock)update.Content.Single()).Text);
+        Assert.NotEqual(true, stopped.IsError);
+        Assert.Equal(Leveling.Content, await ReadScriptAsync(sandbox, Leveling.Path));
+        Assert.Equal(["default"], EngineEndpoint.InDataFolder(sandbox.SkuaDir).Select(e => e.Name));
+    }
+
+    [Fact]
     public async Task The_CLI_exits_with_the_Script_Source_code_when_it_is_unreachable()
     {
         await using EngineSandbox sandbox = new();
