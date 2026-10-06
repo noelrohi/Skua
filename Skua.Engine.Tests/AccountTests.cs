@@ -27,8 +27,8 @@ public class AccountTests
         FakeKeychain keychain = new(sandbox);
         FakeGameHost gameHost = new FakeGameHost(sandbox).Game(keychain, GameFixture.Servers).Account(MainUser, MainPassword);
         Dictionary<string, string> environment = GameFixture.Environment(gameHost, api, keychain);
-        ProcessResult started = await sandbox.RunCliAsync(environment, "status", "--json");
-        int pid = JsonDocument.Parse(started.Stdout).RootElement.GetProperty("engine").GetProperty("pid").GetInt32();
+        ProcessResult started = await sandbox.RunCliAsync(environment, "engine", "start", "--json");
+        int pid = JsonDocument.Parse(started.Stdout).RootElement.GetProperty("pid").GetInt32();
 
         TestScripts.Write(sandbox, "Tests/Hello.cs", TestScripts.Main("bot.Log($\"hello {bot.Player.Username}\");"));
 

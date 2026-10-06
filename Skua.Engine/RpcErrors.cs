@@ -11,4 +11,11 @@ internal static class RpcErrors
         ErrorCode = ErrorCodes.ToWire(code),
         ErrorData = new ErrorDataDto(code, diagnostics),
     };
+
+    /// <summary>The failure <see cref="Of"/> built, as a client sees it, for a caller that runs an operation in its own process.</summary>
+    public static ControlException ToControlException(LocalRpcException e)
+    {
+        ErrorDataDto data = (ErrorDataDto)e.ErrorData!;
+        return new ControlException(data.Code, e.Message, e, data.Diagnostics);
+    }
 }

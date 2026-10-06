@@ -22,6 +22,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Skua.Control\Skua.Control.csproj" />
+    <!-- The commands that need no Engine run the Engine's own code in this process: the scripts commands and scripts check. -->
+    <ProjectReference Include="..\Skua.Engine\Skua.Engine.csproj" />
   </ItemGroup>
 
 </Project>

@@ -228,7 +228,7 @@ public sealed class ScriptRepoRefreshTests
         public ValueTask<List<ScriptInfo>> GetScriptsAsync(IProgress<string>? progress, CancellationToken token) => throw new NotSupportedException();
         public Task<int> IncrementalUpdateScriptsAsync(IProgress<string>? progress, CancellationToken token) => throw new NotSupportedException();
         public Task<List<ScriptInfo>> FetchScriptsAsync(CancellationToken token) => throw new NotSupportedException();
-        public Task<ScriptsSyncResult> SyncScriptsAsync(CancellationToken token) => throw new NotSupportedException();
+        public Task<ScriptsSyncResult> SyncScriptsAsync(bool verify, CancellationToken token) => throw new NotSupportedException();
         public Task<long> CheckAdvanceSkillSetsUpdates() => throw new NotSupportedException();
         public Task DownloadScriptAsync(ScriptInfo info) => throw new NotSupportedException();
         public Task<int> DownloadAllWhereAsync(Func<ScriptInfo, bool> pred) => throw new NotSupportedException();
