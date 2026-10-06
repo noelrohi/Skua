@@ -25,15 +25,18 @@ fn manager_file() -> Value {
     })
 }
 
-/// alice's run 3 starting: 800 Atlas Gold, 990 Dark Crystal Shards, the Chaos Avenger, 2 Vouchers she has since spent, and the Relics
-/// as they are now.
+/// alice's run 3 starting: 800 Atlas Gold, 990 Dark Crystal Shards, the Chaos Avenger, what she has since spent (2 Vouchers, 105
+/// Unidentified 10, 12 Unidentified 13 and one each of Unidentified 1, 6, 9 and 16), and the Relics as they are now.
 fn run_started() -> Value {
     let mut items = vec![
         json!({ "id": 1, "name": "Atlas Gold", "qty": 800 }),
         json!({ "id": 2, "name": "Chaos Avenger", "qty": 1 }),
         json!({ "id": 4, "name": "Dark Crystal Shard", "qty": 990 }),
         json!({ "id": 50, "name": "Voucher of Nulgath", "qty": 2 }),
+        json!({ "id": 60, "name": "Unidentified 13", "qty": 12 }),
+        json!({ "id": 61, "name": "Unidentified 10", "qty": 105 }),
     ];
+    items.extend([16, 1, 9, 6].map(|n| json!({ "id": 70 + n, "name": format!("Unidentified {n}"), "qty": 1 })));
     items.extend((1..=40).map(|n| json!({ "id": 100 + n, "name": format!("Relic {n:02}"), "qty": n })));
     let mut started = event(
         1,
@@ -45,6 +48,20 @@ fn run_started() -> Value {
     started
 }
 
+/// alice's run 3 starting with `spent` (a name and how many) in place of what she has since spent.
+fn run_spending(spent: &[(&str, i64)]) -> Value {
+    let mut started = run_started();
+    let items = started["data"]["inventory"].as_array_mut().unwrap();
+    items.retain(|item| !(50..100).contains(&item["id"].as_i64().unwrap()));
+    items.extend(
+        spent
+            .iter()
+            .zip(50..)
+            .map(|((name, qty), id)| json!({ "id": id, "name": name, "qty": qty })),
+    );
+    started
+}
+
 /// A fleet in a temp data folder: alice farms with a Script whose quests have stalled, bob's Engine is of another protocol, carol has no
 /// Engine, and `default` is no account's.
 struct Fleet {
@@ -53,9 +70,14 @@ struct Fleet {
 }
 
 fn fleet() -> Fleet {
+    fleet_from(run_started())
+}
+
+/// The fleet, with alice's run starting as `started` says.
+fn fleet_from(started: Value) -> Fleet {
     let dir = skua_dir();
     write_manager_file(dir.path(), manager_file());
-    let alice = FakeEngine::start(dir.path(), "alice", |method, params| match method {
+    let alice = FakeEngine::start(dir.path(), "alice", move |method, params| match method {
         "hello" => Ok(hello(PROTOCOL, "alice")),
         "status" => {
             let mut status = status("alice", true, Some("Farm/AtlasGold.cs"));
@@ -72,7 +94,7 @@ fn fleet() -> Fleet {
         }
         "logs" if params[0] == "events" => Ok(json!({
             "entries": [
-                run_started(),
+                started.clone(),
                 event(2, "inventory.full", json!({ "used": 120, "slots": 120, "drop": null })),
                 event(3, "hook.ran", json!({ "hook": "player.death", "eventSeq": 1, "startedAt": 1_791_036_000_000i64,
                     "durationMs": 1200, "exitCode": 0, "output": "respawned\n" })),
@@ -224,7 +246,7 @@ fn the_screen_shows_accounts_by_group_with_their_engines_and_the_selected_ones_o
             "+70",
             "✓ filled this run: Dark Crystal Shard (+10)",
             "★ new: Necrotic Sword of Doom",
-            "spent or banked: Voucher of Nulgath -2",
+            "▼ spent or banked: Unidentified 10 -105 · Unidentified 13 -12 · Voucher of Nulgath -2 · Unidentified 1, 6, 9, 16 -1 each",
             "acting on: alice",
             "? keys",
         ],
@@ -248,6 +270,72 @@ fn the_screen_shows_accounts_by_group_with_their_engines_and_the_selected_ones_o
     let butler = rows.iter().position(|l| l.contains("▾ Butler")).unwrap();
     let other = rows.iter().position(|l| l.contains("▾ Other Engines")).unwrap();
     assert!(farm < butler && butler < other);
+}
+
+#[test]
+fn the_bags_spent_line_fits_the_panel_and_counts_the_items_it_leaves_out() {
+    let fleet = fleet();
+    let mut app = App::new(fleet.dir.path().to_owned());
+
+    // The Voucher and the 4 single items don't fit.
+    let wide = screen(&fleet, &mut app, 100, 50);
+    assert_eq!(
+        panel_line(&wide, "▼ spent"),
+        "▼ spent or banked: Unidentified 10 -105 · Unidentified 13 -12 · +5 more",
+        "{wide}"
+    );
+
+    // Where not even one item fits with the count, the line is only the count.
+    let narrow = screen(&fleet, &mut app, 70, 50);
+    assert_eq!(panel_line(&narrow, "▼ "), "▼ 7 spent or banked", "{narrow}");
+}
+
+#[test]
+fn the_bags_spent_line_keeps_a_short_last_item_that_fits_without_the_count() {
+    let fleet = fleet_from(run_spending(&[
+        ("Unidentified 10", 105),
+        ("Unidentified 13", 12),
+        ("Orb", 2),
+    ]));
+    let mut app = App::new(fleet.dir.path().to_owned());
+
+    // Exactly as wide as the panel: room kept for ` · +1 more` after Unidentified 13 would leave out the Orb.
+    let screen = screen(&fleet, &mut app, 98, 50);
+    assert_eq!(
+        panel_line(&screen, "▼ spent"),
+        "▼ spent or banked: Unidentified 10 -105 · Unidentified 13 -12 · Orb -2",
+        "{screen}"
+    );
+}
+
+#[test]
+fn the_bags_single_items_of_other_names_are_one_item_each() {
+    let fleet = fleet_from(run_spending(&[
+        ("Unidentified 9", 1),
+        ("Unidentified 2", 1),
+        ("Tattered Note", 1),
+    ]));
+    let mut app = App::new(fleet.dir.path().to_owned());
+
+    let screen = screen(&fleet, &mut app, 200, 50);
+    assert_shows(
+        &screen,
+        &["▼ spent or banked: Tattered Note; Unidentified 2, 9 -1 each"],
+    );
+}
+
+#[test]
+fn the_bags_have_no_spent_line_when_the_run_spent_nothing() {
+    let fleet = fleet_from(run_spending(&[]));
+    let mut app = App::new(fleet.dir.path().to_owned());
+
+    let screen = screen(&fleet, &mut app, 200, 50);
+
+    assert_shows(
+        &screen,
+        &["Bags · run 3", "✓ filled this run: Dark Crystal Shard (+10)"],
+    );
+    assert!(!screen.contains("▼ "), "{screen}");
 }
 
 #[test]
@@ -474,6 +562,19 @@ fn find(screen: &str, text: &str) -> (u16, u16) {
         }
     }
     panic!("no {text:?} on screen:\n{screen}");
+}
+
+/// The line of a panel that starts with `text`, up to the panel's edge.
+fn panel_line(screen: &str, text: &str) -> String {
+    let (x, y) = find(screen, text);
+    let line: String = screen
+        .lines()
+        .nth(y as usize)
+        .unwrap()
+        .chars()
+        .skip(x as usize)
+        .collect();
+    line.split('│').next().unwrap().trim_end().to_owned()
 }
 
 fn mouse(app: &mut App, kind: MouseEventKind, (column, row): (u16, u16)) {

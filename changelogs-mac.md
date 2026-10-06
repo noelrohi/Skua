@@ -7,7 +7,7 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 ## October 6, 2026
 
 ### New
-* `skua-tui`'s Overview shows **Bags**: what the run changed in the inventory since it started, each stack it is filling as a bar toward its max with its rate and when it will be full, then what it filled up, what's new and what was spent or banked. See [The TUI](./BUILD.md#the-tui-skua-tui).
+* `skua-tui`'s Overview shows **Bags**: what the run changed in the inventory since it started, each stack it is filling as a bar toward its max with its rate and when it will be full, then what it filled up, what's new and, on one line that fits, what was spent or banked: the largest first, the single items as one (`Unidentified 1, 6, 9 -1 each`), and `+N more` for the rest. See [The TUI](./BUILD.md#the-tui-skua-tui).
 * `skua scripts check <path>` compiles a Script and its includes without running it or starting an Engine, and exits non-zero with each error at its file and line. Given a file in a Scripts checkout, it compiles against that checkout. See [Script Source](./BUILD.md#script-source).
 * `skua scripts update --verify` hashes every local Script against `scripts.json` and downloads each one that differs or is missing, so a Script changed on a branch no longer keeps running its old code.
 

@@ -92,6 +92,11 @@ impl Change {
     pub fn delta(&self) -> i64 {
         self.now - self.start
     }
+
+    /// Whether the run held one of it and holds none now: mostly a dud Unidentified turned in at Swindle's.
+    pub fn is_single(&self) -> bool {
+        self.start == 1 && self.now == 0
+    }
 }
 
 impl Bags {
