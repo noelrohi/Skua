@@ -1,0 +1,274 @@
+<!doctype html>
+<!-- PROTOTYPE, throwaway: four radically different main screens for an iPhone remote of Skua's windowless Engines.
+     ?variant=A|B|C|D picks one; the bar under the phone (or ← →) cycles them. Live data from serve.py; with no Engine
+     running it shows a fixture built from a real 0MaxBags run (names alt1…alt4). Actions are stubs. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE · Skua remote</title>
+<style>
+  :root { --bg:#000; --card:#1c1c1e; --card2:#2c2c2e; --sep:#38383a; --text:#fff; --dim:#8e8e93; --blue:#0a84ff;
+          --green:#30d158; --yellow:#ffd60a; --red:#ff453a; --orange:#ff9f0a; --cyan:#64d2ff; --purple:#bf5af2; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:#111; color:var(--text); font:15px -apple-system, "SF Pro Text", system-ui, sans-serif;
+         display:flex; flex-direction:column; align-items:center; gap:18px; padding:24px 0 90px; min-height:100vh; }
+  .phone { width:390px; height:844px; background:var(--bg); border-radius:54px; border:12px solid #2a2a2a;
+           position:relative; overflow:hidden; box-shadow:0 30px 80px #0009; }
+  .island { position:absolute; top:10px; left:50%; transform:translateX(-50%); width:120px; height:34px; background:#000;
+            border-radius:20px; z-index:10; }
+  .status { height:50px; display:flex; justify-content:space-between; align-items:flex-end; padding:0 30px 4px;
+            font-weight:600; font-size:15px; }
+  .screen { position:absolute; top:50px; bottom:0; left:0; right:0; overflow-y:auto; padding-bottom:30px; }
+  .screen::-webkit-scrollbar { display:none; }
+  h1 { font-size:34px; font-weight:700; padding:8px 18px 10px; }
+  h2 { font-size:13px; color:var(--dim); text-transform:uppercase; font-weight:400; padding:18px 34px 6px; }
+  .group { background:var(--card); margin:0 16px; border-radius:12px; overflow:hidden; }
+  .row { display:flex; align-items:center; gap:12px; padding:11px 16px; border-bottom:.5px solid var(--sep); cursor:pointer; }
+  .row:last-child { border-bottom:none; }
+  .dot { width:10px; height:10px; border-radius:5px; flex:none; }
+  .grow { flex:1; min-width:0; }
+  .sub { color:var(--dim); font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .chev { color:#5a5a5e; font-size:20px; }
+  .bar { height:6px; background:var(--card2); border-radius:3px; overflow:hidden; margin-top:6px; }
+  .bar > i { display:block; height:100%; border-radius:3px; }
+  .pill { display:inline-block; padding:3px 9px; border-radius:10px; font-size:12px; font-weight:600; background:var(--card2); }
+  .btns { display:flex; gap:10px; padding:14px 16px; }
+  .btn { flex:1; background:var(--card); border-radius:12px; padding:12px 0; text-align:center; font-weight:600; cursor:pointer; }
+  .btn.red { color:var(--red); } .btn.blue { color:var(--blue); }
+  .seg { display:flex; background:var(--card2); border-radius:9px; margin:4px 16px 10px; padding:2px; }
+  .seg div { flex:1; text-align:center; padding:6px 0; border-radius:7px; font-size:13px; font-weight:600; cursor:pointer; color:var(--dim); }
+  .seg div.on { background:#636366; color:#fff; }
+  .ring { display:flex; justify-content:center; padding:14px 0 4px; }
+  .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; padding:8px 16px; }
+  .stat { background:var(--card); border-radius:12px; padding:10px; text-align:center; }
+  .stat b { display:block; font-size:20px; }
+  .card { background:var(--card); margin:8px 16px; border-radius:14px; padding:12px 14px; }
+  .card .t { font-size:12px; color:var(--dim); margin-bottom:3px; }
+  .chat { font:12px ui-monospace, Menlo, monospace; color:#cfcfcf; padding:10px 14px; line-height:1.5; }
+  .shot { width:100%; aspect-ratio:16/10; background:#0b0b0b center/cover no-repeat; position:relative; }
+  .hud { position:absolute; left:10px; right:10px; bottom:10px; display:flex; gap:8px; }
+  .hud .card { margin:0; flex:1; background:#000a; backdrop-filter:blur(8px); padding:8px 10px; }
+  .grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; padding:14px 16px; }
+  .tile { background:var(--card); border-radius:16px; aspect-ratio:1; display:flex; flex-direction:column; align-items:center;
+          justify-content:center; gap:6px; font-size:12px; font-weight:600; cursor:pointer; }
+  .tile span { font-size:24px; }
+  .toast { position:absolute; bottom:40px; left:50%; transform:translateX(-50%); background:#333; padding:10px 16px;
+           border-radius:20px; font-size:13px; opacity:0; transition:opacity .2s; z-index:20; white-space:nowrap; }
+  .toast.on { opacity:1; }
+  .sheet { position:absolute; inset:50px 0 0; background:var(--bg); z-index:5; overflow-y:auto; transform:translateX(100%);
+           transition:transform .25s; padding-bottom:30px; }
+  .sheet.on { transform:none; }
+  .back { color:var(--blue); padding:10px 16px 0; cursor:pointer; font-size:17px; }
+  .switcher { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#f2f2f2; color:#111;
+              border-radius:30px; padding:8px 10px; display:flex; align-items:center; gap:12px; box-shadow:0 6px 24px #000a;
+              font:600 14px system-ui; z-index:100; }
+  .switcher button { border:none; background:#111; color:#fff; width:34px; height:34px; border-radius:17px; font-size:16px; cursor:pointer; }
+  .source { color:#888; font:12px system-ui; }
+</style>
+</head>
+<body>
+<div class="source" id="source">…</div>
+<div class="phone"><div class="island"></div>
+  <div class="status"><span id="clock">9:41</span><span style="letter-spacing:2px">▂▄▆ ▭</span></div>
+  <div class="screen" id="screen"></div>
+  <div class="sheet" id="sheet"></div>
+  <div class="toast" id="toast"></div>
+</div>
+<div class="switcher"><button onclick="cycle(-1)">←</button><span id="label"></span><button onclick="cycle(1)">→</button></div>
+
+<script>
+const VARIANTS = { A: "Fleet list", B: "Run dashboard", C: "Event feed", D: "Game first" };
+const keys = Object.keys(VARIANTS);
+let variant = new URLSearchParams(location.search).get("variant") || "A";
+let fleet = [], details = {}, selected = null, live = false;
+
+// A fixture from a real 0MaxBags run (2026-10-07), for when no Engine runs.
+const FIXTURE = {
+  fleet: [
+    { name: "alt1", engine: { name: "alt1", state: "running", host: "engine" }, status: {
+      game: { state: "playing", server: "Sepulchure", player: { name: "Alt1", level: 100, class: "King's Echo", hp: 2795, maxHp: 2795, mp: 100, maxMp: 100, gold: 68350274, map: "evilmarsh", cell: "End" } },
+      script: { state: "running", run: { number: 1, script: "Nation/Materials/0MaxBags.cs", elapsedSec: 6614, kills: 1554, killsPerMin: 15, deaths: 0, relogins: 0, questIdleSec: 41,
+        goal: { farm: { item: "Unidentified 10", want: 1000, have: 842, perHour: 130.3 } } } } } },
+    { name: "alt2", engine: { name: "alt2", state: "offline" } },
+    { name: "alt3", engine: { name: "alt3", state: "offline" } },
+    { name: "alt4", engine: { name: "alt4", state: "offline" } },
+  ],
+  detail: {
+    inventory: { items: [
+      ["Totem of Nulgath", 100, 100], ["Blood Gem of the Archfiend", 100, 100], ["Dark Crystal Shard", 1000, 1000],
+      ["Diamond of Nulgath", 1000, 1000], ["Gem of Nulgath", 1000, 1000], ["Tainted Gem", 1000, 1000],
+      ["Unidentified 10", 842, 1000], ["Unidentified 13", 10, 13], ["Essence of Nulgath", 61, 100], ["Nulgath's Approval", 4124, 5000],
+    ].map(([name, qty, maxStack]) => ({ name, qty, maxStack })) },
+    quests: { quests: [
+      { name: "Bamboozle vs Drudgen", requirements: [{ name: "Tainted Core", have: 0, qty: 1 }] },
+      { name: "Supplies to Spin The Wheel of Chance", requirements: [{ name: "Relic of Chaos", have: 0, qty: 1 }] },
+      { name: "Contract Exchange", requirements: [{ name: "Blade Master Rune", have: 0, qty: 1 }, { name: "Unidentified 13", have: 10, qty: 1 }] } ] },
+    gains: { sources: [ { kind: "quest", name: "Supplies to Spin The Wheel of Chance", turnIns: 299, gained: [
+      { name: "Unidentified 10", qty: 299, perHour: 131.5 }, { name: "Diamond of Nulgath", qty: 88, perHour: 38.7 }, { name: "Essence of Nulgath", qty: 41, perHour: 18 } ] } ] },
+    events: { entries: [
+      [-5400, "script.started", { script: "Nation/Materials/0MaxBags.cs" }],
+      [-4200, "bag.filled", { item: "Blood Gem of the Archfiend" }],
+      [-3300, "bag.filled", { item: "Diamond of Nulgath" }],
+      [-1310, "quest.stalled", { idleSec: 600, quests: [{ name: "Bamboozle vs Drudgen" }, { name: "Supplies to Spin The Wheel of Chance" }] }],
+      [-1309, "quest.reaccepted", { quests: "609, 2857, 870 in progress" }],
+      [-700, "quest.stalled", { idleSec: 600, quests: [{ name: "Bamboozle vs Drudgen" }] }],
+      [-699, "quest.reaccepted", { quests: "609, 2857, 870 in progress" }],
+      [-60, "quest.completed", { name: "Supplies to Spin The Wheel of Chance" }],
+    ].map(([dt, type, data]) => ({ ts: Date.now() + dt * 1000, type, data })) },
+    chat: { entries: ["[moderator] BambloozevsDrudgen: Farming Unidentified 10 (842/1000)", "[moderator] SellItem: Sold all of Voucher of Nulgath",
+      "[warning] Please slow down. Last action was too soon!", "[server] You joined \"evilmarsh-96318\""].map(text => ({ text })) },
+  },
+};
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const pct = (a, b) => b ? Math.max(0, Math.min(100, 100 * a / b)) : 0;
+const dur = s => s >= 3600 ? `${Math.floor(s / 3600)}h${String(Math.floor(s % 3600 / 60)).padStart(2, "0")}` : `${Math.floor(s / 60)}m`;
+const ago = ts => dur(Math.max(60, (Date.now() - ts) / 1000)) + " ago";
+const run = a => a.status?.script?.run;
+const goal = a => run(a)?.goal?.farm || run(a)?.goal?.buy;
+const state = a => a.engine.state !== "running" ? ["offline", "#636366"] : run(a) ? (run(a).questIdleSec > 300 ? ["stalling", "var(--orange)"] : ["farming", "var(--green)"])
+  : a.status?.game?.state === "playing" ? ["idle", "var(--blue)"] : ["logged out", "var(--yellow)"];
+const eta = g => g?.perHour ? dur((g.want - g.have) / g.perHour * 3600) : "—";
+const short = s => (s || "").split("/").pop().replace(/\.cs$/, "");
+
+function toast(text) { const t = $("toast"); t.textContent = text; t.classList.add("on"); setTimeout(() => t.classList.remove("on"), 1600); }
+function act(cmd) { toast(`would run: ${cmd}`); }
+
+function bags(d) {
+  const inv = Object.fromEntries((d?.inventory?.items || []).map(i => [i.name, i]));
+  const gained = {};
+  for (const s of d?.gains?.sources || []) for (const g of s.gained || []) gained[g.name] = (gained[g.name] || 0) + g.perHour;
+  return Object.values(inv).filter(i => i.maxStack > 1 && (gained[i.name] || i.qty < i.maxStack))
+    .map(i => ({ name: i.name, qty: i.qty, max: i.maxStack, perHour: gained[i.name] }))
+    .sort((a, b) => (a.qty >= a.max) - (b.qty >= b.max) || pct(b.qty, b.max) - pct(a.qty, a.max));
+}
+
+function feed(d) {
+  return (d?.events?.entries || []).filter(e => /^(script\.|quest\.stalled|quest\.reaccepted|player\.death|game\.relogin|bag\.filled|inventory\.full)/.test(e.type))
+    .slice(-14).reverse().map(e => {
+      const t = e.type, x = e.data || {};
+      const [icon, color, title, sub] =
+        t === "script.started" ? ["▶", "var(--blue)", `Started ${short(x.script)}`, ""] :
+        t === "script.stopped" ? ["■", x.outcome === "completed" ? "var(--green)" : "var(--red)", `${short(x.script)} ${x.outcome}`, x.durationSec ? dur(x.durationSec) : ""] :
+        t === "quest.stalled" ? ["⏸", "var(--orange)", `No quest progress for ${dur(x.idleSec)}`, (x.quests || []).map(q => q.name).join(", ")] :
+        t === "quest.reaccepted" ? ["↻", "var(--cyan)", "Re-accepted the stalled quests", x.quests] :
+        t === "player.death" ? ["✕", "var(--red)", "Died", ""] :
+        t === "game.relogin" ? ["⟳", "var(--yellow)", `Relogin ${x.phase || ""}`, ""] :
+        t === "bag.filled" ? ["✓", "var(--green)", `${x.item} is full`, ""] : ["•", "var(--dim)", t, ""];
+      return { icon, color, title, sub, ts: e.ts };
+    });
+}
+
+function accountRow(a, i) {
+  const [label, color] = state(a), g = goal(a), r = run(a);
+  return `<div class="row" onclick="open_(${i})"><div class="dot" style="background:${color}"></div><div class="grow">
+    <div><b>${esc(a.name)}</b> <span class="sub">· ${label}${r ? " · " + esc(short(r.script)) : ""}</span></div>
+    ${g ? `<div class="sub">${esc(g.item)} ${g.have}/${g.want} · ${g.perHour ? Math.round(g.perHour) + "/h" : "—"} · ~${eta(g)}</div>
+      <div class="bar"><i style="width:${pct(g.have, g.want)}%;background:${color}"></i></div>` : ""}
+  </div><div class="chev">›</div></div>`;
+}
+
+function detailView(a, d) {
+  const r = run(a), p = a.status?.game?.player;
+  return `${p ? `<div class="card"><div class="t">${esc(a.status.game.server)} · ${esc(p.map)} ${esc(p.cell)}</div>
+      <b>${esc(p.name)}</b> <span class="sub">Lv ${p.level} ${esc(p.class)} · ${(p.gold / 1e6).toFixed(1)}M gold</span>
+      <div class="bar"><i style="width:${pct(p.hp, p.maxHp)}%;background:var(--green)"></i></div></div>` : ""}
+    ${r ? `<div class="stats"><div class="stat"><b>${dur(r.elapsedSec)}</b><span class="sub">run ${r.number}</span></div>
+      <div class="stat"><b>${r.killsPerMin}</b><span class="sub">kills/min</span></div><div class="stat"><b>${r.deaths}</b><span class="sub">deaths</span></div></div>` : ""}
+    <h2>Bags</h2><div class="group">${bags(d).map(b => `<div class="row"><div class="grow"><div style="display:flex;justify-content:space-between">
+      <span>${esc(b.name)}</span><span class="sub">${b.qty}/${b.max}${b.perHour ? " · +" + Math.round(b.perHour) + "/h" : ""}</span></div>
+      <div class="bar"><i style="width:${pct(b.qty, b.max)}%;background:${b.qty >= b.max ? "var(--green)" : "var(--cyan)"}"></i></div></div></div>`).join("") || `<div class="row sub">no bags read yet</div>`}</div>
+    <h2>Quests</h2><div class="group">${(d?.quests?.quests || []).map(q => `<div class="row"><div class="grow"><div>${esc(q.name)}</div>
+      <div class="sub">${q.requirements.map(x => `${esc(x.name)} ${x.have}/${x.qty}`).join(" · ")}</div></div></div>`).join("")}</div>
+    <div class="btns"><div class="btn red" onclick="act('skua script stop --engine ${esc(a.name)}')">Stop</div>
+      <div class="btn blue" onclick="act('skua script start … --engine ${esc(a.name)}')">Script…</div>
+      <div class="btn" onclick="act('skua logout --engine ${esc(a.name)}')">Log out</div></div>`;
+}
+
+const render = {
+  // A: an iOS list of every account; tapping one pushes its detail.
+  A() {
+    const up = fleet.filter(a => a.engine.state === "running");
+    return `<h1>Engines</h1><h2>Running · ${up.length}</h2><div class="group">${fleet.map((a, i) => a.engine.state === "running" ? accountRow(a, i) : "").join("") || `<div class="row sub">none</div>`}</div>
+      <h2>Offline</h2><div class="group">${fleet.map((a, i) => a.engine.state !== "running" ? accountRow(a, i) : "").join("")}</div>`;
+  },
+  // B: one account's run as a dashboard: a ring for the goal, then bags and quests.
+  B() {
+    const a = fleet[selected ?? Math.max(0, fleet.findIndex(x => x.engine.state === "running"))];
+    if (!a) return "<h1>Run</h1>";
+    const g = goal(a), [label, color] = state(a), P = 2 * Math.PI * 70;
+    return `<div class="seg">${fleet.slice(0, 4).map((x, i) => `<div class="${x === a ? "on" : ""}" onclick="selected=${i};draw()">${esc(x.name)}</div>`).join("")}</div>
+      <div class="ring"><svg width="190" height="190" viewBox="0 0 190 190"><circle cx="95" cy="95" r="70" stroke="#2c2c2e" stroke-width="16" fill="none"/>
+        <circle cx="95" cy="95" r="70" stroke="${color}" stroke-width="16" fill="none" stroke-linecap="round" transform="rotate(-90 95 95)"
+          stroke-dasharray="${P}" stroke-dashoffset="${P * (1 - pct(g?.have, g?.want) / 100)}"/>
+        <text x="95" y="88" text-anchor="middle" fill="#fff" font-size="30" font-weight="700">${g ? Math.round(pct(g.have, g.want)) + "%" : label}</text>
+        <text x="95" y="112" text-anchor="middle" fill="#8e8e93" font-size="12">${esc(g?.item || short(run(a)?.script) || a.name)}</text>
+        <text x="95" y="130" text-anchor="middle" fill="#8e8e93" font-size="12">${g ? `${g.have}/${g.want} · ~${eta(g)}` : ""}</text></svg></div>
+      ${detailView(a, details[a.name])}`;
+  },
+  // C: what happened, newest first, across accounts: the phone as a notification inbox.
+  C() {
+    const cards = fleet.flatMap(a => feed(details[a.name]).map(f => ({ ...f, who: a.name })));
+    cards.sort((x, y) => y.ts - x.ts);
+    const up = fleet.filter(a => a.engine.state === "running");
+    return `<h1>Activity</h1><div style="padding:0 16px 6px">${up.map(a => { const [l, c] = state(a); return `<span class="pill" style="color:${c}">${esc(a.name)} · ${l}</span> `; }).join("")}</div>
+      ${cards.map(c => `<div class="card" style="display:flex;gap:12px;align-items:flex-start"><div style="color:${c.color};font-size:20px;width:22px;text-align:center">${c.icon}</div>
+        <div class="grow"><div class="t">${esc(c.who)} · ${ago(c.ts)}</div><div><b>${esc(c.title)}</b></div>${c.sub ? `<div class="sub">${esc(c.sub)}</div>` : ""}</div></div>`).join("")
+        || `<div class="card sub">Nothing yet</div>`}`;
+  },
+  // D: the game first, with the run as a HUD over it; actions as big tiles, chat below.
+  D() {
+    const a = fleet[selected ?? Math.max(0, fleet.findIndex(x => x.engine.state === "running"))];
+    if (!a) return "";
+    const g = goal(a), p = a.status?.game?.player, shot = live && a.engine.state === "running" ? `/api/shot?engine=${encodeURIComponent(a.name)}&t=${Math.floor(Date.now() / 5000)}` : "";
+    return `<div class="seg" style="margin-top:8px">${fleet.slice(0, 4).map((x, i) => `<div class="${x === a ? "on" : ""}" onclick="selected=${i};draw()">${esc(x.name)}</div>`).join("")}</div>
+      <div class="shot" style="background-image:url('${shot}')">${shot ? "" : `<div class="sub" style="position:absolute;top:45%;width:100%;text-align:center">game picture (live only)</div>`}
+        <div class="hud"><div class="card"><div class="t">HP</div><div class="bar"><i style="width:${pct(p?.hp, p?.maxHp)}%;background:var(--green)"></i></div></div>
+          <div class="card"><div class="t">${esc(g?.item || "goal")}</div><b>${g ? `${g.have}/${g.want}` : "—"}</b></div></div></div>
+      <div class="grid">${[["■", "Stop", "script stop"], ["▶", "Script", "script start …"], ["⇄", "Join", "join …"], ["⏻", "Log out", "logout"]]
+        .map(([i, l, c]) => `<div class="tile" onclick="act('skua ${c} --engine ${esc(a.name)}')"><span>${i}</span>${l}</div>`).join("")}</div>
+      <h2>Chat</h2><div class="group chat">${(details[a.name]?.chat?.entries || []).slice(-8).map(e => esc(e.text)).join("<br>")}</div>`;
+  },
+};
+
+function open_(i) {
+  const a = fleet[i];
+  $("sheet").innerHTML = `<div class="back" onclick="$('sheet').classList.remove('on')">‹ Engines</div><h1>${esc(a.name)}</h1>${detailView(a, details[a.name])}`;
+  $("sheet").classList.add("on");
+}
+
+function draw() {
+  $("screen").innerHTML = render[variant]();
+  $("label").textContent = `${variant} · ${VARIANTS[variant]}`;
+  $("clock").textContent = new Date().toTimeString().slice(0, 5);
+}
+
+function cycle(step) {
+  variant = keys[(keys.indexOf(variant) + step + keys.length) % keys.length];
+  history.replaceState(null, "", `?variant=${variant}`);
+  $("sheet").classList.remove("on");
+  draw();
+}
+
+addEventListener("keydown", e => { if (e.key === "ArrowLeft") cycle(-1); if (e.key === "ArrowRight") cycle(1); });
+
+async function poll() {
+  try {
+    const f = await (await fetch("/api/fleet")).json();
+    live = f.some(a => a.engine.state === "running");
+    if (live) {
+      fleet = f;
+      for (const a of f.filter(a => a.engine.state === "running")) details[a.name] = await (await fetch(`/api/detail?engine=${encodeURIComponent(a.name)}`)).json();
+    }
+  } catch { live = false; }
+  if (!live) { fleet = FIXTURE.fleet; details = { alt1: FIXTURE.detail }; }
+  $("source").textContent = live ? "PROTOTYPE · live data from skua" : "PROTOTYPE · fixture: no Engine running (a real 0MaxBags run, names alt1…alt4)";
+  draw();
+}
+
+draw(); poll(); setInterval(poll, 8000);
+</script>
+</body>
+</html>
