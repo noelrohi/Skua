@@ -59,7 +59,7 @@ public sealed record ScriptStatusDto(ScriptState State, ScriptRunDto? Run, Scrip
 /// How many seconds since a quest the run farms progressed: it was accepted, one of its requirements rose while it was (see
 /// <see cref="QuestRequirementDto.IdleSec"/>), the rise that met it included, or it was turned in. The run farms the accepted quests with a
 /// requirement unmet, but not one left behind: with no progress for the stall time while another quest progressed, as a Script leaves an
-/// earlier step's quest accepted. At most <paramref name="ElapsedSec"/>, and null when the run farms none.
+/// earlier step's quest accepted, unless it has left all of them behind. At most <paramref name="ElapsedSec"/>, and null when the run farms none.
 /// </param>
 /// <param name="Kills">How many monsters the player was credited with killing during the run.</param>
 /// <param name="KillsPerMin">

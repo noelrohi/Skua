@@ -22,7 +22,7 @@ internal sealed class QuestProgress : IDisposable
     /// <summary>How often it reads the quests while playing: 5000 ms unless set.</summary>
     public const string SampleVariable = "SKUA_QUEST_SAMPLE_MS";
 
-    /// <summary>How long a run's quests go without a rise before <see cref="EventTypes.QuestStalled"/>: 600 s unless set.</summary>
+    /// <summary>How long the quests a run farms go without progress before <see cref="EventTypes.QuestStalled"/>: 600 s unless set.</summary>
     public const string StallVariable = "SKUA_QUEST_STALL_SEC";
 
     /// <summary>
@@ -69,6 +69,9 @@ internal sealed class QuestProgress : IDisposable
 
     /// <summary>The newest of <see cref="_progressed"/>, or null before any quest has.</summary>
     private DateTime? _newestProgress;
+
+    /// <summary>The quests the run farms, as last read.</summary>
+    private HashSet<int> _farmed = [];
     private int _polling;
     private string? _account;
 
@@ -150,7 +153,7 @@ internal sealed class QuestProgress : IDisposable
         var bit => bit > 0,
     };
 
-    /// <summary><paramref name="run"/> with how long its accepted quests have gone without a rise, at most as long as it has run.</summary>
+    /// <summary><paramref name="run"/> with how long the quests it farms have gone without progress, at most as long as it has run.</summary>
     public ScriptRunDto? WithQuestIdle(ScriptRunDto? run)
     {
         if (run is null)
@@ -252,8 +255,14 @@ internal sealed class QuestProgress : IDisposable
                     Progressed(quest.ID, _watches[(requirement.ID, requirement.Temp)].IdleSince);
             _wasActive[quest.ID] = quest.Active;
         }
+        // The accepted quests with a requirement unmet, but not those left behind, as a Script leaves an earlier step's quest accepted when it
+        // moves on: another quest has progressed a whole stall time after it last did. Once it has left all of them behind and progresses on no
+        // other, it farms them all again, as a rare drop's quest farmed beside another is left behind until it drops.
+        List<int> unmet = quests.Where(q => q.Active && q.Requirements.Any(r => stores.Owned(r) < r.Quantity)).Select(q => q.ID).ToList();
+        List<int> farmed = unmet.FindAll(id => _newestProgress - _progressed[id] < _stallAfter);
+        _farmed = [.. farmed.Count > 0 ? farmed : unmet];
         // A turned-in quest's progress counts until the Script accepts it again, so the moment between is no stall.
-        _questsIdleSince = quests.Any(q => Farmed(q, stores)) ? _newestProgress : null;
+        _questsIdleSince = _farmed.Count > 0 ? _newestProgress : null;
     }
 
     /// <summary>Records that the quest progressed at <paramref name="at"/>, unless it has since; call it under the lock.</summary>
@@ -265,14 +274,6 @@ internal sealed class QuestProgress : IDisposable
         if (_newestProgress is not { } newest || at > newest)
             _newestProgress = at;
     }
-
-    /// <summary>
-    /// Whether the run farms the quest now: it is accepted with a requirement unmet, and not left behind, as a Script leaves an earlier
-    /// step's quest accepted when it moves on: another quest has progressed a whole stall time after it last did. Call it after
-    /// <see cref="Observe"/>.
-    /// </summary>
-    private bool Farmed(Quest quest, Stores stores) =>
-        quest.Active && quest.Requirements.Any(r => stores.Owned(r) < r.Quantity) && _newestProgress - _progressed[quest.ID] < _stallAfter;
 
     /// <summary>
     /// Accepts the stalled quests, or those whose accept the game server refused, again (#224, #236). The game server can drop a quest the
@@ -288,14 +289,14 @@ internal sealed class QuestProgress : IDisposable
         {
             foreach (int id in questIds)
             {
-                if (_tracker.State != GameState.Playing)
-                {
-                    EngineLog.Write($"Didn't accept {what} {id} again: not playing.");
-                    break;
-                }
                 if (!WaitForQuiet())
                 {
                     EngineLog.Write($"Didn't accept {what} {id} again: the player's quest packets didn't pause for {QuietFor.TotalSeconds:0} s within {QuietWait.TotalSeconds:0} s.");
+                    break;
+                }
+                if (_tracker.State != GameState.Playing)
+                {
+                    EngineLog.Write($"Didn't accept {what} {id} again: not playing.");
                     break;
                 }
                 accepted.Add($"{id} {(_api.Quests.Accept(id) ? "in progress" : "not in progress")}");
@@ -334,7 +335,7 @@ internal sealed class QuestProgress : IDisposable
             return null;
         _recordedStall = (run.Number, since);
         var stalledQuests = quests
-            .Where(q => Farmed(q, stores))
+            .Where(q => _farmed.Contains(q.ID))
             .Select(q => new
             {
                 id = q.ID,

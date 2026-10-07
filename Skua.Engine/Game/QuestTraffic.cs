@@ -26,19 +26,22 @@ internal sealed class QuestTraffic
         }
     }
 
-    /// <summary>The game sent a quest packet that isn't an accept.</summary>
-    public void Sent()
+    /// <summary>The game sent a quest packet that isn't an accept: a turn-in or a quest load.</summary>
+    public void SentQuestPacket()
     {
         lock (_lock)
             _lastSent = DateTime.UtcNow;
     }
 
     /// <summary>The game sent an accept of the quest: its <c>acceptQuest</c> packet.</summary>
-    public void Accepting(int id)
+    public void SentAccept(int id)
     {
         lock (_lock)
         {
             _lastSent = DateTime.UtcNow;
+            // An accept no answer or warning followed in time is no longer one a warning can be for.
+            foreach (int old in _unanswered.Where(a => _lastSent - a.Value > RefusalWindow).Select(a => a.Key).ToList())
+                _unanswered.Remove(old);
             _unanswered[id] = _lastSent;
         }
     }

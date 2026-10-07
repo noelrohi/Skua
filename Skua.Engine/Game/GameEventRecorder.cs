@@ -77,29 +77,38 @@ internal sealed class GameEventRecorder
                 case "pext" when args is [string packet]:
                     OnExtensionPacket(JObject.Parse(packet));
                     break;
-                // The Game Client's own packets: this one is the in-game logout.
-                case "packet" when args is [string packet] && packet.Split('%', StringSplitOptions.RemoveEmptyEntries) is [_, _, "cmd", _, "logout", ..]:
-                    _tracker.LoggedOutInGame();
-                    break;
-                // %xt%zm%tryQuestComplete%<room>%<quest>%<reward>%…, whoever sent it.
-                case "packet" when args is [string packet] && packet.Split('%', StringSplitOptions.RemoveEmptyEntries) is [_, _, "tryQuestComplete", _, string id, ..]
-                    && int.TryParse(id, out int quest):
-                    _turnIns.Sent(quest);
-                    _questTraffic.Sent();
-                    break;
-                // %xt%zm%acceptQuest%<room>%<quest>%, whoever sent it.
-                case "packet" when args is [string packet] && packet.Split('%', StringSplitOptions.RemoveEmptyEntries) is [_, _, "acceptQuest", _, string id, ..]
-                    && int.TryParse(id, out int quest):
-                    _questTraffic.Accepting(quest);
-                    break;
-                case "packet" when args is [string packet] && packet.Split('%', StringSplitOptions.RemoveEmptyEntries) is [_, _, "getQuests", ..]:
-                    _questTraffic.Sent();
+                case "packet" when args is [string packet]:
+                    OnPacket(packet.Split('%', StringSplitOptions.RemoveEmptyEntries));
                     break;
             }
         }
         catch (Exception e) when (e is Newtonsoft.Json.JsonException or InvalidCastException or FormatException)
         {
             EngineLog.Write($"Couldn't read the game's {function} call: {e.Message}");
+        }
+    }
+
+    /// <summary>The Game Client's own packets, whoever sent them, as their fields: [xt, zm, cmd, room, …].</summary>
+    private void OnPacket(string[] fields)
+    {
+        switch (fields)
+        {
+            // The in-game logout.
+            case [_, _, "cmd", _, "logout", ..]:
+                _tracker.LoggedOutInGame();
+                break;
+            // %xt%zm%tryQuestComplete%<room>%<quest>%<reward>%…
+            case [_, _, "tryQuestComplete", _, string id, ..] when int.TryParse(id, out int quest):
+                _turnIns.Sent(quest);
+                _questTraffic.SentQuestPacket();
+                break;
+            // %xt%zm%acceptQuest%<room>%<quest>%
+            case [_, _, "acceptQuest", _, string id, ..] when int.TryParse(id, out int quest):
+                _questTraffic.SentAccept(quest);
+                break;
+            case [_, _, "getQuests", ..]:
+                _questTraffic.SentQuestPacket();
+                break;
         }
     }
 

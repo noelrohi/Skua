@@ -136,6 +136,36 @@ public class QuestProgressTests
     }
 
     [Fact]
+    public async Task Quests_left_behind_stall_once_the_run_farms_no_other()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox, environment: Fast);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        // Turns Slime Time in once and doesn't accept it again.
+        TestScripts.Write(sandbox, "Tests/Last.cs", TestScripts.Main("""
+            while (!bot.ShouldExit && !bot.Quests.CanComplete(1001))
+                Thread.Sleep(50);
+            bot.Quests.Complete(1001);
+            while (!bot.ShouldExit)
+                Thread.Sleep(50);
+            """));
+        // Not Yet, as a rare drop's quest farmed beside Slime Time: it gets nothing while Slime Time progresses past the stall time.
+        await session.Connection.EvalAsync("Bot.Quests.Accept(1003)", cancellationToken: Ct);
+
+        await session.Connection.ScriptStartAsync("Tests/Last.cs", cancellationToken: Ct);
+        for (int samples = 4; samples <= 9; samples++)
+        {
+            await session.GameHost.DoAsync($"slime-samples {samples}");
+            await Task.Delay(500, Ct);
+        }
+        await session.GameHost.DoAsync("slime-crowns 1");
+        LogEntryDto stalled = await session.Connection.WaitForEventAsync(EventTypes.QuestStalled);
+
+        Assert.Equal([1003], Reaccepted(stalled));
+        await session.Connection.WaitForLogsAsync(LogKind.Debug, 1, e => e.Text!.Contains("Accepted the stalled quests again: 1003 in progress.", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task The_moment_between_a_turn_in_and_the_Scripts_accept_is_no_stall()
     {
         await using EngineSandbox sandbox = new();

@@ -60,6 +60,7 @@ internal sealed class FakeGame
     private readonly HashSet<int> _accepted = [];
     /// <summary>How soon after the player's last quest action the game server refuses another with "Please slow down", or 0 for never.</summary>
     private int _questSpacing;
+    /// <summary>When the player last sent a turn-in or an accept.</summary>
     private DateTime _lastQuestAction;
     /// <summary>The message the game server refuses each quest's next turn-in with.</summary>
     private readonly Dictionary<int, string> _turnInRefusals = [];
