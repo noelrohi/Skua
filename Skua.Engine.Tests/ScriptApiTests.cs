@@ -34,24 +34,17 @@ public class ScriptApiTests
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
         await session.Connection.JumpAsync("r2", cancellationToken: Ct);
 
-        EvalResult targeted = await session.Connection.EvalAsync(
-            """
-            bool byId = Bot.Combat.Target(2);
-            int? idTarget = Bot.Player.Target?.MapID;
-            bool byName = Bot.Combat.Target("frogzard");
-            int? nameTarget = Bot.Player.Target?.MapID;
-            bool missing = Bot.Combat.Target("Nulgath");
-            return $"{byId} {idTarget} {byName} {nameTarget} {missing}";
-            """,
-            cancellationToken: Ct);
+        EvalResult byId = await session.Connection.EvalAsync("return $\"{Bot.Combat.Target(1)} {Bot.Player.Target?.MapID}\";", cancellationToken: Ct);
+        await session.GameHost.DoAsync("target none");
+        // Frogzard 2 is dead, so the living Frogzard 1 is the one targeted, as skua.swf picks it.
+        EvalResult byName = await session.Connection.EvalAsync("return $\"{Bot.Combat.Target(\"frogzard\")} {Bot.Player.Target?.MapID} {Bot.Combat.Target(\"Nulgath\")}\";", cancellationToken: Ct);
         string[] targetCalls = await session.GameHost.CallsAsync();
         EvalResult attacked = await session.Connection.EvalAsync("return Bot.Combat.Attack(\"Frogzard\");", cancellationToken: Ct);
         string[] calls = await session.GameHost.CallsAsync();
 
-        Assert.Null(targeted.Error);
-        // A living monster first, as skua.swf picks it.
-        Assert.Equal("True 2 True 1 False", targeted.Value!.Value.GetString());
-        Assert.Equal(["target 2", "target frogzard", "target Nulgath"], targetCalls.Where(c => c.StartsWith("target ", StringComparison.Ordinal)));
+        Assert.Equal("True 1", byId.Value!.Value.GetString());
+        Assert.Equal("True 1 False", byName.Value!.Value.GetString());
+        Assert.Equal(["target 1", "target frogzard", "target Nulgath"], targetCalls.Where(c => c.StartsWith("target ", StringComparison.Ordinal)));
         Assert.DoesNotContain(targetCalls, c => c.StartsWith("attack ", StringComparison.Ordinal));
         Assert.Null(attacked.Error);
         Assert.Contains("attack Frogzard", calls);

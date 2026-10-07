@@ -151,7 +151,7 @@ internal sealed class FakeGame
                 ("rejectExcept", [string whitelist]) => Note($"rejectExcept {whitelist}"),
                 // The fake doesn't fight: it refuses every attack.
                 ("attackMonsterName", [string monster]) => Note($"attack {monster}", Str(false)),
-                // skua.swf's: sets the target, as the attacks do, without walking to it.
+                // skua.swf's: sets the target, as its attacks do, without walking to it.
                 ("targetMonsterName", [string monster]) => Target(monster, m => monster == "*" || ((string)m["strMonName"]!).Contains(monster, StringComparison.OrdinalIgnoreCase)),
                 ("targetMonsterID", [string id]) => Target(id, m => (int)m["MonMapID"]! == int.Parse(id) || (int)m["MonID"]! == int.Parse(id)),
                 _ => null,
@@ -489,20 +489,21 @@ internal sealed class FakeGame
         return "<undefined/>";
     }
 
-    /// <summary>Buys the shop item, as the game server does, or does nothing for none; the call log records <c>buy &lt;item ID&gt; &lt;quantity&gt;</c>.</summary>
-    /// <summary>Targets the first matching monster in the player's cell, a living one first, as skua.swf picks it.</summary>
-    private string Target(string monster, Func<JsonObject, bool> matches)
+    /// <summary>Targets the first matching monster in the player's cell, a living one with the least HP first, as skua.swf picks it; the call log records <c>target &lt;asked&gt;</c>.</summary>
+    private string Target(string asked, Func<JsonObject, bool> matches)
     {
         JsonObject? target = (_world ? Monsters(_map) : []).OfType<JsonObject>()
             .Where(m => (string)m["strFrame"]! == _cell && matches(m))
             .OrderByDescending(m => (int)m["intHP"]! > 0)
+            .ThenBy(m => (int)m["intHP"]!)
             .ThenBy(m => (int)m["MonMapID"]!)
             .FirstOrDefault();
         if (target is not null)
             _target = (int)target["MonMapID"]!;
-        return Note($"target {monster}", Str(target is not null));
+        return Note($"target {asked}", Str(target is not null));
     }
 
+    /// <summary>Buys the shop item, as the game server does, or does nothing for none; the call log records <c>buy &lt;item ID&gt; &lt;quantity&gt;</c>.</summary>
     private string Buy(JsonObject? item, string qty)
     {
         if (item is not null)
