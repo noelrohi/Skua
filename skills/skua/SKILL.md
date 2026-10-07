@@ -24,7 +24,7 @@ Paths below are in the data folder, `<SkuaDIR>`: `~/Library/Application Support/
 
 ## Progress
 
-- **The run**: `skua --engine <name> status --json`. Its `script.run` has `kills`, `killsPerMin`, `deaths`, `questIdleSec` (seconds since a requirement of an accepted quest rose) and `goal` (the quest, the item it buys, the material it farms with its count). A run whose quests idle for 10 minutes with no kills is stuck; one that still kills is grinding a rare drop.
+- **The run**: `skua --engine <name> status --json`. Its `script.run` has `kills`, `killsPerMin`, `deaths`, `questIdleSec` (seconds since a quest the run farms progressed) and `goal` (the quest, the item it buys, the material it farms with its count). A run whose quests idle for 10 minutes with no kills is stuck; one that still kills is grinding a rare drop.
 - **Quests**: `skua --engine <name> quests active --json` gives each requirement of the accepted quests its `have` and `qty`, `inBank`, `gainPerHour` and `idleSec` (since its count rose). A quest's `status` is `completable` when it is ready to turn in; a daily, weekly or monthly quest has `repeat` and `repeatDone` (turned in since the game reset it); `lastRejection` is the game server's reason for refusing its last turn-in. For a quest not accepted or not loaded, use `eval`.
 - **Turn-ins**: `skua --engine <name> quests complete <id>` turns a quest in and prints the game server's answer, exiting with 1 when it refuses. Every turn-in, a Script's too, is a `quest.completed` or `quest.rejected` event (`{id, name, reason}`), and a refusal is also a Script log line.
 - **eval**: pass the code on stdin through a quoted heredoc, so item names with apostrophes survive the shell:

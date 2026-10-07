@@ -9,8 +9,9 @@ namespace Skua.Engine.Game;
 
 /// <summary>
 /// Turns what the game reports into events and tracker edges, all the time and not only while a Script runs: the Game Client's
-/// <c>pext</c> and <c>packet</c> calls, and Core's game-event messages; and records the game's chat as game messages, and hands quest turn-ins
-/// and the game server's answers to <see cref="QuestTurnIns"/>.
+/// <c>pext</c> and <c>packet</c> calls, and Core's game-event messages; and records the game's chat as game messages, hands quest turn-ins
+/// and the game server's answers to <see cref="QuestTurnIns"/>, and the player's quest packets and the answers to its accepts to
+/// <see cref="QuestTraffic"/>.
 /// </summary>
 internal sealed class GameEventRecorder
 {
@@ -20,6 +21,7 @@ internal sealed class GameEventRecorder
     private readonly IScriptPlayer _player;
     private readonly IScriptInventory _inventory;
     private readonly QuestTurnIns _turnIns;
+    private readonly QuestTraffic _questTraffic;
     private readonly object _lock = new();
     private string? _map;
     private string? _cell;
@@ -30,9 +32,11 @@ internal sealed class GameEventRecorder
     /// <summary>The drops recorded as having no slot since then.</summary>
     private readonly HashSet<int> _noSlotDrops = [];
 
-    private GameEventRecorder(EngineLogs logs, GameStateTracker tracker, IScriptOption options, IScriptPlayer player, IScriptInventory inventory, QuestTurnIns turnIns)
+    private GameEventRecorder(EngineLogs logs, GameStateTracker tracker, IScriptOption options, IScriptPlayer player, IScriptInventory inventory, QuestTurnIns turnIns,
+        QuestTraffic questTraffic)
     {
         _turnIns = turnIns;
+        _questTraffic = questTraffic;
         _logs = logs;
         _tracker = tracker;
         _options = options;
@@ -42,9 +46,10 @@ internal sealed class GameEventRecorder
 
     /// <summary>Starts recording. Call it after Core's Script API is built, so Core has handled each game call first.</summary>
     public static GameEventRecorder Start(
-        IFlashUtil flash, IScriptOption options, IScriptPlayer player, IScriptInventory inventory, EngineLogs logs, GameStateTracker tracker, QuestTurnIns turnIns)
+        IFlashUtil flash, IScriptOption options, IScriptPlayer player, IScriptInventory inventory, EngineLogs logs, GameStateTracker tracker, QuestTurnIns turnIns,
+        QuestTraffic questTraffic)
     {
-        GameEventRecorder recorder = new(logs, tracker, options, player, inventory, turnIns);
+        GameEventRecorder recorder = new(logs, tracker, options, player, inventory, turnIns, questTraffic);
         flash.FlashCall += recorder.OnFlashCall;
         // Each login starts a new world, so a full inventory is recorded again.
         tracker.Playing += () =>
@@ -72,20 +77,38 @@ internal sealed class GameEventRecorder
                 case "pext" when args is [string packet]:
                     OnExtensionPacket(JObject.Parse(packet));
                     break;
-                // The Game Client's own packets: this one is the in-game logout.
-                case "packet" when args is [string packet] && packet.Split('%', StringSplitOptions.RemoveEmptyEntries) is [_, _, "cmd", _, "logout", ..]:
-                    _tracker.LoggedOutInGame();
-                    break;
-                // %xt%zm%tryQuestComplete%<room>%<quest>%<reward>%…, whoever sent it.
-                case "packet" when args is [string packet] && packet.Split('%', StringSplitOptions.RemoveEmptyEntries) is [_, _, "tryQuestComplete", _, string id, ..]
-                    && int.TryParse(id, out int quest):
-                    _turnIns.Sent(quest);
+                case "packet" when args is [string packet]:
+                    OnPacket(packet.Split('%', StringSplitOptions.RemoveEmptyEntries));
                     break;
             }
         }
         catch (Exception e) when (e is Newtonsoft.Json.JsonException or InvalidCastException or FormatException)
         {
             EngineLog.Write($"Couldn't read the game's {function} call: {e.Message}");
+        }
+    }
+
+    /// <summary>The Game Client's own packets, whoever sent them, as their fields: [xt, zm, cmd, room, …].</summary>
+    private void OnPacket(string[] fields)
+    {
+        switch (fields)
+        {
+            // The in-game logout.
+            case [_, _, "cmd", _, "logout", ..]:
+                _tracker.LoggedOutInGame();
+                break;
+            // %xt%zm%tryQuestComplete%<room>%<quest>%<reward>%…
+            case [_, _, "tryQuestComplete", _, string id, ..] when int.TryParse(id, out int quest):
+                _turnIns.Sent(quest);
+                _questTraffic.SentQuestPacket();
+                break;
+            // %xt%zm%acceptQuest%<room>%<quest>%
+            case [_, _, "acceptQuest", _, string id, ..] when int.TryParse(id, out int quest):
+                _questTraffic.SentAccept(quest);
+                break;
+            case [_, _, "getQuests", ..]:
+                _questTraffic.SentQuestPacket();
+                break;
         }
     }
 
@@ -109,6 +132,10 @@ internal sealed class GameEventRecorder
                 _turnIns.Answered((int?)json["QuestID"], (int?)json["bSuccess"] == 1, (string?)json["sName"],
                     (string?)json["msg"] is { } message && !string.IsNullOrWhiteSpace(message) ? message : null);
                 break;
+            // The game server's answer to an accept: {cmd: acceptQuest, bSuccess, QuestID, msg}.
+            case ("json", JObject json) when (string?)json["cmd"] == "acceptQuest" && (int?)json["QuestID"] is { } acceptedQuest:
+                _questTraffic.Answered(acceptedQuest);
+                break;
             case ("json", JObject json) when (string?)json["cmd"] is "addItems"
                 || ((string?)json["cmd"] == "getDrop" && (int?)json["bSuccess"] == 1) || ((string?)json["cmd"] == "buyItem" && (int?)json["bitSuccess"] == 1):
                 CheckInventory(null, null);
@@ -125,6 +152,9 @@ internal sealed class GameEventRecorder
             // [server|warning, room, text]
             case ("str", JArray { Count: > 2 } parts) when (string?)parts[0] is "server" or "warning":
                 _logs.Game((string)parts[0]!, null, null, (string?)parts[2] ?? "");
+                // "Please slow down. Last action was too soon!": the game server refused an action without its answer.
+                if ((string?)parts[0] == "warning" && ((string?)parts[2])?.StartsWith("Please slow down", StringComparison.OrdinalIgnoreCase) == true)
+                    _questTraffic.SlowedDown();
                 break;
             case ("str", JArray { Count: > 2 } parts) when (string?)parts[0] == "loginResponse":
                 // Accepted: [cmd, -1, "true", id, username, …]; refused: [cmd, -1, "false", …, message].

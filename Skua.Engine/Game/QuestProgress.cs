@@ -9,11 +9,12 @@ namespace Skua.Engine.Game;
 
 /// <summary>
 /// Watches the loaded quests' requirements while playing, so a Control Surface can tell how long an account has gone without
-/// progress: when each requirement's count last rose and how fast it rises, and how long a run's accepted quests not yet done have gone
-/// without a rise in any of their requirements. A requirement's count is what the player owns of it: the inventory and bank's, or the
-/// temporary inventory's for a temporary item. So banking an item is no progress, and a count that falls (a turn-in, or temporary items
-/// lost to a relogin) is none either. It records <see cref="EventTypes.QuestStalled"/> once a run's quests have gone without a rise for
-/// the stall time, and accepts the quests it lists again.
+/// progress: when each requirement's count last rose and how fast it rises, and how long the quests a run farms have gone without
+/// progress. A requirement's count is what the player owns of it: the inventory and bank's, or the temporary inventory's for a temporary
+/// item. So banking an item is no progress, and a count that falls (a turn-in, or temporary items lost to a relogin) is none either. A
+/// quest progresses when it is accepted, when one of its requirements rises while it is, and when it is turned in. It records
+/// <see cref="EventTypes.QuestStalled"/> once the quests a run farms have gone without progress for the stall time, and accepts the quests
+/// it lists again; and accepts again, within seconds, a quest whose accept the game server refused.
 /// </summary>
 /// <remarks>What it remembers is the account's: another account logging in starts it afresh.</remarks>
 internal sealed class QuestProgress : IDisposable
@@ -21,19 +22,35 @@ internal sealed class QuestProgress : IDisposable
     /// <summary>How often it reads the quests while playing: 5000 ms unless set.</summary>
     public const string SampleVariable = "SKUA_QUEST_SAMPLE_MS";
 
-    /// <summary>How long a run's quests go without a rise before <see cref="EventTypes.QuestStalled"/>: 600 s unless set.</summary>
+    /// <summary>How long the quests a run farms go without progress before <see cref="EventTypes.QuestStalled"/>: 600 s unless set.</summary>
     public const string StallVariable = "SKUA_QUEST_STALL_SEC";
 
-    /// <summary>Whether the Engine accepts the quests <see cref="EventTypes.QuestStalled"/> lists again: on unless set; 0 turns it off.</summary>
+    /// <summary>
+    /// Whether the Engine accepts the quests <see cref="EventTypes.QuestStalled"/> lists again, and those whose accept the game server
+    /// refused: on unless set; 0 turns it off.
+    /// </summary>
     public const string ReacceptVariable = "SKUA_QUEST_STALL_REACCEPT";
 
     /// <summary>The window <see cref="QuestRequirementDto.GainPerHour"/> counts over, and how long it watches before it says.</summary>
     private static readonly TimeSpan RateWindow = TimeSpan.FromHours(1);
     private static readonly TimeSpan RateMinimum = TimeSpan.FromMinutes(5);
 
+    /// <summary>
+    /// How long the player's quest packets pause before the Engine sends an accept: longer than a Script takes from a turn-in to its own
+    /// accept (about 1.4 s), plus the game server's spacing of the player's actions (about 0.5 s), which refuses the later of two.
+    /// </summary>
+    private static readonly TimeSpan QuietFor = TimeSpan.FromSeconds(3);
+
+    /// <summary>How long the Engine waits for that pause before it gives up on its accepts.</summary>
+    private static readonly TimeSpan QuietWait = TimeSpan.FromSeconds(30);
+
+    /// <summary>How long a refused accept stays unanswered before the Engine takes it as refused.</summary>
+    private static readonly TimeSpan RefusalSettled = TimeSpan.FromSeconds(1);
+
     private readonly IScriptInterface _api;
     private readonly GameStateTracker _tracker;
     private readonly QuestTurnIns _turnIns;
+    private readonly QuestTraffic _traffic;
     private readonly ScriptRuns _runs;
     private readonly EngineLogs _logs;
     private readonly CombatTally _tally;
@@ -43,21 +60,35 @@ internal sealed class QuestProgress : IDisposable
     private readonly Timer _poll;
     private readonly object _lock = new();
     private readonly Dictionary<(int Id, bool Temp), Watch> _watches = [];
+
+    /// <summary>When each quest last progressed.</summary>
+    private readonly Dictionary<int, DateTime> _progressed = [];
+
+    /// <summary>Whether each quest was accepted when last read.</summary>
+    private readonly Dictionary<int, bool> _wasActive = [];
+
+    /// <summary>The newest of <see cref="_progressed"/>, or null before any quest has.</summary>
+    private DateTime? _newestProgress;
+
+    /// <summary>The quests the run farms, as last read.</summary>
+    private HashSet<int> _farmed = [];
     private int _polling;
     private string? _account;
 
     /// <summary>Whether this login's bank has arrived: the game has none until a Script or <c>inventory</c> loads it.</summary>
     private bool _bankSeen;
 
-    /// <summary>When an accepted quest's unmet requirement last rose, or null when no accepted quest has one.</summary>
+    /// <summary>When a quest last progressed, or null when the run farms none.</summary>
     private DateTime? _questsIdleSince;
 
     /// <summary>The run and idle start <see cref="EventTypes.QuestStalled"/> was last recorded for, so it is recorded once per stall.</summary>
     private (int Run, DateTime Since)? _recordedStall;
 
-    public QuestProgress(IScriptInterface api, GameStateTracker tracker, QuestTurnIns turnIns, ScriptRuns runs, EngineLogs logs, CombatTally tally, ScriptGoal goal)
+    public QuestProgress(IScriptInterface api, GameStateTracker tracker, QuestTurnIns turnIns, QuestTraffic traffic, ScriptRuns runs, EngineLogs logs, CombatTally tally,
+        ScriptGoal goal)
     {
         _turnIns = turnIns;
+        _traffic = traffic;
         _goal = goal;
         _tally = tally;
         _api = api;
@@ -75,6 +106,11 @@ internal sealed class QuestProgress : IDisposable
         {
             lock (_lock)
                 _bankSeen = false;
+        };
+        turnIns.Completed += id =>
+        {
+            lock (_lock)
+                Progressed(id, DateTime.UtcNow);
         };
     }
 
@@ -117,7 +153,7 @@ internal sealed class QuestProgress : IDisposable
         var bit => bit > 0,
     };
 
-    /// <summary><paramref name="run"/> with how long its accepted quests have gone without a rise, at most as long as it has run.</summary>
+    /// <summary><paramref name="run"/> with how long the quests it farms have gone without progress, at most as long as it has run.</summary>
     public ScriptRunDto? WithQuestIdle(ScriptRunDto? run)
     {
         if (run is null)
@@ -149,8 +185,12 @@ internal sealed class QuestProgress : IDisposable
             if (stall is not null)
             {
                 _logs.Event(EventTypes.QuestStalled, stall.Data);
-                Reaccept(stall.ReacceptIds);
+                Reaccept(stall.ReacceptIds, "the stalled quest");
             }
+            // A quest the client shows not accepted, the Script accepts again itself.
+            List<int> refused = _traffic.TakeRefused(RefusalSettled);
+            if (run is not null && _reacceptOnStall)
+                Reaccept(refused.Where(id => quests.Exists(q => q.ID == id && q.Active)).ToArray(), "the refused quest");
         }
         catch (Exception e)
         {
@@ -171,6 +211,9 @@ internal sealed class QuestProgress : IDisposable
             {
                 _account = account;
                 _watches.Clear();
+                _progressed.Clear();
+                _wasActive.Clear();
+                _newestProgress = null;
                 _questsIdleSince = null;
                 _recordedStall = null;
                 _bankSeen = false;
@@ -201,43 +244,84 @@ internal sealed class QuestProgress : IDisposable
             else
                 watch.Saw(owned, now);
         }
-        // The newest rise among the requirements of the accepted quests not yet done: while any of them rises, the account is progressing.
-        // The rise that meets a requirement counts too, as most 1/1 drops do at once.
-        _questsIdleSince = quests
-            .Where(q => q.Active && q.Requirements.Any(r => stores.Owned(r) < r.Quantity))
-            .SelectMany(q => q.Requirements)
-            .Select(r => (DateTime?)_watches[(r.ID, r.Temp)].IdleSince)
-            .Max();
+        foreach (Quest quest in quests)
+        {
+            // Seen accepted for the first time, or again.
+            if (quest.Active && !_wasActive.GetValueOrDefault(quest.ID))
+                Progressed(quest.ID, now);
+            // The rise that meets a requirement counts too, as most 1/1 drops do at once.
+            if (quest.Active)
+                foreach (ItemBase requirement in quest.Requirements)
+                    Progressed(quest.ID, _watches[(requirement.ID, requirement.Temp)].IdleSince);
+            _wasActive[quest.ID] = quest.Active;
+        }
+        // The accepted quests with a requirement unmet, but not those left behind, as a Script leaves an earlier step's quest accepted when it
+        // moves on: another quest has progressed a whole stall time after it last did. Once it has left all of them behind and progresses on no
+        // other, it farms them all again, as a rare drop's quest farmed beside another is left behind until it drops.
+        List<int> unmet = quests.Where(q => q.Active && q.Requirements.Any(r => stores.Owned(r) < r.Quantity)).Select(q => q.ID).ToList();
+        List<int> farmed = unmet.FindAll(id => _newestProgress - _progressed[id] < _stallAfter);
+        _farmed = [.. farmed.Count > 0 ? farmed : unmet];
+        // A turned-in quest's progress counts until the Script accepts it again, so the moment between is no stall.
+        _questsIdleSince = _farmed.Count > 0 ? _newestProgress : null;
+    }
+
+    /// <summary>Records that the quest progressed at <paramref name="at"/>, unless it has since; call it under the lock.</summary>
+    private void Progressed(int id, DateTime at)
+    {
+        if (_progressed.TryGetValue(id, out DateTime last) && last >= at)
+            return;
+        _progressed[id] = at;
+        if (_newestProgress is not { } newest || at > newest)
+            _newestProgress = at;
     }
 
     /// <summary>
-    /// Accepts the stalled quests again (#224). The game server can drop a quest the client still shows accepted, and stop counting its
-    /// requirements, which a Script that accepts a quest only once the client shows it not in progress never notices; an accept of a quest
-    /// the server still has changes nothing. It stops when the player isn't playing, as after a logout since the stall.
+    /// Accepts the stalled quests, or those whose accept the game server refused, again (#224, #236). The game server can drop a quest the
+    /// client still shows accepted, and stop counting its requirements, which a Script that accepts a quest only once the client shows it
+    /// not in progress never notices; an accept of a quest the server still has changes nothing. Each accept waits for the player's quest
+    /// packets to pause, so the game server refuses neither it nor a Script's. It stops when the player isn't playing, as after a logout.
     /// </summary>
-    private void Reaccept(int[] questIds)
+    /// <param name="what">The quests, as the Engine log names one: <c>the stalled quest</c>.</param>
+    private void Reaccept(int[] questIds, string what)
     {
         List<string> accepted = [];
         try
         {
             foreach (int id in questIds)
             {
-                if (_tracker.State != GameState.Playing)
+                if (!WaitForQuiet())
                 {
-                    EngineLog.Write($"Didn't accept the stalled quest {id} again: not playing.");
+                    EngineLog.Write($"Didn't accept {what} {id} again: the player's quest packets didn't pause for {QuietFor.TotalSeconds:0} s within {QuietWait.TotalSeconds:0} s.");
                     break;
                 }
-                if (accepted.Count > 0)
-                    Thread.Sleep(_api.Options.ActionDelay);
+                if (_tracker.State != GameState.Playing)
+                {
+                    EngineLog.Write($"Didn't accept {what} {id} again: not playing.");
+                    break;
+                }
                 accepted.Add($"{id} {(_api.Quests.Accept(id) ? "in progress" : "not in progress")}");
             }
         }
         catch (Exception e)
         {
-            EngineLog.Write($"Couldn't accept the stalled quests again: {e.Message}");
+            EngineLog.Write($"Couldn't accept {what}s again: {e.Message}");
         }
         if (accepted.Count > 0)
-            EngineLog.Write($"Accepted the stalled quests again: {string.Join(", ", accepted)}.");
+            EngineLog.Write($"Accepted {what}s again: {string.Join(", ", accepted)}.");
+    }
+
+    /// <summary>Waits until the player has sent no quest packet for <see cref="QuietFor"/>; false if that can't be within <see cref="QuietWait"/>.</summary>
+    private bool WaitForQuiet()
+    {
+        for (DateTime giveUp = DateTime.UtcNow + QuietWait; ;)
+        {
+            TimeSpan left = _traffic.LastSent + QuietFor - DateTime.UtcNow;
+            if (left <= TimeSpan.Zero)
+                return true;
+            if (DateTime.UtcNow + left > giveUp)
+                return false;
+            Thread.Sleep(left);
+        }
     }
 
     /// <summary>
@@ -251,7 +335,7 @@ internal sealed class QuestProgress : IDisposable
             return null;
         _recordedStall = (run.Number, since);
         var stalledQuests = quests
-            .Where(q => q.Active)
+            .Where(q => _farmed.Contains(q.ID))
             .Select(q => new
             {
                 id = q.ID,
@@ -261,7 +345,6 @@ internal sealed class QuestProgress : IDisposable
                     .Select(r => new { itemId = r.ID, name = r.Name, have = stores.Have(r), inBank = stores.InBank(r), qty = r.Quantity })
                     .ToList(),
             })
-            .Where(q => q.requirements.Count > 0)
             .ToList();
         int[] reacceptIds = _reacceptOnStall ? stalledQuests.Select(q => q.id).ToArray() : [];
         return new Stall(new

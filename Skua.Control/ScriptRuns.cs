@@ -56,8 +56,10 @@ public sealed record ScriptStatusDto(ScriptState State, ScriptRunDto? Run, Scrip
 /// <param name="ReloggingIn">Whether its thread has ended for an auto-relogin that will restart it.</param>
 /// <param name="ElapsedSec">How long it has run so far, to a tenth of a second, as the Engine's clock measures it.</param>
 /// <param name="QuestIdleSec">
-/// How many seconds since a requirement of an accepted quest not yet done rose (see <see cref="QuestRequirementDto.IdleSec"/>), the rise that
-/// met it included; at most <paramref name="ElapsedSec"/>, and null when every accepted quest is done or none is accepted.
+/// How many seconds since a quest the run farms progressed: it was accepted, one of its requirements rose while it was (see
+/// <see cref="QuestRequirementDto.IdleSec"/>), the rise that met it included, or it was turned in. The run farms the accepted quests with a
+/// requirement unmet, but not one left behind: with no progress for the stall time while another quest progressed, as a Script leaves an
+/// earlier step's quest accepted, unless it has left all of them behind. At most <paramref name="ElapsedSec"/>, and null when the run farms none.
 /// </param>
 /// <param name="Kills">How many monsters the player was credited with killing during the run.</param>
 /// <param name="KillsPerMin">

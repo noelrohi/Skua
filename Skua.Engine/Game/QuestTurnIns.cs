@@ -33,6 +33,9 @@ internal sealed class QuestTurnIns
         _player = player;
     }
 
+    /// <summary>The game server turned in the quest.</summary>
+    public event Action<int>? Completed;
+
     /// <summary>The game sent a turn-in of the quest: its <c>tryQuestComplete</c> packet.</summary>
     public void Sent(int id)
     {
@@ -59,6 +62,8 @@ internal sealed class QuestTurnIns
         }
         if (id is not { } quest)
             return;
+        if (completed)
+            Completed?.Invoke(quest);
 
         string? account = _player.Username;
         List<TaskCompletionSource<QuestCompleteResult>> answered;
