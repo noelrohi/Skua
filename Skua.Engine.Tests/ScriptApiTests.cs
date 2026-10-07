@@ -27,6 +27,37 @@ public class ScriptApiTests
     }
 
     [Fact]
+    public async Task Combat_Target_targets_the_monster_without_attacking_it_and_Attack_still_attacks()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        await session.Connection.JumpAsync("r2", cancellationToken: Ct);
+
+        EvalResult targeted = await session.Connection.EvalAsync(
+            """
+            bool byId = Bot.Combat.Target(2);
+            int? idTarget = Bot.Player.Target?.MapID;
+            bool byName = Bot.Combat.Target("frogzard");
+            int? nameTarget = Bot.Player.Target?.MapID;
+            bool missing = Bot.Combat.Target("Nulgath");
+            return $"{byId} {idTarget} {byName} {nameTarget} {missing}";
+            """,
+            cancellationToken: Ct);
+        string[] targetCalls = await session.GameHost.CallsAsync();
+        EvalResult attacked = await session.Connection.EvalAsync("return Bot.Combat.Attack(\"Frogzard\");", cancellationToken: Ct);
+        string[] calls = await session.GameHost.CallsAsync();
+
+        Assert.Null(targeted.Error);
+        // A living monster first, as skua.swf picks it.
+        Assert.Equal("True 2 True 1 False", targeted.Value!.Value.GetString());
+        Assert.Equal(["target 2", "target frogzard", "target Nulgath"], targetCalls.Where(c => c.StartsWith("target ", StringComparison.Ordinal)));
+        Assert.DoesNotContain(targetCalls, c => c.StartsWith("attack ", StringComparison.Ordinal));
+        Assert.Null(attacked.Error);
+        Assert.Contains("attack Frogzard", calls);
+    }
+
+    [Fact]
     public async Task Inventory_EquipItem_equips_the_item_and_logs_nothing()
     {
         await using EngineSandbox sandbox = new();
