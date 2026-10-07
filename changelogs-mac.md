@@ -4,6 +4,11 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 
 ---
 
+## October 8, 2026
+
+### Fixes
+* A run no longer loses 10 minutes at a time to `quest.stalled`. Quests a Script leaves accepted from an earlier step no longer stall or get accepted again, the moment between a turn-in and the Script's next accept is no stall, and the Engine's accepts wait for the player's quest packets to pause, so the game server no longer refuses the Script's accept with "Please slow down". A quest whose accept the game server refused that way is accepted again within seconds. See [Logs and events](./BUILD.md#logs-and-events).
+
 ## October 7, 2026
 
 ### New

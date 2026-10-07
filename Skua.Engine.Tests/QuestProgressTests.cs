@@ -108,6 +108,117 @@ public class QuestProgressTests
     }
 
     [Fact]
+    public async Task A_quest_the_run_left_behind_neither_stalls_nor_is_accepted_again_while_another_progresses()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox, environment: Fast);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        TestScripts.Write(sandbox, "Tests/Loop.cs", TestScripts.Loop);
+        // An earlier step's quest, which the run leaves accepted: Not Yet's requirements never rise.
+        await session.Connection.EvalAsync("Bot.Quests.Accept(1003)", cancellationToken: Ct);
+
+        await session.Connection.ScriptStartAsync("Tests/Loop.cs", cancellationToken: Ct);
+        // Slime Time progresses for twice the stall time, then stalls.
+        for (int samples = 4; samples <= 12; samples++)
+        {
+            await session.GameHost.DoAsync($"slime-samples {samples}");
+            await Task.Delay(500, Ct);
+        }
+        LogEntryDto stalled = await session.Connection.WaitForEventAsync(EventTypes.QuestStalled);
+        await session.Connection.WaitForLogsAsync(LogKind.Debug, 1, e => e.Text!.Contains("Accepted the stalled quests again: 1001 in progress.", StringComparison.Ordinal));
+
+        Assert.Single(await AllAsync(session, LogKind.Events), e => e.Type == EventTypes.QuestStalled);
+        Assert.Equal([1001], Reaccepted(stalled));
+        Assert.Equal([1001], stalled.Data!.Value.GetProperty("quests").EnumerateArray().Select(q => q.GetProperty("id").GetInt32()));
+        // The stall is Slime Time's: since its last rise, not since Not Yet's accept.
+        Assert.InRange(stalled.Data!.Value.GetProperty("idleSec").GetDouble(), 2, 4);
+        Assert.Equal(["acceptQuest 1003", "acceptQuest 1001"], (await session.GameHost.CallsAsync()).Where(c => c.StartsWith("acceptQuest ", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task The_moment_between_a_turn_in_and_the_Scripts_accept_is_no_stall()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox, environment: new Dictionary<string, string>(Fast) { ["SKUA_QUEST_STALL_SEC"] = "3" });
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        await session.GameHost.DoAsync("quest-spacing 500");
+        TestScripts.Write(sandbox, "Tests/Farm.cs", FarmSlimeTime(acceptAfterMs: 1400));
+        await session.Connection.EvalAsync("Bot.Quests.Accept(1003)", cancellationToken: Ct);
+
+        await session.Connection.ScriptStartAsync("Tests/Farm.cs", cancellationToken: Ct);
+        // Each turn-in leaves Slime Time not accepted for 1.4 s, as CoreBots' does; Not Yet, left behind, has idled past the stall time by the last.
+        for (int turnIns = 1; turnIns <= 4; turnIns++)
+        {
+            await Task.Delay(500, Ct);
+            await session.GameHost.DoAsync("slime-samples 5");
+            await session.GameHost.DoAsync("slime-crowns 1");
+            await session.Connection.WaitForLogsAsync(LogKind.Events, turnIns, e => e.Type == EventTypes.QuestCompleted);
+            await WaitForAsync(async () => (await session.GameHost.CallsAsync()).Count(c => c == "acceptQuest 1001"), n => n == turnIns, tries: 100);
+        }
+        await Task.Delay(500, Ct);
+
+        Assert.DoesNotContain(await AllAsync(session, LogKind.Events), e => e.Type == EventTypes.QuestStalled);
+        Assert.Equal((string[])["acceptQuest 1003", .. Enumerable.Repeat("acceptQuest 1001", 4)],
+            (await session.GameHost.CallsAsync()).Where(c => c.StartsWith("acceptQuest ", StringComparison.Ordinal)));
+        Assert.DoesNotContain(await AllAsync(session, LogKind.Game), e => e.Text!.StartsWith("Please slow down", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_stalls_accept_waits_for_the_players_quest_packets_to_pause()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox, environment: Fast);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        // Stricter than the game server's half a second.
+        await session.GameHost.DoAsync("quest-spacing 1000");
+        // A Script that accepts its quest every 1.5 s for 7.5 s, as the stall comes.
+        TestScripts.Write(sandbox, "Tests/Accepts.cs", TestScripts.Main("""
+            for (int i = 0; i < 5 && !bot.ShouldExit; i++)
+            {
+                bot.Quests.Accept(1001);
+                Thread.Sleep(1500);
+            }
+            while (!bot.ShouldExit)
+                Thread.Sleep(50);
+            """));
+
+        await session.Connection.ScriptStartAsync("Tests/Accepts.cs", cancellationToken: Ct);
+        LogEntryDto stalled = await session.Connection.WaitForEventAsync(EventTypes.QuestStalled);
+        await session.Connection.WaitForLogsAsync(LogKind.Debug, 1, e => e.Text!.Contains("Accepted the stalled quests again: 1001 in progress.", StringComparison.Ordinal));
+
+        Assert.Equal([1001], Reaccepted(stalled));
+        // The Script's five, then the Engine's once they have paused.
+        Assert.Equal(6, (await session.GameHost.CallsAsync()).Count(c => c == "acceptQuest 1001"));
+        Assert.DoesNotContain(await AllAsync(session, LogKind.Game), e => e.Text!.StartsWith("Please slow down", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task An_accept_the_game_server_refused_is_accepted_again_within_seconds()
+    {
+        await using EngineSandbox sandbox = new();
+        // A stall time no test waits out: only the refusal accepts it again.
+        await using GameFixture session = await GameFixture.StartAsync(sandbox, environment: new Dictionary<string, string>(Fast) { ["SKUA_QUEST_STALL_SEC"] = "600" });
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        await session.GameHost.DoAsync("quest-spacing 1000");
+        // Accepts at once after the turn-in, which the game server refuses, though the game shows Slime Time accepted.
+        TestScripts.Write(sandbox, "Tests/Farm.cs", FarmSlimeTime(acceptAfterMs: 0));
+
+        await session.Connection.ScriptStartAsync("Tests/Farm.cs", cancellationToken: Ct);
+        await session.GameHost.DoAsync("slime-samples 5");
+        await session.GameHost.DoAsync("slime-crowns 1");
+        LogEntryDto warned = (await session.Connection.WaitForLogsAsync(LogKind.Game, 1, e => e.Text!.StartsWith("Please slow down", StringComparison.Ordinal)))[0];
+        LogEntryDto again = (await session.Connection.WaitForLogsAsync(LogKind.Debug, 1,
+            e => e.Text!.Contains("Accepted the refused quests again: 1001 in progress.", StringComparison.Ordinal)))[0];
+
+        Assert.Equal(2, (await session.GameHost.CallsAsync()).Count(c => c == "acceptQuest 1001"));
+        // The game server took the Engine's.
+        Assert.Single(await AllAsync(session, LogKind.Game), e => e.Text!.StartsWith("Please slow down", StringComparison.Ordinal));
+        // A pause of 3 s in the quest packets, after the second it takes to call it refused and the next poll.
+        Assert.InRange(again.Ts - warned.Ts, 2_500, 10_000);
+        Assert.DoesNotContain(await AllAsync(session, LogKind.Events), e => e.Type == EventTypes.QuestStalled);
+    }
+
+    [Fact]
     public async Task A_requirement_counts_what_the_bank_holds_once_it_has_loaded_and_its_arrival_is_no_rise()
     {
         await using EngineSandbox sandbox = new();
@@ -234,6 +345,25 @@ public class QuestProgressTests
         }
         return value;
     }
+
+    /// <summary>A Script that turns in Slime Time once it is ready and accepts it again <paramref name="acceptAfterMs"/> later.</summary>
+    private static string FarmSlimeTime(int acceptAfterMs) => TestScripts.Main($$"""
+        while (!bot.ShouldExit)
+        {
+            if (bot.Quests.CanComplete(1001))
+            {
+                bot.Quests.Complete(1001);
+                Thread.Sleep({{acceptAfterMs}});
+                bot.Quests.Accept(1001);
+                // Core reads the quest tree at most every 100 ms.
+                Thread.Sleep(200);
+            }
+            Thread.Sleep(50);
+        }
+        """);
+
+    private static async Task<IReadOnlyList<LogEntryDto>> AllAsync(GameFixture session, LogKind kind) =>
+        (await session.Connection.LogsAsync(kind, null, 1000, Ct)).Entries;
 
     private static List<int> Reaccepted(LogEntryDto stalled) =>
         stalled.Data!.Value.GetProperty("reaccepted").EnumerateArray().Select(id => id.GetInt32()).ToList();

@@ -56,6 +56,11 @@ internal sealed class FakeGame
     private int _slimeCrowns;
     /// <summary>The quests turned in, which are no longer accepted.</summary>
     private readonly HashSet<int> _turnedIn = [];
+    /// <summary>The quests accepted since the login that weren't at first.</summary>
+    private readonly HashSet<int> _accepted = [];
+    /// <summary>How soon after the player's last quest action the game server refuses another with "Please slow down", or 0 for never.</summary>
+    private int _questSpacing;
+    private DateTime _lastQuestAction;
     /// <summary>The message the game server refuses each quest's next turn-in with.</summary>
     private readonly Dictionary<int, string> _turnInRefusals = [];
     /// <summary>The player's achievement fields, the bits the repeating quests' completion is kept in: <c>id0</c> daily, <c>iw0</c> weekly, <c>im0</c> monthly.</summary>
@@ -259,6 +264,9 @@ internal sealed class FakeGame
                     int bit = 1 << int.Parse(index);
                     _achievements[field] = value == "1" ? _achievements.GetValueOrDefault(field) | bit : _achievements.GetValueOrDefault(field) & ~bit;
                     return true;
+                case ["quest-spacing", string ms]:
+                    _questSpacing = int.Parse(ms);
+                    return true;
                 case ["slime-crowns", string qty]:
                     // How many Slime Crowns, the 1/1 drop Slime Time also needs, the temporary inventory holds.
                     _slimeCrowns = int.Parse(qty);
@@ -459,6 +467,7 @@ internal sealed class FakeGame
                 break;
             case "world.acceptQuest" when args is [string id]:
                 _note($"acceptQuest {id}");
+                AcceptQuest(int.Parse(id));
                 break;
             case "world.isQuestInProgress" when args is [string id]:
                 // The game's own: whether the quest is accepted, completable or not.
@@ -757,7 +766,7 @@ internal sealed class FakeGame
     private void TryQuestComplete(int id, string reward)
     {
         Packet($"%xt%zm%tryQuestComplete%{_roomId}%{id}%{reward}%false%1%wvz%");
-        if (QuestTree()[id.ToString()] is not JsonObject quest || (string?)quest["status"] is not { } status)
+        if (TooSoon() || QuestTree()[id.ToString()] is not JsonObject quest || (string?)quest["status"] is not { } status)
             return;
         if (_turnInRefusals.Remove(id, out string? message))
             Pext(new JsonObject { ["cmd"] = "ccqr", ["bSuccess"] = 0, ["msg"] = message });
@@ -766,8 +775,39 @@ internal sealed class FakeGame
         else
         {
             _turnedIn.Add(id);
+            _accepted.Remove(id);
+            // Slime Time takes its requirements.
+            if (id == 1001)
+                (_slimeSamples, _slimeCrowns) = (_slimeSamples - 5, _slimeCrowns - 1);
             Pext(new JsonObject { ["cmd"] = "ccqr", ["bSuccess"] = 1, ["QuestID"] = id, ["sName"] = (string?)quest["sName"] });
         }
+    }
+
+    /// <summary>
+    /// The game's <c>acceptQuest</c>: it sends the packet, and the game server answers with <c>acceptQuest</c>. A refused accept leaves the
+    /// quest accepted in the client, as the game's does after "Please slow down".
+    /// </summary>
+    private void AcceptQuest(int id)
+    {
+        Packet($"%xt%zm%acceptQuest%{_roomId}%{id}%");
+        if (!QuestTree().ContainsKey(id.ToString()))
+            return;
+        _turnedIn.Remove(id);
+        if (QuestTree()[id.ToString()]!["status"] is null)
+            _accepted.Add(id);
+        if (!TooSoon())
+            Pext(new JsonObject { ["cmd"] = "acceptQuest", ["bSuccess"] = 1, ["QuestID"] = id, ["msg"] = "success" });
+    }
+
+    /// <summary>Whether the game server refuses this quest action for following the last within the <c>quest-spacing</c>, as it says.</summary>
+    private bool TooSoon()
+    {
+        DateTime now = DateTime.UtcNow;
+        bool tooSoon = _questSpacing > 0 && now - _lastQuestAction < TimeSpan.FromMilliseconds(_questSpacing);
+        _lastQuestAction = now;
+        if (tooSoon)
+            PextStr(["warning", "-1", "Please slow down. Last action was too soon!"]);
+        return tooSoon;
     }
 
     private void Join(string map, string cell, string pad)
@@ -862,7 +902,8 @@ internal sealed class FakeGame
     {
         JsonObject tree = new()
         {
-            ["1001"] = Quest(1001, "Slime Time", "p", member: false, gold: 100, xp: 50,
+            // Ready to turn in once the temporary inventory holds 5 Slime Samples and a Slime Crown.
+            ["1001"] = Quest(1001, "Slime Time", _slimeSamples >= 5 && _slimeCrowns >= 1 ? "c" : "p", member: false, gold: 100, xp: 50,
                 new JsonObject { ["itemsS"] = new JsonObject { ["3"] = Item(3, "Treasure Chest", 1, 1000, "Item") } }, (Item(20, "Slime Sample", 1, 10, "Quest Item", temp: true), 5),
                 (Item(21, "Slime Crown", 1, 1, "Quest Item", temp: true), 1)),
             ["1002"] = Quest(1002, "Chest Hoarder", "c", member: true, gold: 0, xp: 0, new JsonObject(), (Item(3, "Treasure Chest", 1, 1000, "Item"), 5)),
@@ -874,6 +915,8 @@ internal sealed class FakeGame
             // A weekly quest, as the game marks one: its completion this week is bit 3 of the player's iw0.
             ["1005"] = Repeating(Quest(1005, "Weekly Slimes", null, member: false, gold: 0, xp: 0, new JsonObject(), (Item(20, "Slime Sample", 1, 10, "Quest Item", temp: true), 10)), "iw0", 3),
         };
+        foreach (int id in _accepted)
+            tree[id.ToString()]!["status"] = "p";
         foreach (int id in _turnedIn)
             tree[id.ToString()]!["status"] = null;
         return tree;
