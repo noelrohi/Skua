@@ -53,6 +53,22 @@ public interface IScriptCombat
     bool Attack(string name);
 
     /// <summary>
+    /// Targets the monster with the specified <paramref name="id"/> in the player's cell, without walking to it or attacking it.
+    /// </summary>
+    /// <param name="id">The id of the monster to target.</param>
+    /// <returns>Whether a monster was targeted.</returns>
+    /// <remarks>The next skill used fires from where the player stands.</remarks>
+    bool Target(int id);
+
+    /// <summary>
+    /// Targets the monster with the specified <paramref name="name"/> in the player's cell, without walking to it or attacking it.
+    /// </summary>
+    /// <param name="name">Name of the monster to target.</param>
+    /// <returns>Whether a monster was targeted.</returns>
+    /// <remarks>The next skill used fires from where the player stands.</remarks>
+    bool Target(string name);
+
+    /// <summary>
     /// Attacks the player with specified <paramref name="name"/>. If not in PVP mode, this will only target the player, and not attack them.
     /// </summary>
     /// <param name="name">Name of the player to attack.</param>

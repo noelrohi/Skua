@@ -95,6 +95,28 @@ public partial class ScriptCombat : IScriptCombat
         return Flash.Call<bool>("attackMonsterID", id);
     }
 
+    public bool Target(string name)
+    {
+        if (StopAttacking)
+        {
+            CancelTarget();
+            return false;
+        }
+
+        return Flash.Call<bool>("targetMonsterName", name);
+    }
+
+    public bool Target(int id)
+    {
+        if (StopAttacking)
+        {
+            CancelTarget();
+            return false;
+        }
+
+        return Flash.Call<bool>("targetMonsterID", id);
+    }
+
     public bool AttackPlayer(string name)
     {
         return Flash.Call<bool>("attackPlayer", name);

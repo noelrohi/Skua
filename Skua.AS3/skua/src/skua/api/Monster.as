@@ -18,6 +18,14 @@ public class Monster {
         return attackTarget(bestTarget);
     }
 
+    public static function targetMonsterByID(id:int):String {
+        return setTarget(getBestMonsterTargetByID(id));
+    }
+
+    public static function targetMonsterByName(name:String):String {
+        return setTarget(getBestMonsterTarget(name));
+    }
+
     private static function sortMonstersByHP(a:*, b:*):Number {
         var aHP:int = (a.dataLeaf && a.dataLeaf.intHP) ? a.dataLeaf.intHP : 0;
         var bHP:int = (b.dataLeaf && b.dataLeaf.intHP) ? b.dataLeaf.intHP : 0;
@@ -125,6 +133,14 @@ public class Monster {
         if (target != null && target.pMC != null) {
             Main.instance.game.world.setTarget(target);
             Main.instance.game.world.approachTarget();
+            return true.toString();
+        }
+        return false.toString();
+    }
+
+    private static function setTarget(target:*):String {
+        if (target != null && target.pMC != null) {
+            Main.instance.game.world.setTarget(target);
             return true.toString();
         }
         return false.toString();

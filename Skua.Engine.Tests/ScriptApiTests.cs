@@ -27,6 +27,30 @@ public class ScriptApiTests
     }
 
     [Fact]
+    public async Task Combat_Target_targets_the_monster_without_attacking_it_and_Attack_still_attacks()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        await session.Connection.JumpAsync("r2", cancellationToken: Ct);
+
+        EvalResult byId = await session.Connection.EvalAsync("return $\"{Bot.Combat.Target(1)} {Bot.Player.Target?.MapID}\";", cancellationToken: Ct);
+        await session.GameHost.DoAsync("target none");
+        // Frogzard 2 is dead, so the living Frogzard 1 is the one targeted, as skua.swf picks it.
+        EvalResult byName = await session.Connection.EvalAsync("return $\"{Bot.Combat.Target(\"frogzard\")} {Bot.Player.Target?.MapID} {Bot.Combat.Target(\"Nulgath\")}\";", cancellationToken: Ct);
+        string[] targetCalls = await session.GameHost.CallsAsync();
+        EvalResult attacked = await session.Connection.EvalAsync("return Bot.Combat.Attack(\"Frogzard\");", cancellationToken: Ct);
+        string[] calls = await session.GameHost.CallsAsync();
+
+        Assert.Equal("True 1", byId.Value!.Value.GetString());
+        Assert.Equal("True 1 False", byName.Value!.Value.GetString());
+        Assert.Equal(["target 1", "target frogzard", "target Nulgath"], targetCalls.Where(c => c.StartsWith("target ", StringComparison.Ordinal)));
+        Assert.DoesNotContain(targetCalls, c => c.StartsWith("attack ", StringComparison.Ordinal));
+        Assert.Null(attacked.Error);
+        Assert.Contains("attack Frogzard", calls);
+    }
+
+    [Fact]
     public async Task Inventory_EquipItem_equips_the_item_and_logs_nothing()
     {
         await using EngineSandbox sandbox = new();
