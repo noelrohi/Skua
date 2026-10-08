@@ -111,7 +111,8 @@ pub fn hello(protocol: i64, name: &str) -> Value {
 pub fn player(name: &str) -> Value {
     json!({
         "name": name, "level": 100, "class": "Chaos Avenger", "hp": 2400, "maxHp": 3000, "mp": 80, "maxMp": 100, "gold": 1234567,
-        "map": "battleon", "cell": "Enter", "pad": "Spawn", "alive": true, "inCombat": true, "xp": 0, "requiredXp": 0, "xpPercent": null
+        "map": "battleon", "cell": "Enter", "pad": "Spawn", "alive": true, "inCombat": true, "xp": 0, "requiredXp": 0, "xpPercent": null,
+        "social": { "goto": false, "whisper": true, "party": true, "friend": true, "duel": false, "guild": true }
     })
 }
 
@@ -128,7 +129,10 @@ pub fn status(name: &str, playing: bool, script: Option<&str>) -> Value {
             "state": if playing { "playing" } else { "loginScreen" },
             "server": if playing { json!("Artix") } else { Value::Null },
             "player": if playing { player(name) } else { Value::Null },
-            "playerAgeSec": null
+            "playerAgeSec": null,
+            "options": { "lagKiller": true, "hidePlayers": false, "privateRooms": true, "autoRelogin": true, "safeTimings": true,
+                "aggroMonsters": false, "aggroAllMonsters": false, "infiniteRange": false, "magnetise": false, "skipCutscenes": true,
+                "acceptAllDrops": false, "rejectAllDrops": false, "restPackets": false }
         },
         "script": { "state": if run.is_some() { "running" } else { "idle" }, "run": run, "lastRun": null },
         "pendingDialogs": []

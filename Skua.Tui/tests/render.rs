@@ -7,7 +7,7 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-use ratatui::style::Color;
+use ratatui::style::{Color, Modifier};
 use serde_json::{Value, json};
 use skua_tui::app::{App, Tab};
 use skua_tui::bags::{Bags, now_ms};
@@ -214,11 +214,14 @@ fn the_screen_shows_accounts_by_group_with_their_engines_and_the_selected_ones_o
             "● carol   offline",
             "● default login scre…",
             " Overview │ Inventory │ Quests │ Logs │ Game │",
-            "Overview · battleon-9999 · Enter",
+            "Overview · battleon-9999 · Enter · Artix",
             "alice ─",
             "Lv 100",
-            "battleon Enter · Artix",
             "2400/3000",
+            "goto pm party friend duel guild",
+            "lag killer · private rooms",
+            "auto relogin · safe timings",
+            "skip cutscenes",
             "1,234,567 gold",
             "Current Quests",
             "Tainted Gem Exchange",
@@ -727,6 +730,30 @@ fn the_inventory_splits_into_categories_scrolls_and_takes_clicks() {
         &screen(&fleet, &mut app, 120, 32),
         &["acting on: alice", "Tainted Gem Exchange"],
     );
+}
+
+#[test]
+fn the_players_frame_shows_the_social_settings_on_in_green_and_off_struck_out() {
+    let fleet = fleet();
+    let mut app = App::new(fleet.dir.path().to_owned());
+
+    let (screen, buffer) = screen_and_buffer(&fleet, &mut app, 200, 50);
+
+    let (x, y) = find(&screen, "goto pm party");
+    assert!(buffer[(x, y)].modifier.contains(Modifier::CROSSED_OUT), "goto is off");
+    assert_eq!(buffer[(x + 5, y)].fg, Color::Green, "pm is on");
+    assert!(!buffer[(x + 5, y)].modifier.contains(Modifier::CROSSED_OUT));
+}
+
+#[test]
+fn skuas_options_take_one_line_with_a_count_when_the_player_sets_the_rows_height() {
+    let fleet = fleet();
+    let mut app = App::new(fleet.dir.path().to_owned());
+
+    let screen = screen(&fleet, &mut app, 120, 32);
+
+    assert_shows(&screen, &["lag killer · private rooms +3"]);
+    assert!(!screen.contains("skip cutscenes"), "{screen}");
 }
 
 #[test]

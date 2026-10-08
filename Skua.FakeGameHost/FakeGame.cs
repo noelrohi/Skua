@@ -394,6 +394,10 @@ internal sealed class FakeGame
         "world.myAvatar.houseitems.length" => _world ? HouseItems().Count : null,
         "world.myAvatar.objData.iHouseSlots" => _world ? 20 : null,
         "world.questTree" => _world ? QuestTree() : null,
+        // The game's own options, with friend requests and duels off.
+        "uoPref" => _world
+            ? new JsonObject { ["bGoto"] = true, ["bWhisper"] = true, ["bParty"] = true, ["bFriend"] = false, ["bDuel"] = false, ["bGuild"] = true, ["bTT"] = true }
+            : null,
         "stage.focus.text" => _focus is null ? null : "",
         "stage.focus.type" => _focus,
         "ui.mcPopup.currentLabel" => _world && _bankOpen ? "Bank" : null,

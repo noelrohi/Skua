@@ -62,6 +62,78 @@ pub struct GameStatus {
     pub player: Option<Player>,
     #[serde(default)]
     pub player_age_sec: Option<f64>,
+    /// Skua's options for playing the game, as Scripts set them on `Bot.Options`.
+    #[serde(default)]
+    pub options: Option<GameOptions>,
+}
+
+/// The switches of `Bot.Options` that change how Skua plays.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameOptions {
+    pub lag_killer: bool,
+    pub hide_players: bool,
+    pub private_rooms: bool,
+    pub auto_relogin: bool,
+    pub safe_timings: bool,
+    pub aggro_monsters: bool,
+    pub aggro_all_monsters: bool,
+    pub infinite_range: bool,
+    pub magnetise: bool,
+    pub skip_cutscenes: bool,
+    pub accept_all_drops: bool,
+    pub reject_all_drops: bool,
+    pub rest_packets: bool,
+}
+
+impl GameOptions {
+    /// The options that are on, by the names the TUI shows.
+    pub fn on(&self) -> Vec<&'static str> {
+        [
+            ("lag killer", self.lag_killer),
+            ("hide players", self.hide_players),
+            ("private rooms", self.private_rooms),
+            ("auto relogin", self.auto_relogin),
+            ("safe timings", self.safe_timings),
+            ("aggro", self.aggro_monsters),
+            ("aggro all", self.aggro_all_monsters),
+            ("infinite range", self.infinite_range),
+            ("magnetise", self.magnetise),
+            ("skip cutscenes", self.skip_cutscenes),
+            ("accept drops", self.accept_all_drops),
+            ("reject drops", self.reject_all_drops),
+            ("rest", self.rest_packets),
+        ]
+        .into_iter()
+        .filter_map(|(name, on)| on.then_some(name))
+        .collect()
+    }
+}
+
+/// What the character lets other players do, as the game's own options set it.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Social {
+    pub goto: bool,
+    pub whisper: bool,
+    pub party: bool,
+    pub friend: bool,
+    pub duel: bool,
+    pub guild: bool,
+}
+
+impl Social {
+    /// Each setting by the name the TUI shows, with whether it is on.
+    pub fn all(&self) -> [(&'static str, bool); 6] {
+        [
+            ("goto", self.goto),
+            ("pm", self.whisper),
+            ("party", self.party),
+            ("friend", self.friend),
+            ("duel", self.duel),
+            ("guild", self.guild),
+        ]
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -85,6 +157,9 @@ pub struct Player {
     pub xp_percent: Option<f64>,
     /// The monster the player targets, by its map ID as `map` lists it.
     pub target_id: Option<i64>,
+    /// The character's social settings in the game's own options.
+    #[serde(default)]
+    pub social: Option<Social>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]

@@ -21,8 +21,7 @@ const SELECTED: Color = Color::Indexed(237);
 const STALL_SEC: f64 = 600.0;
 /// How long the Overview shows the newest quest progress, as the game's line over the fight.
 const PROGRESS_SHOWN: std::time::Duration = std::time::Duration::from_secs(5);
-/// The player's frame: four lines and its border; and how wide it is.
-const PLAYER_H: u16 = 6;
+/// How wide the player's frame is; its lines set its height.
 const PLAYER_W: u16 = 36;
 /// How wide the run's panel must be for its goal tree's lines, rates and times left included.
 const RUN_W: u16 = 84;
@@ -405,6 +404,10 @@ fn overview(frame: &mut Frame, app: &App, hello: &Hello, status: &Status, detail
         Ok(map) => format!("{} · {}", room_name(map), me.cell),
         Err(_) => format!("{} · {}", me.map, me.cell),
     };
+    let place = match &status.game.server {
+        Some(server) => format!("{place} · {server}"),
+        None => place,
+    };
     let block = panel(&format!("Overview · {place}"));
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -427,7 +430,16 @@ fn overview(frame: &mut Frame, app: &App, hello: &Hello, status: &Status, detail
     // where it fits there too, else under it. On a narrower terminal the quests sit beside the player and the run goes under them.
     let tall_quests = inner.width >= RUN_W + QUESTS_W;
     let run_beside = tall_quests && inner.width >= PLAYER_W + RUN_W + QUESTS_W;
-    let top_h = if run_beside { run_h.max(PLAYER_H) } else { PLAYER_H };
+    // Skua's options take one line, or as many as the run beside the player leaves room for.
+    let player = player_lines(me, status, |base| {
+        if run_beside {
+            (run_h - 2).saturating_sub(base).max(1)
+        } else {
+            1
+        }
+    });
+    let player_h = player.len() as u16 + 2;
+    let top_h = if run_beside { run_h.max(player_h) } else { player_h };
     let run_row_h = if run_beside { 0 } else { run_h };
     let cell_h = members_h.max(4);
     // The chat strip at the bottom shares what the rest leaves with Bags, and gives way first on a short terminal.
@@ -454,7 +466,7 @@ fn overview(frame: &mut Frame, app: &App, hello: &Hello, status: &Status, detail
         (false, true) => (run_row, side),
         (false, false) => (run_row, beside),
     };
-    player_frame(frame, me, status, player_area);
+    player_frame(frame, me, player, player_area);
     frame.render_widget(Paragraph::new(run).block(panel("Script")), run_area);
     let tracker_rows = quests_area.height.saturating_sub(2) as usize;
     frame.render_widget(
@@ -569,43 +581,99 @@ fn not_playing_lines(hello: &Hello, status: &Status) -> Vec<Line<'static>> {
     lines
 }
 
-/// The player's frame, as the game's top left: name, level, class, where, HP and MP, and gold.
-fn player_frame(frame: &mut Frame, me: &Player, status: &Status, area: Rect) {
+/// The player's frame, as the game's top left: name, level, class, HP and MP, and gold; then what the game lets other players do, and
+/// Skua's options that are on.
+fn player_frame(frame: &mut Frame, me: &Player, lines: Vec<Line<'static>>, area: Rect) {
     let block = panel(&me.name)
         .title_style(Style::new().yellow().bold())
         .title(Line::from(format!(" Lv {} ", me.level).bold()).right_aligned())
         .title_bottom(
             Line::styled(format!(" {} gold ", thousands(me.gold)), Style::new().yellow().bold()).right_aligned(),
         );
-    let width = block.inner(area).width.saturating_sub(3);
+    frame.render_widget(Paragraph::new(lines).block(block), area);
+}
+
+/// The lines in the player's frame, which sets its height; Skua's options take at most `option_rows` of the lines before them.
+fn player_lines(me: &Player, status: &Status, option_rows: impl Fn(u16) -> u16) -> Vec<Line<'static>> {
+    let width = PLAYER_W - 2;
     let hp = ratio(me.hp, me.max_hp);
-    let lines = vec![
+    let mut lines = vec![
         Line::styled(me.class.clone().unwrap_or_else(|| "—".into()), Style::new().fg(DIM)),
-        Line::styled(
-            format!(
-                "{} {} · {}",
-                me.map,
-                me.cell,
-                status.game.server.as_deref().unwrap_or("?")
-            ),
-            Style::new().fg(DIM),
-        ),
         gauge(
             "HP",
-            width,
+            width - 3,
             hp,
             hp_color(hp, me.alive),
             hp_text(me.hp, me.max_hp, me.alive),
         ),
         gauge(
             "MP",
-            width,
+            width - 3,
             ratio(me.mp, me.max_mp),
             Color::Blue,
             format!("{}/{}", me.mp, me.max_mp),
         ),
     ];
-    frame.render_widget(Paragraph::new(lines).block(block), area);
+    // Each social setting by name, green when on and struck out when off.
+    if let Some(social) = &me.social {
+        let mut spans = Vec::new();
+        for (name, on) in social.all() {
+            if !spans.is_empty() {
+                spans.push(Span::raw(" "));
+            }
+            spans.push(if on {
+                Span::styled(name, Style::new().green())
+            } else {
+                Span::styled(name, Style::new().fg(DIM).add_modifier(Modifier::CROSSED_OUT))
+            });
+        }
+        lines.push(Line::from(spans));
+    }
+    if let Some(options) = &status.game.options {
+        let rows = option_rows(lines.len() as u16) as usize;
+        lines.extend(
+            wrap_joined(&options.on(), " · ", width as usize, rows)
+                .into_iter()
+                .map(|line| Line::styled(line, Style::new().cyan())),
+        );
+    }
+    lines
+}
+
+/// `items` joined by `separator` into at most `rows` lines of at most `width` columns, breaking only between items; those that don't fit
+/// are counted at the end, as `+2`.
+fn wrap_joined(items: &[&str], separator: &str, width: usize, rows: usize) -> Vec<String> {
+    let sep = separator.chars().count();
+    let width_of =
+        |line: &[&str]| line.iter().map(|i| i.chars().count()).sum::<usize>() + sep * line.len().saturating_sub(1);
+    let mut lines: Vec<Vec<&str>> = Vec::new();
+    for item in items {
+        let fits = lines
+            .last()
+            .is_some_and(|line| width_of(line) + sep + item.chars().count() <= width);
+        match lines.last_mut() {
+            Some(line) if fits => line.push(item),
+            _ => lines.push(vec![item]),
+        }
+    }
+    let mut hidden: usize = lines.iter().skip(rows).map(Vec::len).sum();
+    lines.truncate(rows);
+    if hidden > 0
+        && let Some(last) = lines.last_mut()
+    {
+        // The count takes room on the last line, which may drop more of it.
+        while last.len() > 1 && width_of(last) + format!(" +{hidden}").len() > width {
+            last.pop();
+            hidden += 1;
+        }
+    }
+    let mut text: Vec<String> = lines.iter().map(|line| line.join(separator)).collect();
+    if hidden > 0
+        && let Some(last) = text.last_mut()
+    {
+        last.push_str(&format!(" +{hidden}"));
+    }
+    text
 }
 
 /// The run in a few plain lines: the Script with its time, kills and deaths; whether it progresses, grinds or is stuck; then its goal as

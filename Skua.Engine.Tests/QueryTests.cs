@@ -160,9 +160,27 @@ public class QueryTests
         Assert.Null(before.Game.Player);
         Assert.Equal(
             new PlayerDto(session.Keychain.Username, 10, "Healer", 1000, 1000, 80, 100, 5000, "battleon", "r2", "Right", Alive: true, InCombat: false,
-                Xp: 1500, RequiredXp: 4000, XpPercent: 37.5),
+                Xp: 1500, RequiredXp: 4000, XpPercent: 37.5, Social: new SocialDto(Goto: true, Whisper: true, Party: true, Friend: false, Duel: false, Guild: true)),
             playing.Game.Player);
         Assert.Null(after.Game.Player);
+    }
+
+    [Fact]
+    public async Task Status_gives_Skuas_options_as_a_Script_sets_them()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+
+        EvalResult eval = await session.Connection.EvalAsync("""
+            Bot.Options.PrivateRooms = true;
+            Bot.Options.AggroMonsters = true;
+            Bot.Options.SafeTimings = false;
+            return 0;
+            """, cancellationToken: Ct);
+        GameOptionsDto options = (await session.Connection.StatusAsync(Ct)).Game.Options!;
+
+        Assert.Null(eval.Error);
+        Assert.Equal((true, true, false, false), (options.PrivateRooms, options.AggroMonsters, options.SafeTimings, options.AggroAllMonsters));
     }
 
     [Fact]
