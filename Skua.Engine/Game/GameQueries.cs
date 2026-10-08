@@ -1,3 +1,5 @@
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Skua.Control;
 using Skua.Core.Interfaces;
 using Skua.Core.Models.Items;
@@ -166,7 +168,25 @@ internal sealed class GameQueries
         // The game answers an empty monster, map ID 0, without a target.
         Monster? target = player.Target is { MapID: > 0 } monster ? monster : null;
         return new PlayerDto(name ?? player.Username ?? "", player.Level, playerClass, player.Health, player.MaxHealth, player.Mana, player.MaxMana, player.Gold,
-            _api.Map.Name, player.Cell, player.Pad, Alive: state > 0, InCombat: state == 2, xp, requiredXp, PlayerDto.Percent(xp, requiredXp), target?.MapID, target?.Name);
+            _api.Map.Name, player.Cell, player.Pad, Alive: state > 0, InCombat: state == 2, xp, requiredXp, PlayerDto.Percent(xp, requiredXp), target?.MapID, target?.Name,
+            ReadSocial());
+    }
+
+    /// <summary>The game's own social options, in one read of its <c>uoPref</c>; null when the game gives none or they don't parse.</summary>
+    private SocialDto? ReadSocial()
+    {
+        try
+        {
+            if (_flash.GetGameObject<JObject>("uoPref") is not { } pref)
+                return null;
+            // The game keeps each as a boolean; a 0 or 1 reads as one too.
+            bool On(string key) => pref[key]?.ToObject<bool>() ?? false;
+            return new SocialDto(On("bGoto"), On("bWhisper"), On("bParty"), On("bFriend"), On("bDuel"), On("bGuild"));
+        }
+        catch (Exception e) when (e is JsonException or ArgumentException or FormatException or InvalidCastException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

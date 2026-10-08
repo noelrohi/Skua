@@ -104,9 +104,43 @@ internal static class Output
             text += "\nPlayer  unknown: the game didn't answer in time";
         else
             text += "\nPlayer  none (not playing)";
+        if (game.Player?.Social is { } social)
+            text += $"\nSocial  {Social(social)}";
+        if (game.Options is { } options)
+            text += $"\nOptions {GameOptions(options)}";
         return status.PendingDialogs.Count > 0
             ? $"{text}\nDialogs {status.PendingDialogs.Count} Question{(status.PendingDialogs.Count == 1 ? "" : "s")} pending; see 'skua dialogs'"
             : text;
+    }
+
+    /// <summary>The game's social options, those on and then those off: <c>goto, whisper, party, guild on; friend, duel off</c>.</summary>
+    private static string Social(SocialDto social)
+    {
+        (string Name, bool On)[] all =
+            [("goto", social.Goto), ("whisper", social.Whisper), ("party", social.Party), ("friend", social.Friend), ("duel", social.Duel), ("guild", social.Guild)];
+        string on = string.Join(", ", all.Where(o => o.On).Select(o => o.Name));
+        string off = string.Join(", ", all.Where(o => !o.On).Select(o => o.Name));
+        return (on, off) switch
+        {
+            ("", _) => "all off",
+            (_, "") => "all on",
+            _ => $"{on} on; {off} off",
+        };
+    }
+
+    /// <summary>Skua's options that are on, or <c>none on</c>.</summary>
+    private static string GameOptions(GameOptionsDto options)
+    {
+        (string Name, bool On)[] all =
+        [
+            ("lag killer", options.LagKiller), ("hide players", options.HidePlayers), ("private rooms", options.PrivateRooms),
+            ("auto relogin", options.AutoRelogin), ("safe timings", options.SafeTimings), ("aggro", options.AggroMonsters),
+            ("aggro all", options.AggroAllMonsters), ("infinite range", options.InfiniteRange), ("magnetise", options.Magnetise),
+            ("skip cutscenes", options.SkipCutscenes), ("accept drops", options.AcceptAllDrops), ("reject drops", options.RejectAllDrops),
+            ("rest", options.RestPackets),
+        ];
+        string on = string.Join(", ", all.Where(o => o.On).Select(o => o.Name));
+        return on == "" ? "none on" : on;
     }
 
     public static string Dialogs(DialogsResult result)

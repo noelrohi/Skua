@@ -30,7 +30,17 @@ public sealed record EngineInfoDto(string Name, string Build, int Protocol, doub
 /// <param name="PlayerAgeSec">
 /// How many seconds ago <paramref name="Player"/> was read, when the game didn't answer in time (or the read failed) and it is the last reading; null when it is fresh.
 /// </param>
-public sealed record GameStatusDto(bool GameHostUp, GameState State, string? Server, PlayerDto? Player = null, double? PlayerAgeSec = null);
+/// <param name="Options">Skua's options for playing the game, as Scripts set them on <c>Bot.Options</c>; null only from a Game Host alone.</param>
+public sealed record GameStatusDto(
+    bool GameHostUp, GameState State, string? Server, PlayerDto? Player = null, double? PlayerAgeSec = null, GameOptionsDto? Options = null);
+
+/// <summary>Skua's options for playing the game, the switches of <c>Bot.Options</c> that change how it plays.</summary>
+/// <param name="AggroMonsters">Whether it aggroes the monsters in the player's cell.</param>
+/// <param name="AggroAllMonsters">Whether it aggroes every monster on the map.</param>
+/// <param name="RestPackets">Whether it rests between fights to regain HP and MP.</param>
+public sealed record GameOptionsDto(
+    bool LagKiller, bool HidePlayers, bool PrivateRooms, bool AutoRelogin, bool SafeTimings, bool AggroMonsters, bool AggroAllMonsters,
+    bool InfiniteRange, bool Magnetise, bool SkipCutscenes, bool AcceptAllDrops, bool RejectAllDrops, bool RestPackets);
 
 /// <summary>The player, as <c>status</c> summarises it.</summary>
 /// <param name="Class">The equipped class, or null when none is.</param>
@@ -40,14 +50,24 @@ public sealed record GameStatusDto(bool GameHostUp, GameState State, string? Ser
 /// <param name="XpPercent"><see cref="Xp"/> as a percentage of <see cref="RequiredXp"/>, to one decimal; null when there is no next level.</param>
 /// <param name="TargetId">The monster the player targets, by its map ID as <c>map</c> lists it; null without a target.</param>
 /// <param name="Target">The name of the monster the player targets; null without a target.</param>
+/// <param name="Social">The character's social settings in the game's own options; null when the game didn't give them.</param>
 public sealed record PlayerDto(
     string Name, int Level, string? Class, int Hp, int MaxHp, int Mp, int MaxMp, int Gold, string Map, string Cell, string Pad, bool Alive, bool InCombat,
-    int Xp, int RequiredXp, double? XpPercent, int? TargetId = null, string? Target = null)
+    int Xp, int RequiredXp, double? XpPercent, int? TargetId = null, string? Target = null, SocialDto? Social = null)
 {
     /// <summary><paramref name="xp"/> as a percentage of <paramref name="requiredXp"/>, to one decimal; null when there is no next level.</summary>
     public static double? Percent(int xp, int requiredXp) =>
         requiredXp > 0 ? Math.Round(100.0 * xp / requiredXp, 1, MidpointRounding.AwayFromZero) : null;
 }
+
+/// <summary>What the character lets other players do, as the game's own options set it (the game's <c>uoPref</c>).</summary>
+/// <param name="Goto">Whether others can <c>/goto</c> the player.</param>
+/// <param name="Whisper">Whether others can whisper the player.</param>
+/// <param name="Party">Whether others can invite the player to a party.</param>
+/// <param name="Friend">Whether others can send the player friend requests.</param>
+/// <param name="Duel">Whether others can challenge the player to a duel.</param>
+/// <param name="Guild">Whether others can invite the player to a guild.</param>
+public sealed record SocialDto(bool Goto, bool Whisper, bool Party, bool Friend, bool Duel, bool Guild);
 
 public enum GameState
 {

@@ -47,6 +47,7 @@ internal sealed class Engine : IEngineRpc
     private readonly ScriptGoal _goal;
     private readonly ScriptOperations _scripts;
     private readonly EvalOperations _eval;
+    private readonly IScriptOption _scriptOptions;
     private readonly DialogOperations _dialogs;
     private readonly ScriptRuns _runs;
     private readonly ScriptReports _reports;
@@ -65,13 +66,14 @@ internal sealed class Engine : IEngineRpc
         IScriptManager manager = services.GetRequiredService<IScriptManager>();
         ScriptDialogBroker broker = services.GetRequiredService<ScriptDialogBroker>();
         _dialogs = new DialogOperations(broker, logs);
-        _runs = new(logs, manager, services.GetRequiredService<IScriptOption>(), broker, () => _queries.Held(), keepLagKillerOn: options.IsHeadless);
+        _scriptOptions = services.GetRequiredService<IScriptOption>();
+        _runs = new(logs, manager, _scriptOptions, broker, () => _queries.Held(), keepLagKillerOn: options.IsHeadless);
         _reports = new ScriptReports(logs, _runs);
         _slot = new();
         _scriptsSlot = new();
         SemaphoreSlim compiling = new(1, 1);
         _scriptSource = new ScriptSourceOperations(services.GetRequiredService<IGetScriptsService>(), _runs.EnsureIdle, _scriptsSlot, _shutdown.Token);
-        _screenshots = new ScreenshotOperations(services.GetRequiredService<BridgeFlashUtil>(), services.GetRequiredService<IScriptOption>());
+        _screenshots = new ScreenshotOperations(services.GetRequiredService<BridgeFlashUtil>(), _scriptOptions);
         GameActionSlot gameSlot = new(gameHost.Tracker, _runs, _slot);
         _game = new GameOperations(
             services.GetRequiredService<IScriptServers>(), services.GetRequiredService<IFlashUtil>(), services.GetRequiredService<ISettingsService>(), logs,
@@ -198,7 +200,14 @@ internal sealed class Engine : IEngineRpc
     {
         EngineInfoDto engine = new(_endpoint.Name, Build, ControlProtocol.Version, Math.Round(_uptime.Elapsed.TotalSeconds, 1), Environment.ProcessId, Host);
         (PlayerDto? player, double? playerAgeSec) = await _queries.PlayerAsync();
-        return new StatusDto(engine, _gameHost.Status() with { Player = player, PlayerAgeSec = playerAgeSec }, ScriptStatus(), _dialogs.Pending());
+        return new StatusDto(engine, _gameHost.Status() with { Player = player, PlayerAgeSec = playerAgeSec, Options = GameOptions() }, ScriptStatus(), _dialogs.Pending());
+    }
+
+    private GameOptionsDto GameOptions()
+    {
+        IScriptOption o = _scriptOptions;
+        return new GameOptionsDto(o.LagKiller, o.HidePlayers, o.PrivateRooms, o.AutoRelogin, o.SafeTimings, o.AggroMonsters, o.AggroAllMonsters,
+            o.InfiniteRange, o.Magnetise, o.SkipCutscenes, o.AcceptAllDrops, o.RejectAllDrops, o.RestPackets);
     }
 
     public Task ShutdownAsync(CancellationToken cancellationToken)

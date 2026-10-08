@@ -278,6 +278,20 @@ public class CliTests
     }
 
     [Fact]
+    public async Task Status_prints_the_games_social_options_and_Skuas_options_on_while_playing()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: TestContext.Current.CancellationToken);
+        await session.Connection.EvalAsync("Bot.Options.PrivateRooms = true; return 0;", cancellationToken: TestContext.Current.CancellationToken);
+
+        ProcessResult result = await sandbox.RunCliAsync("status");
+
+        Assert.Contains("Social  goto, whisper, party, guild on; friend, duel off", result.Stdout);
+        Assert.Matches(@"Options .*private rooms", result.Stdout);
+    }
+
+    [Fact]
     public async Task Status_always_has_a_Player_line_while_playing_unknown_or_stale_with_its_age_when_the_game_doesnt_answer_in_time()
     {
         await using EngineSandbox sandbox = new();
