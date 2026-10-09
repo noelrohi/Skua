@@ -65,7 +65,17 @@ internal sealed class ScriptOperations
         try
         {
             if (options is { Count: > 0 })
-                Store(name, await LoadConfigAsync(name, file), options);
+            {
+                IScriptOptionContainer config = await LoadConfigAsync(name, file);
+                try
+                {
+                    Store(name, config, options);
+                }
+                catch (Exception e) when (e is not LocalRpcException)
+                {
+                    throw StartFailure(name, e);
+                }
+            }
 
             Exception? failure;
             await _compiling.WaitAsync();
@@ -113,7 +123,8 @@ internal sealed class ScriptOperations
         return new ScriptStopResult(wasRunning, ended, _runs.Status());
     }
 
-    public ScriptStatusDto Status() => _runs.Status();
+    /// <param name="held">Whether the run carries what the player held as it started, as only <c>script_status</c> gives it.</param>
+    public ScriptStatusDto Status(bool held = false) => _runs.Status(held);
 
     public async Task<ScriptWaitResult> WaitAsync(int? timeoutSec, CancellationToken cancellationToken)
     {
@@ -183,15 +194,24 @@ internal sealed class ScriptOperations
         }
     }
 
-    /// <summary>Checks every value first, then stores them all in the Script's options storage at once.</summary>
+    /// <summary>
+    /// Checks every value first, then stores them all in the Script's options storage at once. Keys may repeat, as several options can share a
+    /// name; only a key that names one option, and not one of a Script's text entries, can be set.
+    /// </summary>
     private static void Store(string name, IScriptOptionContainer config, IReadOnlyDictionary<string, string> values)
     {
-        Dictionary<string, IOption> byKey = Options(config).ToDictionary(o => o.Key, o => o.Option, StringComparer.OrdinalIgnoreCase);
+        ILookup<string, IOption> byKey = Options(config).ToLookup(o => o.Key, o => o.Option, StringComparer.OrdinalIgnoreCase);
         List<(IOption Option, string Value)> checkedValues = [];
         foreach ((string key, string value) in values)
         {
-            if (!byKey.TryGetValue(key, out IOption? option))
+            IOption[] matches = byKey[key].ToArray();
+            if (matches.Length == 0)
                 throw RpcErrors.Of(ErrorCode.InvalidArgument, $"{name} has no option '{key}'; 'skua script options {name}' lists them.");
+            if (matches.All(IsText))
+                throw RpcErrors.Of(ErrorCode.InvalidArgument, $"'{key}' is text {name} shows among its options, not an option, so it can't be set.");
+            if (matches.Length > 1)
+                throw RpcErrors.Of(ErrorCode.InvalidArgument, $"{name} has {matches.Length} options named '{key}', so it can't tell which one to set.");
+            IOption option = matches[0];
             if (option.Transient)
                 throw RpcErrors.Of(ErrorCode.InvalidArgument, $"'{key}' is a transient option of {name}: it resets on every start, so it can't be set.");
             string stored = Parse(option, value)
@@ -227,6 +247,12 @@ internal sealed class ScriptOperations
         config.Options.Select(o => (o.Name, o))
             .Concat(config.MultipleOptions.SelectMany(group => group.Value.Select(o => ($"{group.Key}:{o.Name}", o))));
 
+    /// <summary>
+    /// Whether the option only shows text in Core's options window, as the "Mode Explanation" entries every merge shop shares do: a blank
+    /// name, so nothing reads it.
+    /// </summary>
+    private static bool IsText(IOption option) => string.IsNullOrWhiteSpace(option.Name);
+
     private static ScriptOptionDto Describe(IScriptOptionContainer config, string key, IOption option)
     {
         string defaultValue = Display(option, option.DefaultValue?.ToString() ?? "");
@@ -234,7 +260,7 @@ internal sealed class ScriptOperations
         return new ScriptOptionDto(
             key, option.Category, option.Name, string.IsNullOrEmpty(option.DisplayName) ? option.Name : option.DisplayName,
             string.IsNullOrWhiteSpace(option.Description) ? null : option.Description, TypeName(option.Type), value, defaultValue,
-            option.Type.IsEnum ? Choices(option.Type) : null, option.Transient);
+            option.Type.IsEnum ? Choices(option.Type) : null, option.Transient, IsText(option));
     }
 
     /// <summary>Enum values show with spaces for underscores, as Core's options window shows and stores them.</summary>

@@ -134,10 +134,16 @@ public static class EventTypes
 
     /// <summary>
     /// A run started: <c>{run, script, restart, inventory, temp, bank}</c>. A restart by Core's auto-relogin is the same run, with <c>restart</c> true.
-    /// <c>inventory</c>, <c>temp</c> and <c>bank</c> are what the player holds, each a list of <c>{id, name, qty}</c>, and null while not playing;
-    /// <c>bank</c> is null until the game has loaded the bank.
+    /// <c>inventory</c>, <c>temp</c> and <c>bank</c> are what the player holds, each a list of <c>{id, name, qty}</c>, and null while not playing
+    /// or before the game has the inventory, when <see cref="ScriptHeld"/> follows; <c>bank</c> is null until the game has loaded the bank.
     /// </summary>
     public const string ScriptStarted = "script.started";
+
+    /// <summary>
+    /// What the player held when first in game during a run that started without it, as a Script that logs in itself does:
+    /// <c>{run, script, inventory, temp, bank}</c>, as in <see cref="ScriptStarted"/>. A run's counts are measured from it.
+    /// </summary>
+    public const string ScriptHeld = "script.held";
 
     /// <summary>
     /// A run ended: <c>{run, script, outcome, durationSec, relogins, error?}</c>, the outcome one of <see cref="ScriptOutcome"/>.

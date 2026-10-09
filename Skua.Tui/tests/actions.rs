@@ -53,7 +53,9 @@ fn options() -> Value {
         { "key": "Gold:Stop", "category": "Gold", "name": "Stop", "displayName": "Stop at gold", "description": null,
           "type": "int", "value": "100", "default": "100", "choices": null, "transient": false },
         { "key": "Once", "category": "Options", "name": "Once", "displayName": "Run once", "description": null,
-          "type": "bool", "value": "False", "default": "False", "choices": null, "transient": true }
+          "type": "bool", "value": "False", "default": "False", "choices": null, "transient": true },
+        { "key": "Gold: ", "category": "Gold", "name": " ", "displayName": "Mode Explanation [all]", "description": "Buys every item.",
+          "type": "string", "value": "click here", "default": "click here", "choices": null, "transient": false, "text": true }
     ]})
 }
 
@@ -203,7 +205,9 @@ impl Tui {
         engine
             .methods()
             .into_iter()
-            .filter(|m| !["hello", "status", "logs", "inventory", "quests", "map"].contains(&m.as_str()))
+            .filter(|m| {
+                !["hello", "status", "script_status", "logs", "inventory", "quests", "map"].contains(&m.as_str())
+            })
             .collect()
     }
 }
@@ -372,6 +376,10 @@ fn start_script_searches_reads_its_options_and_starts_it_with_the_changed_ones_o
         &tui.screen(),
         &["Run once                    ‹ False ›  (resets each start)"],
     );
+    // Nor can a text entry.
+    tui.key(KeyCode::Down);
+    tui.keys("x");
+    assert_shows(&tui.screen(), &["Mode Explanation [all]      (text)"]);
     tui.key(KeyCode::Enter);
     tui.run_jobs();
 
@@ -604,11 +612,12 @@ fn an_engine_of_another_protocol_is_never_acted_on() {
 fn start_engine_launches_skua_engine_for_the_account_as_skua_does_and_waits_for_its_hello() {
     let mut tui = Tui::new();
     let fake = tui.dir.path().join("skua-engine");
-    // Records its arguments and environment, then lives until the test's Engine answers on the socket.
+    // Records its arguments and environment, then lives until the test's Engine answers on the socket, or the test's folder is gone: on
+    // a busy machine the test can end before this sees the socket, and it mustn't outlive it.
     std::fs::write(
         &fake,
         "#!/bin/sh\nprintf '%s\\n' \"$@\" \"$SKUA_DIR\" \"$SKUA_ENGINE_SOCKET\" > \"$SKUA_DIR/started\"\n\
-         while [ ! -S \"$SKUA_ENGINE_SOCKET\" ]; do sleep 0.05; done\nsleep 1\n",
+         while [ ! -S \"$SKUA_ENGINE_SOCKET\" ] && [ -d \"$SKUA_DIR\" ]; do sleep 0.05; done\nsleep 1\n",
     )
     .unwrap();
     std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();

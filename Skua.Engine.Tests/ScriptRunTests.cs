@@ -81,6 +81,35 @@ public class ScriptRunTests
     }
 
     [Fact]
+    public async Task A_run_started_before_the_player_is_in_game_records_what_they_hold_once_they_are_and_script_status_carries_it()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture game = await GameFixture.StartAsync(sandbox);
+        // Core keeps the login's credentials, so a Script can log back in by itself, as agent-started runs do.
+        await game.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        await game.Connection.LogoutAsync(Ct);
+        TestScripts.Write(sandbox, "Tests/LogsIn.cs", TestScripts.Main("""
+            bot.Servers.Relogin("Galanoth");
+            while (!bot.ShouldExit)
+                Thread.Sleep(50);
+            """));
+
+        ScriptStartResult start = await game.Connection.ScriptStartAsync("Tests/LogsIn.cs", cancellationToken: Ct);
+        LogEntryDto held = await game.Connection.WaitForEventAsync(EventTypes.ScriptHeld);
+        ScriptStatusDto status = await game.Connection.ScriptStatusAsync(Ct);
+        StatusDto polled = await game.Connection.StatusAsync(Ct);
+        await game.Connection.ScriptStopAsync(Ct);
+
+        LogEntryDto started = (await ScriptEvents.AllAsync(game.Connection)).Single(e => e.Type == EventTypes.ScriptStarted);
+        Assert.Equal(JsonValueKind.Null, started.Data!.Value.GetProperty("inventory").ValueKind);
+        Assert.Equal(start.Run, held.Run);
+        string[] inventory = [.. held.Data!.Value.GetProperty("inventory").EnumerateArray().Select(i => i.GetProperty("name").GetString()!)];
+        Assert.Equal(["Default Sword", "Healer", "Treasure Chest"], inventory);
+        Assert.Equal(inventory, status.Run!.Held!.Inventory.Select(i => i.Name));
+        Assert.Null(polled.Script.Run!.Held);
+    }
+
+    [Fact]
     public async Task A_broken_Script_fails_with_CompileFailed_and_its_diagnostics_and_starts_no_run()
     {
         await using EngineSandbox sandbox = new();
@@ -224,6 +253,57 @@ public class ScriptRunTests
 
         Assert.Equal((ScriptOutcome.Completed, (string?)null), (wait.Status.LastRun!.Outcome, wait.Status.LastRun.Error));
         Assert.Single(await game.Connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text == "from IncB"));
+    }
+
+    [Fact]
+    public async Task An_eval_still_loads_an_include_it_first_uses_after_a_newer_compile_and_a_Script_run()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture game = await GameFixture.StartAsync(sandbox);
+        using EngineConnection other = await sandbox.ConnectAsync();
+        string go = Path.Combine(sandbox.SkuaDir, "go");
+        TestScripts.Write(sandbox, "Tests/IncB.cs", """
+            public class IncB
+            {
+                public string Name() => "from IncB";
+            }
+            """);
+        TestScripts.Write(sandbox, "Tests/IncA.cs", """
+            //cs_include Scripts/Tests/IncB.cs
+            using System.Runtime.CompilerServices;
+            using Skua.Core.Interfaces;
+
+            public class IncA
+            {
+                [MethodImpl(MethodImplOptions.NoInlining)]
+                public void Late(IScriptInterface bot) => bot.Log(new IncB().Name());
+            }
+            """);
+        TestScripts.Write(sandbox, "Tests/Uses.cs", "//cs_include Scripts/Tests/IncA.cs\n" + TestScripts.Main("bot.Log(\"ran\");"));
+        // Compiling once caches the includes, so the eval loads them from Cached-Scripts only when first used.
+        await game.Connection.ScriptOptionsAsync("Tests/Uses.cs", Ct);
+
+        // The include is first used in a lambda, which is compiled only when called, after the go file.
+        Task<EvalResult> eval = game.Connection.EvalAsync($$"""
+            //cs_include Scripts/Tests/IncA.cs
+            System.Action late = () => new IncA().Late(Bot);
+            while (!System.IO.File.Exists(@"{{go}}"))
+                System.Threading.Thread.Sleep(50);
+            late();
+            return "done";
+            """, cancellationToken: Ct);
+        await Task.Delay(500, Ct);
+        // A newer compile replaces the eval's as the latest, a Script run unloads what the last compile left, and a collection follows.
+        await other.EvalAsync("GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); GC.WaitForPendingFinalizers();", cancellationToken: Ct);
+        await other.ScriptStartAsync("Tests/Uses.cs", cancellationToken: Ct);
+        await other.ScriptWaitAsync(60, Ct);
+        await other.EvalAsync("GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); GC.WaitForPendingFinalizers();", cancellationToken: Ct);
+        File.WriteAllText(go, "");
+        EvalResult result = await eval;
+
+        Assert.Null(result.Error);
+        Assert.Equal("done", result.Value!.Value.GetString());
+        Assert.Equal(["from IncB"], result.Logs);
     }
 
     [Fact]

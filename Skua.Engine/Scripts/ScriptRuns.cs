@@ -30,12 +30,15 @@ internal sealed class ScriptRuns
     private readonly IScriptManager _manager;
     private readonly IScriptOption _options;
     private readonly ScriptDialogBroker _dialogs;
-    private readonly Func<HeldItems?> _held;
+    private readonly Func<HeldItemsDto?> _held;
     private readonly bool _keepLagKillerOn;
 
     private ScriptState _state = ScriptState.Idle;
     private Run? _run;
     private int _lastNumber;
+
+    /// <summary>How often a run that started before the player was in game looks for what they hold.</summary>
+    private static readonly TimeSpan HeldPoll = TimeSpan.FromMilliseconds(500);
     private ScriptRunResultDto? _lastRun;
 
     /// <summary>Core has sent its stopped message for a thread; the thread is over once Core no longer reports a Script running.</summary>
@@ -51,7 +54,7 @@ internal sealed class ScriptRuns
 
     /// <param name="held">What the player holds, which <c>script.started</c> carries; read outside the lock, as it reads the game.</param>
     /// <param name="keepLagKillerOn">Turns the lag killer back on after each run, for an Engine that never shows the game.</param>
-    public ScriptRuns(EngineLogs logs, IScriptManager manager, IScriptOption options, ScriptDialogBroker dialogs, Func<HeldItems?> held, bool keepLagKillerOn)
+    public ScriptRuns(EngineLogs logs, IScriptManager manager, IScriptOption options, ScriptDialogBroker dialogs, Func<HeldItemsDto?> held, bool keepLagKillerOn)
     {
         _held = held;
         _keepLagKillerOn = keepLagKillerOn;
@@ -85,10 +88,14 @@ internal sealed class ScriptRuns
         }
     }
 
-    public ScriptStatusDto Status()
+    /// <param name="held">Whether the run carries what the player held as it started, as only <c>script_status</c> gives it.</param>
+    public ScriptStatusDto Status(bool held = false)
     {
         lock (_lock)
-            return StatusLocked();
+        {
+            ScriptStatusDto status = StatusLocked();
+            return held && _run is { } run && status.Run is { } dto ? status with { Run = dto with { Held = run.Held } } : status;
+        }
     }
 
     /// <summary>Refuses <paramref name="action"/> with <see cref="ErrorCode.ScriptRunning"/> unless no Script runs.</summary>
@@ -137,7 +144,7 @@ internal sealed class ScriptRuns
             if (_run is not { Started: false })
                 return;
         }
-        HeldItems? held = _held();
+        HeldItemsDto? held = _held();
         bool ended;
         lock (_lock)
             ended = StartOursLocked(held);
@@ -217,7 +224,7 @@ internal sealed class ScriptRuns
 
     private void OnStarted()
     {
-        HeldItems? held = _held();
+        HeldItemsDto? held = _held();
         bool ended = false;
         lock (_lock)
         {
@@ -347,14 +354,17 @@ internal sealed class ScriptRuns
     }
 
     /// <summary>Reports a start the Engine made (or first saw) as started; returns whether its thread had already ended, which ends the run.</summary>
-    private bool StartOursLocked(HeldItems? held)
+    private bool StartOursLocked(HeldItemsDto? held)
     {
         if (_run is not { Started: false } run)
             return false;
         run.Started = true;
         run.StartedAt = DateTimeOffset.UtcNow;
         run.Clock.Restart();
+        run.Held = held;
         LogStarted(run, restart: false, held);
+        if (held is null)
+            HoldLater(run);
         SetState(ScriptState.Running);
         if (!run.ThreadEnded)
             return false;
@@ -362,7 +372,34 @@ internal sealed class ScriptRuns
         return true;
     }
 
-    private void LogStarted(Run run, bool restart, HeldItems? held) => _logs.Event(EventTypes.ScriptStarted,
+    /// <summary>
+    /// For a run that started before the player was in game, as a Script that logs in itself does, takes what the player holds once they are,
+    /// and records it as <c>script.held</c>; it gives up when the run ends.
+    /// </summary>
+    private void HoldLater(Run run) => _ = Task.Run(async () =>
+    {
+        while (true)
+        {
+            await Task.Delay(HeldPoll);
+            lock (_lock)
+            {
+                if (_run != run)
+                    return;
+            }
+            if (_held() is not { } held)
+                continue;
+            lock (_lock)
+            {
+                if (_run != run || run.Held is not null)
+                    return;
+                run.Held = held;
+                _logs.Event(EventTypes.ScriptHeld, new { run = run.Number, script = run.Script, inventory = held.Inventory, temp = held.Temp, bank = held.Bank });
+            }
+            return;
+        }
+    });
+
+    private void LogStarted(Run run, bool restart, HeldItemsDto? held) => _logs.Event(EventTypes.ScriptStarted,
         new { run = run.Number, script = run.Script, restart, inventory = held?.Inventory, temp = held?.Temp, bank = held?.Bank });
 
     /// <remarks>A Script that stops itself is stopped, unless it threw; <c>script_stop</c> wins over an error it causes.</remarks>
@@ -471,5 +508,8 @@ internal sealed class ScriptRuns
         public bool ReloginPending { get; set; }
         public int Relogins { get; set; }
         public string? Error { get; set; }
+
+        /// <summary>What the player held as it started, or first in game during it; null until then.</summary>
+        public HeldItemsDto? Held { get; set; }
     }
 }

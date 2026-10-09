@@ -27,6 +27,23 @@ public class ScriptApiTests
     }
 
     [Fact]
+    public async Task A_bank_that_has_arrived_is_not_asked_for_again_by_Bank_Load_or_the_Engine()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+
+        EvalResult loads = await session.Connection.EvalAsync("Bot.Bank.Load(); Bot.Bank.Load(); return Bot.Bank.Items.Count;", cancellationToken: Ct);
+        InventoryResult bank = await session.Connection.InventoryAsync(InventoryKind.Bank, Ct);
+
+        Assert.Null(loads.Error);
+        Assert.Equal(1, loads.Value!.Value.GetInt32());
+        Assert.Equal(["Bank Relic"], bank.Items.Select(i => i.Name));
+        // A second getBank could answer after a transfer, with the bank from before it.
+        Assert.Single(await session.GameHost.CallsAsync(), c => c == "getBank");
+    }
+
+    [Fact]
     public async Task Combat_Target_targets_the_monster_without_attacking_it_and_Attack_still_attacks()
     {
         await using EngineSandbox sandbox = new();

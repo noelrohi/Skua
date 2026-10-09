@@ -273,7 +273,7 @@ pub struct Field {
 
 impl Field {
     pub fn editable(&self) -> bool {
-        !self.option.transient
+        !self.option.transient && !self.option.text
     }
 
     fn is_text(&self) -> bool {

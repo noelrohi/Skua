@@ -67,15 +67,17 @@ internal sealed class GameQueries
 
     /// <summary>
     /// What the player holds, for <c>script.started</c>: the inventory's and the temporary inventory's items, and the bank's once the game has
-    /// it, since loading it takes seconds; null while not playing or when the game can't be read.
+    /// it, since loading it takes seconds; null while not playing, before the game has the inventory, or when the game can't be read.
     /// </summary>
-    public HeldItems? Held()
+    public HeldItemsDto? Held()
     {
         if (_tracker.State != GameState.Playing)
             return null;
         try
         {
-            return new HeldItems(Held(_api.Inventory.Items), Held(_api.TempInv.Items), BankArrived() ? Held(_api.Bank.Items) : null);
+            if (!_flash.GetGameObject<bool>("world.myAvatar.invLoaded"))
+                return null;
+            return new HeldItemsDto(Held(_api.Inventory.Items), Held(_api.TempInv.Items), BankArrived() ? Held(_api.Bank.Items) : null);
         }
         catch (Exception e)
         {
@@ -83,7 +85,7 @@ internal sealed class GameQueries
             return null;
         }
 
-        static List<HeldItem> Held(IEnumerable<ItemBase> items) => [.. items.Select(i => new HeldItem(i.ID, i.Name, i.Quantity))];
+        static List<HeldItemDto> Held(IEnumerable<ItemBase> items) => [.. items.Select(i => new HeldItemDto(i.ID, i.Name, i.Quantity))];
     }
 
     public Task<QuestsResult> QuestsAsync(QuestFilter filter, CancellationToken cancellationToken)
@@ -210,7 +212,10 @@ internal sealed class GameQueries
             try
             {
                 await PollAsync(() => _flash.GetGameObject<bool>("world.myAvatar.invLoaded"), timeout.Token);
-                await Task.Run(() => _flash.CallGameFunction("getBank"), timeout.Token);
+                // A Script may have loaded it already; asking again could race its transfers, as Core's Bank.Load says. An empty bank,
+                // or one of only AC items not yet loaded, holds none.
+                if (!await Task.Run(() => BankArrived() && _flash.GetGameObject<int?>("world.bankinfo.BankArray.length") > 0, timeout.Token))
+                    await Task.Run(() => _flash.CallGameFunction("getBank"), timeout.Token);
                 await PollAsync(BankArrived, timeout.Token);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -244,8 +249,3 @@ internal sealed class GameQueries
     private static ItemDto ToTempDto(ItemBase item) =>
         new(item.ID, item.Name, item.Quantity, item.MaxStack, item.CategoryString ?? "", Equipped: false, EnhancementLevel: null);
 }
-
-/// <summary>What the player holds as a run starts, each item store's items; <see cref="Bank"/> is null until the game has loaded the bank.</summary>
-internal sealed record HeldItems(IReadOnlyList<HeldItem> Inventory, IReadOnlyList<HeldItem> Temp, IReadOnlyList<HeldItem>? Bank);
-
-internal sealed record HeldItem(int Id, string Name, int Qty);

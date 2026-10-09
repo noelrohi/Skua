@@ -219,6 +219,13 @@ internal static class Output
         int width = result.Options.Max(o => o.Key.Length);
         foreach (ScriptOptionDto option in result.Options)
         {
+            if (option.Text)
+            {
+                text.AppendLine().Append($"  {option.Key.PadRight(width)}  {"text",-6}  {option.DisplayName} (not an option; can't be set)");
+                if (option.Description is { } explanation)
+                    text.AppendLine().Append($"  {"".PadRight(width)}  {explanation}");
+                continue;
+            }
             string shown = option.Value.Length == 0 ? "(empty)" : option.Value;
             string value = option.Value == option.Default ? shown : $"{shown} (default {option.Default})";
             string choices = option.Choices is { } list ? $" [{string.Join(", ", list)}]" : "";

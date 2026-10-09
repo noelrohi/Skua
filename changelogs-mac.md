@@ -7,6 +7,12 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 ## October 9, 2026
 
 ### Fixes
+* A `skua eval` or Console snippet that runs for a while no longer fails with "Could not load file or assembly" when another eval compiles, or a Script run starts or ends, before it first uses one of its includes.
+* `skua script start --option` works on merge-shop Scripts again. It failed before the Script started, because their shared options have several "Mode Explanation" entries with a blank name. A key that names two options is now refused with `InvalidArgument`, naming the key, and `skua script options` and `skua-tui` show those entries as text that can't be set.
+* A run no longer reports `quest.stalled` before it has started: a Script that took longer to compile than the stall time could stall while compiling.
+* An item a Script takes out of the bank is no longer listed in the bank too. `Bot.Bank.Load()`, which `Bot.Bank.EnsureToInventory` calls first, asked the game for the bank again even when it had already loaded, and that late answer put the item back in the bank list. Scripts that count the inventory and the bank together, such as CoreBots' buys, then saw a full stack and bought nothing. The bank now loads once per login, by the Script or by `skua inventory Bank`, and the game keeps it current from then on.
+* `skua-tui`'s Bags counts from the run's start even when `skua-tui` opens hours into the run, instead of from its own first read. `skua script status --json` (MCP `script_status`) now gives the run's `held`: what the player held as it started.
+* A run that a Script starts before logging in now records what the player held once they're in game, as a `script.held` event, since its `script.started` has nothing to carry. Bags and `script status` count from it.
 * Updating Skua no longer loses the outcome of a run that just ended. A `skua` from a new build replaces the old build's idle Engine only for commands that drive the game; `status`, `script status`, `script wait`, `logs` and the other commands that only read answer from the old Engine and keep it. When the old Engine is replaced, the new one takes over its last run, so a watcher polling `script status` still sees how it ended, and run numbers go on from it. See [Install on macOS](./BUILD.md#install-on-macos).
 
 ## October 8, 2026

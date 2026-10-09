@@ -44,6 +44,8 @@ public class Script{ public void ScriptMain(IScriptInterface Bot){";
             {
                 object? o = _scriptManager.Compile($"{_source}{_snippetText}}}}}");
                 o!.GetType().GetMethod("ScriptMain")!.Invoke(o, new[] { IScriptInterface.Instance });
+                // The snippet holds its load context, which it may still use while it runs; see ScriptManager.Compile.
+                GC.KeepAlive(o);
             }
             catch (Exception e)
             {

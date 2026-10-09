@@ -174,7 +174,9 @@ internal sealed class QuestProgress : IDisposable
             if (_tracker.State != GameState.Playing)
                 return;
             (List<Quest> quests, Stores stores) = ReadGame();
-            ScriptRunDto? run = _tally.WithTally(_runs.Status().Run);
+            // A run still compiling hasn't started: its clock restarts as it does, so it would stall on time it never ran.
+            ScriptStatusDto status = _runs.Status();
+            ScriptRunDto? run = status.State == ScriptState.Compiling ? null : _tally.WithTally(status.Run);
             Stall? stall;
             lock (_lock)
             {

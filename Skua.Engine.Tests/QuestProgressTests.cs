@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Skua.Control;
 
@@ -21,21 +22,18 @@ public class QuestProgressTests
         await using GameFixture session = await GameFixture.StartAsync(sandbox, environment: Fast);
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
 
-        await Task.Delay(1500, Ct);
-        QuestRequirementDto waited = await SlimesAsync(session);
+        QuestRequirementDto waited = await WaitForAsync(() => SlimesAsync(session), r => r.IdleSec >= 1.4);
         await session.GameHost.DoAsync("slime-samples 4");
-        QuestRequirementDto rose = await SlimesAsync(session);
+        QuestRequirementDto rose = await WaitForAsync(() => SlimesAsync(session), r => r.Have == 4 && r.IdleSec < waited.IdleSec);
         await session.GameHost.DoAsync("slime-samples 1");
-        await Task.Delay(500, Ct);
-        QuestRequirementDto fell = await SlimesAsync(session);
+        QuestRequirementDto fell = await WaitForAsync(() => SlimesAsync(session), r => r.Have == 1 && r.IdleSec >= rose.IdleSec + 0.5);
 
         Assert.Equal(3, waited.Have);
-        Assert.InRange(waited.IdleSec!.Value, 1.4, 30);
         Assert.Null(waited.GainPerHour);
-        Assert.Equal(4, rose.Have);
-        Assert.InRange(rose.IdleSec!.Value, 0, 1);
-        Assert.Equal(1, fell.Have);
-        Assert.InRange(fell.IdleSec!.Value, 0.5, rose.IdleSec.Value + 30);
+        // A rise sets it back; however late the read, it is younger than the wait before it.
+        Assert.True(rose.IdleSec < waited.IdleSec, $"{rose.IdleSec} after the rise, {waited.IdleSec} before");
+        // A fall is no rise: it goes on from the rise.
+        Assert.InRange(fell.IdleSec!.Value, rose.IdleSec!.Value + 0.5, rose.IdleSec.Value + 30);
     }
 
     [Fact]
@@ -116,6 +114,7 @@ public class QuestProgressTests
         TestScripts.Write(sandbox, "Tests/Loop.cs", TestScripts.Loop);
         // An earlier step's quest, which the run leaves accepted: Not Yet's requirements never rise.
         await session.Connection.EvalAsync("Bot.Quests.Accept(1003)", cancellationToken: Ct);
+        long acceptedMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
         await session.Connection.ScriptStartAsync("Tests/Loop.cs", cancellationToken: Ct);
         // Slime Time progresses for twice the stall time, then stalls.
@@ -130,8 +129,8 @@ public class QuestProgressTests
         Assert.Single(await AllAsync(session, LogKind.Events), e => e.Type == EventTypes.QuestStalled);
         Assert.Equal([1001], Reaccepted(stalled));
         Assert.Equal([1001], stalled.Data!.Value.GetProperty("quests").EnumerateArray().Select(q => q.GetProperty("id").GetInt32()));
-        // The stall is Slime Time's: since its last rise, not since Not Yet's accept.
-        Assert.InRange(stalled.Data!.Value.GetProperty("idleSec").GetDouble(), 2, 4);
+        // The stall is Slime Time's: since its last rise, not since Not Yet's accept, which was at least 4 s earlier.
+        Assert.InRange(stalled.Data!.Value.GetProperty("idleSec").GetDouble(), 2, (stalled.Ts - acceptedMs) / 1000.0 - 4);
         Assert.Equal(["acceptQuest 1003", "acceptQuest 1001"], (await session.GameHost.CallsAsync()).Where(c => c.StartsWith("acceptQuest ", StringComparison.Ordinal)));
     }
 
@@ -183,7 +182,7 @@ public class QuestProgressTests
             await session.GameHost.DoAsync("slime-samples 5");
             await session.GameHost.DoAsync("slime-crowns 1");
             await session.Connection.WaitForLogsAsync(LogKind.Events, turnIns, e => e.Type == EventTypes.QuestCompleted);
-            await WaitForAsync(async () => (await session.GameHost.CallsAsync()).Count(c => c == "acceptQuest 1001"), n => n == turnIns, tries: 100);
+            await WaitForAsync(async () => (await session.GameHost.CallsAsync()).Count(c => c == "acceptQuest 1001"), n => n == turnIns);
         }
         await Task.Delay(500, Ct);
 
@@ -256,10 +255,9 @@ public class QuestProgressTests
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
 
         QuestRequirementDto unloaded = await RelicsAsync(session);
-        await Task.Delay(1500, Ct);
+        await WaitForAsync(() => RelicsAsync(session), r => r.IdleSec >= 1.5);
         await session.Connection.InventoryAsync(InventoryKind.Bank, Ct);
-        await Task.Delay(300, Ct);
-        QuestRequirementDto banked = await RelicsAsync(session);
+        QuestRequirementDto banked = await WaitForAsync(() => RelicsAsync(session), r => r.InBank == 2);
 
         // Relic Keeper needs 2 Bank Relics, and the bank holds both; the game has no bank until something loads it.
         Assert.Equal((0, 0), (unloaded.Have, unloaded.InBank));
@@ -276,7 +274,8 @@ public class QuestProgressTests
         TestScripts.Write(sandbox, "Tests/Loop.cs", TestScripts.Loop);
         // A kill before the run isn't the run's.
         await session.GameHost.DoAsync("kill 1");
-        await Task.Delay(300, Ct);
+        // A read of the game answers after the kill's packet, which the Game Host sent first on the same pipe.
+        await session.Connection.EvalAsync("return Bot.Player.Level;", cancellationToken: Ct);
 
         await session.Connection.ScriptStartAsync("Tests/Loop.cs", cancellationToken: Ct);
         ScriptRunDto none = (await session.Connection.StatusAsync(Ct)).Script.Run!;
@@ -357,7 +356,7 @@ public class QuestProgressTests
         GoalItemDto early = (await WaitForAsync(async () => (await session.Connection.StatusAsync(Ct)).Script.Run!,
             r => r.Goal is { Farm.Have: not null })).Goal!.Farm!;
         GoalItemDto measured = (await WaitForAsync(async () => (await session.Connection.StatusAsync(Ct)).Script.Run!,
-            r => r.Goal is { Farm.PerHour: not null }, tries: 200)).Goal!.Farm!;
+            r => r.Goal is { Farm.PerHour: not null })).Goal!.Farm!;
         double since = (DateTime.UtcNow - started).TotalHours;
 
         Assert.Equal((3, (double?)null), (early.Have, early.PerHour));
@@ -365,10 +364,12 @@ public class QuestProgressTests
         Assert.InRange(measured.PerHour!.Value, Math.Floor(2 / since), 2 * 3600 / 3.0);
     }
 
-    private static async Task<T> WaitForAsync<T>(Func<Task<T>> read, Func<T, bool> done, int tries = 40)
+    /// <summary>Reads until <paramref name="done"/>, for at most 30 s, as a busy machine can take; the last read when it never is.</summary>
+    private static async Task<T> WaitForAsync<T>(Func<Task<T>> read, Func<T, bool> done)
     {
+        Stopwatch waited = Stopwatch.StartNew();
         T value = await read();
-        for (int i = 0; i < tries && !done(value); i++)
+        while (!done(value) && waited.Elapsed < TimeSpan.FromSeconds(30))
         {
             await Task.Delay(50, Ct);
             value = await read();

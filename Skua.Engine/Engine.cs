@@ -351,11 +351,12 @@ internal sealed class Engine : IEngineRpc
         _scripts.StopAsync(cancellationToken);
 
     public Task<ScriptStatusDto> ScriptStatusAsync(CancellationToken cancellationToken) =>
-        Task.FromResult(ScriptStatus());
+        Task.FromResult(ScriptStatus(held: true));
 
-    private ScriptStatusDto ScriptStatus()
+    /// <param name="held">Whether the run carries what the player held as it started: only <c>script_status</c> gives it, which <c>status</c> doesn't.</param>
+    private ScriptStatusDto ScriptStatus(bool held = false)
     {
-        ScriptStatusDto status = _scripts.Status();
+        ScriptStatusDto status = _scripts.Status(held);
         return status with { Run = _goal.WithGoal(_tally.WithTally(_questProgress.WithQuestIdle(status.Run))) };
     }
 
