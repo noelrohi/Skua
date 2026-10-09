@@ -2297,6 +2297,8 @@ fn option_line(field: &Field, selected: bool) -> Line<'static> {
     let changed = if field.value != field.option.value { " *" } else { "" };
     let line = if field.editable() {
         Line::raw(format!("{name}{value}{changed}"))
+    } else if field.option.text {
+        Line::styled(format!("{name}(text)"), Style::new().fg(DIM))
     } else {
         Line::styled(format!("{name}{value}  (resets each start)"), Style::new().fg(DIM))
     };
