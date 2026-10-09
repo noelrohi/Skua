@@ -72,7 +72,10 @@ public partial class ScriptBank : IScriptBank
 
     public void Load(bool waitForLoad = true)
     {
-        if (Flash.GetGameObject("ui.mcPopup.currentLabel") == "Bank")
+        // Once the bank has arrived the game keeps it current through every transfer, so it isn't asked for again: getBank's answer holds
+        // the bank as it was when the request left, and adds an item it lists without removing any, so an answer landing after a transfer
+        // lists the item again.
+        if (Flash.GetGameObject("ui.mcPopup.currentLabel") == "Bank" || Arrived())
             return;
         // This loads the bank as the game itself does, with getBank over HTTP: the game server no longer answers the loadBank packet.
         // getBank needs the character's data, which the game has once the inventory has loaded.
@@ -83,6 +86,11 @@ public partial class ScriptBank : IScriptBank
         if (waitForLoad)
             Wait.ForBankLoad(LoadWaitSleeps);
     }
+
+    /// <summary>Whether the bank holds the login's bank count of items, as <see cref="IScriptWait.ForBankLoad"/> waits for.</summary>
+    private bool Arrived() =>
+        Flash.GetGameObject<int?>("world.myAvatar.iBankCount") is int count
+        && Flash.GetGameObject<int?>("world.bankinfo.BankArray.length") >= count;
 
     public bool Swap(string invItem, string bankItem)
     {

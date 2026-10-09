@@ -4,6 +4,11 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 
 ---
 
+## October 9, 2026
+
+### Fixes
+* An item a Script takes out of the bank is no longer listed in the bank too. `Bot.Bank.Load()`, which `Bot.Bank.EnsureToInventory` calls first, asked the game for the bank again even when it had already loaded, and that late answer put the item back in the bank list. Scripts that count the inventory and the bank together, such as CoreBots' buys, then saw a full stack and bought nothing. The bank now loads once per login, by the Script or by `skua inventory Bank`, and the game keeps it current from then on.
+
 ## October 8, 2026
 
 ### New

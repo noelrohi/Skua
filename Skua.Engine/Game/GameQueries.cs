@@ -210,7 +210,9 @@ internal sealed class GameQueries
             try
             {
                 await PollAsync(() => _flash.GetGameObject<bool>("world.myAvatar.invLoaded"), timeout.Token);
-                await Task.Run(() => _flash.CallGameFunction("getBank"), timeout.Token);
+                // A Script may have loaded it already; asking again could race its transfers, as Core's Bank.Load says.
+                if (!await Task.Run(BankArrived, timeout.Token))
+                    await Task.Run(() => _flash.CallGameFunction("getBank"), timeout.Token);
                 await PollAsync(BankArrived, timeout.Token);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
