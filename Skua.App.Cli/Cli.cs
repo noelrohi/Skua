@@ -18,11 +18,15 @@ internal static class Cli
         ? EngineEndpoint.Resolve(name, EngineEndpoint.DefaultSkuaDir())
         : EngineEndpoint.FromEnvironment();
 
-    /// <summary>How every command connects: it replaces an idle Engine from another build, and says so on stderr.</summary>
-    public static EngineClientOptions Options() => new()
+    /// <summary>
+    /// How every command connects: it replaces an idle Engine from another build, and says so on stderr. A command that only reads keeps one that
+    /// speaks this protocol version, and answers from it.
+    /// </summary>
+    public static EngineClientOptions Options(bool reads = false) => new()
     {
         Endpoint = Endpoint(),
         ReplaceStale = true,
+        KeepCompatibleStale = reads,
         Notice = line => Console.Error.WriteLine($"skua: {line}"),
     };
 
@@ -31,11 +35,13 @@ internal static class Cli
         engine == Control.EngineName.Default ? $"skua {command}" : $"skua --engine {engine} {command}";
 
     /// <param name="exitCode">The exit code for a result, for a command whose result can be a failure; success by default.</param>
-    public static async Task<int> RunAsync<T>(bool json, Func<EngineClientOptions, Task<T>> command, Func<T, string> human, Func<T, int>? exitCode = null)
+    /// <param name="reads">Whether the command only reads, so it keeps a compatible Engine from another build; see <see cref="Options"/>.</param>
+    public static async Task<int> RunAsync<T>(
+        bool json, Func<EngineClientOptions, Task<T>> command, Func<T, string> human, Func<T, int>? exitCode = null, bool reads = false)
     {
         try
         {
-            T result = await command(Options());
+            T result = await command(Options(reads));
             Console.WriteLine(json ? JsonSerializer.Serialize(result, Output.JsonOptions) : human(result));
             return exitCode?.Invoke(result) ?? ExitCodes.Success;
         }
@@ -53,7 +59,7 @@ internal static class Cli
     {
         try
         {
-            using EngineConnection connection = await EngineClient.ConnectAsync(Options(), cancellationToken);
+            using EngineConnection connection = await EngineClient.ConnectAsync(Options(reads: true), cancellationToken);
             HashSet<long> replayed = [];
             if (tail is { } newest)
             {

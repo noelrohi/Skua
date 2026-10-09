@@ -48,7 +48,7 @@ internal static class Watch
     {
         try
         {
-            using EngineConnection connection = await EngineClient.ConnectAsync(Cli.Options(), cancellationToken);
+            using EngineConnection connection = await EngineClient.ConnectAsync(Cli.Options(reads: true), cancellationToken);
             if (!json && !Console.IsOutputRedirected)
                 return await ScriptFollow.WatchAsync(connection, cancellationToken);
 

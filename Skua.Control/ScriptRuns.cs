@@ -46,7 +46,10 @@ public enum DialogMode
 
 /// <summary>The reply to <c>script_status</c>, also part of <c>status</c>.</summary>
 /// <param name="Run">The run in progress, or null when idle.</param>
-/// <param name="LastRun">The last run that ended since the Engine started, or null.</param>
+/// <param name="LastRun">
+/// The last run that ended since the Engine started, or null; for an Engine that replaced one from another build, until a run ends, that
+/// Engine's last run.
+/// </param>
 public sealed record ScriptStatusDto(ScriptState State, ScriptRunDto? Run, ScriptRunResultDto? LastRun);
 
 /// <summary>A run in progress. A restart by Core's auto-relogin is the same run.</summary>

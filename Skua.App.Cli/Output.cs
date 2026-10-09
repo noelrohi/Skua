@@ -26,8 +26,8 @@ internal static class Output
         if (engine.Build == ControlProtocol.Build)
             return null;
         string replaces = engine.Host == EngineHost.App ? "quitting the app replaces it"
-            : script.Run is not null ? "a skua command replaces it once its Script ends"
-            : "the next skua command replaces it";
+            : script.Run is not null ? "a skua command that drives the game replaces it once its Script ends"
+            : "the next skua command that drives the game replaces it";
         return $"Build   {engine.Build}, another build than this skua's {ControlProtocol.Build}; {replaces}";
     }
 
@@ -477,7 +477,7 @@ internal static class Output
             + (engine.Host == EngineHost.App ? "quit the app." : "run 'skua engine stop'."),
         EngineState.Running when engine.Build != ControlProtocol.Build =>
             $"Engine '{engine.Name}' is running{InApp(engine)} (pid {engine.Pid}, build {engine.Build}, another build than this skua's {ControlProtocol.Build}); "
-            + (engine.Host == EngineHost.App ? "quitting the app replaces it." : "a skua command replaces it once it's idle."),
+            + (engine.Host == EngineHost.App ? "quitting the app replaces it." : "a skua command that drives the game replaces it once it's idle."),
         EngineState.Running => $"Engine '{engine.Name}' is running{InApp(engine)} (pid {engine.Pid}, build {engine.Build}).",
         EngineState.StartingOrHung => $"Engine '{engine.Name}' is starting or hung; its socket {engine.Socket} doesn't answer.",
         _ => $"Engine '{engine.Name}' is stopped.",

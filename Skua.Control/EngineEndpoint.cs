@@ -29,6 +29,7 @@ public sealed record EngineEndpoint
         LockPath = Path.Combine(EnginesDir, name + ".lock");
         LogPath = Path.Combine(EnginesDir, name + ".log");
         KeptNoticePath = Path.Combine(EnginesDir, name + ".kept");
+        LastRunPath = Path.Combine(EnginesDir, name + ".lastrun.json");
         LogFilesDir = Path.Combine(EnginesDir, "logs", name);
     }
 
@@ -48,6 +49,12 @@ public sealed record EngineEndpoint
 
     /// <summary>Which Engine from another build a client last said it kept, and from which build, so it says so once.</summary>
     public string KeptNoticePath { get; }
+
+    /// <summary>
+    /// The last run of an Engine from another build that a client replaced, which the replacement takes over as it starts, so
+    /// <c>script_status</c> still answers for it.
+    /// </summary>
+    public string LastRunPath { get; }
 
     /// <summary>Where the Engine writes one JSONL file of its log entries per start, keeping the last 10.</summary>
     public string LogFilesDir { get; }
