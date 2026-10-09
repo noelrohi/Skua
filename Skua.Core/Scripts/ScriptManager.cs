@@ -11,6 +11,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -68,6 +69,9 @@ public partial class ScriptManager : ObservableObject, IScriptManager, IDisposab
     private ScriptLoadContext? _compileLoadContext;
     // Held for the whole run: a collectible context starts unloading once unreachable, and the run still loads includes lazily.
     private ScriptLoadContext? _runLoadContext;
+    // Each compiled object, such as a running eval or Console snippet, holds its context while it lives: a newer compile replaces
+    // _compileLoadContext, and the snippet may still load includes lazily.
+    private readonly ConditionalWeakTable<object, ScriptLoadContext> _compiledContexts = new();
 
     [ObservableProperty]
     private bool _scriptRunning = false;
@@ -406,9 +410,12 @@ public partial class ScriptManager : ObservableObject, IScriptManager, IDisposab
 
         GC.Collect(2, GCCollectionMode.Optimized, blocking: false);
 
-        return compiler.Error
-            ? throw new ScriptCompileException(compiler.ErrorMessage, compiler.GeneratedClassCodeWithLineNumbers)
-            : (object?)assembly;
+        if (compiler.Error)
+            throw new ScriptCompileException(compiler.ErrorMessage, compiler.GeneratedClassCodeWithLineNumbers);
+        object? compiled = assembly;
+        if (!forRun && compiled is not null)
+            _compiledContexts.AddOrUpdate(compiled, loadContext);
+        return compiled;
     }
 
     private HashSet<string> GetReferences()
@@ -1305,7 +1312,9 @@ public partial class ScriptManager : ObservableObject, IScriptManager, IDisposab
 
         Compiler.ClearSessionRegistries();
 
-        Unload(compile);
+        // A compile whose object still lives, as an eval still running, unloads once that is gone.
+        if (compile is not null && !_compiledContexts.Any(entry => entry.Value == compile))
+            Unload(compile);
         Unload(run);
     }
 
