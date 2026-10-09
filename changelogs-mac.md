@@ -8,6 +8,8 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 
 ### Fixes
 * A `skua eval` or Console snippet that runs for a while no longer fails with "Could not load file or assembly" when another eval compiles, or a Script run starts or ends, before it first uses one of its includes.
+* `skua script start --option` works on merge-shop Scripts again. It failed before the Script started, because their shared options have several "Mode Explanation" entries with a blank name. A key that names two options is now refused with `InvalidArgument`, naming the key, and `skua script options` and `skua-tui` show those entries as text that can't be set.
+* A run no longer reports `quest.stalled` before it has started: a Script that took longer to compile than the stall time could stall while compiling.
 
 ## October 8, 2026
 
