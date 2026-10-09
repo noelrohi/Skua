@@ -198,6 +198,24 @@ pub struct ScriptRun {
     pub deaths: i64,
     /// What the Script is working toward, as its CoreBots log lines say.
     pub goal: Option<ScriptGoal>,
+    /// What the player held as the run started, or first in game during it; only `script_status` gives it, and `None` until then.
+    #[serde(default)]
+    pub held: Option<HeldItems>,
+}
+
+/// What the player held, as `script.started` carries it; the inventory is all Bags needs.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeldItems {
+    pub inventory: Vec<HeldItem>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeldItem {
+    pub id: i64,
+    pub name: String,
+    pub qty: i64,
 }
 
 /// Each step is what the one before it needs: the quest, the item bought for it, the material farmed for that, what it kills now.

@@ -205,7 +205,9 @@ impl Tui {
         engine
             .methods()
             .into_iter()
-            .filter(|m| !["hello", "status", "logs", "inventory", "quests", "map"].contains(&m.as_str()))
+            .filter(|m| {
+                !["hello", "status", "script_status", "logs", "inventory", "quests", "map"].contains(&m.as_str())
+            })
             .collect()
     }
 }
