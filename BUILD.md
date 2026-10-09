@@ -402,7 +402,7 @@ A Script is named by its path in the Script Source (`Farm/Leveling.cs`) or by an
 ```sh
 skua script start Farm/Leveling.cs --follow           # updates the Scripts, starts it, prints its log under a live status line
 skua watch                                            # the same live view for a Script already running; Ctrl-C leaves it running
-skua script options Farm/Leveling.cs                  # keys, types, stored values, defaults, choices
+skua script options Farm/Leveling.cs                  # keys, types, stored values, defaults, choices; text entries can't be set
 skua script start Farm/Leveling.cs --option key=value # stores the values, compiles, starts
 skua script wait --timeout 600                        # returns when the run ends, or on timeout
 skua script status

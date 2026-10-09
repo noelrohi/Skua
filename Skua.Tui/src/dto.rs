@@ -428,6 +428,9 @@ pub struct ScriptOption {
     pub default: String,
     pub choices: Option<Vec<String>>,
     pub transient: bool,
+    /// Only text shown among the options, such as a merge shop's "Mode Explanation"; it can't be set.
+    #[serde(default)]
+    pub text: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]

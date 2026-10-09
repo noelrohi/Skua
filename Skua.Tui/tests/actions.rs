@@ -53,7 +53,9 @@ fn options() -> Value {
         { "key": "Gold:Stop", "category": "Gold", "name": "Stop", "displayName": "Stop at gold", "description": null,
           "type": "int", "value": "100", "default": "100", "choices": null, "transient": false },
         { "key": "Once", "category": "Options", "name": "Once", "displayName": "Run once", "description": null,
-          "type": "bool", "value": "False", "default": "False", "choices": null, "transient": true }
+          "type": "bool", "value": "False", "default": "False", "choices": null, "transient": true },
+        { "key": "Gold: ", "category": "Gold", "name": " ", "displayName": "Mode Explanation [all]", "description": "Buys every item.",
+          "type": "string", "value": "click here", "default": "click here", "choices": null, "transient": false, "text": true }
     ]})
 }
 
@@ -372,6 +374,10 @@ fn start_script_searches_reads_its_options_and_starts_it_with_the_changed_ones_o
         &tui.screen(),
         &["Run once                    ‹ False ›  (resets each start)"],
     );
+    // Nor can a text entry.
+    tui.key(KeyCode::Down);
+    tui.keys("x");
+    assert_shows(&tui.screen(), &["Mode Explanation [all]      (text)"]);
     tui.key(KeyCode::Enter);
     tui.run_jobs();
 

@@ -4,6 +4,11 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 
 ---
 
+## October 9, 2026
+
+### Fixes
+* `skua script start --option` works on merge-shop Scripts again. It failed before the Script started, because their shared options have several "Mode Explanation" entries with a blank name. A key that names two options is now refused with `InvalidArgument`, naming the key, and `skua script options` and `skua-tui` show those entries as text that can't be set.
+
 ## October 8, 2026
 
 ### New
