@@ -97,6 +97,81 @@ public class ScriptOptionsTests
         Assert.False(File.Exists(Path.Combine(sandbox.SkuaDir, "options", "TestFarm.cfg")));
     }
 
+    /// <summary>A merge shop's options: a group whose text entries all have a blank name, and two options that share a name.</summary>
+    private static readonly string Merge = TestScripts.Main(
+        """
+        bot.Log($"mode={bot.Config.Get<string>("Generic", "mode")} id={bot.Config.Get<bool>("Select", "79817")}");
+        """,
+        """
+        public string OptionsStorage = "TestMerge";
+
+        public string[] MultiOptions = { "Generic", "Select" };
+
+        public List<IOption> Generic = new()
+        {
+            new Option<string>("mode", "Mode", "", "all"),
+            new Option<string>(" ", "Mode Explanation [all]", "You get all the items.", "click here"),
+            new Option<string>(" ", "Mode Explanation [select]", "You pick the items.", "click here"),
+        };
+
+        public List<IOption> Select = new()
+        {
+            new Option<bool>("79817", "Some Item", "", false),
+        };
+
+        public List<IOption> Options = new()
+        {
+            new Option<int>("dup", "First", "", 1),
+            new Option<int>("dup", "Second", "", 2),
+        };
+        """);
+
+    [Fact]
+    public async Task Script_start_sets_options_of_a_Script_whose_other_options_share_a_name()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture game = await GameFixture.StartAsync(sandbox);
+        TestScripts.Write(sandbox, "Tests/Merge.cs", Merge);
+
+        await game.Connection.ScriptStartAsync("Tests/Merge.cs",
+            new Dictionary<string, string> { ["Generic:mode"] = "select", ["Select:79817"] = "true" }, cancellationToken: Ct);
+        await game.Connection.ScriptWaitAsync(60, Ct);
+
+        LogEntryDto line = (await game.Connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text!.StartsWith("mode=", StringComparison.Ordinal)))[0];
+        Assert.Equal("mode=select id=True", line.Text);
+    }
+
+    [Theory]
+    [InlineData("dup", "has 2 options named 'dup'")]
+    [InlineData("Generic: ", "is text Tests/Merge.cs shows among its options")]
+    public async Task Script_start_refuses_an_option_name_two_options_share_or_a_text_entry_with_InvalidArgument(string key, string message)
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture game = await GameFixture.StartAsync(sandbox);
+        TestScripts.Write(sandbox, "Tests/Merge.cs", Merge);
+
+        ControlException e = await Assert.ThrowsAsync<ControlException>(() => game.Connection.ScriptStartAsync("Tests/Merge.cs",
+            new Dictionary<string, string> { [key] = "3" }, cancellationToken: Ct));
+
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Contains(message, e.Message);
+        Assert.False(File.Exists(Path.Combine(sandbox.SkuaDir, "options", "TestMerge.cfg")));
+    }
+
+    [Fact]
+    public async Task Script_options_marks_the_text_entries_as_text()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture game = await GameFixture.StartAsync(sandbox);
+        TestScripts.Write(sandbox, "Tests/Merge.cs", Merge);
+
+        ScriptOptionsResult result = await game.Connection.ScriptOptionsAsync("Tests/Merge.cs", Ct);
+
+        Assert.Equal(
+            ["Mode Explanation [all]", "Mode Explanation [select]"],
+            result.Options.Where(o => o.Text).Select(o => o.DisplayName));
+    }
+
     [Fact]
     public async Task The_options_window_Core_opens_at_a_first_start_is_a_no_op_so_the_Script_only_ever_sees_its_stored_values()
     {
