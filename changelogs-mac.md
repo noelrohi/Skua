@@ -4,6 +4,11 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 
 ---
 
+## October 9, 2026
+
+### Fixes
+* A run no longer reports `quest.stalled` before it has started: a Script that took longer to compile than the stall time could stall while compiling.
+
 ## October 8, 2026
 
 ### New
