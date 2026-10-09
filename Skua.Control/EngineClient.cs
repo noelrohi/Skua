@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net.Sockets;
+using System.Text.Json;
 using StreamJsonRpc;
 
 namespace Skua.Control;
@@ -26,6 +27,12 @@ public sealed record EngineClientOptions
     /// replace the newer Engine.
     /// </summary>
     public bool ReplaceStale { get; init; }
+
+    /// <summary>
+    /// Whether a stale Engine that speaks this protocol version is kept rather than replaced, for a command that only reads: it can answer, and
+    /// replacing it would start an Engine at the login screen that nobody asked for. A command that drives the game replaces it.
+    /// </summary>
+    public bool KeepCompatibleStale { get; init; }
 
     /// <summary>
     /// Whether connecting starts the Engine when none runs: true by default. Without it, connecting fails with
@@ -161,6 +168,13 @@ public static class EngineClient
             return null;
         }
 
+        if (options.KeepCompatibleStale && connection.IsCompatible)
+        {
+            NoticeKept(options, engine, $"{staleEngine} wasn't replaced, since this command only reads; a skua command that drives the game replaces it once it's idle.");
+            return null;
+        }
+
+        ScriptRunResultDto? lastRun = connection.IsCompatible ? await LastRunAsync(connection, cancellationToken) : null;
         try
         {
             if (!await connection.ShutdownIfIdleAsync(cancellationToken))
@@ -188,8 +202,54 @@ public static class EngineClient
 
         EngineEndpoint endpoint = StartedAs(options.Endpoint, engine);
         await WaitUntilStoppedAsync(endpoint, ReplaceTimeout, cancellationToken);
+        if (lastRun is not null)
+            HandOver(endpoint, lastRun);
         options.Notice?.Invoke($"Replaced {staleEngine} with build {options.Build}, protocol {ControlProtocol.Version}.");
         return endpoint;
+    }
+
+    /// <summary>The idle Engine's last run, which its replacement takes over; null when it has none or didn't say.</summary>
+    private static async Task<ScriptRunResultDto?> LastRunAsync(EngineConnection connection, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return (await connection.ScriptStatusAsync(cancellationToken)).LastRun;
+        }
+        // Losing the last run is no reason to keep the stale Engine.
+        catch (Exception e) when (e is ControlException or RemoteInvocationException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Leaves the replaced Engine's last run for its replacement; without it, a caller polling for the run's outcome would lose it.</summary>
+    private static void HandOver(EngineEndpoint endpoint, ScriptRunResultDto lastRun)
+    {
+        try
+        {
+            File.WriteAllText(endpoint.LastRunPath, JsonSerializer.Serialize(lastRun, ControlJson.Options));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
+    /// <summary>
+    /// Takes the last run a client left at <paramref name="endpoint"/> when it replaced the Engine from another build there, and removes it; null
+    /// when there is none or it can't be read.
+    /// </summary>
+    public static ScriptRunResultDto? TakeOverLastRun(EngineEndpoint endpoint)
+    {
+        try
+        {
+            string json = File.ReadAllText(endpoint.LastRunPath);
+            File.Delete(endpoint.LastRunPath);
+            return JsonSerializer.Deserialize<ScriptRunResultDto>(json, ControlJson.Options);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

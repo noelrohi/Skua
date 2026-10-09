@@ -72,6 +72,19 @@ internal sealed class ScriptRuns
         manager.PropertyChanged += OnManagerChanged;
     }
 
+    /// <summary>
+    /// Takes over the last run of the Engine this one replaced, as the last run; runs go on numbering from it, so a caller waiting for that
+    /// run's outcome can't take a later run for it.
+    /// </summary>
+    public void TakeOver(ScriptRunResultDto lastRun)
+    {
+        lock (_lock)
+        {
+            _lastRun = lastRun;
+            _lastNumber = Math.Max(_lastNumber, lastRun.Number);
+        }
+    }
+
     public ScriptStatusDto Status()
     {
         lock (_lock)

@@ -26,7 +26,7 @@ engineName.Validators.Add(result =>
 });
 
 Command status = new("status", "Show a running Engine, its game and its Script; it starts none, and fails when the Engine isn't running.");
-status.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), options => EngineCommands.StatusOfRunningAsync(options, ct), Output.Status));
+status.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), options => EngineCommands.StatusOfRunningAsync(options, ct), Output.Status, reads: true));
 
 Argument<string> scriptsQuery = new("query")
 {
@@ -131,7 +131,7 @@ logs.SetAction((parse, ct) =>
         {
             using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
             return await connection.LogsAsync(kinds[0], parse.GetValue(logsAfter), parse.GetValue(logsMax), parse.GetValue(logsTail), ct);
-        }, Output.Logs);
+        }, Output.Logs, reads: true);
 });
 
 Option<int?> gainsRun = new("--run") { Description = "The run, by its number in the log: the last run by default." };
@@ -149,7 +149,7 @@ servers.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async option
 {
     using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
     return await connection.ServersAsync(ct);
-}, Output.Servers));
+}, Output.Servers, reads: true));
 
 Argument<string?> loginServer = new("server")
 {
@@ -247,7 +247,7 @@ inventory.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async opti
 {
     using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
     return await connection.InventoryAsync(parse.GetValue(inventoryKind), ct);
-}, Output.Inventory));
+}, Output.Inventory, reads: true));
 
 Argument<QuestFilter> questsFilter = new("filter")
 {
@@ -260,7 +260,7 @@ quests.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options
 {
     using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
     return await connection.QuestsAsync(parse.GetValue(questsFilter), ct);
-}, Output.Quests));
+}, Output.Quests, reads: true));
 
 Argument<int> completeId = new("id") { Description = "The quest's ID, as 'skua quests' lists it." };
 Option<int?> completeReward = new("--reward") { Description = "For a quest whose reward the player picks, the item ID to take." };
@@ -278,14 +278,14 @@ map.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
 {
     using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
     return await connection.MapAsync(ct);
-}, Output.Map));
+}, Output.Map, reads: true));
 
 Command drops = new("drops", "List the items dropped for the player since the login and not yet picked up.");
 drops.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
 {
     using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
     return await connection.DropsAsync(ct);
-}, Output.Drops));
+}, Output.Drops, reads: true));
 
 Option<int?> screenshotMaxWidth = new("--max-width") { Description = "Scale a wider frame down to this width, keeping its aspect ratio." };
 Option<string?> screenshotOut = new("--out", "-o") { Description = "The PNG file to write; by default a new skua-screenshot-<time>.png in the current directory." };
@@ -295,7 +295,7 @@ screenshot.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async opt
     using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
     ScreenshotResult shot = await connection.ScreenshotAsync(parse.GetValue(screenshotMaxWidth), ct);
     return await ScreenshotFile.WriteAsync(shot, parse.GetValue(screenshotOut), ct);
-}, Output.Screenshot));
+}, Output.Screenshot, reads: true));
 
 Argument<string> scriptPath = new("script") { Description = "A path in the Script Source, e.g. Farm/Leveling.cs, or an absolute path." };
 
@@ -359,7 +359,7 @@ scriptStatus.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async o
 {
     using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
     return await connection.ScriptStatusAsync(ct);
-}, Output.ScriptStatus));
+}, Output.ScriptStatus, reads: true));
 
 Option<int?> waitTimeout = new("--timeout") { Description = "Seconds to wait: 300 by default; 0 only looks." };
 Command scriptWait = new("wait", "Wait until the run ends, a Question is pending, or the timeout passes.") { waitTimeout };
@@ -367,7 +367,7 @@ scriptWait.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async opt
 {
     using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
     return await connection.ScriptWaitAsync(parse.GetValue(waitTimeout), ct);
-}, Output.ScriptWait));
+}, Output.ScriptWait, reads: true));
 
 Command script = new("script", "Run Scripts: options, start, stop, status and wait.") { scriptOptions, scriptStart, scriptStop, scriptStatus, scriptWait };
 
@@ -389,7 +389,7 @@ dialogs.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async option
 {
     using EngineConnection connection = await EngineClient.ConnectAsync(options, ct);
     return await connection.DialogsAsync(ct);
-}, Output.Dialogs));
+}, Output.Dialogs, reads: true));
 
 Argument<int> answerId = new("id") { Description = "The Question's id, as 'skua dialogs' lists it." };
 Argument<string> answerChoice = new("choice") { Description = "One of the Question's choices, ignoring case, e.g. Yes." };

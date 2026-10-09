@@ -68,6 +68,8 @@ internal sealed class Engine : IEngineRpc
         _dialogs = new DialogOperations(broker, logs);
         _scriptOptions = services.GetRequiredService<IScriptOption>();
         _runs = new(logs, manager, _scriptOptions, broker, () => _queries.Held(), keepLagKillerOn: options.IsHeadless);
+        if (EngineClient.TakeOverLastRun(endpoint) is { } lastRun)
+            _runs.TakeOver(lastRun);
         _reports = new ScriptReports(logs, _runs);
         _slot = new();
         _scriptsSlot = new();

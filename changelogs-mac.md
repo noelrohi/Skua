@@ -4,6 +4,11 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 
 ---
 
+## October 9, 2026
+
+### Fixes
+* Updating Skua no longer loses the outcome of a run that just ended. A `skua` from a new build replaces the old build's idle Engine only for commands that drive the game; `status`, `script status`, `script wait`, `logs` and the other commands that only read answer from the old Engine and keep it. When the old Engine is replaced, the new one takes over its last run, so a watcher polling `script status` still sees how it ended, and run numbers go on from it. See [Install on macOS](./BUILD.md#install-on-macos).
+
 ## October 8, 2026
 
 ### New

@@ -17,17 +17,73 @@ public class StaleEngineTests
         await using EngineSandbox sandbox = new();
         await using OtherVersionEngine other = new(sandbox, protocol);
 
+        ProcessResult start = await sandbox.RunCliAsync("engine", "start", "--json");
+
+        Assert.Equal(0, start.ExitCode);
+        Assert.True(other.ShutdownRequested);
+        string notice = Assert.Single(start.Stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+        Assert.StartsWith($"skua: Replaced Engine 'default' from another build ({OtherVersionEngine.OtherBuild}, protocol {protocol})", notice);
+        using JsonDocument json = JsonDocument.Parse(start.Stdout);
+        Assert.Equal(ControlProtocol.Build, json.RootElement.GetProperty("build").GetString());
+        Assert.NotEqual(Environment.ProcessId, json.RootElement.GetProperty("pid").GetInt32());
+    }
+
+    [Fact]
+    public async Task A_command_that_only_reads_answers_from_an_idle_compatible_Engine_from_another_build_and_keeps_it()
+    {
+        await using EngineSandbox sandbox = new();
+        await using OtherVersionEngine other = new(sandbox, ControlProtocol.Version, servesStatus: true);
+
+        ProcessResult status = await sandbox.RunCliAsync("status", "--json");
+
+        Assert.Equal(0, status.ExitCode);
+        Assert.False(other.ShutdownCalled);
+        Assert.True(other.StatusCalled);
+        Assert.Contains("wasn't replaced, since this command only reads", Assert.Single(status.Stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries)));
+        using JsonDocument json = JsonDocument.Parse(status.Stdout);
+        Assert.Equal(OtherVersionEngine.OtherBuild, json.RootElement.GetProperty("engine").GetProperty("build").GetString());
+    }
+
+    [Fact]
+    public async Task A_command_that_only_reads_still_replaces_an_idle_Engine_on_another_protocol_which_cant_answer_it()
+    {
+        await using EngineSandbox sandbox = new();
+        await using OtherVersionEngine other = new(sandbox);
+
         ProcessResult status = await sandbox.RunCliAsync("status", "--json");
 
         Assert.Equal(0, status.ExitCode);
         Assert.True(other.ShutdownRequested);
         Assert.False(other.StatusCalled);
-        string notice = Assert.Single(status.Stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries));
-        Assert.StartsWith($"skua: Replaced Engine 'default' from another build ({OtherVersionEngine.OtherBuild}, protocol {protocol})", notice);
         using JsonDocument json = JsonDocument.Parse(status.Stdout);
-        JsonElement engine = json.RootElement.GetProperty("engine");
-        Assert.Equal(ControlProtocol.Build, engine.GetProperty("build").GetString());
-        Assert.NotEqual(Environment.ProcessId, engine.GetProperty("pid").GetInt32());
+        Assert.Equal(ControlProtocol.Build, json.RootElement.GetProperty("engine").GetProperty("build").GetString());
+    }
+
+    [Fact]
+    public async Task The_replacement_of_an_idle_Engine_takes_over_its_last_run_and_numbers_runs_on_from_it()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture game = await GameFixture.StartAsync(sandbox);
+        TestScripts.Write(sandbox, "Tests/Done.cs", TestScripts.Main("bot.Log(\"done\");"));
+        await game.Connection.ScriptStartAsync("Tests/Done.cs", cancellationToken: Ct);
+        await game.Connection.ScriptWaitAsync(60, Ct);
+        await game.Connection.ScriptStartAsync("Tests/Done.cs", cancellationToken: Ct);
+        await game.Connection.ScriptWaitAsync(60, Ct);
+        ScriptRunResultDto lastRun = (await game.Connection.ScriptStatusAsync(Ct)).LastRun!;
+        List<string> notices = [];
+
+        using EngineConnection connection = await EngineClient.ConnectAsync(Newer(sandbox, notices), Ct);
+        ScriptStatusDto replaced = await connection.ScriptStatusAsync(Ct);
+        TestScripts.Write(sandbox, "Tests/Loop.cs", TestScripts.Loop);
+        ScriptStartResult next = await connection.ScriptStartAsync("Tests/Loop.cs", cancellationToken: Ct);
+        await connection.ScriptStopAsync(Ct);
+
+        Assert.NotEqual(game.Engine.Id, connection.Hello.Pid);
+        Assert.StartsWith("Replaced Engine 'default' from another build", Assert.Single(notices));
+        Assert.Equal((2, ScriptOutcome.Completed), (lastRun.Number, lastRun.Outcome));
+        Assert.Equal(lastRun, replaced.LastRun);
+        Assert.Equal(3, next.Run);
+        Assert.False(File.Exists(sandbox.Endpoint.LastRunPath));
     }
 
     [Fact]
@@ -228,7 +284,7 @@ public class StaleEngineTests
         ProcessResult list = await sandbox.RunCliAsync("engine", "list");
 
         Assert.Equal((0, 0), (status.ExitCode, list.ExitCode));
-        string note = $"another build than this skua's {ControlProtocol.Build}; a skua command replaces it once its Script ends";
+        string note = $"another build than this skua's {ControlProtocol.Build}; a skua command that drives the game replaces it once its Script ends";
         Assert.Contains(note, status.Stdout);
         Assert.Contains(note, list.Stdout);
     }
