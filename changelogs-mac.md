@@ -4,6 +4,12 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 
 ---
 
+## October 9, 2026
+
+### Fixes
+* `skua-tui`'s Bags counts from the run's start even when `skua-tui` opens hours into the run, instead of from its own first read. `skua script status --json` (MCP `script_status`) now gives the run's `held`: what the player held as it started.
+* A run that a Script starts before logging in now records what the player held once they're in game, as a `script.held` event, since its `script.started` has nothing to carry. Bags and `script status` count from it.
+
 ## October 8, 2026
 
 ### New

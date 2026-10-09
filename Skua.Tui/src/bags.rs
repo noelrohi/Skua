@@ -1,16 +1,18 @@
-//! What a run has changed in the inventory: the inventory now against the inventory as the run started, from its `script.started` event,
-//! else as skua-tui first read it.
+//! What a run has changed in the inventory: the inventory now against the inventory as the run started, from `script status` or its
+//! `script.started` event, else as skua-tui first read it.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
 
-use crate::dto::{Inventory, LogEntry};
+use crate::dto::{HeldItem, Inventory, LogEntry};
 
 /// The event a run starts with, carrying the inventory as it began (`EventTypes.ScriptStarted`); a relogin's restart of the same run sends
 /// it again with `restart: true`.
 pub const SCRIPT_STARTED: &str = "script.started";
+/// What the player held once in game, for a run that started before (`EventTypes.ScriptHeld`): a Script that logs in itself.
+pub const SCRIPT_HELD: &str = "script.held";
 /// The event a run ends with (`EventTypes.ScriptStopped`).
 pub const SCRIPT_STOPPED: &str = "script.stopped";
 /// How long an item that just changed stays fresh.
@@ -65,7 +67,7 @@ struct Held {
 /// What the changes count from.
 #[derive(Debug, Clone)]
 pub struct Start {
-    /// The run whose `script.started` it came from; `None` when it is skua-tui's first read.
+    /// The run it is the start of; `None` when it is skua-tui's first read.
     pub run: Option<i64>,
     /// When the run started, else when its inventory was first read; epoch ms.
     pub at_ms: i64,
@@ -138,6 +140,24 @@ impl Bags {
         self.start.as_ref()
     }
 
+    /// Whether the count needs run `number`'s start, as `script status` gives it: it counts from another run's, or from no run's.
+    pub fn wants_run(&self, number: i64) -> bool {
+        self.start.as_ref().is_none_or(|s| s.run != Some(number))
+    }
+
+    /// Run `number`'s start, from `script status`: when it started, in epoch ms, and what the player held then, `None` until they were in
+    /// game. However long the run has gone, the count starts from it, not from skua-tui's first read.
+    pub fn on_run(&mut self, number: i64, at_ms: i64, held: Option<&[HeldItem]>) {
+        self.start = Some(Start {
+            run: Some(number),
+            at_ms,
+            ended_ms: None,
+            items: held.map(|items| items.iter().map(|i| (i.id, (i.name.clone(), i.qty))).collect()),
+        });
+        self.changed.clear();
+        self.rose.clear();
+    }
+
     /// A run's `script.started` starts the count over, from the inventory it carries, else from the next read; a relogin's restart of
     /// the run being counted leaves the count alone. Its `script.stopped` stops the clock.
     pub fn on_entry(&mut self, entry: &LogEntry) {
@@ -145,36 +165,34 @@ impl Bags {
         let run = entry.run.or_else(|| data?.get("run")?.as_i64());
         match entry.event_type.as_deref() {
             Some(SCRIPT_STARTED) => {
-                // The run's restart after a relogin, or a start no newer than the run's: the same event or an older run's, read again
-                // after selecting the account again.
-                let restart = data.and_then(|d| d.get("restart")).and_then(Value::as_bool) == Some(true);
+                // The run being counted, its restart after a relogin included, or a start no newer than the run's: an older run's, read
+                // again after selecting the account again.
                 if self
                     .start
                     .as_ref()
-                    .is_some_and(|s| (restart && s.run == run) || (s.run.is_some() && entry.ts <= s.at_ms))
+                    .is_some_and(|s| s.run.is_some() && (s.run == run || entry.ts <= s.at_ms))
                 {
                     return;
                 }
-                let items = data
-                    .and_then(|d| d.get("inventory"))
-                    .and_then(Value::as_array)
-                    .map(|items| {
-                        items
-                            .iter()
-                            .filter_map(|i| {
-                                let name = i.get("name")?.as_str()?.to_owned();
-                                Some((i.get("id")?.as_i64()?, (name, i.get("qty")?.as_i64()?)))
-                            })
-                            .collect()
-                    });
                 self.start = Some(Start {
                     run,
                     at_ms: entry.ts,
                     ended_ms: None,
-                    items,
+                    items: held(data),
                 });
                 self.changed.clear();
                 self.rose.clear();
+            }
+            // A run that started before the player was in game counts, and is timed, from what they held once they were.
+            Some(SCRIPT_HELD) => {
+                if let Some(start) = self
+                    .start
+                    .as_mut()
+                    .filter(|s| s.run.is_some() && s.run == run && s.items.is_none())
+                {
+                    start.items = held(data);
+                    start.at_ms = entry.ts;
+                }
             }
             Some(SCRIPT_STOPPED) => {
                 if let Some(start) = self.start.as_mut().filter(|s| s.run.is_some() && s.run == run) {
@@ -305,6 +323,20 @@ impl Bags {
         changes.sort_by(|(a, x), (b, y)| b.cmp(a).then(y.delta().cmp(&x.delta())).then(x.name.cmp(&y.name)));
         changes.into_iter().map(|(_, change)| change).collect()
     }
+}
+
+/// The inventory an event's `inventory` lists, by item id; `None` when it has none, as while the player wasn't in game.
+fn held(data: Option<&Value>) -> Option<HashMap<i64, (String, i64)>> {
+    let items = data?.get("inventory")?.as_array()?;
+    Some(
+        items
+            .iter()
+            .filter_map(|i| {
+                let name = i.get("name")?.as_str()?.to_owned();
+                Some((i.get("id")?.as_i64()?, (name, i.get("qty")?.as_i64()?)))
+            })
+            .collect(),
+    )
 }
 
 #[cfg(test)]
@@ -525,5 +557,55 @@ mod tests {
         bags.on_entry(&entry(SCRIPT_STOPPED, 4, 1_600_000, json!({ "run": 4 })));
         // Timed from the read it counts from, to the run's end.
         assert_eq!(bags.start().map(|s| s.elapsed_sec(9_000_000)), Some(100.0));
+    }
+
+    #[test]
+    fn a_runs_start_from_script_status_counts_from_its_start_however_long_ago_and_its_events_keep_it() {
+        let mut bags = Bags::default();
+        assert!(bags.wants_run(4));
+        let held = [
+            HeldItem {
+                id: 1,
+                name: "Diamond of Nulgath".into(),
+                qty: 800,
+            },
+            HeldItem {
+                id: 2,
+                name: "Gem of Nulgath".into(),
+                qty: 5,
+            },
+        ];
+
+        bags.on_run(4, 1_000_000, Some(&held));
+        // The same run's script.started, read later from the tail, keeps the count.
+        bags.on_entry(&started(4, false, Some(&[(1, "Diamond of Nulgath", 1)])));
+        bags.on_inventory(
+            &inventory(&[(1, "Diamond of Nulgath", 870, 1000), (2, "Gem of Nulgath", 5, 1000)]),
+            9_000_000,
+        );
+
+        assert!(!bags.wants_run(4));
+        assert!(bags.wants_run(5));
+        assert_eq!(bags.start().map(|s| (s.run, s.at_ms)), Some((Some(4), 1_000_000)));
+        assert_eq!(kinds(&bags), vec![("Diamond of Nulgath".into(), Kind::Filling, 70)]);
+    }
+
+    #[test]
+    fn a_run_started_before_the_player_was_in_game_counts_from_its_script_held() {
+        let mut bags = Bags::default();
+        bags.on_run(4, 1_000_000, None);
+        let held = entry(
+            SCRIPT_HELD,
+            4,
+            1_500_000,
+            json!({ "run": 4, "script": "Nation/Materials/0MaxBags.cs", "inventory": [{ "id": 1, "name": "Diamond of Nulgath", "qty": 800 }],
+                "temp": [], "bank": null }),
+        );
+
+        bags.on_entry(&held);
+        bags.on_inventory(&inventory(&[(1, "Diamond of Nulgath", 810, 1000)]), 2_000_000);
+
+        assert_eq!(bags.start().map(|s| s.at_ms), Some(1_500_000));
+        assert_eq!(kinds(&bags), vec![("Diamond of Nulgath".into(), Kind::Filling, 10)]);
     }
 }

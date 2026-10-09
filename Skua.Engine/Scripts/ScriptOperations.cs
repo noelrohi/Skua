@@ -113,7 +113,8 @@ internal sealed class ScriptOperations
         return new ScriptStopResult(wasRunning, ended, _runs.Status());
     }
 
-    public ScriptStatusDto Status() => _runs.Status();
+    /// <param name="held">Whether the run carries what the player held as it started, as only <c>script_status</c> gives it.</param>
+    public ScriptStatusDto Status(bool held = false) => _runs.Status(held);
 
     public async Task<ScriptWaitResult> WaitAsync(int? timeoutSec, CancellationToken cancellationToken)
     {

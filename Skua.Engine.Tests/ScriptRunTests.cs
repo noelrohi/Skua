@@ -81,6 +81,35 @@ public class ScriptRunTests
     }
 
     [Fact]
+    public async Task A_run_started_before_the_player_is_in_game_records_what_they_hold_once_they_are_and_script_status_carries_it()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture game = await GameFixture.StartAsync(sandbox);
+        // Core keeps the login's credentials, so a Script can log back in by itself, as agent-started runs do.
+        await game.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        await game.Connection.LogoutAsync(Ct);
+        TestScripts.Write(sandbox, "Tests/LogsIn.cs", TestScripts.Main("""
+            bot.Servers.Relogin("Galanoth");
+            while (!bot.ShouldExit)
+                Thread.Sleep(50);
+            """));
+
+        ScriptStartResult start = await game.Connection.ScriptStartAsync("Tests/LogsIn.cs", cancellationToken: Ct);
+        LogEntryDto held = await game.Connection.WaitForEventAsync(EventTypes.ScriptHeld);
+        ScriptStatusDto status = await game.Connection.ScriptStatusAsync(Ct);
+        StatusDto polled = await game.Connection.StatusAsync(Ct);
+        await game.Connection.ScriptStopAsync(Ct);
+
+        LogEntryDto started = (await ScriptEvents.AllAsync(game.Connection)).Single(e => e.Type == EventTypes.ScriptStarted);
+        Assert.Equal(JsonValueKind.Null, started.Data!.Value.GetProperty("inventory").ValueKind);
+        Assert.Equal(start.Run, held.Run);
+        string[] inventory = [.. held.Data!.Value.GetProperty("inventory").EnumerateArray().Select(i => i.GetProperty("name").GetString()!)];
+        Assert.Equal(["Default Sword", "Healer", "Treasure Chest"], inventory);
+        Assert.Equal(inventory, status.Run!.Held!.Inventory.Select(i => i.Name));
+        Assert.Null(polled.Script.Run!.Held);
+    }
+
+    [Fact]
     public async Task A_broken_Script_fails_with_CompileFailed_and_its_diagnostics_and_starts_no_run()
     {
         await using EngineSandbox sandbox = new();

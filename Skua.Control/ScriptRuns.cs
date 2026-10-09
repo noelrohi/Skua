@@ -68,9 +68,20 @@ public sealed record ScriptStatusDto(ScriptState State, ScriptRunDto? Run, Scrip
 /// </param>
 /// <param name="Deaths">How many times the player died during the run.</param>
 /// <param name="Goal">What the Script is working toward, as its CoreBots log lines say; null when it logs none.</param>
+/// <param name="Held">
+/// What the player held as the run started, as <c>script.started</c> carries it, or, for a run started before the player was in game, as they
+/// first were during it, as <c>script.held</c> carries it; null until then. Only <c>script_status</c> gives it: <c>status</c>, which a client
+/// polls, leaves it out.
+/// </param>
 public sealed record ScriptRunDto(
     int Number, string Script, DateTimeOffset StartedAt, int Relogins, bool ReloggingIn, DialogMode Dialogs, int DialogTimeoutSec, double ElapsedSec,
-    double? QuestIdleSec = null, int Kills = 0, double? KillsPerMin = null, int Deaths = 0, ScriptGoalDto? Goal = null);
+    double? QuestIdleSec = null, int Kills = 0, double? KillsPerMin = null, int Deaths = 0, ScriptGoalDto? Goal = null, HeldItemsDto? Held = null);
+
+/// <summary>What the player holds: the inventory's and the temporary inventory's items, and the bank's once the game has loaded it.</summary>
+/// <param name="Bank">Null until the game has loaded the bank, since loading it takes seconds.</param>
+public sealed record HeldItemsDto(IReadOnlyList<HeldItemDto> Inventory, IReadOnlyList<HeldItemDto> Temp, IReadOnlyList<HeldItemDto>? Bank);
+
+public sealed record HeldItemDto(int Id, string Name, int Qty);
 
 /// <summary>What a run's Script is working toward and why: each step is what the one before it needs.</summary>
 /// <param name="Quest">The quest it does, by name.</param>

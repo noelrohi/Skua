@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use crate::app::Tab;
 use crate::bags::{Bags, now_ms};
 use crate::discovery::{self, ManagerAccounts};
-use crate::dto::{Hello, Inventory, LogEntry, Map, Quests, Screenshot, Status};
+use crate::dto::{Hello, Inventory, LogEntry, Map, Quests, Screenshot, ScriptStatus, Status};
 use crate::engine::{Engine, Error};
 
 /// How many entries `logs --tail` shows first.
@@ -108,7 +108,7 @@ impl Poller {
         let names = discovery::engine_names(&self.skua_dir);
         self.connections.retain(|name, _| names.contains(name));
         self.bags.retain(|name, _| names.contains(name));
-        let engines = names.iter().map(|name| (name.clone(), self.view(name))).collect();
+        let engines: BTreeMap<String, EngineView> = names.iter().map(|name| (name.clone(), self.view(name))).collect();
 
         if self.detail.engine != focus.engine {
             self.detail = Detail {
@@ -120,7 +120,11 @@ impl Poller {
             self.quests_read = None;
         }
         if let Some(name) = &focus.engine {
-            self.read_detail(&name.clone(), focus.tab);
+            let run = match engines.get(name) {
+                Some(EngineView::Up { status, .. }) => status.script.run.as_ref().map(|run| run.number),
+                _ => None,
+            };
+            self.read_detail(&name.clone(), focus.tab, run);
             self.detail.bags = self.bags.get(name).cloned().unwrap_or_default();
         }
         Snapshot {
@@ -152,7 +156,8 @@ impl Poller {
         }
     }
 
-    fn read_detail(&mut self, name: &str, tab: Tab) {
+    /// `run` is the number of the run in progress, as the Engine's status just gave it.
+    fn read_detail(&mut self, name: &str, tab: Tab, run: Option<i64>) {
         let Some(engine) = self.connections.get_mut(name) else {
             return;
         };
@@ -215,6 +220,15 @@ impl Poller {
             // The Overview shows the quests in progress, the players and monsters in the player's cell, and what the run gained.
             Tab::Overview => {
                 self.detail.map = Some(engine.map());
+                // A run's start, once per run: its script.started may be long out of the events' tail.
+                let bags = self.bags.entry(name.to_owned()).or_default();
+                if let Some(number) = run.filter(|number| bags.wants_run(*number))
+                    && let Ok(ScriptStatus { run: Some(run), .. }) = engine.script_status()
+                    && run.number == number
+                {
+                    let started_ms = now_ms() - (run.elapsed_sec * 1000.0) as i64;
+                    bags.on_run(number, started_ms, run.held.as_ref().map(|h| h.inventory.as_slice()));
+                }
                 let inventory = engine.inventory();
                 if let Ok(inventory) = &inventory {
                     self.bags

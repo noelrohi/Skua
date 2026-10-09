@@ -13,8 +13,8 @@ use serde_json::{Value, json};
 
 use crate::dto::{
     ChatSendResult, DialogAnswer, Dialogs, EngineHost, Hello, Inventory, Location, LogPage, LoginResult, LogoutResult,
-    Map, Quests, Screenshot, ScriptOptions, ScriptStartResult, ScriptStopResult, ScriptsSearch, ScriptsUpdate, Servers,
-    Status,
+    Map, Quests, Screenshot, ScriptOptions, ScriptStartResult, ScriptStatus, ScriptStopResult, ScriptsSearch,
+    ScriptsUpdate, Servers, Status,
 };
 use crate::rpc::{CallError, Rpc};
 
@@ -114,6 +114,11 @@ impl Engine {
 
     pub fn status(&mut self) -> Result<Status, Error> {
         self.call("status", json!([]))
+    }
+
+    /// The Script's status, whose run, unlike `status`'s, carries what the player held as it started.
+    pub fn script_status(&mut self) -> Result<ScriptStatus, Error> {
+        self.call("script_status", json!([]))
     }
 
     /// Every kind of entry: with `tail`, the newest `tail` after the cursor; without, the page after it.
