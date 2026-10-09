@@ -87,10 +87,14 @@ public partial class ScriptBank : IScriptBank
             Wait.ForBankLoad(LoadWaitSleeps);
     }
 
-    /// <summary>Whether the bank holds the login's bank count of items, as <see cref="IScriptWait.ForBankLoad"/> waits for.</summary>
+    /// <summary>
+    /// Whether the bank holds items, at least the login's bank count of them, as <see cref="IScriptWait.ForBankLoad"/> waits for. That
+    /// count leaves out AC items, so a bank of only AC items counts 0; an empty bank is asked for each time, which an answer can't harm.
+    /// </summary>
     private bool Arrived() =>
         Flash.GetGameObject<int?>("world.myAvatar.iBankCount") is int count
-        && Flash.GetGameObject<int?>("world.bankinfo.BankArray.length") >= count;
+        && Flash.GetGameObject<int?>("world.bankinfo.BankArray.length") is int held
+        && held > 0 && held >= count;
 
     public bool Swap(string invItem, string bankItem)
     {
