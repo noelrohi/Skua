@@ -4,6 +4,11 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 
 ---
 
+## October 9, 2026
+
+### Fixes
+* A `skua eval` or Console snippet that runs for a while no longer fails with "Could not load file or assembly" when another eval compiles, or a Script run starts or ends, before it first uses one of its includes.
+
 ## October 8, 2026
 
 ### New
