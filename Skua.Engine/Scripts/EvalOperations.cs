@@ -85,6 +85,8 @@ internal sealed class EvalOperations
             try
             {
                 done.SetResult((snippet.GetType().GetMethod("Eval")!.Invoke(snippet, [_bot]), null));
+                // The snippet holds its load context, which it may still use while it runs; see ScriptManager.Compile.
+                GC.KeepAlive(snippet);
             }
             catch (TargetInvocationException e)
             {

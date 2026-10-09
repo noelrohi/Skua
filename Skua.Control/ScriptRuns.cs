@@ -132,9 +132,13 @@ public sealed record ScriptWaitResult(ScriptWaitReason Reason, ScriptStatusDto S
 /// <param name="Value">The stored value, or the default when none is stored.</param>
 /// <param name="Choices">An enum's values, else null.</param>
 /// <param name="Transient">Whether its value resets on every start, so it isn't stored and can't be set.</param>
+/// <param name="Text">
+/// Whether it is only text shown among the options, such as a merge shop's "Mode Explanation": its name is blank, so nothing reads it and it
+/// can't be set.
+/// </param>
 public sealed record ScriptOptionDto(
     string Key, string Category, string Name, string DisplayName, string? Description, string Type, string Value, string Default,
-    IReadOnlyList<string>? Choices, bool Transient);
+    IReadOnlyList<string>? Choices, bool Transient, bool Text = false);
 
 /// <summary>The reply to <c>script_options</c>.</summary>
 /// <param name="Storage">The options storage the values are kept in, shared by Scripts that name the same one.</param>
