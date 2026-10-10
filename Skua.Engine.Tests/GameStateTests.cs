@@ -305,12 +305,12 @@ public class GameStateTests
         await using GameFixture session = await GameFixture.StartAsync(sandbox);
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
 
-        // The fake inventory holds one bag item, Default Sword (1); owning two more fills 3 bag slots. The drops are pets, which fill Bag Space. The
-        // game's calls reach the Engine in order, and after the fake game has changed its slots, so each slot change waits until an AFK sent after
-        // the drops before it is an event.
+        // The fake inventory holds one bag item, Default Sword (1); owning Egg Basket (1 of 10) and Iron Helm fills 3 Bag Space slots. The drops
+        // are pets, which fill Bag Space; an Egg Basket stacks onto the one held. The game's calls reach the Engine in order, and after the fake
+        // game has changed its slots, so each slot change waits until an AFK sent after the drops before it is an event.
         int afks = 0;
-        foreach (string directive in (string[])["own 50 Armor Plate Mail", "own 51 Helm Iron Helm", "bag-slots 3", "pickup 40", "drop-as Pet 41 1 Dragon Egg",
-                     "drop-as Pet 41 1 Dragon Egg", "drop-as Sword 1 1 Default Sword", "drop-as Pet 42 1 Moglin Egg", "afk", "bag-slots 4",
+        foreach (string directive in (string[])["own-stack 50 Pet 1 10 Egg Basket", "own 51 Helm Iron Helm", "bag-slots 3", "pickup 40",
+                     "drop-as Pet 41 1 Dragon Egg", "drop-as Pet 41 1 Dragon Egg", "drop-as Pet 50 1 Egg Basket", "drop-as Pet 42 1 Moglin Egg", "afk", "bag-slots 4",
                      "drop-as Pet 42 1 Moglin Egg", "afk", "bag-slots 3", "drop-as Pet 41 1 Dragon Egg", "afk"])
         {
             await session.GameHost.DoAsync(directive);
@@ -346,6 +346,27 @@ public class GameStateTests
 
         List<LogEntryDto> full = (await session.Connection.WaitForLogsAsync(LogKind.Events, 0)).Where(e => e.Type == EventTypes.MiscFull).ToList();
         Assert.Equal(["2/2", "2/2 41 Gem", "2/2 42 Opal", "2/2 41 Gem"], full.Select(Describe));
+    }
+
+    /// <summary>
+    /// A drop stacks onto an item the player holds only while that stack has room, by the game's <c>InvCat.isFullFor</c>: a full Bag Space
+    /// records a drop of a held item whose stack is full.
+    /// </summary>
+    [Fact]
+    public async Task A_full_Bag_Space_records_a_drop_of_a_held_item_whose_stack_is_full()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+
+        // Default Sword (1 of 1) and Dragon Egg (2 of 10) fill the 2 Bag Space slots.
+        foreach (string directive in (string[])["own-stack 50 Pet 2 10 Dragon Egg", "bag-slots 2", "pickup 40", "drop-as Pet 50 1 Dragon Egg",
+                     "drop-as Sword 1 1 Default Sword", "afk"])
+            await session.GameHost.DoAsync(directive);
+        await session.Connection.WaitForLogsAsync(LogKind.Events, 1, e => e.Type == EventTypes.PlayerAfk);
+
+        List<LogEntryDto> full = (await session.Connection.WaitForLogsAsync(LogKind.Events, 0)).Where(e => e.Type == EventTypes.InventoryFull).ToList();
+        Assert.Equal(["2/2", "2/2 1 Default Sword"], full.Select(Describe));
     }
 
     /// <summary>

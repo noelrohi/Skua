@@ -107,7 +107,7 @@ public static class EventTypes
 
     /// <summary>
     /// The inventory's Bag Space is full: <c>{used, slots, drop}</c>, drop null as it fills, or the <c>{id, name}</c> of a drop it has no slot for (one
-    /// that fills Bag Space and isn't in the inventory already; misc items, classes and house items don't). It is checked when an item drops, is added,
+    /// that fills Bag Space and doesn't fit by the game's own rule, as a top-up of a held stack with room does; misc items, classes and house items don't). It is checked when an item drops, is added,
     /// picked up or bought, and when the player joins a map; while it stays full, each item dropping is recorded once.
     /// A check that finds a free slot, or a login, re-arms it. See <see cref="MiscFull"/> for Misc Space.
     /// </summary>

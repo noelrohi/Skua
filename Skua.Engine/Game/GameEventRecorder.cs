@@ -182,17 +182,19 @@ internal sealed class GameEventRecorder
     /// </summary>
     private void CheckInventory(JObject? drop)
     {
-        string? pool = drop?.ToObject<ItemBase>() is { } item ? _inventory.GetPool(item) : null;
-        CheckSpace(_bagFull, _inventory.UsedSlots, _inventory.Slots, pool == "bag" ? drop : null);
-        CheckSpace(_miscFull, _inventory.MiscUsedSlots, _inventory.MiscSlots, pool == "misc" ? drop : null);
+        ItemBase? item = drop?.ToObject<ItemBase>();
+        string? pool = item is null ? null : _inventory.GetPool(item);
+        CheckSpace(_bagFull, _inventory.UsedSlots, _inventory.Slots, pool == "bag" ? item : null);
+        CheckSpace(_miscFull, _inventory.MiscUsedSlots, _inventory.MiscSlots, pool == "misc" ? item : null);
     }
 
-    private void CheckSpace(SpaceFull space, int used, int slots, JObject? drop)
+    private void CheckSpace(SpaceFull space, int used, int slots, ItemBase? drop)
     {
         // No slots is an inventory that hasn't loaded, or a game without that Space.
         bool full = slots > 0 && used >= slots;
-        // A drop of an item already in the inventory stacks onto it.
-        int? noSlot = full && (int?)drop?["ItemID"] is { } id && !_inventory.TryGetItem(id, out _) ? id : null;
+        // The game's own rule (InvCat.isFullFor) says whether a drop fits in a full Space: one that tops up a stack the player holds does, while
+        // a full stack has no room; a misc item the player holds always does.
+        ItemBase? noSlot = full && drop is not null && !_inventory.HasSpaceFor(drop) ? drop : null;
         lock (_lock)
         {
             if (!full)
@@ -202,11 +204,11 @@ internal sealed class GameEventRecorder
             }
             bool filled = !space.Recorded;
             space.Recorded = true;
-            bool newDrop = noSlot is { } dropId && space.NoSlotDrops.Add(dropId);
+            bool newDrop = noSlot is not null && space.NoSlotDrops.Add(noSlot.ID);
             if (!filled && !newDrop)
                 return;
         }
-        _logs.Event(space.Type, new { used, slots, drop = noSlot is { } noSlotId ? new { id = noSlotId, name = ((string?)drop!["sName"])?.Trim() ?? "" } : null });
+        _logs.Event(space.Type, new { used, slots, drop = noSlot is null ? null : new { id = noSlot.ID, name = noSlot.Name ?? "" } });
     }
 
     private void Rearm()
