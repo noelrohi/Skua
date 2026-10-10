@@ -12,7 +12,7 @@ and puts `skua-gamehost` next to `skua-engine` (see `BUILD.md`).
 
 ```
 cargo build --release --locked   # target/release/skua-gamehost
-cargo test --locked              # framing, XML and options; no GPU, no SWF
+cargo test --locked              # framing, XML and options; tests/game_storage.rs runs the host on Metal with a test SWF
 ```
 
 - The toolchain is pinned in `rust-toolchain.toml` (1.98.1, `aarch64-apple-darwin`); rustup installs it on first use.
@@ -34,6 +34,7 @@ The Engine starts the Game Host as a child process. Without options it runs with
 |---|---|---|
 | `--show-game` | off | Show the game in a debug window. It renders every 33 ms, with no render budget. |
 | `--frame-buffer=NAME` | none | Write frames to this Frame Buffer (below) while the Game View is live. The Mac App's Engine passes it; `skua-engine` never does. |
+| `--storage=DIR` | in memory | Keep the game's SharedObjects (its Favorites and options) in `DIR`, one `.sol` file each, so the next run reads them back. Every Engine passes its Engine Name's folder, `<SkuaDIR>/engines/game-storage/<name>` (ADR 0008). Without it they are lost on exit. |
 | `--render-interval-ms=N` | 1000 | Keep-alive render interval; 0 = render only for screenshots. |
 | `--render-budget-pct=N` | 10 | Render at most N% of wall time; 0 = off. |
 | `--render-max-interval-ms=N` | 5000 | The budget never stretches the interval beyond this. |

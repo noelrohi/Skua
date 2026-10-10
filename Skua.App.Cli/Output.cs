@@ -176,9 +176,12 @@ internal static class Output
 
     public static string Inventory(InventoryResult result)
     {
-        StringBuilder text = new(result.TotalSlots is { } total
-            ? $"{Name(result.Kind)}: {result.UsedSlots}/{total} slots used"
-            : $"{Name(result.Kind)}: {result.UsedSlots} items");
+        StringBuilder text = new((result.TotalSlots, result.MiscSlots) switch
+        {
+            ({ } total, { } misc) => $"{Name(result.Kind)}: {result.UsedSlots}/{total} Bag Space slots used, {result.MiscUsedSlots}/{misc} Misc Space slots used",
+            ({ } total, null) => $"{Name(result.Kind)}: {result.UsedSlots}/{total} slots used",
+            _ => $"{Name(result.Kind)}: {result.UsedSlots} items",
+        });
         foreach (ItemDto item in result.Items)
         {
             string equipped = item.Equipped ? "  equipped" : "";

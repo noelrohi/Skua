@@ -26,7 +26,10 @@ public class QueryTests
         InventoryResult temp = await session.Connection.InventoryAsync(InventoryKind.Temp, Ct);
         InventoryResult house = await session.Connection.InventoryAsync(InventoryKind.House, Ct);
 
-        Assert.Equal((InventoryKind.Inventory, 3, (int?)40), (inventory.Kind, inventory.UsedSlots, inventory.TotalSlots));
+        // Only Default Sword fills Bag Space: the Healer class fills none and Treasure Chest fills Misc Space, which only the inventory has.
+        Assert.Equal((InventoryKind.Inventory, 1, (int?)40), (inventory.Kind, inventory.UsedSlots, inventory.TotalSlots));
+        Assert.Equal(((int?)1, (int?)100), (inventory.MiscUsedSlots, inventory.MiscSlots));
+        Assert.All([bank, temp, house], store => Assert.Equal(((int?)null, (int?)null), (store.MiscUsedSlots, store.MiscSlots)));
         Assert.Equal(
             [
                 new ItemDto(1, "Default Sword", 1, 1, "Sword", true, 1),

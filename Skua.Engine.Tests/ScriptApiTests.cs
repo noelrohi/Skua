@@ -44,6 +44,21 @@ public class ScriptApiTests
     }
 
     [Fact]
+    public async Task Bank_Open_leaves_an_open_bank_open()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+
+        // world.toggleBank closes the bank panel when it is open.
+        EvalResult opened = await session.Connection.EvalAsync("Bot.Bank.Open(); Bot.Bank.Open(); return Bot.Flash.GetGameObject<string>(\"ui.mcPopup.currentLabel\") ?? \"closed\";", cancellationToken: Ct);
+
+        Assert.Null(opened.Error);
+        Assert.Equal("Bank", opened.Value!.Value.GetString());
+        Assert.Equal(["toggleBank open"], (await session.GameHost.CallsAsync()).Where(c => c.StartsWith("toggleBank", StringComparison.Ordinal)));
+    }
+
+    [Fact]
     public async Task Combat_Target_targets_the_monster_without_attacking_it_and_Attack_still_attacks()
     {
         await using EngineSandbox sandbox = new();
@@ -65,6 +80,51 @@ public class ScriptApiTests
         Assert.DoesNotContain(targetCalls, c => c.StartsWith("attack ", StringComparison.Ordinal));
         Assert.Null(attacked.Error);
         Assert.Contains("attack Frogzard", calls);
+    }
+
+    [Fact]
+    public async Task The_party_HP_skill_rule_reads_the_HP_of_party_members_in_the_players_cell()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        // ArtixFan stands in r3 at 800 of 2000 HP: 40%.
+        await session.Connection.JumpAsync("r3", cancellationToken: Ct);
+        const string rules = """
+            var skills = new Skua.Core.Skills.AdvancedSkillProvider(Bot.Player, Bot.Self, Bot.Target, Bot.Combat, Bot.Flash);
+            skills.Load("1 PH<50 | 2 PH>50");
+            return $"{skills.ShouldUseSkill(0, true)} {skills.ShouldUseSkill(1, true)}";
+            """;
+
+        EvalResult alone = await session.Connection.EvalAsync(rules, cancellationToken: Ct);
+        await session.GameHost.DoAsync("party ArtixFan");
+        EvalResult partied = await session.Connection.EvalAsync(rules, cancellationToken: Ct);
+
+        Assert.Null(alone.Error);
+        Assert.Equal("False False", alone.Value!.Value.GetString());
+        Assert.Null(partied.Error);
+        Assert.Equal("True False", partied.Value!.Value.GetString());
+    }
+
+    [Fact]
+    public async Task Magnetise_keeps_calling_the_magnetize_callback_skua_swf_registers()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+
+        await session.Connection.EvalAsync("Bot.Options.Magnetise = true; return 0;", cancellationToken: Ct);
+        // Setting the option calls it once; the Engine's options timer calls it again every 250 ms while the player plays.
+        Stopwatch waited = Stopwatch.StartNew();
+        string[] calls = await session.GameHost.CallsAsync();
+        while (calls.Count(c => c == "magnetize") < 3 && !calls.Contains("magnetise") && waited.Elapsed < TimeSpan.FromSeconds(5))
+        {
+            await Task.Delay(50, Ct);
+            calls = await session.GameHost.CallsAsync();
+        }
+
+        Assert.DoesNotContain("magnetise", calls);
+        Assert.True(calls.Count(c => c == "magnetize") >= 3, $"magnetize calls: {calls.Count(c => c == "magnetize")}");
     }
 
     [Fact]
@@ -151,5 +211,227 @@ public class ScriptApiTests
         Assert.Null(players.Error);
         Assert.Equal(new[] { $"{me} 10 Enter", "artixfan 42 r3" }.Order(), players.Value!.Value.EnumerateArray().Select(e => e.GetString()).Order());
         Assert.Equal(42, artixFan.Value!.Value.GetInt32());
+    }
+
+    /// <summary>
+    /// Bot.Inventory asks the game's own rules (client 5.0's InvCat) which Space an item fills and whether it fits (#249): a full Bag Space
+    /// refuses a pet and a consumable, a full Misc Space a new misc item, while a class always fits and a held stack can be topped up.
+    /// </summary>
+    [Fact]
+    public async Task Inventory_tells_Bag_Space_from_Misc_Space_and_what_fits_in_each()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        // Default Sword fills the one Bag Space slot and Treasure Chest (5 of 1000) the one Misc Space slot.
+        await session.GameHost.DoAsync("bag-space 1");
+        await session.GameHost.DoAsync("misc-space 1");
+
+        const string Fits = """
+            Skua.Core.Models.Items.ItemBase Item(int id, string category, string meta = null) => new() { ID = id, Name = $"Item {id}", CategoryString = category, Meta = meta, Quantity = 1, MaxStack = 10 };
+            var items = new[] { Item(60, "Pet"), Item(61, "Resource"), Item(3, "Item"), Item(62, "Class"), Item(63, "Item", "5"), Item(64, "Floor Item") };
+            var inv = Bot.Inventory;
+            return $"{inv.UsedSlots}/{inv.Slots} {inv.MiscUsedSlots}/{inv.MiscSlots} " + string.Join(" ", items.Select(i => $"{inv.GetPool(i)}:{inv.HasSpaceFor(i)}"));
+            """;
+        EvalResult full = await session.Connection.EvalAsync(Fits, cancellationToken: Ct);
+        await session.GameHost.DoAsync("misc-space 2");
+        EvalResult roomier = await session.Connection.EvalAsync(Fits, cancellationToken: Ct);
+
+        Assert.Null(full.Error);
+        Assert.Equal("1/1 1/1 bag:False misc:False misc:True class:True bag:False house:True", full.Value!.Value.GetString());
+        Assert.Equal("1/1 1/2 bag:False misc:True misc:True class:True bag:False house:True", roomier.Value!.Value.GetString());
+    }
+
+    /// <summary>
+    /// A Favorite is read from the game's own store (#249), and Bot.Shops refuses to sell one while ProtectFavorites is on, as the game's shop does.
+    /// </summary>
+    [Fact]
+    public async Task Shops_SellItem_refuses_a_Favorite_unless_ProtectFavorites_is_off()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        await session.GameHost.DoAsync("favorite 3");
+
+        EvalResult protectedSale = await session.Connection.EvalAsync(
+            """var favorites = $"{Bot.Inventory.IsFavorited(3)} {Bot.Inventory.IsFavorited(1)}"; Bot.Shops.SellItem("Treasure Chest"); return favorites;""",
+            cancellationToken: Ct);
+        string[] protectedCalls = await session.GameHost.CallsAsync();
+        EvalResult sale = await session.Connection.EvalAsync("""Bot.Shops.ProtectFavorites = false; Bot.Shops.SellItem("Treasure Chest");""", cancellationToken: Ct);
+        string[] calls = await session.GameHost.CallsAsync();
+
+        Assert.Null(protectedSale.Error);
+        Assert.Equal("True False", protectedSale.Value!.Value.GetString());
+        Assert.DoesNotContain(protectedCalls, c => c.Contains("%sellItem%", StringComparison.Ordinal));
+        Assert.Null(sale.Error);
+        Assert.Single(calls, c => c.StartsWith("send %xt%zm%sellItem%", StringComparison.Ordinal) && c.EndsWith("%3%5%103%", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Stack counts come from the game's HUD auras, the player's own and the target's (#249); without a target there are none.
+    /// </summary>
+    [Fact]
+    public async Task Self_and_Target_read_aura_stacks_from_the_HUD()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        await session.GameHost.DoAsync("hud-aura self Fury 3 10");
+        await session.GameHost.DoAsync("hud-aura 1 Shielded 2 0");
+        await session.GameHost.DoAsync("target 1");
+
+        EvalResult targeted = await session.Connection.EvalAsync(
+            """
+            return $"{Bot.Self.GetAuraStacks("fury")} {Bot.Self.GetAuraStacks("Shielded")} {Bot.Target.GetAuraStacks("Shielded")} {Bot.Self.GetAuraSnapshot("Fury")?.Duration} "
+                + string.Join(",", Bot.Self.Snapshots.Select(a => a.Name));
+            """, cancellationToken: Ct);
+        await session.GameHost.DoAsync("target none");
+        EvalResult untargeted = await session.Connection.EvalAsync("return Bot.Target.Snapshots.Count;", cancellationToken: Ct);
+
+        Assert.Null(targeted.Error);
+        Assert.Equal("3 0 2 10 Fury", targeted.Value!.Value.GetString());
+        Assert.Equal(0, untargeted.Value!.Value.GetInt32());
+    }
+
+    /// <summary>
+    /// AuraStackChanged reports the HUD stack counts that GetAuraStacks reads (#252), the player's and the target's, from 0 when an aura comes
+    /// and to 0 when it goes; losing some stacks reports the stacks left.
+    /// </summary>
+    [Fact]
+    public async Task AuraStackChanged_reports_the_HUD_stack_counts()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        await MonitorAurasAsync(sandbox, session);
+
+        await StacksAsync(session, "hud-aura self Fury 1 10", "stacks Self Fury 0 1");
+        await StacksAsync(session, "hud-aura self Fury 3 10", "stacks Self Fury 1 3");
+        await StacksAsync(session, "hud-aura self Fury 1 10", "stacks Self Fury 3 1");
+        await session.GameHost.DoAsync("target 1");
+        await PolledAsync(session, 1);
+        await StacksAsync(session, "hud-aura 1 Shielded 2 0", "stacks Target Shielded 0 2");
+        await StacksAsync(session, "hud-aura-off self Fury", "stacks Self Fury 1 0");
+
+        Assert.Equal(
+            ["stacks Self Fury 0 1", "stacks Self Fury 1 3", "stacks Self Fury 3 1", "stacks Target Shielded 0 2", "stacks Self Fury 1 0"],
+            await AuraLinesAsync(session, 5));
+    }
+
+    /// <summary>
+    /// An aura's effect value is no stack count (#252): changing it raises no AuraStackChanged. And an aura that loses some stacks, which the game
+    /// takes out of its auras while the HUD keeps it, isn't reported gone until its last stack goes.
+    /// </summary>
+    [Fact]
+    public async Task An_aura_with_stacks_left_is_not_gone_and_its_effect_value_is_no_stack_count()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        await MonitorAurasAsync(sandbox, session);
+
+        await session.GameHost.DoAsync("aura self Fury 1");
+        await StacksAsync(session, "hud-aura self Fury 3 10", "stacks Self Fury 0 3");
+        await session.GameHost.DoAsync("aura self Fury 250");
+        await StacksAsync(session, "hud-aura self Haste 1 0", "stacks Self Haste 0 1");
+        await session.GameHost.DoAsync("aura-off self Fury");
+        await StacksAsync(session, "hud-aura self Fury 1 10", "stacks Self Fury 3 1");
+        await StacksAsync(session, "hud-aura-off self Fury", "gone Self Fury");
+
+        Assert.Equal(
+            ["stacks Self Fury 0 3", "stacks Self Haste 0 1", "stacks Self Fury 3 1", "stacks Self Fury 1 0", "gone Self Fury"],
+            await AuraLinesAsync(session, 5));
+    }
+
+    /// <summary>
+    /// An aura the HUD keeps with no stacks, as the game's aura+ with stk 0 leaves it, has none: AuraStackChanged reports it going to 0, and it is
+    /// gone once it has left the auras too.
+    /// </summary>
+    [Fact]
+    public async Task An_aura_with_no_stacks_left_on_the_HUD_is_gone()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        await MonitorAurasAsync(sandbox, session);
+
+        await session.GameHost.DoAsync("aura self Fury 1");
+        await StacksAsync(session, "hud-aura self Fury 2 10", "stacks Self Fury 0 2");
+        await session.GameHost.DoAsync("aura-off self Fury");
+        await StacksAsync(session, "hud-aura self Fury 0 10", "gone Self Fury");
+
+        Assert.Equal(["stacks Self Fury 0 2", "stacks Self Fury 2 0", "gone Self Fury"], await AuraLinesAsync(session, 3));
+    }
+
+    /// <summary>
+    /// The Target's auras are the targeted monster's: switching targets starts from the new target's auras and stacks without reporting the switch
+    /// as changes, and the new target's changes count from its own stacks.
+    /// </summary>
+    [Fact]
+    public async Task Switching_targets_reports_no_aura_changes_and_the_new_targets_count_from_its_own_stacks()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        await MonitorAurasAsync(sandbox, session);
+        foreach (string directive in (string[])["aura 1 Shielded 1", "aura 2 Shielded 1", "hud-aura 2 Shielded 5 0", "target 1"])
+            await session.GameHost.DoAsync(directive);
+        await PolledAsync(session, 1);
+
+        await StacksAsync(session, "hud-aura 1 Shielded 3 0", "stacks Target Shielded 0 3");
+        await session.GameHost.DoAsync("target 2");
+        await PolledAsync(session, 3);
+        await StacksAsync(session, "hud-aura 2 Shielded 4 0", "stacks Target Shielded 5 4");
+        await session.GameHost.DoAsync("target 1");
+        await PolledAsync(session, 5);
+        await session.GameHost.DoAsync("aura-off 1 Shielded");
+        await StacksAsync(session, "hud-aura-off 1 Shielded", "gone Target Shielded");
+
+        Assert.Equal(["stacks Target Shielded 0 3", "stacks Target Shielded 5 4", "stacks Target Shielded 3 0", "gone Target Shielded"],
+            await AuraLinesAsync(session, 4));
+    }
+
+    /// <summary>
+    /// Waits until the Aura Monitor has polled twice since now, by putting <paramref name="stacks"/> stacks of Mark on the player's HUD and then
+    /// one more.
+    /// </summary>
+    private static async Task PolledAsync(GameFixture session, int stacks)
+    {
+        await StacksAsync(session, $"hud-aura self Mark {stacks} 0", $"stacks Self Mark {stacks - 1} {stacks}");
+        await StacksAsync(session, $"hud-aura self Mark {stacks + 1} 0", $"stacks Self Mark {stacks} {stacks + 1}");
+    }
+
+    /// <summary>
+    /// The Script's stacks and gone lines, but for the Mark ones <see cref="PolledAsync"/> puts on, once there are <paramref name="count"/>.
+    /// </summary>
+    private static async Task<IEnumerable<string?>> AuraLinesAsync(GameFixture session, int count) =>
+        (await session.Connection.WaitForLogsAsync(LogKind.Script, count,
+            e => (e.Text!.StartsWith("stacks ", StringComparison.Ordinal) || e.Text.StartsWith("gone ", StringComparison.Ordinal))
+                && !e.Text.StartsWith("stacks Self Mark ", StringComparison.Ordinal)))
+        .Select(e => e.Text);
+
+    /// <summary>
+    /// Starts a Script that logs the Aura Monitor's AuraStackChanged as <c>stacks &lt;subject&gt; &lt;name&gt; &lt;from&gt; &lt;to&gt;</c> and its
+    /// AuraDeactivated as <c>gone &lt;subject&gt; &lt;name&gt;</c>, and waits until it monitors.
+    /// </summary>
+    private static async Task MonitorAurasAsync(EngineSandbox sandbox, GameFixture session)
+    {
+        TestScripts.Write(sandbox, "Tests/Stacks.cs", TestScripts.Main("""
+            bot.AuraMonitor.AuraStackChanged += (name, from, to, subject) => bot.Log($"stacks {subject} {name} {from} {to}");
+            bot.AuraMonitor.AuraDeactivated += (name, subject) => bot.Log($"gone {subject} {name}");
+            bot.AuraMonitor.EnsureMonitoring(20);
+            bot.Log("monitoring");
+            while (!bot.ShouldExit)
+                Thread.Sleep(50);
+            """));
+        await session.Connection.ScriptStartAsync("Tests/Stacks.cs", cancellationToken: Ct);
+        await session.Connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text == "monitoring");
+    }
+
+    /// <summary>Runs the fake game's <paramref name="directive"/> and waits for the Script's <paramref name="line"/>.</summary>
+    private static async Task StacksAsync(GameFixture session, string directive, string line)
+    {
+        await session.GameHost.DoAsync(directive);
+        await session.Connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text == line);
     }
 }
