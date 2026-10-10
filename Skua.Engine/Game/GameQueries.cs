@@ -69,9 +69,9 @@ internal sealed class GameQueries
     private InventoryResult InventoryWithSpaces()
     {
         IScriptInventory inventory = _api.Inventory;
-        int miscSlots = inventory.MiscSlots;
+        SpaceUse? misc = inventory.MiscSpace();
         return new InventoryResult(InventoryKind.Inventory, inventory.UsedSlots, inventory.Slots, inventory.Items.Select(ToDto).ToList(),
-            miscSlots > 0 ? inventory.MiscUsedSlots : null, miscSlots > 0 ? miscSlots : null);
+            misc?.Used, misc?.Slots);
     }
 
     /// <summary>

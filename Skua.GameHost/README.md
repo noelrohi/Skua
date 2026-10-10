@@ -12,7 +12,7 @@ and puts `skua-gamehost` next to `skua-engine` (see `BUILD.md`).
 
 ```
 cargo build --release --locked   # target/release/skua-gamehost
-cargo test --locked              # framing, XML and options; no GPU, no SWF
+cargo test --locked              # framing, XML and options; tests/game_storage.rs runs the host on Metal with a test SWF
 ```
 
 - The toolchain is pinned in `rust-toolchain.toml` (1.98.1, `aarch64-apple-darwin`); rustup installs it on first use.

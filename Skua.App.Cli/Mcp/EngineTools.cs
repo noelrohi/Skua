@@ -74,7 +74,7 @@ internal sealed class EngineTools(Func<EngineClientOptions> options, DataFolderS
         CallAsync(connection => connection.JumpAsync(cell, pad, timeoutSec, cancellationToken), cancellationToken);
 
     [McpServerTool(Name = "inventory", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(InventoryResult))]
-    [Description("The items in one of the player's item stores (id, name, qty, maxStack, category, equipped, enhancementLevel) with its used and total slots; the temp store has no slot limit (totalSlots null). The bank is fetched from the game server the first time it is listed after each login. Fails with NotLoggedIn unless playing.")]
+    [Description("The items in one of the player's item stores (id, name, qty, maxStack, category, equipped, enhancementLevel) with its used and total slots: for the inventory, its Bag Space's, with its Misc Space's as miscUsedSlots and miscSlots (null for the other stores and in a game without Misc Space). The temp store has no slot limit (totalSlots null). The bank is fetched from the game server the first time it is listed after each login. Fails with NotLoggedIn unless playing.")]
     public Task<CallToolResult> Inventory(
         [Description("inventory, bank, temp or house.")] InventoryKind kind = InventoryKind.Inventory,
         CancellationToken cancellationToken = default) =>
