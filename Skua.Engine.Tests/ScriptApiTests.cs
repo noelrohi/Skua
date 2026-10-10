@@ -128,6 +128,22 @@ public class ScriptApiTests
     }
 
     [Fact]
+    public async Task Items_whose_type_the_game_spells_with_a_space_read_as_their_category()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        foreach (string directive in (string[])["own 50 Quest_Item Bone Dust", "own 51 Wall_Item Old Banner", "own 52 Server_Use Server Token", "own 53 ServerUse Server Key"])
+            await session.GameHost.DoAsync(directive);
+
+        EvalResult categories = await session.Connection.EvalAsync("return Bot.Inventory.Items.Where(i => i.ID >= 50).Concat(Bot.House.Items).Select(i => $\"{i.Name} {i.Category}\");", cancellationToken: Ct);
+
+        Assert.Null(categories.Error);
+        Assert.Equal(["Bone Dust QuestItem", "Old Banner WallItem", "Server Token ServerUse", "Server Key ServerUse", "Wooden Chair FloorItem"],
+            categories.Value!.Value.EnumerateArray().Select(e => e.GetString()));
+    }
+
+    [Fact]
     public async Task Inventory_EquipItem_equips_the_item_and_logs_nothing()
     {
         await using EngineSandbox sandbox = new();
