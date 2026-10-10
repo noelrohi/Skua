@@ -51,8 +51,8 @@ internal sealed class FakeGame
     private bool _bankOpen;
     private DateTime _inventoryAt;
     private int _inventoryDelay = 500;
-    private int _bagSlots = 40;
-    private int _miscSlots = 100;
+    private int _bagSpace = 40;
+    private int _miscSpace = 100;
     /// <summary>The HUD auras (<c>leaf.hudAuras</c>) of the player (<c>self</c>) and of each monster by its map ID, as AuraSnapshots reads them.</summary>
     private readonly Dictionary<string, List<JsonObject>> _hudAuras = [];
     /// <summary>The auras (<c>leaf.auras</c>) of the player (<c>self</c>) and of each monster by its map ID, each with its effect value.</summary>
@@ -167,20 +167,20 @@ internal sealed class FakeGame
                 ("rejectExcept", [string whitelist]) => Note($"rejectExcept {whitelist}"),
                 // skua.swf's Inventory API, which asks the game's InvCat; the fake's follows client 5.0's.
                 ("hasInventoryCategories", _) => Str(true),
-                ("inventoryBagUsedSlots", _) => Str(Owned().Count(i => Pool(i) == "bag")),
-                ("inventoryMiscSlots", _) => Str(_miscSlots),
-                ("inventoryMiscUsedSlots", _) => Str(Owned().Count(i => Pool(i) == "misc")),
-                ("inventoryPool", [string item]) => Str(Pool(JsonNode.Parse(item)!.AsObject())),
+                ("inventoryBagUsedSlots", _) => Str(Used("bag")),
+                ("inventoryMiscSlots", _) => Str(_miscSpace),
+                ("inventoryMiscUsedSlots", _) => Str(Used("misc")),
+                ("inventoryPool", [string item]) => Str(SpaceOf(JsonNode.Parse(item)!.AsObject())),
                 ("inventoryHasSpaceFor", [string item, ..]) => Str(HasSpaceFor(JsonNode.Parse(item)!.AsObject())),
                 // skua.swf's, from the game's FavStore: whether the player starred the item.
                 ("isFavoriteItem", [string id]) => Str(_favorites.Contains(int.Parse(id))),
                 // skua.swf's: the HUD auras of the player, or of the monster it targets, in the order they came.
                 ("GetAuraSnapshots", [string subject]) =>
-                    Str(new JsonArray([.. HudAuras(subject == "Self" ? "self" : _target?.ToString()).Select(a => a.DeepClone())]).ToJsonString()),
+                    AurasReply(HudAuras(subject == "Self" ? "self" : _target?.ToString())),
                 // skua.swf's: the auras of a player, only the player's own in the fake, or of a monster by its map ID.
                 ("GetPlayerAura", [string player]) =>
-                    Str(new JsonArray([.. Auras(player == _username.ToLowerInvariant() ? "self" : null).Select(a => a.DeepClone())]).ToJsonString()),
-                ("GetMonsterAuraByID", [string id]) => Str(new JsonArray([.. Auras(id).Select(a => a.DeepClone())]).ToJsonString()),
+                    AurasReply(Auras(player == _username.ToLowerInvariant() ? "self" : null)),
+                ("GetMonsterAuraByID", [string id]) => AurasReply(Auras(id)),
                 // skua.swf's: none for a shop item, which needs nothing in the fake; else that it isn't in the loaded shop.
                 ("getUnmetPurchaseRequirements", [string id, string shopItemId, ..]) =>
                     Str(_shopId is not null && _shopItems.Any(i => (int)i["ItemID"]! == int.Parse(id) && (int)i["ShopItemID"]! == int.Parse(shopItemId))
@@ -282,20 +282,23 @@ internal sealed class FakeGame
                     // A drop of another category, e.g. a Pet, which fills Bag Space where an Item fills Misc Space.
                     Drop(Item(int.Parse(id), name, int.Parse(qty), 10, category));
                     return true;
-                case ["bag-slots", string slots]:
-                    _bagSlots = int.Parse(slots);
+                case ["bag-space", string slots]:
+                    _bagSpace = int.Parse(slots);
                     return true;
                 case ["hud-aura", string rest] when rest.Split(' ') is [string subject, string name, string stacks, string duration]:
                     // An aura on the player's HUD (subject self) or a monster's (its map ID), with its stack count and duration in seconds (0 for none);
-                    // with 0 stacks it leaves the HUD, as the game deletes one that loses its last stack.
+                    // with 0 stacks it stays on the HUD with n 0, as the game's aura+ with stk 0 leaves it.
                     List<JsonObject> auras = HudAuras(subject);
                     auras.RemoveAll(a => (string)a["nam"]! == name);
-                    if (int.Parse(stacks) > 0)
-                        auras.Add(new JsonObject
-                        {
-                            ["nam"] = name, ["n"] = int.Parse(stacks), ["dur"] = int.Parse(duration), ["remaining"] = int.Parse(duration), ["persist"] = false,
-                            ["icon"] = "", ["desc"] = "",
-                        });
+                    auras.Add(new JsonObject
+                    {
+                        ["nam"] = name, ["n"] = int.Parse(stacks), ["dur"] = int.Parse(duration), ["remaining"] = int.Parse(duration), ["persist"] = false,
+                        ["icon"] = "", ["desc"] = "",
+                    });
+                    return true;
+                case ["hud-aura-off", string rest] when rest.Split(' ') is [string subject, string name]:
+                    // The aura leaves the HUD, as the game deletes one that loses its last stack.
+                    HudAuras(subject).RemoveAll(a => (string)a["nam"]! == name);
                     return true;
                 case ["aura", string rest] when rest.Split(' ') is [string subject, string name, string value]:
                     // An aura on the player (subject self) or a monster (its map ID) with its effect value, which isn't its stack count.
@@ -312,8 +315,8 @@ internal sealed class FakeGame
                 case ["party", string player]:
                     _partyMembers.Add(player.ToLowerInvariant());
                     return true;
-                case ["misc-slots", string slots]:
-                    _miscSlots = int.Parse(slots);
+                case ["misc-space", string slots]:
+                    _miscSpace = int.Parse(slots);
                     return true;
                 case ["slime-samples", string qty]:
                     // How many Slime Samples, which Slime Time needs, the temporary inventory holds.
@@ -342,6 +345,10 @@ internal sealed class FakeGame
                 case ["own", string rest] when rest.Split(' ', 3) is [string id, string category, string name]:
                     // Another item in the inventory, unequipped, as after buying it.
                     _inventory.Add(Item(int.Parse(id), name, 1, 1, category));
+                    return true;
+                case ["own-stack", string rest] when rest.Split(' ', 5) is [string id, string category, string qty, string maxStack, string name]:
+                    // As own, a stack of qty of maxStack.
+                    _inventory.Add(Item(int.Parse(id), name, int.Parse(qty), int.Parse(maxStack), category));
                     return true;
                 case ["stock", string rest] when rest.Split(' ', 3) is [string store, string id, string name] && _stocked.TryGetValue(store, out List<JsonObject>? stocked):
                     // Another item in the bank, the temporary inventory or the house.
@@ -447,7 +454,7 @@ internal sealed class FakeGame
         "world.myAvatar.objData.strUsername" => _world ? _username : null,
         "world.myAvatar.items" => _world ? (InventoryLoaded ? Inventory() : []) : null,
         "world.myAvatar.items.length" => _world ? (InventoryLoaded ? Inventory().Count : 0) : null,
-        "world.myAvatar.objData.iBagSlots" => _world ? _bagSlots : null,
+        "world.myAvatar.objData.iBagSlots" => _world ? _bagSpace : null,
         "world.bankinfo.items" => _world ? (_bankLoaded ? Bank() : []) : null,
         "world.bankinfo.BankArray.length" => _world ? (_bankLoaded ? Bank().Count : 0) : null,
         "world.myAvatar.invLoaded" => InventoryLoaded,
@@ -964,11 +971,19 @@ internal sealed class FakeGame
     /// <summary>The items the inventory holds as far as the game knows: none until it has arrived.</summary>
     private List<JsonObject> Owned() => InventoryLoaded ? _inventory : [];
 
-    private List<JsonObject> Auras(string? subject) =>
-        subject is null ? [] : _auras.TryGetValue(subject, out List<JsonObject>? auras) ? auras : _auras[subject] = [];
+    /// <summary>How many slots of the Space (<c>bag</c> or <c>misc</c>) the items the game knows of fill.</summary>
+    private int Used(string space) => Owned().Count(i => SpaceOf(i) == space);
 
-    private List<JsonObject> HudAuras(string? subject) =>
-        subject is null ? [] : _hudAuras.TryGetValue(subject, out List<JsonObject>? auras) ? auras : _hudAuras[subject] = [];
+    private List<JsonObject> Auras(string? subject) => Of(_auras, subject);
+
+    private List<JsonObject> HudAuras(string? subject) => Of(_hudAuras, subject);
+
+    /// <summary>The subject's auras, none for no subject.</summary>
+    private static List<JsonObject> Of(Dictionary<string, List<JsonObject>> bySubject, string? subject) =>
+        subject is null ? [] : bySubject.TryGetValue(subject, out List<JsonObject>? auras) ? auras : bySubject[subject] = [];
+
+    /// <summary>The auras as skua.swf's aura calls return them, a JSON array.</summary>
+    private static string AurasReply(List<JsonObject> auras) => Str(new JsonArray([.. auras.Select(a => a.DeepClone())]).ToJsonString());
 
     /// <summary>
     /// Whether the item fits, by the game's <c>InvCat.isFullFor</c>: a class always does, as does one that tops up a stack the player holds;
@@ -976,24 +991,24 @@ internal sealed class FakeGame
     /// </summary>
     private bool HasSpaceFor(JsonObject item)
     {
-        string pool = Pool(item);
-        if (pool == "class")
+        string space = SpaceOf(item);
+        if (space == "class")
             return true;
-        if (pool == "house")
+        if (space == "house")
             return HouseItems().Count < HouseSlots;
         JsonObject? held = Owned().FirstOrDefault(i => (int)i["ItemID"]! == (int)item["ItemID"]!);
         if (held is not null && (int)held["iQty"]! < (int)held["iStk"]!)
             return true;
-        return pool == "misc"
-            ? held is not null || Owned().Count(i => Pool(i) == "misc") < _miscSlots
-            : Owned().Count(i => Pool(i) == "bag") < _bagSlots;
+        return space == "misc"
+            ? held is not null || Used("misc") < _miscSpace
+            : Used("bag") < _bagSpace;
     }
 
     /// <summary>
     /// The Space an item fills, by the game's <c>InvCat.poolOf</c>: <c>class</c> (none), <c>house</c>, <c>misc</c> (Misc Space) or <c>bag</c> (Bag Space).
     /// Misc is an Item, Note, Quest Item or Resource, except an Item whose meta is a number, as a consumable's is.
     /// </summary>
-    private static string Pool(JsonObject item)
+    private static string SpaceOf(JsonObject item)
     {
         string? category = (string?)item["sType"];
         if (category == "Class")

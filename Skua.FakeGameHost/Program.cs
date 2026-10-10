@@ -19,26 +19,39 @@
 //   control <path>        also run each line appended to <path> while the fake runs, so a test can act mid-run; each one run
 //                         appends a line to <path>.done
 //
-// With `game <username> <password>` it also simulates the AQW game behind skua.swf (see FakeGame.cs), which accepts that
-// account; `servers <json>`, `connect-delay <ms>`, `inventory-delay <ms>` (500 unless set; transfers are refused until then), `reject <server> <message>` and `account <username> <password>` (another account it accepts) configure it, and `lose-connection <message>`,
-// `kick`, `idle-logout`, `logout-button`, `die`, `respawn-request` (the game's own resPlayerTimed; the game server ignores one within 2 s of the death,
-// and respawns the player otherwise, as it does for the Engine's), `combat`, `afk`, `join <map>`, `cell <cell>`, `gain <xp> <gold>` (a level up sends `levelUp`), `blip` (the connection reads as dropped until the Engine's game state tracker has read it, i.e. asked isKicked; the call log records `blip read <n>`, from 1), `connection-message <message>`, `broken-login`,
-// `login-response` (the last login's response again), `lock-map <map>` (transfers to it are ignored), `drop <id> <qty> <name>` (an Item, which
-// fills Misc Space), `drop-as <category> <id> <qty> <name>` (a drop of that category, e.g. a Pet, which fills Bag Space), `bag-slots <n>` and
-// `misc-slots <n>` (Bag Space and Misc Space, 40 and 100 unless set; client 5.0's rules decide which an item fills, and classes fill none),
-// `favorite <id>` (the player stars the item as a Favorite), `party <player>` (another player joins the player's party), `hud-aura <self|monster map id> <name> <stacks> <seconds>` (an aura on the HUD, 0 s for
-// one that doesn't expire; 0 stacks takes it off), `aura <self|monster map id> <name> <value>` (an aura with that effect value, apart from the HUD),
-// `aura-off <self|monster map id> <name>` (the aura leaves, as the game's aura-- takes it off even with stacks left on the HUD), `pickup <id>`, `own <id> <category> <name>` (another item in the inventory, unequipped; the game equips an item in place of its
-// category's), `stock <bank|temp|house> <id> <name>` (another item in that store), `shop-item <id> <name>` (another item every shop
-// sells; a loaded shop's buyItemByName finds it by its lower-cased name, as skua.swf does), `equip-delay <ms|never>` (how long the game server takes to equip one from now on, 0 at first, or never), `slime-samples <qty>` and `slime-crowns <qty>` (Slime Time's requirements; it is ready to turn in with 5 and 1, and a turn-in takes them), `quest-spacing <ms>` (the game server refuses a turn-in or accept within <ms> of the last with "Please slow down"; an accept it refuses stays accepted in the game), `focus <input|dynamic|none>` (the text field the stage's focus is on, e.g. chat's input), `packet <text>` (the game's
-// packet call, as for a packet it sends) and `server-packet <packet>` (a string packet from the game server, e.g. `%xt%chatm%-1%zone~hi%Bob%`,
-// handed to the game as SmartFox does) act in it.
+// With `game <username> <password>` it also simulates the AQW game behind skua.swf (see FakeGame.cs), which accepts that account;
+// `servers <json>`, `connect-delay <ms>`, `inventory-delay <ms>` (500 unless set; transfers are refused until then),
+// `reject <server> <message>` and `account <username> <password>` (another account it accepts) configure it, and
+// `lose-connection <message>`, `kick`, `idle-logout`, `logout-button`, `die`, `respawn-request` (the game's own resPlayerTimed; the game
+// server ignores one within 2 s of the death, and respawns the player otherwise, as it does for the Engine's), `combat`, `afk`,
+// `join <map>`, `cell <cell>`, `gain <xp> <gold>` (a level up sends `levelUp`), `blip` (the connection reads as dropped until the Engine's
+// game state tracker has read it, i.e. asked isKicked; the call log records `blip read <n>`, from 1), `connection-message <message>`,
+// `broken-login`, `login-response` (the last login's response again), `lock-map <map>` (transfers to it are ignored),
+// `drop <id> <qty> <name>` (an Item, which fills Misc Space), `drop-as <category> <id> <qty> <name>` (a drop of that category, e.g. a Pet,
+// which fills Bag Space), `bag-space <n>` and `misc-space <n>` (Bag Space and Misc Space, 40 and 100 unless set; client 5.0's rules decide
+// which an item fills, and classes fill none), `favorite <id>` (the player stars the item as a Favorite), `party <player>` (another player
+// joins the player's party), `hud-aura <self|monster map id> <name> <stacks> <seconds>` (an aura on the HUD, 0 s for one that doesn't
+// expire; with 0 stacks it stays on with none), `hud-aura-off <self|monster map id> <name>` (the aura leaves the HUD),
+// `aura <self|monster map id> <name> <value>` (an aura with that effect value, apart from the HUD), `aura-off <self|monster map id> <name>`
+// (the aura leaves, as the game's aura-- takes it off even with stacks left on the HUD), `pickup <id>`, `own <id> <category> <name>`
+// (another item in the inventory, unequipped; the game equips an item in place of its category's),
+// `own-stack <id> <category> <qty> <max> <name>` (as own, a stack of qty of max), `stock <bank|temp|house> <id> <name>` (another item in
+// that store), `shop-item <id> <name>` (another item every shop sells; a loaded shop's buyItemByName finds it by its lower-cased name, as
+// skua.swf does), `equip-delay <ms|never>` (how long the game server takes to equip one from now on, 0 at first, or never),
+// `slime-samples <qty>` and `slime-crowns <qty>` (Slime Time's requirements; it is ready to turn in with 5 and 1, and a turn-in takes
+// them), `quest-spacing <ms>` (the game server refuses a turn-in or accept within <ms> of the last with "Please slow down"; an accept it
+// refuses stays accepted in the game), `focus <input|dynamic|none>` (the text field the stage's focus is on, e.g. chat's input),
+// `packet <text>` (the game's packet call, as for a packet it sends) and `server-packet <packet>` (a string packet from the game server,
+// e.g. `%xt%chatm%-1%zone~hi%Bob%`, handed to the game as SmartFox does) act in it.
 // The call log adds ` lag-killed` to a screenshot taken while the game's lag killer hides the world, and records what the game did:
-// `tfer <map> <cell> <pad>` for each map transfer, `jump <cell> <pad>`, `getBank` and `loadBank` (which the game server ignores),
-// `respawn` or `respawn ignored` for each resPlayerTimed, `toggleBank open` or `toggleBank closed` for the bank panel, `loadShop <id>`, `buy <item id> <qty>` for each item bought, `rejectExcept <whitelist>`, `attack <monster>` for each attackMonsterName (which it refuses), `target <monster>` for each targetMonsterName or targetMonsterID (with its name or id), `showQuests <ids>`, `acceptQuest <id>`, `equipItem <id>`, `send <packet>` and
-// `sendJson <packet>` for each packet sent to the server, `clientPacket <type> <packet>` for each handed to the game as the server's, and
-// `connectTo <ip> <port>` (or with ` failed` or ` refused`) for the game's connectTo. connectTo connects over TCP to a game server on a
-// loopback address, as the Packet Interceptor has it do, and refuses any other address; see FakeGame.ConnectTo.
+// `tfer <map> <cell> <pad>` for each map transfer, `jump <cell> <pad>`, `getBank` and `loadBank` (which the game server ignores), `respawn`
+// or `respawn ignored` for each resPlayerTimed, `toggleBank open` or `toggleBank closed` for the bank panel, `loadShop <id>`,
+// `buy <item id> <qty>` for each item bought, `rejectExcept <whitelist>`, `attack <monster>` for each attackMonsterName (which it refuses),
+// `target <monster>` for each targetMonsterName or targetMonsterID (with its name or id), `showQuests <ids>`, `acceptQuest <id>`,
+// `equipItem <id>`, `send <packet>` and `sendJson <packet>` for each packet sent to the server, `clientPacket <type> <packet>` for each
+// handed to the game as the server's, and `connectTo <ip> <port>` (or with ` failed` or ` refused`) for the game's connectTo. connectTo
+// connects over TCP to a game server on a loopback address, as the Packet Interceptor has it do, and refuses any other address; see
+// FakeGame.ConnectTo.
 //
 // Like skua-gamehost, it answers C calls with R, P pings with P and Q stats with Q, and exits when its stdin closes.
 // It answers S screenshots with I: a solid PNG of the 958x550 stage, scaled down to max_width like the real one, and a frame

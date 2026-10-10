@@ -19,7 +19,7 @@ public interface IAuraMonitorService : IDisposable
 
     /// <summary>
     /// Event fired when an aura is activated.
-    /// Parameters: auraName, timeStarted, duration, stackValue, subject
+    /// Parameters: auraName, timeStarted, duration, value (the aura's effect value, not its stack count), subject
     /// </summary>
     event Action<string, DateTimeOffset, float, float, SubjectType>? AuraActivated;
 
