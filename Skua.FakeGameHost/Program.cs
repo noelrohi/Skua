@@ -43,6 +43,8 @@
 // It answers S screenshots with I: a solid PNG of the 958x550 stage, scaled down to max_width like the real one, and a frame
 // number that rises with each capture. The call log records each S as `screenshot <max_width>`.
 //
+// With `--storage=<folder>` (every Engine passes its Engine Name's) it creates that folder, as skua-gamehost does.
+//
 // With `--frame-buffer=<name>` (the Mac App's Engine passes it) it maps that Frame Buffer before reading stdin, as skua-gamehost does,
 // and speaks the Game View's frames:
 //   W   the call log records `view live` or `view headless`, and a live view's viewport as `view viewport <w>x<h> <scale>`; while live it
@@ -76,6 +78,9 @@ FakeGame? game = null;
 FakeFrameBuffer? frameBuffer = args.FirstOrDefault(a => a.StartsWith("--frame-buffer=", StringComparison.Ordinal)) is { } fbArg
     ? FakeFrameBuffer.Open(fbArg["--frame-buffer=".Length..])
     : null;
+// skua-gamehost creates its --storage folder as it starts.
+if (args.FirstOrDefault(a => a.StartsWith("--storage=", StringComparison.Ordinal)) is { } storageArg)
+    Directory.CreateDirectory(storageArg["--storage=".Length..]);
 long inputEvents = 0;
 // The viewport a live view renders at, the simulated button on the stage, whether the pointer is over it, and the text a Copy copies.
 (int Width, int Height) viewport = (958, 550);
