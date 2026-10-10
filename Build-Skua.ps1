@@ -137,7 +137,6 @@ function Build-Platform([string]$Platform, [string]$Config, [bool]$EnableBinLog 
         
         Write-Info "Building Skua.sln..."
         $buildArgs = @("build", "Skua.sln", "--configuration", $Config, "-p:Platform=$Platform", "--no-restore", "--verbosity", "minimal", "-p:WarningLevel=0", "/p:BuildInParallel=true")
-        if ($Platform -eq "x86") { $buildArgs += "-p:PlatformTarget=x86" }
         if ($EnableBinLog) { $buildArgs += "/bl:build-$Platform-$Config.binlog" }
         
         $result = & dotnet $buildArgs 2>&1
@@ -329,7 +328,6 @@ function Main {
                     param($platform, $config, $enableBinLog)
                     
                     $buildArgs = @("build", "Skua.sln", "--configuration", $config, "-p:Platform=$platform", "--no-restore", "--verbosity", "minimal", "-p:WarningLevel=0", "/p:BuildInParallel=true")
-                    if ($platform -eq "x86") { $buildArgs += "-p:PlatformTarget=x86" }
                     if ($enableBinLog) { $buildArgs += "/bl:build-$platform-$config.binlog" }
                     
                     $result = & dotnet $buildArgs 2>&1

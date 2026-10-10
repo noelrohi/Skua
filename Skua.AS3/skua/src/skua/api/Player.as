@@ -5,7 +5,7 @@ import flash.utils.getQualifiedClassName;
 import skua.Main;
 
 public class Player {
-    private static const DROP_PARSE_REGEX:RegExp = /(.*)\s+x\s*(\d*)/g;
+    private static const DROP_PARSE_REGEX:RegExp = /(.*)\s+x\s*(\d*)/;
 
     public function Player() {
         super();
@@ -88,7 +88,7 @@ public class Player {
 
     private static function parseDrop(name:*):* {
         var ret:* = {};
-        var lowercaseName:String = name.toLowerCase().trim();
+        var lowercaseName:String = name.toLowerCase().replace(/^\s+|\s+$/g, "");
         ret.name = lowercaseName;
         ret.count = 1;
         var result:Object = DROP_PARSE_REGEX.exec(lowercaseName);
@@ -104,20 +104,20 @@ public class Player {
     public static function rejectExcept(whitelist:String):void {
         var pickup:Array = whitelist.split(',');
         if (Main.instance.game.litePreference.data.bCustomDrops) {
-            var source:* = Main.instance.game.cDropsUI.mcDraggable ? Main.instance.game.cDropsUI.mcDraggable.menu : Main.instance.game.cDropsUI;
-            for (var i:int = 0; i < source.numChildren; i++) {
-                var child:* = source.getChildAt(i);
-                if (child.itemObj) {
-                    var itemName:String = child.itemObj.sName.toLowerCase();
-                    if (pickup.indexOf(itemName) == -1) {
-                        child.btNo.dispatchEvent(new MouseEvent(MouseEvent.CLICK));
-                    }
+            var drops:* = Main.instance.game.cDropsUI;
+            if (drops == null) {
+                return;
+            }
+            // Rejection redraws the list, so iterate a snapshot of the underlying data.
+            for each (var item:* in drops.invTree.concat()) {
+                if (item != null && pickup.indexOf(String(item.sName).toLowerCase()) == -1) {
+                    drops.onBtNo(item);
                 }
             }
         } else {
             var children:int = Main.instance.game.ui.dropStack.numChildren;
-            for (i = 0; i < children; i++) {
-                child = Main.instance.game.ui.dropStack.getChildAt(i);
+            for (var i:int = children - 1; i >= 0; i--) {
+                var child:* = Main.instance.game.ui.dropStack.getChildAt(i);
                 var type:String = getQualifiedClassName(child);
                 if (type.indexOf('DFrame2MC') != -1) {
                     var drop:* = parseDrop(child.cnt.strName.text);

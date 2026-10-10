@@ -1,6 +1,7 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using Skua.Core.Interfaces;
 using Skua.Core.Models;
+using System.IO.Compression;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -139,12 +140,17 @@ public partial class CaptureProxy : ObservableRecipient, ICaptureProxy
                     }
 
                     if (cpacket.Count == 0)
+                    {
+                        await destStream.WriteAsync(messageBuffer.AsMemory(i, 1), token).ConfigureAwait(false);
                         continue;
+                    }
 
                     byte[] data = cpacket.ToArray();
                     cpacket.Clear();
 
-                    MessageInfo message = new(Encoding.UTF8.GetString(data, 0, data.Length));
+                    string content = Encoding.UTF8.GetString(data);
+                    bool compressed = !outbound && _TryUnpack(content, out content);
+                    MessageInfo message = new(content);
                     if (Interceptors.Count > 0)
                     {
                         IInterceptor[] currentInterceptors = Interceptors.OrderBy(i => i.Priority).ToArray();
@@ -152,9 +158,13 @@ public partial class CaptureProxy : ObservableRecipient, ICaptureProxy
                             interceptor.Intercept(message, outbound);
                     }
 
+                    if (token.IsCancellationRequested || !target.Connected || !destination.Connected)
+                        break;
+
                     if (message.Send)
                     {
-                        byte[] contentBytes = _ToBytes(message.Content);
+                        byte[] contentBytes = message.Content == content ? data
+                            : compressed ? _Pack(message.Content) : Encoding.UTF8.GetBytes(message.Content);
                         byte[] msg = new byte[contentBytes.Length + 1];
                         Buffer.BlockCopy(contentBytes, 0, msg, 0, contentBytes.Length);
                         await destStream.WriteAsync(msg, token).ConfigureAwait(false);
@@ -166,6 +176,10 @@ public partial class CaptureProxy : ObservableRecipient, ICaptureProxy
         {
             /* Cancelled */
         }
+        catch (Exception e) when (e is IOException or SocketException or ObjectDisposedException)
+        {
+            /* Connection closed. */
+        }
         finally
         {
             targetStream?.Dispose();
@@ -175,11 +189,56 @@ public partial class CaptureProxy : ObservableRecipient, ICaptureProxy
         }
     }
 
-    private static byte[] _ToBytes(string s)
+    private static bool _TryUnpack(string message, out string content)
     {
-        byte[] result = new byte[s.Length];
-        for (int i = 0; i < s.Length; i++)
-            result[i] = (byte)s[i];
-        return result;
+        content = message;
+        if (!message.StartsWith('Z'))
+            return false;
+
+        try
+        {
+            const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+            int end = message.Length;
+            while (end > 1 && message[end - 1] == '=')
+                end--;
+
+            byte[] compressed = new byte[(end - 1) * 3 / 4];
+            if (compressed.Length < 8)
+                return false;
+            int bits = 0, bitCount = 0, count = 0;
+            for (int i = 1; i < end; i++)
+            {
+                if (message[i] > 255)
+                    throw new InvalidDataException("Invalid compressed packet character.");
+                // Game4000 maps unknown Base64 characters to zero and permits missing padding.
+                bits = bits << 6 | Math.Max(0, alphabet.IndexOf(message[i]));
+                bitCount += 6;
+                if (bitCount >= 8)
+                {
+                    bitCount -= 8;
+                    compressed[count++] = (byte)(bits >> bitCount);
+                }
+            }
+
+            using MemoryStream input = new(compressed, 0, count);
+            using ZLibStream zlib = new(input, CompressionMode.Decompress);
+            using MemoryStream output = new();
+            zlib.CopyTo(output);
+            content = Encoding.UTF8.GetString(output.ToArray());
+            return true;
+        }
+        catch (Exception e) when (e is InvalidDataException or IOException)
+        {
+            // Leave malformed envelopes intact for the game to handle.
+            return false;
+        }
+    }
+
+    private static byte[] _Pack(string content)
+    {
+        using MemoryStream output = new();
+        using (ZLibStream zlib = new(output, CompressionMode.Compress, leaveOpen: true))
+            zlib.Write(Encoding.UTF8.GetBytes(content));
+        return Encoding.ASCII.GetBytes("Z" + Convert.ToBase64String(output.ToArray()));
     }
 }
