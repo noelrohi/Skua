@@ -50,7 +50,7 @@ public class Inventory {
         var owned:*;
         if (cat == null) {
             for each (owned in world.myAvatar.items) {
-                if (int(owned.ItemID) == int(item.ItemID)) return "true";
+                if (int(owned.ItemID) == int(item.ItemID) && int(owned.iQty) < int(owned.iStk)) return "true";
             }
             return (outgoingJson != null || world.myAvatar.items.length < int(world.myAvatar.objData.iBagSlots)).toString();
         }

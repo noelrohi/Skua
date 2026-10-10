@@ -101,12 +101,12 @@ public class Player {
         }
     }
 
-    public static function rejectExcept(whitelist:String):void {
+    public static function rejectExcept(whitelist:String):String {
         var pickup:Array = whitelist.split(',');
         if (Main.instance.game.litePreference.data.bCustomDrops) {
             var drops:* = Main.instance.game.cDropsUI;
             if (drops == null) {
-                return;
+                return "false";
             }
             // Rejection redraws the list, so iterate a snapshot of the underlying data.
             for each (var item:* in drops.invTree.concat()) {
@@ -128,6 +128,7 @@ public class Player {
                 }
             }
         }
+        return "true";
     }
 }
 }

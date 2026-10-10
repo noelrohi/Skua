@@ -10,6 +10,9 @@ namespace Skua.Core.GameProxy;
 
 public partial class CaptureProxy : ObservableRecipient, ICaptureProxy
 {
+    // Generous local safety limit, not a server protocol limit.
+    private const int MaxDecompressedPacketBytes = 16 * 1024 * 1024;
+
     private CancellationTokenSource? _captureProxyCTS;
 
     /// <summary>
@@ -223,16 +226,26 @@ public partial class CaptureProxy : ObservableRecipient, ICaptureProxy
             using MemoryStream input = new(compressed, 0, count);
             using ZLibStream zlib = new(input, CompressionMode.Decompress);
             using MemoryStream output = new();
-            zlib.CopyTo(output);
-            content = Encoding.UTF8.GetString(output.ToArray());
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = zlib.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                if (read > MaxDecompressedPacketBytes - output.Length)
+                    throw new PacketTooLargeException();
+                output.Write(buffer, 0, read);
+            }
+            content = Encoding.UTF8.GetString(output.GetBuffer().AsSpan(0, (int)output.Length));
             return true;
         }
-        catch (Exception e) when (e is InvalidDataException or IOException)
+        catch (Exception e) when ((e is InvalidDataException or IOException) && e is not PacketTooLargeException)
         {
             // Leave malformed envelopes intact for the game to handle.
             return false;
         }
     }
+
+    // Propagates to the interceptor's IOException handler so oversized packets are not forwarded.
+    private sealed class PacketTooLargeException : IOException { }
 
     private static byte[] _Pack(string content)
     {
