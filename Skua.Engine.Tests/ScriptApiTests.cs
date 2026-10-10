@@ -68,6 +68,30 @@ public class ScriptApiTests
     }
 
     [Fact]
+    public async Task The_party_HP_skill_rule_reads_the_HP_of_party_members_in_the_players_cell()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        // ArtixFan stands in r3 at 800 of 2000 HP: 40%.
+        await session.Connection.JumpAsync("r3", cancellationToken: Ct);
+        const string rules = """
+            var skills = new Skua.Core.Skills.AdvancedSkillProvider(Bot.Player, Bot.Self, Bot.Target, Bot.Combat, Bot.Flash);
+            skills.Load("1 PH<50 | 2 PH>50");
+            return $"{skills.ShouldUseSkill(0, true)} {skills.ShouldUseSkill(1, true)}";
+            """;
+
+        EvalResult alone = await session.Connection.EvalAsync(rules, cancellationToken: Ct);
+        await session.GameHost.DoAsync("party ArtixFan");
+        EvalResult partied = await session.Connection.EvalAsync(rules, cancellationToken: Ct);
+
+        Assert.Null(alone.Error);
+        Assert.Equal("False False", alone.Value!.Value.GetString());
+        Assert.Null(partied.Error);
+        Assert.Equal("True False", partied.Value!.Value.GetString());
+    }
+
+    [Fact]
     public async Task Inventory_EquipItem_equips_the_item_and_logs_nothing()
     {
         await using EngineSandbox sandbox = new();
