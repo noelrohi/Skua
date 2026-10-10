@@ -57,6 +57,8 @@ internal sealed class FakeGame
     private readonly Dictionary<string, List<JsonObject>> _hudAuras = [];
     /// <summary>The IDs of the items the player starred as Favorites in the game's inventory.</summary>
     private readonly HashSet<int> _favorites = [];
+    /// <summary>The other players in the player's party, lower-cased, as the game's <c>world.partyMembers</c> keeps them.</summary>
+    private readonly List<string> _partyMembers = [];
     private int _slimeSamples = 3;
     private int _slimeCrowns;
     /// <summary>The quests turned in, which are no longer accepted.</summary>
@@ -290,6 +292,9 @@ internal sealed class FakeGame
                 case ["favorite", string id]:
                     _favorites.Add(int.Parse(id));
                     return true;
+                case ["party", string player]:
+                    _partyMembers.Add(player.ToLowerInvariant());
+                    return true;
                 case ["misc-slots", string slots]:
                     _miscSlots = int.Parse(slots);
                     return true;
@@ -410,6 +415,8 @@ internal sealed class FakeGame
         // The game's uoTree is a flash.utils.Dictionary, whose toJSON gives "Dictionary"; the room's names are in areaUsers.
         "world.uoTree" => _world ? "Dictionary" : null,
         "world.areaUsers" => _world ? new JsonArray([.. Players().Select(p => JsonValue.Create(p.Key))]) : null,
+        // A Vector.<String> of the other members' lower-cased names, which JSON.stringify writes as an array.
+        "world.partyMembers" => _world ? new JsonArray([.. _partyMembers.Select(m => JsonValue.Create(m))]) : null,
         "world.myAvatar.dataLeaf.intState" => _world ? _state : null,
         "world.myAvatar.dataLeaf.intHP" => _world ? _hp : null,
         "world.myAvatar.dataLeaf.intHPMax" => _world ? MaxHp : null,

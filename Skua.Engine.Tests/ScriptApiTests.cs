@@ -44,6 +44,21 @@ public class ScriptApiTests
     }
 
     [Fact]
+    public async Task Bank_Open_leaves_an_open_bank_open()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+
+        // world.toggleBank closes the bank panel when it is open.
+        EvalResult opened = await session.Connection.EvalAsync("Bot.Bank.Open(); Bot.Bank.Open(); return Bot.Flash.GetGameObject<string>(\"ui.mcPopup.currentLabel\") ?? \"closed\";", cancellationToken: Ct);
+
+        Assert.Null(opened.Error);
+        Assert.Equal("Bank", opened.Value!.Value.GetString());
+        Assert.Equal(["toggleBank open"], (await session.GameHost.CallsAsync()).Where(c => c.StartsWith("toggleBank", StringComparison.Ordinal)));
+    }
+
+    [Fact]
     public async Task Combat_Target_targets_the_monster_without_attacking_it_and_Attack_still_attacks()
     {
         await using EngineSandbox sandbox = new();
@@ -65,6 +80,51 @@ public class ScriptApiTests
         Assert.DoesNotContain(targetCalls, c => c.StartsWith("attack ", StringComparison.Ordinal));
         Assert.Null(attacked.Error);
         Assert.Contains("attack Frogzard", calls);
+    }
+
+    [Fact]
+    public async Task The_party_HP_skill_rule_reads_the_HP_of_party_members_in_the_players_cell()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        // ArtixFan stands in r3 at 800 of 2000 HP: 40%.
+        await session.Connection.JumpAsync("r3", cancellationToken: Ct);
+        const string rules = """
+            var skills = new Skua.Core.Skills.AdvancedSkillProvider(Bot.Player, Bot.Self, Bot.Target, Bot.Combat, Bot.Flash);
+            skills.Load("1 PH<50 | 2 PH>50");
+            return $"{skills.ShouldUseSkill(0, true)} {skills.ShouldUseSkill(1, true)}";
+            """;
+
+        EvalResult alone = await session.Connection.EvalAsync(rules, cancellationToken: Ct);
+        await session.GameHost.DoAsync("party ArtixFan");
+        EvalResult partied = await session.Connection.EvalAsync(rules, cancellationToken: Ct);
+
+        Assert.Null(alone.Error);
+        Assert.Equal("False False", alone.Value!.Value.GetString());
+        Assert.Null(partied.Error);
+        Assert.Equal("True False", partied.Value!.Value.GetString());
+    }
+
+    [Fact]
+    public async Task Magnetise_keeps_calling_the_magnetize_callback_skua_swf_registers()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+
+        await session.Connection.EvalAsync("Bot.Options.Magnetise = true; return 0;", cancellationToken: Ct);
+        // Setting the option calls it once; the Engine's options timer calls it again every 250 ms while the player plays.
+        Stopwatch waited = Stopwatch.StartNew();
+        string[] calls = await session.GameHost.CallsAsync();
+        while (calls.Count(c => c == "magnetize") < 3 && !calls.Contains("magnetise") && waited.Elapsed < TimeSpan.FromSeconds(5))
+        {
+            await Task.Delay(50, Ct);
+            calls = await session.GameHost.CallsAsync();
+        }
+
+        Assert.DoesNotContain("magnetise", calls);
+        Assert.True(calls.Count(c => c == "magnetize") >= 3, $"magnetize calls: {calls.Count(c => c == "magnetize")}");
     }
 
     [Fact]
