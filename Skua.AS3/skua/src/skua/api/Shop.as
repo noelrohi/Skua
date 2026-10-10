@@ -85,15 +85,6 @@ public class Shop {
         return JSON.stringify(missing);
     }
 
-    public static function isFavoriteItem(itemID:int):String {
-        var domain:* = Main.instance.game.loaderInfo.applicationDomain;
-        if (domain == null || !domain.hasDefinition("liteAssets.draw.FavStore")) {
-            return false.toString();
-        }
-        var store:* = domain.getDefinition("liteAssets.draw.FavStore");
-        return Boolean(store.has(itemID)).toString();
-    }
-
     public static function getShopItem(name:String):* {
         var lowerName:String = name.toLowerCase();
         for each (var item:* in Main.instance.game.world.shopinfo.items) {

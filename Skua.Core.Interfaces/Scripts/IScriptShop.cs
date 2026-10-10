@@ -43,9 +43,6 @@ public interface IScriptShop
     /// <summary>Whether scripted sales honor the game's favorite marks. Defaults to true.</summary>
     bool ProtectFavorites { get; set; }
 
-    /// <summary>Checks the current character's local favorite mark.</summary>
-    bool IsFavorite(int itemId);
-
     /// <summary>Reports unmet inventory material, token, and quest requirements for a purchase.</summary>
     /// <param name="item">An item in the currently loaded shop.</param>
     /// <param name="quantity">Quantity purchased, or -1 for the default bundle.</param>

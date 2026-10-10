@@ -55,7 +55,6 @@ public partial class ScriptInventory : IScriptInventory
     public int MiscSlots => Flash.Call<int>("inventoryMiscSlots");
     public int MiscUsedSlots => Flash.Call<int>("inventoryMiscUsedSlots");
     public int MiscFreeSlots => MiscSlots - MiscUsedSlots;
-    public int ClassUsedSlots => Flash.Call<int>("inventoryClassUsedSlots");
 
     public string GetPool(ItemBase item) => Flash.Call<string>("inventoryPool", JsonConvert.SerializeObject(item)) ?? "bag";
 
@@ -63,6 +62,8 @@ public partial class ScriptInventory : IScriptInventory
         Flash.Call<bool>("inventoryHasSpaceFor", JsonConvert.SerializeObject(item), quantity, item is ShopItem);
 
     public bool CanBank(InventoryItem item) => item.Category != ItemCategory.Class || !HasCategories;
+
+    public bool IsFavorited(int itemId) => Flash.Call<bool>("isFavoriteItem", itemId);
 
     public void EquipItem(int id)
     {

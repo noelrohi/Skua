@@ -75,8 +75,6 @@ public partial class ScriptShop : IScriptShop
 
     public bool ProtectFavorites { get; set; } = true;
 
-    public bool IsFavorite(int itemId) => Flash.Call<bool>("isFavoriteItem", itemId);
-
     public List<string> GetUnmetPurchaseRequirements(ShopItem item, int quantity = -1)
     {
         string? requirements = Flash.Call("getUnmetPurchaseRequirements", item.ID, item.ShopItemID, quantity);
@@ -151,7 +149,7 @@ public partial class ScriptShop : IScriptShop
         if (!Inventory.TryGetItem(name, out InventoryItem? item))
             return;
 
-        if (ProtectFavorites && IsFavorite(item!.ID))
+        if (ProtectFavorites && Inventory.IsFavorited(item!.ID))
             return;
 
         int sellQuantity = quantity == -1 ? item!.Quantity : Math.Min(quantity, item!.Quantity);
@@ -165,7 +163,7 @@ public partial class ScriptShop : IScriptShop
         if (!Inventory.TryGetItem(id, out InventoryItem? item))
             return;
 
-        if (ProtectFavorites && IsFavorite(item!.ID))
+        if (ProtectFavorites && Inventory.IsFavorited(item!.ID))
             return;
 
         int sellQuantity = quantity == -1 ? item!.Quantity : Math.Min(quantity, item!.Quantity);

@@ -82,7 +82,7 @@ public class Externalizer {
         this.addCallback("inventoryBagUsedSlots", Inventory.inventoryBagUsedSlots);
         this.addCallback("inventoryMiscSlots", Inventory.inventoryMiscSlots);
         this.addCallback("inventoryMiscUsedSlots", Inventory.inventoryMiscUsedSlots);
-        this.addCallback("inventoryClassUsedSlots", Inventory.inventoryClassUsedSlots);
+        this.addCallback("isFavoriteItem", Inventory.isFavoriteItem);
         this.addCallback("inventoryPool", Inventory.inventoryPool);
         this.addCallback("inventoryHasSpaceFor", Inventory.inventoryHasSpaceFor);
 
@@ -92,7 +92,6 @@ public class Externalizer {
         this.addCallback("getShopItem", Shop.getShopItem);
         this.addCallback("getShopItemByID", Shop.getShopItemByID);
         this.addCallback("getUnmetPurchaseRequirements", Shop.getUnmetPurchaseRequirements);
-        this.addCallback("isFavoriteItem", Shop.isFavoriteItem);
 
         // Auras
         this.addCallback("getSubjectAuras", Auras.getSubjectAuras);

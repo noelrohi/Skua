@@ -16,7 +16,6 @@ public interface IScriptInventory : ICanEquip
     int MiscSlots { get; }
     int MiscUsedSlots { get; }
     int MiscFreeSlots { get; }
-    int ClassUsedSlots { get; }
 
     /// <summary>Returns bag, misc, class or house. Older games return bag.</summary>
     string GetPool(ItemBase item);
@@ -27,4 +26,7 @@ public interface IScriptInventory : ICanEquip
 
     /// <summary>Classes cannot be deposited on games with category inventories.</summary>
     bool CanBank(InventoryItem item);
+
+    /// <summary>Checks the current character's local favorite mark.</summary>
+    bool IsFavorited(int itemId);
 }

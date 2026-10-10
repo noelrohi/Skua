@@ -29,12 +29,13 @@ public class Inventory {
         return cat == null ? 0 : cat.countMisc(Main.instance.game.world.myAvatar.items);
     }
 
-    public static function inventoryClassUsedSlots():int {
-        var count:int = 0;
-        for each (var item:* in Main.instance.game.world.myAvatar.items) {
-            if (item.sType == "Class") count++;
+    public static function isFavoriteItem(itemID:int):String {
+        var domain:* = Main.instance.game.loaderInfo.applicationDomain;
+        if (domain == null || !domain.hasDefinition("liteAssets.draw.FavStore")) {
+            return false.toString();
         }
-        return count;
+        var store:* = domain.getDefinition("liteAssets.draw.FavStore");
+        return Boolean(store.has(itemID)).toString();
     }
 
     public static function inventoryPool(itemJson:String):String {
