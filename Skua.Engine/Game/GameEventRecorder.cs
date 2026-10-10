@@ -27,8 +27,8 @@ internal sealed class GameEventRecorder
     private string? _map;
     private string? _cell;
 
-    private readonly SpaceFull _bagFull = new(EventTypes.InventoryFull);
-    private readonly SpaceFull _miscFull = new(EventTypes.MiscFull);
+    private readonly SpaceFull _bagSpaceFull = new(EventTypes.InventoryFull);
+    private readonly SpaceFull _miscSpaceFull = new(EventTypes.MiscFull);
 
     private GameEventRecorder(EngineLogs logs, GameStateTracker tracker, IScriptOption options, IScriptPlayer player, IScriptInventory inventory, QuestTurnIns turnIns,
         QuestTraffic questTraffic)
@@ -183,9 +183,10 @@ internal sealed class GameEventRecorder
     private void CheckInventory(JObject? drop)
     {
         ItemBase? item = drop?.ToObject<ItemBase>();
-        string? pool = item is null ? null : _inventory.GetPool(item);
-        CheckSpace(_bagFull, _inventory.UsedSlots, _inventory.Slots, pool == "bag" ? item : null);
-        CheckSpace(_miscFull, _inventory.MiscUsedSlots, _inventory.MiscSlots, pool == "misc" ? item : null);
+        // GetPool names the Space the game puts the item in.
+        string? space = item is null ? null : _inventory.GetPool(item);
+        CheckSpace(_bagSpaceFull, _inventory.UsedSlots, _inventory.Slots, space == "bag" ? item : null);
+        CheckSpace(_miscSpaceFull, _inventory.MiscUsedSlots, _inventory.MiscSlots, space == "misc" ? item : null);
     }
 
     private void CheckSpace(SpaceFull space, int used, int slots, ItemBase? drop)
@@ -213,8 +214,8 @@ internal sealed class GameEventRecorder
 
     private void Rearm()
     {
-        _bagFull.Rearm();
-        _miscFull.Rearm();
+        _bagSpaceFull.Rearm();
+        _miscSpaceFull.Rearm();
     }
 
     /// <summary>A Space's full event, and what has been recorded of it since a check last found a free slot in the Space.</summary>

@@ -223,9 +223,9 @@ public class ScriptApiTests
         await using EngineSandbox sandbox = new();
         await using GameFixture session = await GameFixture.StartAsync(sandbox);
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
-        // Default Sword fills the one bag slot and Treasure Chest (5 of 1000) the one misc slot.
-        await session.GameHost.DoAsync("bag-slots 1");
-        await session.GameHost.DoAsync("misc-slots 1");
+        // Default Sword fills the one Bag Space slot and Treasure Chest (5 of 1000) the one Misc Space slot.
+        await session.GameHost.DoAsync("bag-space 1");
+        await session.GameHost.DoAsync("misc-space 1");
 
         const string Fits = """
             Skua.Core.Models.Items.ItemBase Item(int id, string category, string meta = null) => new() { ID = id, Name = $"Item {id}", CategoryString = category, Meta = meta, Quantity = 1, MaxStack = 10 };
@@ -234,7 +234,7 @@ public class ScriptApiTests
             return $"{inv.UsedSlots}/{inv.Slots} {inv.MiscUsedSlots}/{inv.MiscSlots} " + string.Join(" ", items.Select(i => $"{inv.GetPool(i)}:{inv.HasSpaceFor(i)}"));
             """;
         EvalResult full = await session.Connection.EvalAsync(Fits, cancellationToken: Ct);
-        await session.GameHost.DoAsync("misc-slots 2");
+        await session.GameHost.DoAsync("misc-space 2");
         EvalResult roomier = await session.Connection.EvalAsync(Fits, cancellationToken: Ct);
 
         Assert.Null(full.Error);

@@ -24,8 +24,8 @@
 // `kick`, `idle-logout`, `logout-button`, `die`, `respawn-request` (the game's own resPlayerTimed; the game server ignores one within 2 s of the death,
 // and respawns the player otherwise, as it does for the Engine's), `combat`, `afk`, `join <map>`, `cell <cell>`, `gain <xp> <gold>` (a level up sends `levelUp`), `blip` (the connection reads as dropped until the Engine's game state tracker has read it, i.e. asked isKicked; the call log records `blip read <n>`, from 1), `connection-message <message>`, `broken-login`,
 // `login-response` (the last login's response again), `lock-map <map>` (transfers to it are ignored), `drop <id> <qty> <name>` (an Item, which
-// fills Misc Space), `drop-as <category> <id> <qty> <name>` (a drop of that category, e.g. a Pet, which fills Bag Space), `bag-slots <n>` and
-// `misc-slots <n>` (Bag Space and Misc Space, 40 and 100 unless set; client 5.0's rules decide which an item fills, and classes fill none),
+// fills Misc Space), `drop-as <category> <id> <qty> <name>` (a drop of that category, e.g. a Pet, which fills Bag Space), `bag-space <n>` and
+// `misc-space <n>` (Bag Space and Misc Space, 40 and 100 unless set; client 5.0's rules decide which an item fills, and classes fill none),
 // `favorite <id>` (the player stars the item as a Favorite), `party <player>` (another player joins the player's party), `hud-aura <self|monster map id> <name> <stacks> <seconds>` (an aura on the HUD, 0 s for
 // one that doesn't expire; with 0 stacks it stays on with none), `hud-aura-off <self|monster map id> <name>` (the aura leaves the HUD), `aura <self|monster map id> <name> <value>` (an aura with that effect value, apart from the HUD),
 // `aura-off <self|monster map id> <name>` (the aura leaves, as the game's aura-- takes it off even with stacks left on the HUD), `pickup <id>`, `own <id> <category> <name>` (another item in the inventory, unequipped; the game equips an item in place of its

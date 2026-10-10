@@ -224,8 +224,8 @@ public class HookTests
         Process runner = sandbox.StartCli("hooks");
         await WaitForLineAsync(runner, "Following Engine 'default'");
 
-        // Treasure Chest fills the one misc slot.
-        await game.GameHost.DoAsync("misc-slots 1");
+        // Treasure Chest fills the one Misc Space slot.
+        await game.GameHost.DoAsync("misc-space 1");
         await game.GameHost.DoAsync("drop 41 1 Gem");
         HookRunDto run = Run(await game.Connection.WaitForEventAsync(EventTypes.HookRan));
 
