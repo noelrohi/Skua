@@ -311,7 +311,7 @@ public class ScriptApiTests
         await session.GameHost.DoAsync("target 1");
         await PolledAsync(session, 1);
         await StacksAsync(session, "hud-aura 1 Shielded 2 0", "stacks Target Shielded 0 2");
-        await StacksAsync(session, "hud-aura self Fury 0 0", "stacks Self Fury 1 0");
+        await StacksAsync(session, "hud-aura-off self Fury", "stacks Self Fury 1 0");
 
         Assert.Equal(
             ["stacks Self Fury 0 1", "stacks Self Fury 1 3", "stacks Self Fury 3 1", "stacks Target Shielded 0 2", "stacks Self Fury 1 0"],
@@ -336,11 +336,31 @@ public class ScriptApiTests
         await StacksAsync(session, "hud-aura self Haste 1 0", "stacks Self Haste 0 1");
         await session.GameHost.DoAsync("aura-off self Fury");
         await StacksAsync(session, "hud-aura self Fury 1 10", "stacks Self Fury 3 1");
-        await StacksAsync(session, "hud-aura self Fury 0 0", "gone Self Fury");
+        await StacksAsync(session, "hud-aura-off self Fury", "gone Self Fury");
 
         Assert.Equal(
             ["stacks Self Fury 0 3", "stacks Self Haste 0 1", "stacks Self Fury 3 1", "stacks Self Fury 1 0", "gone Self Fury"],
             await AuraLinesAsync(session, 5));
+    }
+
+    /// <summary>
+    /// An aura the HUD keeps with no stacks, as the game's aura+ with stk 0 leaves it, has none: AuraStackChanged reports it going to 0, and it is
+    /// gone once it has left the auras too.
+    /// </summary>
+    [Fact]
+    public async Task An_aura_with_no_stacks_left_on_the_HUD_is_gone()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        await MonitorAurasAsync(sandbox, session);
+
+        await session.GameHost.DoAsync("aura self Fury 1");
+        await StacksAsync(session, "hud-aura self Fury 2 10", "stacks Self Fury 0 2");
+        await session.GameHost.DoAsync("aura-off self Fury");
+        await StacksAsync(session, "hud-aura self Fury 0 10", "gone Self Fury");
+
+        Assert.Equal(["stacks Self Fury 0 2", "stacks Self Fury 2 0", "gone Self Fury"], await AuraLinesAsync(session, 3));
     }
 
     /// <summary>
@@ -365,7 +385,7 @@ public class ScriptApiTests
         await session.GameHost.DoAsync("target 1");
         await PolledAsync(session, 5);
         await session.GameHost.DoAsync("aura-off 1 Shielded");
-        await StacksAsync(session, "hud-aura 1 Shielded 0 0", "gone Target Shielded");
+        await StacksAsync(session, "hud-aura-off 1 Shielded", "gone Target Shielded");
 
         Assert.Equal(["stacks Target Shielded 0 3", "stacks Target Shielded 5 4", "stacks Target Shielded 3 0", "gone Target Shielded"],
             await AuraLinesAsync(session, 4));

@@ -54,7 +54,7 @@ public class AuraMonitorService : IAuraMonitorService, IDisposable, IAsyncDispos
             Clear();
             Monster = monster;
             Active.UnionWith(auras.Select(a => a.Name).Where(n => !string.IsNullOrEmpty(n)));
-            foreach (AuraSnapshot snapshot in snapshots.Where(s => !string.IsNullOrEmpty(s.Name)))
+            foreach (AuraSnapshot snapshot in WithStacks(snapshots))
                 Stacks[snapshot.Name] = snapshot.Stacks;
         }
 
@@ -206,10 +206,9 @@ public class AuraMonitorService : IAuraMonitorService, IDisposable, IAsyncDispos
     {
         if (snapshots == null) return;
 
-        foreach (AuraSnapshot snapshot in snapshots)
+        List<AuraSnapshot> stacked = WithStacks(snapshots);
+        foreach (AuraSnapshot snapshot in stacked)
         {
-            if (string.IsNullOrEmpty(snapshot.Name)) continue;
-
             int oldStacks = seen.Stacks.GetValueOrDefault(snapshot.Name);
             if (oldStacks == snapshot.Stacks) continue;
 
@@ -217,13 +216,17 @@ public class AuraMonitorService : IAuraMonitorService, IDisposable, IAsyncDispos
             AuraStackChanged?.Invoke(snapshot.Name, oldStacks, snapshot.Stacks, subject);
         }
 
-        HashSet<string> currentNames = new(snapshots.Select(s => s.Name));
+        HashSet<string> currentNames = new(stacked.Select(s => s.Name));
         foreach (string name in seen.Stacks.Keys.Where(n => !currentNames.Contains(n)).ToList())
         {
             seen.Stacks.Remove(name, out int oldStacks);
             AuraStackChanged?.Invoke(name, oldStacks, 0, subject);
         }
     }
+
+    /// <summary>The auras with stacks on the HUD: one the HUD keeps with none, as the game's aura+ with stk 0 leaves it, has none.</summary>
+    private static List<AuraSnapshot> WithStacks(List<AuraSnapshot> snapshots) =>
+        snapshots.Where(s => !string.IsNullOrEmpty(s.Name) && s.Stacks > 0).ToList();
 
     private void ClearSeen()
     {
