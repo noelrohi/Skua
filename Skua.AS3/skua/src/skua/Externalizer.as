@@ -3,6 +3,7 @@ import flash.external.ExternalInterface;
 
 import skua.api.Auras;
 import skua.api.Combat;
+import skua.api.Inventory;
 import skua.api.Monster;
 import skua.api.Player;
 import skua.api.Server;
@@ -76,14 +77,25 @@ public class Externalizer {
         this.addCallback("infiniteRange", Combat.infiniteRange);
         this.addCallback("magnetize", Combat.magnetize);
 
+        // Inventory
+        this.addCallback("hasInventoryCategories", Inventory.hasInventoryCategories);
+        this.addCallback("inventoryBagUsedSlots", Inventory.inventoryBagUsedSlots);
+        this.addCallback("inventoryMiscSlots", Inventory.inventoryMiscSlots);
+        this.addCallback("inventoryMiscUsedSlots", Inventory.inventoryMiscUsedSlots);
+        this.addCallback("isFavoriteItem", Inventory.isFavoriteItem);
+        this.addCallback("inventoryPool", Inventory.inventoryPool);
+        this.addCallback("inventoryHasSpaceFor", Inventory.inventoryHasSpaceFor);
+
         // Shop
         this.addCallback("buyItemByName", Shop.buyItemByName);
         this.addCallback("buyItemByID", Shop.buyItemByID);
         this.addCallback("getShopItem", Shop.getShopItem);
         this.addCallback("getShopItemByID", Shop.getShopItemByID);
+        this.addCallback("getUnmetPurchaseRequirements", Shop.getUnmetPurchaseRequirements);
 
         // Auras
         this.addCallback("getSubjectAuras", Auras.getSubjectAuras);
+        this.addCallback("GetAuraSnapshots", Auras.GetAuraSnapshots);
         this.addCallback("HasAnyActiveAura", Auras.HasAnyActiveAura);
         this.addCallback("GetPlayerAura", Auras.GetPlayerAura);
         this.addCallback("GetMonsterAuraByName", Auras.GetMonsterAuraByName);

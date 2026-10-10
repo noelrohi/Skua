@@ -48,6 +48,8 @@ public class Main extends MovieClip {
     private var customBGReady:MovieClip = null;
     public var customBGLagKiller:MovieClip = null;
     private var customBackgroundURL:String;
+    private var packetClient:*;
+    private var packetDebug:Boolean;
 
     public function Main() {
         String.prototype.trim = function():String {
@@ -110,6 +112,12 @@ public class Main extends MovieClip {
     private function onComplete(event:Event):void {
         this.loader.contentLoaderInfo.removeEventListener(Event.COMPLETE, this.onComplete);
 
+        this.stopPacketCapture();
+        if (this.game) {
+            this.game.removeEventListener(Event.REMOVED_FROM_STAGE, this.onGameRemoved);
+            this.game.sfc.removeEventListener(SFSEvent.onExtensionResponse, this.onExtensionResponse);
+        }
+
         this.stg = stage;
         this.stg.removeChildAt(0);
         this.game = this.stg.addChild(this.loader.content);
@@ -128,8 +136,10 @@ public class Main extends MovieClip {
         this.game.params.loginURL = this.loginURL;
 
         this.game.addEventListener(MouseEvent.CLICK,this.onGameClick);
+        this.game.addEventListener(Event.REMOVED_FROM_STAGE, this.onGameRemoved);
         this.game.sfc.addEventListener(SFSEvent.onExtensionResponse, this.onExtensionResponse);
         this.gameDomain = LoaderInfo(event.target).applicationDomain;
+        catchPackets();
 
         Modules.init();
         this.stg.addEventListener(Event.ENTER_FRAME, Modules.handleFrame);
@@ -390,7 +400,33 @@ public class Main extends MovieClip {
     }
 
     public static function catchPackets():void {
-        instance.game.sfc.addEventListener(SFSEvent.onDebugMessage, packetReceived);
+        if (!instance.game || !instance.game.sfc) return;
+        if (instance.packetClient != instance.game.sfc) {
+            instance.stopPacketCapture();
+            instance.packetClient = instance.game.sfc;
+            instance.packetDebug = instance.packetClient.debug;
+            instance.packetClient.addEventListener(SFSEvent.onDebugMessage, packetReceived);
+            instance.stg.addEventListener(Event.ENTER_FRAME, instance.maintainPacketCapture);
+        }
+        instance.packetClient.debug = true;
+    }
+
+    private function maintainPacketCapture(event:Event):void {
+        // The game packet logger disables debug when it closes.
+        catchPackets();
+    }
+
+    private function stopPacketCapture():void {
+        if (this.stg) this.stg.removeEventListener(Event.ENTER_FRAME, this.maintainPacketCapture);
+        if (this.packetClient) {
+            this.packetClient.removeEventListener(SFSEvent.onDebugMessage, packetReceived);
+            this.packetClient.debug = this.packetDebug;
+            this.packetClient = null;
+        }
+    }
+
+    private function onGameRemoved(event:Event):void {
+        if (event.target == this.game) this.stopPacketCapture();
     }
 
     public static function sendClientPacket(packet:String, type:String):void {
@@ -427,10 +463,11 @@ public class Main extends MovieClip {
     }
 
     public static function packetReceived(packet:*):void {
-        if (packet.params.message.indexOf('%xt%zm%') > -1) {
-            instance.external.call('packet', packet.params.message.split(':', 2)[1].trim());
+        var message:String = packet.params.message;
+        if (message.indexOf('[Sending - STR]: %xt%zm%') == 0) {
+            instance.external.call('packet', message.substr('[Sending - STR]: '.length).replace(/^\s+|\s+$/g, ''));
         } else {
-            instance.external.call("packetFromServer",processPacket(packet.params.message));
+            instance.external.call("packetFromServer",processPacket(message));
         }
     }
 

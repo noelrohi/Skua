@@ -216,26 +216,10 @@ public class AdvancedSkillCommand
     private float GetAuraStacks(IScriptPlayer player, IScriptSelfAuras self, IScriptTargetAuras target, string auraTarget, string auraName)
     {
         if (auraTarget.Equals("self", StringComparison.OrdinalIgnoreCase))
-        {
-            if (self.Auras != null && self.Auras.Count > 0)
-            {
-                return self.Auras
-                    .Where(a => a.Name != null && a.Name.Equals(auraName, StringComparison.OrdinalIgnoreCase))
-                    .Sum(a => a.Value);
-            }
-        }
-        else if (auraTarget.Equals("target", StringComparison.OrdinalIgnoreCase))
-        {
-            if (!player.HasTarget)
-                return 0;
+            return self.GetAuraStacks(auraName);
 
-            if (target.Auras != null && target.Auras.Count > 0)
-            {
-                return target.Auras
-                    .Where(a => a.Name != null && a.Name.Equals(auraName, StringComparison.OrdinalIgnoreCase))
-                    .Sum(a => a.Value);
-            }
-        }
+        if (auraTarget.Equals("target", StringComparison.OrdinalIgnoreCase) && player.HasTarget)
+            return target.GetAuraStacks(auraName);
 
         return 0;
     }

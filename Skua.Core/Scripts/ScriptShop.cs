@@ -1,3 +1,4 @@
+using Newtonsoft.Json;
 using CommunityToolkit.Mvvm.Messaging;
 using Skua.Core.Flash;
 using Skua.Core.Interfaces;
@@ -72,8 +73,36 @@ public partial class ScriptShop : IScriptShop
         Wait.ForTrue(() => IsLoaded && ID == id, 20);
     }
 
+    public bool ProtectFavorites { get; set; } = true;
+
+    public List<string> GetUnmetPurchaseRequirements(ShopItem item, int quantity = -1)
+    {
+        string? requirements = Flash.Call("getUnmetPurchaseRequirements", item.ID, item.ShopItemID, quantity);
+        if (string.IsNullOrWhiteSpace(requirements))
+            return new() { "Could not read purchase requirements." };
+
+        try
+        {
+            return JsonConvert.DeserializeObject<List<string>>(requirements) ?? new();
+        }
+        catch (JsonException)
+        {
+            return new() { "Could not read purchase requirements." };
+        }
+    }
+
+    private bool CanBuy(ShopItem? item, int quantity)
+    {
+        return item is not null && (quantity == -1 || quantity > 0)
+            && GetUnmetPurchaseRequirements(item, quantity).Count == 0
+            && Inventory.HasSpaceFor(item, quantity == -1 ? Math.Max(1, item.Quantity) : quantity);
+    }
+
     public void BuyItem(string name, int quantity = -1)
     {
+        if (!CanBuy(Items.FirstOrDefault(i => i.Name.Equals(name, StringComparison.OrdinalIgnoreCase)), quantity))
+            return;
+
         Wait.ForActionCooldown(GameActions.BuyItem);
         Flash.Call("buyItemByName", name, quantity);
         Wait.ForItemBuy();
@@ -81,6 +110,9 @@ public partial class ScriptShop : IScriptShop
 
     public void BuyItem(int id, int shopItemId = -1, int quantity = -1)
     {
+        if (!CanBuy(Items.FirstOrDefault(i => i.ID == id && (shopItemId == -1 || i.ShopItemID == shopItemId)), quantity))
+            return;
+
         Wait.ForActionCooldown(GameActions.BuyItem);
         Flash.Call("buyItemByID", id, shopItemId, quantity);
         Wait.ForItemBuy();
@@ -91,6 +123,9 @@ public partial class ScriptShop : IScriptShop
         Flash.CallGameFunction("world.sendLoadShopRequest", shopId);
         Wait.ForActionCooldown(GameActions.LoadShop);
         Wait.ForTrue(() => IsLoaded && ID == shopId, 20);
+        if (!CanBuy(Items.FirstOrDefault(i => i.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)), quantity))
+            return;
+
         Flash.Call("buyItemByName", itemName, quantity);
         Wait.ForActionCooldown(GameActions.BuyItem);
         Wait.ForItemBuy();
@@ -101,6 +136,9 @@ public partial class ScriptShop : IScriptShop
         Wait.ForActionCooldown(GameActions.LoadShop);
         Flash.CallGameFunction("world.sendLoadShopRequest", shopId);
         Wait.ForTrue(() => IsLoaded && ID == shopId, 20);
+        if (!CanBuy(Items.FirstOrDefault(i => i.ID == itemId && (shopItemId == -1 || i.ShopItemID == shopItemId)), quantity))
+            return;
+
         Wait.ForActionCooldown(GameActions.BuyItem);
         Flash.Call("buyItemByID", itemId, shopItemId, quantity);
         Wait.ForItemBuy();
@@ -109,6 +147,9 @@ public partial class ScriptShop : IScriptShop
     public void SellItem(string name, int quantity = -1)
     {
         if (!Inventory.TryGetItem(name, out InventoryItem? item))
+            return;
+
+        if (ProtectFavorites && Inventory.IsFavorited(item!.ID))
             return;
 
         int sellQuantity = quantity == -1 ? item!.Quantity : Math.Min(quantity, item!.Quantity);
@@ -120,6 +161,9 @@ public partial class ScriptShop : IScriptShop
     public void SellItem(int id, int quantity = -1)
     {
         if (!Inventory.TryGetItem(id, out InventoryItem? item))
+            return;
+
+        if (ProtectFavorites && Inventory.IsFavorited(item!.ID))
             return;
 
         int sellQuantity = quantity == -1 ? item!.Quantity : Math.Min(quantity, item!.Quantity);
