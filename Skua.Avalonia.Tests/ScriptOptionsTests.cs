@@ -187,6 +187,9 @@ public sealed class ScriptOptionsTests(AppEngine app)
             await Ui.PumpUntilAsync(() => OptionText(general, "Hunt Delay") is { Text: "250" }, "Hunt Delay loaded from the file");
             OptionText(general, "Action Delay")!.Text = "900";
             Ui.Find<CheckBox>(general, c => c.Content as string == "Anti Lag")!.IsChecked = false;
+            CheckBox boostedGear = Ui.Find<CheckBox>(general, c => c.Content as string == "Bank Boosted Gear to make room")!;
+            Assert.False(boostedGear.IsChecked, "Bank Boosted Gear is on by default");
+            boostedGear.IsChecked = true;
             model.SelectedTab = model.CoreBotsTabs.Single(t => t.Header == "Other");
             CBOOtherOptionsView other = await FoundAsync<CBOOtherOptionsView>(window);
             await Ui.PumpUntilAsync(() => Ui.Find<Expander>(other, e => e.Header as string == "Boosters") is not null, "the Boosters category");
@@ -199,7 +202,7 @@ public sealed class ScriptOptionsTests(AppEngine app)
             Ui.Click(view.FindControl<Button>("Save")!);
 
             string[] saved = File.ReadAllLines(file);
-            Assert.Superset(new HashSet<string> { "ActionDelayNr: 900", "HuntDelayNr: 250", "AntiLag: False", "doGoldBoost: True", "doRepBoost: True" }, saved.ToHashSet());
+            Assert.Superset(new HashSet<string> { "ActionDelayNr: 900", "HuntDelayNr: 250", "AntiLag: False", "BankBoostedGear: True", "doGoldBoost: True", "doRepBoost: True" }, saved.ToHashSet());
 
             // Closing the window saves too, as on Windows.
             BoosterCheck(boosters, "Use Experience Boosts when farming EXP")!.IsChecked = true;

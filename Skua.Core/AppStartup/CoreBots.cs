@@ -25,6 +25,7 @@ internal class CoreBots
             new DisplayOptionItemViewModel<bool>("Private Rooms", "PrivateRooms", true),
             new DisplayOptionItemViewModel<bool>("Public on Difficult Parts", "PublicDifficult"),
             new DisplayOptionItemViewModel<bool>("Bank Misc. AC items on Start-Up", "BankMiscAC", true),
+            new DisplayOptionItemViewModel<bool>("Bank Boosted Gear to make room", "BankBoostedGear"),
             new DisplayOptionItemViewModel<bool>("Logger in Chat", "LoggerInChat", true),
 
             new DisplayOptionItemViewModel<bool>("Force Off MessageBoxes", "MessageBoxCheck"),
