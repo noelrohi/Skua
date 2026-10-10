@@ -64,7 +64,7 @@ public partial class ScriptBank : IScriptBank
     [MethodCallBinding("world.toggleBank", RunMethodPre = true, GameFunction = true)]
     private void _open()
     {
-        if (Flash.GetGameObject("ui.mcPopup.currentLabel") == "Bank")
+        if (Flash.GetGameObject<string>("ui.mcPopup.currentLabel") == "Bank")
             return;
     }
 
@@ -76,7 +76,7 @@ public partial class ScriptBank : IScriptBank
         // Once the bank has arrived the game keeps it current through every transfer, so it isn't asked for again: getBank's answer holds
         // the bank as it was when the request left, and adds an item it lists without removing any, so an answer landing after a transfer
         // lists the item again.
-        if (Flash.GetGameObject("ui.mcPopup.currentLabel") == "Bank" || Arrived())
+        if (Flash.GetGameObject<string>("ui.mcPopup.currentLabel") == "Bank" || Arrived())
             return;
         // This loads the bank as the game itself does, with getBank over HTTP: the game server no longer answers the loadBank packet.
         // getBank needs the character's data, which the game has once the inventory has loaded.
