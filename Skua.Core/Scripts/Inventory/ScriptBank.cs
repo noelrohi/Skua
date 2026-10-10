@@ -28,8 +28,10 @@ public partial class ScriptBank : IScriptBank
         _lazyManager = manager;
         _lazyPlayer = player;
 
-        StrongReferenceMessenger.Default.Register<ScriptBank, BankLoadedMessage>(this, (r, m) => r.Loaded = true);
-        StrongReferenceMessenger.Default.Register<ScriptBank, LogoutMessage>(this, (r, m) => r.Loaded = false);
+        // The game's messages go on the game events channel. Each login starts the character with a bank still to load.
+        StrongReferenceMessenger.Default.Register<ScriptBank, BankLoadedMessage, int>(this, (int)MessageChannels.GameEvents, (r, m) => r.Loaded = true);
+        StrongReferenceMessenger.Default.Register<ScriptBank, LogoutMessage, int>(this, (int)MessageChannels.GameEvents, (r, m) => r.Loaded = false);
+        StrongReferenceMessenger.Default.Register<ScriptBank, LoginMessage, int>(this, (int)MessageChannels.GameEvents, (r, m) => r.Loaded = false);
     }
 
     private readonly Lazy<IFlashUtil> _lazyFlash;
@@ -76,7 +78,12 @@ public partial class ScriptBank : IScriptBank
         // Once the bank has arrived the game keeps it current through every transfer, so it isn't asked for again: getBank's answer holds
         // the bank as it was when the request left, and adds an item it lists without removing any, so an answer landing after a transfer
         // lists the item again.
-        if (Flash.GetGameObject<string>("ui.mcPopup.currentLabel") == "Bank" || Arrived())
+        if (Arrived())
+        {
+            Loaded = true;
+            return;
+        }
+        if (Flash.GetGameObject<string>("ui.mcPopup.currentLabel") == "Bank")
             return;
         // This loads the bank as the game itself does, with getBank over HTTP: the game server no longer answers the loadBank packet.
         // getBank needs the character's data, which the game has once the inventory has loaded.
@@ -84,8 +91,8 @@ public partial class ScriptBank : IScriptBank
         if (waitForLoad ? !Wait.ForTrue(InventoryLoaded, LoadWaitSleeps) : !InventoryLoaded())
             return;
         Flash.CallGameFunction("getBank");
-        if (waitForLoad)
-            Wait.ForBankLoad(LoadWaitSleeps);
+        if (waitForLoad && Wait.ForBankLoad(LoadWaitSleeps))
+            Loaded = true;
     }
 
     /// <summary>

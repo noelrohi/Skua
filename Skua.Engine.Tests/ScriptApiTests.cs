@@ -27,6 +27,23 @@ public class ScriptApiTests
     }
 
     [Fact]
+    public async Task Bank_Loaded_is_true_once_Bank_Load_has_the_bank_and_false_again_after_a_relogin()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+
+        EvalResult loaded = await session.Connection.EvalAsync("bool before = Bot.Bank.Loaded; Bot.Bank.Load(); bool after = Bot.Bank.Loaded; Bot.Bank.Load(); return $\"{before} {after} {Bot.Bank.Loaded}\";", cancellationToken: Ct);
+        await session.Connection.LogoutAsync(Ct);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        EvalResult relogged = await session.Connection.EvalAsync("return Bot.Bank.Loaded;", cancellationToken: Ct);
+
+        Assert.Null(loaded.Error);
+        Assert.Equal("False True True", loaded.Value!.Value.GetString());
+        Assert.False(relogged.Value!.Value.GetBoolean());
+    }
+
+    [Fact]
     public async Task A_bank_that_has_arrived_is_not_asked_for_again_by_Bank_Load_or_the_Engine()
     {
         await using EngineSandbox sandbox = new();
@@ -125,6 +142,22 @@ public class ScriptApiTests
 
         Assert.DoesNotContain("magnetise", calls);
         Assert.True(calls.Count(c => c == "magnetize") >= 3, $"magnetize calls: {calls.Count(c => c == "magnetize")}");
+    }
+
+    [Fact]
+    public async Task Items_whose_type_the_game_spells_with_a_space_read_as_their_category()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        foreach (string directive in (string[])["own 50 Quest_Item Bone Dust", "own 51 Wall_Item Old Banner", "own 52 Server_Use Server Token", "own 53 ServerUse Server Key"])
+            await session.GameHost.DoAsync(directive);
+
+        EvalResult categories = await session.Connection.EvalAsync("return Bot.Inventory.Items.Where(i => i.ID >= 50).Concat(Bot.House.Items).Select(i => $\"{i.Name} {i.Category}\");", cancellationToken: Ct);
+
+        Assert.Null(categories.Error);
+        Assert.Equal(["Bone Dust QuestItem", "Old Banner WallItem", "Server Token ServerUse", "Server Key ServerUse", "Wooden Chair FloorItem"],
+            categories.Value!.Value.EnumerateArray().Select(e => e.GetString()));
     }
 
     [Fact]

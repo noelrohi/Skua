@@ -343,12 +343,12 @@ internal sealed class FakeGame
                     Pext(new JsonObject { ["cmd"] = "addGoldExp", ["intGold"] = 0, ["intExp"] = 0, ["typ"] = "m", ["id"] = int.Parse(monMapId) });
                     return true;
                 case ["own", string rest] when rest.Split(' ', 3) is [string id, string category, string name]:
-                    // Another item in the inventory, unequipped, as after buying it.
-                    _inventory.Add(Item(int.Parse(id), name, 1, 1, category));
+                    // Another item in the inventory, unequipped, as after buying it. An underscore in the category stands for a space, as in Quest_Item.
+                    _inventory.Add(Item(int.Parse(id), name, 1, 1, category.Replace('_', ' ')));
                     return true;
                 case ["own-stack", string rest] when rest.Split(' ', 5) is [string id, string category, string qty, string maxStack, string name]:
                     // As own, a stack of qty of maxStack.
-                    _inventory.Add(Item(int.Parse(id), name, int.Parse(qty), int.Parse(maxStack), category));
+                    _inventory.Add(Item(int.Parse(id), name, int.Parse(qty), int.Parse(maxStack), category.Replace('_', ' ')));
                     return true;
                 case ["stock", string rest] when rest.Split(' ', 3) is [string store, string id, string name] && _stocked.TryGetValue(store, out List<JsonObject>? stocked):
                     // Another item in the bank, the temporary inventory or the house.
