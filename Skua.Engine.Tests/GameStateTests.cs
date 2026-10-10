@@ -319,12 +319,62 @@ public class GameStateTests
         }
 
         List<LogEntryDto> full = (await session.Connection.WaitForLogsAsync(LogKind.Events, 0)).Where(e => e.Type == EventTypes.InventoryFull).ToList();
-        Assert.Equal(["3/3", "3/3 41 Dragon Egg", "3/3 42 Moglin Egg", "3/3 41 Dragon Egg"], full.Select(e =>
+        Assert.Equal(["3/3", "3/3 41 Dragon Egg", "3/3 42 Moglin Egg", "3/3 41 Dragon Egg"], full.Select(Describe));
+    }
+
+    /// <summary>
+    /// A full Misc Space is its own event, with inventory.full's payload and re-arm rules (#251): one as it fills, and one per misc item that drops
+    /// while it stays full and can't stack onto one held.
+    /// </summary>
+    [Fact]
+    public async Task A_full_Misc_Space_is_an_event_as_it_fills_and_for_each_new_misc_drop_it_has_no_room_for()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+
+        // The fake inventory holds one misc item, Treasure Chest (3); owning Bone Dust fills 2 misc slots. The drops are Items, which fill Misc
+        // Space. As above, each slot change waits until an AFK sent after the drops before it is an event.
+        int afks = 0;
+        foreach (string directive in (string[])["own 50 Resource Bone Dust", "misc-slots 2", "pickup 40", "drop 41 1 Gem", "drop 41 1 Gem",
+                     "drop 3 1 Treasure Chest", "drop 42 1 Opal", "afk", "misc-slots 3", "drop 42 1 Opal", "afk", "misc-slots 2", "drop 41 1 Gem", "afk"])
         {
-            JsonElement data = e.Data!.Value;
-            string slots = $"{data.GetProperty("used").GetInt32()}/{data.GetProperty("slots").GetInt32()}";
-            return data.GetProperty("drop") is { ValueKind: JsonValueKind.Object } drop ? $"{slots} {drop.GetProperty("id").GetInt32()} {drop.GetProperty("name").GetString()}" : slots;
-        }));
+            await session.GameHost.DoAsync(directive);
+            if (directive == "afk")
+                await session.Connection.WaitForLogsAsync(LogKind.Events, ++afks, e => e.Type == EventTypes.PlayerAfk);
+        }
+
+        List<LogEntryDto> full = (await session.Connection.WaitForLogsAsync(LogKind.Events, 0)).Where(e => e.Type == EventTypes.MiscFull).ToList();
+        Assert.Equal(["2/2", "2/2 41 Gem", "2/2 42 Opal", "2/2 41 Gem"], full.Select(Describe));
+    }
+
+    /// <summary>
+    /// inventory.full is Bag Space's (#251): while the bag is full, a misc item, a class or a house item dropping is no drop it has no room for.
+    /// </summary>
+    [Fact]
+    public async Task A_full_Bag_Space_records_no_drop_for_misc_items_classes_or_house_items()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+
+        // Default Sword fills the one bag slot.
+        foreach (string directive in (string[])["bag-slots 1", "pickup 40", "drop 41 1 Gem", "drop-as Class 43 1 Rogue", "drop-as House 44 1 Cottage",
+                     "drop-as Pet 45 1 Dragon Egg", "afk"])
+            await session.GameHost.DoAsync(directive);
+        await session.Connection.WaitForLogsAsync(LogKind.Events, 1, e => e.Type == EventTypes.PlayerAfk);
+
+        List<LogEntryDto> events = await session.Connection.WaitForLogsAsync(LogKind.Events, 0);
+        Assert.Equal(["1/1", "1/1 45 Dragon Egg"], events.Where(e => e.Type == EventTypes.InventoryFull).Select(Describe));
+        Assert.DoesNotContain(events, e => e.Type == EventTypes.MiscFull);
+    }
+
+    /// <summary>A Space's full event as <c>used/slots</c>, then the drop's id and name if it has one.</summary>
+    private static string Describe(LogEntryDto entry)
+    {
+        JsonElement data = entry.Data!.Value;
+        string slots = $"{data.GetProperty("used").GetInt32()}/{data.GetProperty("slots").GetInt32()}";
+        return data.GetProperty("drop") is { ValueKind: JsonValueKind.Object } drop ? $"{slots} {drop.GetProperty("id").GetInt32()} {drop.GetProperty("name").GetString()}" : slots;
     }
 
     /// <summary>
