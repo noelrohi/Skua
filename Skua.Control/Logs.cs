@@ -106,12 +106,18 @@ public static class EventTypes
     public const string PlayerAfk = "player.afk";
 
     /// <summary>
-    /// The inventory is full: <c>{used, slots, drop}</c>, drop null as it fills, or the <c>{id, name}</c> of a drop it has no slot for (one that
-    /// isn't in the inventory already). It is checked when an item drops, is added, picked up or bought, and when the player joins a map; while it stays
-    /// full, each item dropping is recorded once.
-    /// A check that finds a free slot, or a login, re-arms it.
+    /// The inventory's Bag Space is full: <c>{used, slots, drop}</c>, drop null as it fills, or the <c>{id, name}</c> of a drop it has no slot for (one
+    /// that fills Bag Space and isn't in the inventory already; misc items, classes and house items don't). It is checked when an item drops, is added,
+    /// picked up or bought, and when the player joins a map; while it stays full, each item dropping is recorded once.
+    /// A check that finds a free slot, or a login, re-arms it. See <see cref="MiscFull"/> for Misc Space.
     /// </summary>
     public const string InventoryFull = "inventory.full";
+
+    /// <summary>
+    /// The inventory's Misc Space is full: <c>{used, slots, drop}</c>, as <see cref="InventoryFull"/> is for Bag Space, with the same checks and
+    /// re-arming; the drops are the misc items it has no slot for. A game without Misc Space (before AQW client 5.0) never records it.
+    /// </summary>
+    public const string MiscFull = "misc.full";
 
     /// <summary>
     /// The quests a run farms have gone without progress for the stall time (10 minutes): <c>{run, script, idleSec, killsPerMin, quests}</c>, each quest

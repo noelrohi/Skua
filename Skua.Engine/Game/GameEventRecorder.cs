@@ -4,6 +4,7 @@ using Skua.Engine.Logging;
 using Skua.Control;
 using Skua.Core.Interfaces;
 using Skua.Core.Messaging;
+using Skua.Core.Models.Items;
 
 namespace Skua.Engine.Game;
 
@@ -26,11 +27,8 @@ internal sealed class GameEventRecorder
     private string? _map;
     private string? _cell;
 
-    /// <summary>Whether the inventory has been recorded as full since a check last found a free slot.</summary>
-    private bool _recordedFull;
-
-    /// <summary>The drops recorded as having no slot since then.</summary>
-    private readonly HashSet<int> _noSlotDrops = [];
+    private readonly SpaceFull _bagFull = new(EventTypes.InventoryFull);
+    private readonly SpaceFull _miscFull = new(EventTypes.MiscFull);
 
     private GameEventRecorder(EngineLogs logs, GameStateTracker tracker, IScriptOption options, IScriptPlayer player, IScriptInventory inventory, QuestTurnIns turnIns,
         QuestTraffic questTraffic)
@@ -119,13 +117,13 @@ internal sealed class GameEventRecorder
         {
             case ("json", JObject json) when (string?)json["cmd"] == "moveToArea":
                 OnMapJoined(json);
-                CheckInventory(null, null);
+                CheckInventory(null);
                 break;
-            // items: { "<id>": { ItemID, sName, … } }
+            // items: { "<id>": { ItemID, sName, sType, … } }
             case ("json", JObject json) when (string?)json["cmd"] == "dropItem" && json["items"] is JObject items:
                 foreach (JObject item in items.Properties().Select(p => p.Value).OfType<JObject>())
-                    if ((int?)item["ItemID"] is { } id)
-                        CheckInventory(id, ((string?)item["sName"])?.Trim() ?? "");
+                    if ((int?)item["ItemID"] is not null)
+                        CheckInventory(item);
                 break;
             // The game server's answer to a turn-in: {bSuccess: 1, QuestID, sName, …}, or {bSuccess: 0, msg?}, which names no quest.
             case ("json", JObject json) when (string?)json["cmd"] == "ccqr":
@@ -138,7 +136,7 @@ internal sealed class GameEventRecorder
                 break;
             case ("json", JObject json) when (string?)json["cmd"] is "addItems"
                 || ((string?)json["cmd"] == "getDrop" && (int?)json["bSuccess"] == 1) || ((string?)json["cmd"] == "buyItem" && (int?)json["bitSuccess"] == 1):
-                CheckInventory(null, null);
+                CheckInventory(null);
                 break;
             // String packets are their fields after xt: [cmd, room, …].
             // [chatm, room, "<channel>~<text>", from, …]: zone, party, guild and the other chat channels.
@@ -177,34 +175,62 @@ internal sealed class GameEventRecorder
         _logs.Event(EventTypes.MapJoined, new { map, roomId = (int?)data["areaId"], cell });
     }
 
-    /// <summary>Records <see cref="EventTypes.InventoryFull"/> once as the inventory fills, and once per drop it has no slot for while it stays full.</summary>
-    private void CheckInventory(int? dropId, string? dropName)
+    /// <summary>
+    /// Records <see cref="EventTypes.InventoryFull"/> for Bag Space and <see cref="EventTypes.MiscFull"/> for Misc Space, each once as its Space fills
+    /// and once per drop it has no slot for while it stays full. A drop counts only against the Space the game puts it in; classes and house items
+    /// fill neither.
+    /// </summary>
+    private void CheckInventory(JObject? drop)
     {
-        int used = _inventory.UsedSlots, slots = _inventory.Slots;
-        // No slots is an inventory that hasn't loaded.
+        string? pool = drop?.ToObject<ItemBase>() is { } item ? _inventory.GetPool(item) : null;
+        CheckSpace(_bagFull, _inventory.UsedSlots, _inventory.Slots, pool == "bag" ? drop : null);
+        CheckSpace(_miscFull, _inventory.MiscUsedSlots, _inventory.MiscSlots, pool == "misc" ? drop : null);
+    }
+
+    private void CheckSpace(SpaceFull space, int used, int slots, JObject? drop)
+    {
+        // No slots is an inventory that hasn't loaded, or a game without that Space.
         bool full = slots > 0 && used >= slots;
         // A drop of an item already in the inventory stacks onto it.
-        bool noSlot = full && dropId is { } id && !_inventory.TryGetItem(id, out _);
+        int? noSlot = full && (int?)drop?["ItemID"] is { } id && !_inventory.TryGetItem(id, out _) ? id : null;
         lock (_lock)
         {
             if (!full)
             {
-                Rearm();
+                space.Rearm();
                 return;
             }
-            bool filled = !_recordedFull;
-            _recordedFull = true;
-            bool newDrop = noSlot && _noSlotDrops.Add(dropId!.Value);
+            bool filled = !space.Recorded;
+            space.Recorded = true;
+            bool newDrop = noSlot is { } dropId && space.NoSlotDrops.Add(dropId);
             if (!filled && !newDrop)
                 return;
         }
-        _logs.Event(EventTypes.InventoryFull, new { used, slots, drop = noSlot ? new { id = dropId, name = dropName } : null });
+        _logs.Event(space.Type, new { used, slots, drop = noSlot is { } noSlotId ? new { id = noSlotId, name = ((string?)drop!["sName"])?.Trim() ?? "" } : null });
     }
 
     private void Rearm()
     {
-        _recordedFull = false;
-        _noSlotDrops.Clear();
+        _bagFull.Rearm();
+        _miscFull.Rearm();
+    }
+
+    /// <summary>A Space's full event, and what has been recorded of it since a check last found a free slot in the Space.</summary>
+    private sealed class SpaceFull(string type)
+    {
+        public string Type { get; } = type;
+
+        /// <summary>Whether the Space has been recorded as full.</summary>
+        public bool Recorded { get; set; }
+
+        /// <summary>The drops recorded as having no slot.</summary>
+        public HashSet<int> NoSlotDrops { get; } = [];
+
+        public void Rearm()
+        {
+            Recorded = false;
+            NoSlotDrops.Clear();
+        }
     }
 
     private void OnCellChanged(string cell)
