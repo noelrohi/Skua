@@ -41,6 +41,18 @@ public class ShopItem : ItemBase
     [JsonProperty("turnin")]
     public List<ItemBase> Requirements { get; set; } = new();
 
+    /// <summary>The inventory token used to buy this item.</summary>
+    [JsonProperty("TokID")]
+    public int TokenID { get; set; }
+
+    /// <summary>The token cost per purchase bundle.</summary>
+    [JsonProperty("TokQty")]
+    public double TokenQuantity { get; set; }
+
+    /// <summary>The name of the required token.</summary>
+    [JsonProperty("TokName")]
+    public string TokenName { get; set; } = string.Empty;
+
     public override bool Equals(object? obj)
     {
         return obj is ShopItem item && item.ID == ID && item.ShopItemID == ShopItemID;

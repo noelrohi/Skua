@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.Messaging;
+using Newtonsoft.Json;
 using Skua.Core.Flash;
 using Skua.Core.Interfaces;
 using Skua.Core.Messaging;
@@ -98,9 +99,7 @@ public partial class ScriptBank : IScriptBank
 
     public bool Swap(string invItem, string bankItem)
     {
-        if (((IScriptBank)this).TryGetItem(bankItem, out InventoryItem? bank) && Inventory.TryGetItem(invItem, out InventoryItem? inv))
-            Swap(inv!, bank!);
-        return false;
+        return ((IScriptBank)this).TryGetItem(bankItem, out InventoryItem? bank) && Inventory.TryGetItem(invItem, out InventoryItem? inv) && Swap(inv!, bank!);
     }
 
     public bool Swap(int invItem, int bankItem)
@@ -110,6 +109,8 @@ public partial class ScriptBank : IScriptBank
 
     public bool Swap(InventoryItem invItem, InventoryItem bankItem)
     {
+        if (!Inventory.CanBank(invItem) || !HasSpaceForSwap(invItem, bankItem))
+            return false;
         Send.Packet($"%xt%zm%bankSwapInv%{Map.RoomID}%{invItem.ID}%{invItem.CharItemID}%{bankItem.ID}%{bankItem.CharItemID}%");
         Wait.ForInventoryToBank(invItem.ID);
         return Inventory.Contains(bankItem.ID);
@@ -117,14 +118,14 @@ public partial class ScriptBank : IScriptBank
 
     public bool EnsureSwap(string invItem, string bankItem, bool loadBank = true)
     {
+        if (!Inventory.TryGetItem(invItem, out InventoryItem? inv) || !Inventory.CanBank(inv!))
+            return false;
         if (loadBank)
             Load();
-        if (!((IScriptBank)this).TryGetItem(bankItem, out InventoryItem? bank) || !Inventory.TryGetItem(invItem, out InventoryItem? inv))
-            return false;
-        if (inv is null || bank is null)
+        if (!((IScriptBank)this).TryGetItem(bankItem, out InventoryItem? bank) || !HasSpaceForSwap(inv!, bank!))
             return false;
         int i = 0;
-        while (!Swap(inv, bank) && !Manager.ShouldExit && Player.Playing && ++i < Options.MaximumTries)
+        while (!Swap(inv!, bank!) && !Manager.ShouldExit && Player.Playing && ++i < Options.MaximumTries)
             Thread.Sleep(Options.ActionDelay);
 
         return Inventory.Contains(bankItem);
@@ -132,21 +133,26 @@ public partial class ScriptBank : IScriptBank
 
     public bool EnsureSwap(int invItem, int bankItem, bool loadBank = true)
     {
+        if (!Inventory.TryGetItem(invItem, out InventoryItem? inv) || !Inventory.CanBank(inv!))
+            return false;
         if (loadBank)
             Load();
-        if (!((IScriptBank)this).TryGetItem(bankItem, out InventoryItem? bank) || !Inventory.TryGetItem(invItem, out InventoryItem? inv))
-            return false;
-        if (inv is null || bank is null)
+        if (!((IScriptBank)this).TryGetItem(bankItem, out InventoryItem? bank) || !HasSpaceForSwap(inv!, bank!))
             return false;
         int i = 0;
         while (!Swap(invItem, bankItem) && !Manager.ShouldExit && Player.Playing && ++i < Options.MaximumTries)
             Thread.Sleep(Options.ActionDelay);
 
-        return Inventory.Contains(invItem);
+        return Inventory.Contains(bankItem);
     }
+
+    private bool HasSpaceForSwap(InventoryItem invItem, InventoryItem bankItem) =>
+        Flash.Call<bool>("inventoryHasSpaceFor", JsonConvert.SerializeObject(bankItem), 1, false, JsonConvert.SerializeObject(invItem));
 
     public bool ToInventory(InventoryItem item)
     {
+        if (!Inventory.HasSpaceFor(item))
+            return false;
         Send.Packet($"%xt%zm%bankToInv%{Map.RoomID}%{item.ID}%{item.CharItemID}%");
         Wait.ForBankToInventory(item!.Name);
         return Inventory.Contains(item.ID);
@@ -157,6 +163,8 @@ public partial class ScriptBank : IScriptBank
         if (loadBank)
             Load();
         if (!((IScriptBank)this).TryGetItem(name, out InventoryItem? item))
+            return false;
+        if (!Inventory.HasSpaceFor(item!))
             return false;
         int i = 0;
         while (!((IScriptBank)this).ToInventory(item) && !Manager.ShouldExit && Player.Playing && ++i < Options.MaximumTries)
@@ -170,6 +178,8 @@ public partial class ScriptBank : IScriptBank
         if (loadBank)
             Load();
         if (!((IScriptBank)this).TryGetItem(id, out InventoryItem? item))
+            return false;
+        if (!Inventory.HasSpaceFor(item!))
             return false;
         int i = 0;
         while (!((IScriptBank)this).ToInventory(item) && !Manager.ShouldExit && Player.Playing && ++i < Options.MaximumTries)

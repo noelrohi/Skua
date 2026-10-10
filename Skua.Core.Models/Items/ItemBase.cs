@@ -111,6 +111,11 @@ public class ItemBase
     [JsonConverter(typeof(IntConverter))] // Workaround for UI elements not being visible.
     public virtual int ProcID { get; set; }
 
+    /// <summary>Raw house flag used by the game's inventory classification.</summary>
+    [JsonProperty("bHouse")]
+    [JsonConverter(typeof(StringBoolConverter))]
+    public virtual bool House { get; set; }
+
     private ItemCategory? _category = null;
 
     public virtual ItemCategory Category => _category is not null

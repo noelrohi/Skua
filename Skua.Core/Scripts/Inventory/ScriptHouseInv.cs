@@ -13,12 +13,14 @@ public partial class ScriptHouseInv : IScriptHouseInv
     private readonly Lazy<IScriptMap> _lazyMap;
     private readonly Lazy<IScriptManager> _lazyManager;
     private readonly Lazy<IScriptPlayer> _lazyPlayer;
+    private readonly Lazy<IScriptInventory> _lazyInventory;
     private IFlashUtil Flash => _lazyFlash.Value;
     private IScriptOption Options => _lazyOptions.Value;
     private IScriptWait Wait => _lazyWait.Value;
     private IScriptMap Map => _lazyMap.Value;
     private IScriptManager Manager => _lazyManager.Value;
     private IScriptPlayer Player => _lazyPlayer.Value;
+    private IScriptInventory Inventory => _lazyInventory.Value;
     private IScriptSend Send => _lazySend.Value;
 
     public ScriptHouseInv(
@@ -28,7 +30,8 @@ public partial class ScriptHouseInv : IScriptHouseInv
         Lazy<IScriptWait> wait,
         Lazy<IScriptMap> map,
         Lazy<IScriptManager> manager,
-        Lazy<IScriptPlayer> player)
+        Lazy<IScriptPlayer> player,
+        Lazy<IScriptInventory> inventory)
     {
         _lazyFlash = flash;
         _lazySend = send;
@@ -37,6 +40,7 @@ public partial class ScriptHouseInv : IScriptHouseInv
         _lazyMap = map;
         _lazyManager = manager;
         _lazyPlayer = player;
+        _lazyInventory = inventory;
     }
 
     [ObjectBinding("world.myAvatar.houseitems", Default = "new()")]
@@ -50,6 +54,8 @@ public partial class ScriptHouseInv : IScriptHouseInv
 
     public bool ToBank(InventoryItem item)
     {
+        if (!Inventory.CanBank(item))
+            return false;
         Send.Packet($"%xt%zm%bankFromInv%{Map.RoomID}%{item.ID}%{item.CharItemID}%");
         Wait.ForHouseInventoryToBank(item.Name);
         return !((IScriptHouseInv)this).Contains(item.Name);
@@ -58,6 +64,8 @@ public partial class ScriptHouseInv : IScriptHouseInv
     public bool EnsureToBank(string name)
     {
         if (!((IScriptHouseInv)this).TryGetItem(name, out InventoryItem? item))
+            return false;
+        if (!Inventory.CanBank(item!))
             return false;
         int i = 0;
         while (!ToBank(item!) && !Manager.ShouldExit && Player.Playing && ++i < Options.MaximumTries)
@@ -69,6 +77,8 @@ public partial class ScriptHouseInv : IScriptHouseInv
     public bool EnsureToBank(int id)
     {
         if (!((IScriptHouseInv)this).TryGetItem(id, out InventoryItem? item))
+            return false;
+        if (!Inventory.CanBank(item!))
             return false;
         int i = 0;
         while (!ToBank(item!) && !Manager.ShouldExit && Player.Playing && ++i < Options.MaximumTries)
