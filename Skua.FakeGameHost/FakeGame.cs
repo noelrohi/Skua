@@ -52,6 +52,11 @@ internal sealed class FakeGame
     private DateTime _inventoryAt;
     private int _inventoryDelay = 500;
     private int _bagSlots = 40;
+    private int _miscSlots = 100;
+    /// <summary>The HUD auras (<c>leaf.hudAuras</c>) of the player (<c>self</c>) and of each monster by its map ID, as AuraSnapshots reads them.</summary>
+    private readonly Dictionary<string, List<JsonObject>> _hudAuras = [];
+    /// <summary>The IDs of the items the player starred as Favorites in the game's inventory.</summary>
+    private readonly HashSet<int> _favorites = [];
     private int _slimeSamples = 3;
     private int _slimeCrowns;
     /// <summary>The quests turned in, which are no longer accepted.</summary>
@@ -90,6 +95,7 @@ internal sealed class FakeGame
     /// <summary>The game server <c>connectTo</c> connected to, which the game's packets go to until it closes.</summary>
     private NetworkStream? _socket;
 
+    private const int HouseSlots = 20;
     private const int MaxHp = 1000;
     private const int RequiredXp = 4000;
     private const int PlayerId = 1;
@@ -155,6 +161,22 @@ internal sealed class FakeGame
                 ("buyItemByID", [string id, string shopItemId, string qty]) =>
                     Buy(_shopItems.FirstOrDefault(i => (int)i["ItemID"]! == int.Parse(id) && (shopItemId == "-1" || (int)i["ShopItemID"]! == int.Parse(shopItemId))), qty),
                 ("rejectExcept", [string whitelist]) => Note($"rejectExcept {whitelist}"),
+                // skua.swf's Inventory API, which asks the game's InvCat; the fake's follows client 5.0's.
+                ("hasInventoryCategories", _) => Str(true),
+                ("inventoryBagUsedSlots", _) => Str(Owned().Count(i => Pool(i) == "bag")),
+                ("inventoryMiscSlots", _) => Str(_miscSlots),
+                ("inventoryMiscUsedSlots", _) => Str(Owned().Count(i => Pool(i) == "misc")),
+                ("inventoryPool", [string item]) => Str(Pool(JsonNode.Parse(item)!.AsObject())),
+                ("inventoryHasSpaceFor", [string item, ..]) => Str(HasSpaceFor(JsonNode.Parse(item)!.AsObject())),
+                // skua.swf's, from the game's FavStore: whether the player starred the item.
+                ("isFavoriteItem", [string id]) => Str(_favorites.Contains(int.Parse(id))),
+                // skua.swf's: the HUD auras of the player, or of the monster it targets, in the order they came.
+                ("GetAuraSnapshots", [string subject]) =>
+                    Str(new JsonArray([.. HudAuras(subject == "Self" ? "self" : _target?.ToString()).Select(a => a.DeepClone())]).ToJsonString()),
+                // skua.swf's: none for a shop item, which needs nothing in the fake; else that it isn't in the loaded shop.
+                ("getUnmetPurchaseRequirements", [string id, string shopItemId, ..]) =>
+                    Str(_shopId is not null && _shopItems.Any(i => (int)i["ItemID"]! == int.Parse(id) && (int)i["ShopItemID"]! == int.Parse(shopItemId))
+                        ? "[]" : """["Item is not in the loaded shop."]"""),
                 // The fake doesn't fight: it refuses every attack.
                 ("attackMonsterName", [string monster]) => Note($"attack {monster}", Str(false)),
                 // skua.swf's: sets the target, as its attacks do, without walking to it.
@@ -246,11 +268,30 @@ internal sealed class FakeGame
                     _lockedMaps.Add(map);
                     return true;
                 case ["drop", string rest] when rest.Split(' ', 3) is [string id, string qty, string name]:
-                    JsonObject item = Item(int.Parse(id), name, int.Parse(qty), 10, "Item");
-                    Pext(new JsonObject { ["cmd"] = "dropItem", ["items"] = new JsonObject { [id] = item } });
+                    Drop(Item(int.Parse(id), name, int.Parse(qty), 10, "Item"));
+                    return true;
+                case ["drop-as", string rest] when rest.Split(' ', 4) is [string category, string id, string qty, string name]:
+                    // A drop of another category, e.g. a Pet, which fills Bag Space where an Item fills Misc Space.
+                    Drop(Item(int.Parse(id), name, int.Parse(qty), 10, category));
                     return true;
                 case ["bag-slots", string slots]:
                     _bagSlots = int.Parse(slots);
+                    return true;
+                case ["hud-aura", string rest] when rest.Split(' ') is [string subject, string name, string stacks, string duration]:
+                    // An aura on the player's HUD (subject self) or a monster's (its map ID), with its stack count and duration in seconds (0 for none).
+                    List<JsonObject> auras = HudAuras(subject);
+                    auras.RemoveAll(a => (string)a["nam"]! == name);
+                    auras.Add(new JsonObject
+                    {
+                        ["nam"] = name, ["n"] = int.Parse(stacks), ["dur"] = int.Parse(duration), ["remaining"] = int.Parse(duration), ["persist"] = false,
+                        ["icon"] = "", ["desc"] = "",
+                    });
+                    return true;
+                case ["favorite", string id]:
+                    _favorites.Add(int.Parse(id));
+                    return true;
+                case ["misc-slots", string slots]:
+                    _miscSlots = int.Parse(slots);
                     return true;
                 case ["slime-samples", string qty]:
                     // How many Slime Samples, which Slime Time needs, the temporary inventory holds.
@@ -392,7 +433,7 @@ internal sealed class FakeGame
         "world.myAvatar.tempitems" => _world ? TempItems() : null,
         "world.myAvatar.houseitems" => _world ? HouseItems() : null,
         "world.myAvatar.houseitems.length" => _world ? HouseItems().Count : null,
-        "world.myAvatar.objData.iHouseSlots" => _world ? 20 : null,
+        "world.myAvatar.objData.iHouseSlots" => _world ? HouseSlots : null,
         "world.questTree" => _world ? QuestTree() : null,
         // The game's own options, with friend requests and duels off.
         "uoPref" => _world
@@ -844,6 +885,8 @@ internal sealed class FakeGame
         });
     }
 
+    private void Drop(JsonObject item) => Pext(new JsonObject { ["cmd"] = "dropItem", ["items"] = new JsonObject { [item["ItemID"]!.ToString()] = item } });
+
     private void Equipped(JsonObject item)
     {
         string category = (string)item["sType"]!;
@@ -893,6 +936,46 @@ internal sealed class FakeGame
     }
 
     private JsonArray Inventory() => [.. _inventory.Select(i => i.DeepClone())];
+
+    /// <summary>The items the inventory holds as far as the game knows: none until it has arrived.</summary>
+    private List<JsonObject> Owned() => InventoryLoaded ? _inventory : [];
+
+    private List<JsonObject> HudAuras(string? subject) =>
+        subject is null ? [] : _hudAuras.TryGetValue(subject, out List<JsonObject>? auras) ? auras : _hudAuras[subject] = [];
+
+    /// <summary>
+    /// Whether the item fits, by the game's <c>InvCat.isFullFor</c>: a class always does, as does one that tops up a stack the player holds;
+    /// a house item needs a house slot, a misc item a Misc Space slot unless the player holds it, and any other a Bag Space slot.
+    /// </summary>
+    private bool HasSpaceFor(JsonObject item)
+    {
+        string pool = Pool(item);
+        if (pool == "class")
+            return true;
+        if (pool == "house")
+            return HouseItems().Count < HouseSlots;
+        JsonObject? held = Owned().FirstOrDefault(i => (int)i["ItemID"]! == (int)item["ItemID"]!);
+        if (held is not null && (int)held["iQty"]! < (int)held["iStk"]!)
+            return true;
+        return pool == "misc"
+            ? held is not null || Owned().Count(i => Pool(i) == "misc") < _miscSlots
+            : Owned().Count(i => Pool(i) == "bag") < _bagSlots;
+    }
+
+    /// <summary>
+    /// The Space an item fills, by the game's <c>InvCat.poolOf</c>: <c>class</c> (none), <c>house</c>, <c>misc</c> (Misc Space) or <c>bag</c> (Bag Space).
+    /// Misc is an Item, Note, Quest Item or Resource, except an Item whose meta is a number, as a consumable's is.
+    /// </summary>
+    private static string Pool(JsonObject item)
+    {
+        string? category = (string?)item["sType"];
+        if (category == "Class")
+            return "class";
+        if (category is "House" or "Wall Item" or "Floor Item" or "Guild" || item["bHouse"]?.ToString() is "1" or "true" or "True")
+            return "house";
+        bool consumable = category == "Item" && item["sMeta"]?.ToString() is { } meta && meta.Trim().Length > 0 && meta.Trim().All(char.IsAsciiDigit);
+        return category is "Item" or "Note" or "Quest Item" or "Resource" && !consumable ? "misc" : "bag";
+    }
 
     private JsonArray Bank() => [Item(10, "Bank Relic", 2, 10, "Item"), .. Stocked("bank")];
 

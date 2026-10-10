@@ -16,7 +16,8 @@ public partial class ScriptDrop : ObservableRecipient, IScriptDrop, IAsyncDispos
         Lazy<IScriptMap> map,
         Lazy<IScriptWait> wait,
         Lazy<IScriptOption> options,
-        Lazy<IScriptPlayer> player)
+        Lazy<IScriptPlayer> player,
+        Lazy<IScriptInventory> inventory)
     {
         _lazySend = send;
         _lazyWait = wait;
@@ -24,6 +25,7 @@ public partial class ScriptDrop : ObservableRecipient, IScriptDrop, IAsyncDispos
         _lazyOptions = options;
         _lazyPlayer = player;
         _lazyFlash = flash;
+        _lazyInventory = inventory;
 
         StrongReferenceMessenger.Default.Register<ScriptDrop, ItemDroppedMessage, int>(this, (int)MessageChannels.GameEvents, AddDrop);
         StrongReferenceMessenger.Default.Register<ScriptDrop, LogoutMessage, int>(this, (int)MessageChannels.GameEvents, ClearDrops);
@@ -45,6 +47,8 @@ public partial class ScriptDrop : ObservableRecipient, IScriptDrop, IAsyncDispos
     private IScriptOption Options => _lazyOptions.Value;
     private IScriptPlayer Player => _lazyPlayer.Value;
     private IFlashUtil Flash => _lazyFlash.Value;
+    private readonly Lazy<IScriptInventory> _lazyInventory;
+    private IScriptInventory Inventory => _lazyInventory.Value;
 
     private readonly PeriodicTimer _timerDrops;
     private Task? _taskDrops;
@@ -71,6 +75,9 @@ public partial class ScriptDrop : ObservableRecipient, IScriptDrop, IAsyncDispos
         if (drop is null)
             return;
 
+        if (!drop.Temp && !Inventory.HasSpaceFor(drop))
+            return;
+
         Send.Packet($"%xt%zm%getDrop%{Map.RoomID}%{drop.ID}%");
         _currentDropInfos.Remove(drop);
         OnPropertyChanged(nameof(CurrentDropInfos));
@@ -79,11 +86,12 @@ public partial class ScriptDrop : ObservableRecipient, IScriptDrop, IAsyncDispos
 
     public void Pickup(int id)
     {
-        if (!CurrentDropInfos.Contains(i => i.ID == id))
+        ItemBase? drop = CurrentDropInfos.FirstOrDefault(i => i.ID == id);
+        if (drop is null || (!drop.Temp && !Inventory.HasSpaceFor(drop)))
             return;
 
         Send.Packet($"%xt%zm%getDrop%{Map.RoomID}%{id}%");
-        _currentDropInfos.Remove(CurrentDropInfos.SingleOrDefault(d => d.ID == id)!);
+        _currentDropInfos.Remove(drop);
         OnPropertyChanged(nameof(CurrentDropInfos));
         OnPropertyChanged(nameof(CurrentDrops));
     }
@@ -115,7 +123,6 @@ public partial class ScriptDrop : ObservableRecipient, IScriptDrop, IAsyncDispos
     {
         foreach (ItemBase drop in _currentDropInfos.Items)
             Pickup(drop.Name);
-        _currentDropInfos.Clear();
         OnPropertyChanged(nameof(CurrentDropInfos));
         OnPropertyChanged(nameof(CurrentDrops));
         if (!skipWait)
@@ -126,27 +133,34 @@ public partial class ScriptDrop : ObservableRecipient, IScriptDrop, IAsyncDispos
     {
         if (Options.AcceptACDrops)
             PickupACItems();
-        CallRejectExcept(names);
+        RejectExceptCore(names);
     }
 
     public void RejectExcept(params int[] ids)
     {
         if (Options.AcceptACDrops)
             PickupACItems();
-        CallRejectExcept(CurrentDropInfos.Where(d => ids.Contains(d.ID)).Select(d => d.Name));
-    }
-
-    /// <summary>skua.swf keeps the drops named as the game holds them, so it gets each name with both spellings of <c>&amp;</c>.</summary>
-    private void CallRejectExcept(IEnumerable<string> names)
-    {
-        Flash.Call("rejectExcept", names.SelectMany(ItemNameComparer.Spellings).Distinct().Join(',').ToLower());
+        RejectExceptCore(CurrentDropInfos.Where(d => ids.Contains(d.ID)).Select(d => d.Name));
     }
 
     public void RejectAll(bool skipWait = false)
     {
         if (Options.AcceptACDrops)
             PickupACItems();
-        Flash.Call("rejectExcept", "");
+        RejectExceptCore(Array.Empty<string>());
+    }
+
+    /// <summary>skua.swf keeps the drops named as the game holds them, so it gets each name with both spellings of <c>&amp;</c>.</summary>
+    private void RejectExceptCore(IEnumerable<string> names)
+    {
+        HashSet<string> keep = new(names, ItemNameComparer.OrdinalIgnoreCase);
+        if (Options.AcceptACDrops)
+            keep.UnionWith(CurrentDropInfos.Where(d => d.Coins).Select(d => d.Name));
+        if (!Flash.Call<bool>("rejectExcept", keep.SelectMany(ItemNameComparer.Spellings).Distinct().Join(',').ToLowerInvariant()))
+            return;
+        _currentDropInfos.Remove(d => !keep.Contains(d.Name));
+        OnPropertyChanged(nameof(CurrentDropInfos));
+        OnPropertyChanged(nameof(CurrentDrops));
     }
 
     public void Start()

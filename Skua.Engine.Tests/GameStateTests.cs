@@ -305,11 +305,13 @@ public class GameStateTests
         await using GameFixture session = await GameFixture.StartAsync(sandbox);
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
 
-        // The fake inventory holds 3 items, among them Treasure Chest (3). The game's calls reach the Engine in order, and after the fake game has
-        // changed its slots, so each slot change waits until an AFK sent after the drops before it is an event.
+        // The fake inventory holds one bag item, Default Sword (1); owning two more fills 3 bag slots. The drops are pets, which fill Bag Space. The
+        // game's calls reach the Engine in order, and after the fake game has changed its slots, so each slot change waits until an AFK sent after
+        // the drops before it is an event.
         int afks = 0;
-        foreach (string directive in (string[])["bag-slots 3", "pickup 40", "drop 41 1 Dragon Egg", "drop 41 1 Dragon Egg", "drop 3 1 Treasure Chest",
-                     "drop 42 1 Moglin Egg", "afk", "bag-slots 4", "drop 42 1 Moglin Egg", "afk", "bag-slots 3", "drop 41 1 Dragon Egg", "afk"])
+        foreach (string directive in (string[])["own 50 Armor Plate Mail", "own 51 Helm Iron Helm", "bag-slots 3", "pickup 40", "drop-as Pet 41 1 Dragon Egg",
+                     "drop-as Pet 41 1 Dragon Egg", "drop-as Sword 1 1 Default Sword", "drop-as Pet 42 1 Moglin Egg", "afk", "bag-slots 4",
+                     "drop-as Pet 42 1 Moglin Egg", "afk", "bag-slots 3", "drop-as Pet 41 1 Dragon Egg", "afk"])
         {
             await session.GameHost.DoAsync(directive);
             if (directive == "afk")
@@ -323,6 +325,35 @@ public class GameStateTests
             string slots = $"{data.GetProperty("used").GetInt32()}/{data.GetProperty("slots").GetInt32()}";
             return data.GetProperty("drop") is { ValueKind: JsonValueKind.Object } drop ? $"{slots} {drop.GetProperty("id").GetInt32()} {drop.GetProperty("name").GetString()}" : slots;
         }));
+    }
+
+    /// <summary>
+    /// Since AQW client 5.0 classes fill no Space and misc items fill Misc Space, so only bag items fill Bag Space (#249): holding more
+    /// classes and misc items than the bag has slots for isn't a full inventory.
+    /// </summary>
+    [Fact]
+    public async Task Classes_and_misc_items_fill_no_Bag_Space_so_only_bag_items_make_a_full_inventory()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+
+        // The fake inventory holds one bag item, Default Sword, besides the Healer class and Treasure Chest, a misc item. A getDrop has the Engine
+        // check the inventory, and the AFK after it, once an event, shows the check is done.
+        foreach (string directive in (string[])["bag-slots 2", "own 50 Class Rogue", "own 51 Class Warrior", "own 52 Resource Bone Dust", "own 53 Note Old Letter",
+                     "pickup 40", "afk"])
+            await session.GameHost.DoAsync(directive);
+        await session.Connection.WaitForLogsAsync(LogKind.Events, 1, e => e.Type == EventTypes.PlayerAfk);
+        InventoryResult inventory = await session.Connection.InventoryAsync(cancellationToken: Ct);
+        List<LogEntryDto> before = (await session.Connection.WaitForLogsAsync(LogKind.Events, 0)).Where(e => e.Type == EventTypes.InventoryFull).ToList();
+
+        await session.GameHost.DoAsync("own 54 Armor Plate Mail");
+        await session.GameHost.DoAsync("pickup 40");
+        LogEntryDto full = await session.Connection.WaitForEventAsync(EventTypes.InventoryFull);
+
+        Assert.Equal((7, 1, (int?)2), (inventory.Items.Count, inventory.UsedSlots, inventory.TotalSlots));
+        Assert.Empty(before);
+        Assert.Equal((2, 2), (full.Data!.Value.GetProperty("used").GetInt32(), full.Data!.Value.GetProperty("slots").GetInt32()));
     }
 
     /// <summary>
