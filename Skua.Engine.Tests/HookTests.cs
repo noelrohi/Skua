@@ -213,6 +213,29 @@ public class HookTests
         Assert.Equal(GameState.LoginScreen, (await game.Connection.StatusAsync(Ct)).Game.State);
     }
 
+    /// <summary>A full Misc Space is the Engine's <c>misc.full</c> (#251), so a Hook of that name runs on it with the drop it has no room for.</summary>
+    [Fact]
+    public async Task A_misc_full_hook_runs_when_a_misc_item_drops_with_no_room_in_Misc_Space()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture game = await GameFixture.StartAsync(sandbox);
+        await game.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        WriteHook(sandbox, EventTypes.MiscFull, "#!/bin/sh\ncat\n");
+        Process runner = sandbox.StartCli("hooks");
+        await WaitForLineAsync(runner, "Following Engine 'default'");
+
+        // Treasure Chest fills the one misc slot.
+        await game.GameHost.DoAsync("misc-slots 1");
+        await game.GameHost.DoAsync("drop 41 1 Gem");
+        HookRunDto run = Run(await game.Connection.WaitForEventAsync(EventTypes.HookRan));
+
+        Assert.Equal((EventTypes.MiscFull, (int?)0), (run.Hook, run.ExitCode));
+        using JsonDocument stdin = JsonDocument.Parse(run.Output);
+        JsonElement data = stdin.RootElement.GetProperty("data");
+        Assert.Equal((1, 1, 41, "Gem"), (data.GetProperty("used").GetInt32(), data.GetProperty("slots").GetInt32(),
+            data.GetProperty("drop").GetProperty("id").GetInt32(), data.GetProperty("drop").GetProperty("name").GetString()));
+    }
+
     private static HookRunDto Run(LogEntryDto entry) => entry.Data!.Value.Deserialize<HookRunDto>(ControlJson.Options)!;
 
     private static async Task WaitForLineAsync(Process process, string text)

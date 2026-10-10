@@ -254,6 +254,7 @@ public class CliTests
         ProcessResult join = await sandbox.RunCliAsync(environment, "join", "yulgar", "Upstairs", "Left");
         ProcessResult jump = await sandbox.RunCliAsync(environment, "jump", "upstairs", "--json");
         ProcessResult status = await sandbox.RunCliAsync(environment, "status");
+        ProcessResult inventory = await sandbox.RunCliAsync(environment, "inventory");
         ProcessResult bank = await sandbox.RunCliAsync(environment, "inventory", "bank");
         ProcessResult quests = await sandbox.RunCliAsync(environment, "quests", "active");
         ProcessResult map = await sandbox.RunCliAsync(environment, "map");
@@ -268,6 +269,7 @@ public class CliTests
             Assert.True(location.RootElement.GetProperty("alreadyThere").GetBoolean());
         Assert.Contains("Player  SkuaTester, level 10 Healer, XP 1500/4000 (37.5%), HP 1000/1000, MP 80/100, 5000 gold, on yulgar in Upstairs (Left)", status.Stdout);
         Assert.Equal(0, bank.ExitCode);
+        Assert.StartsWith("inventory: 1/40 Bag Space slots used, 1/100 Misc Space slots used", inventory.Stdout);
         Assert.StartsWith("bank: 1/10 slots used", bank.Stdout);
         Assert.Contains("Bank Relic  2/10  Item", bank.Stdout);
         Assert.Contains("1001 Slime Time: inProgress", quests.Stdout);

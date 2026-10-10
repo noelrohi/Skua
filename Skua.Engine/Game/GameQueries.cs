@@ -60,9 +60,18 @@ internal sealed class GameQueries
             InventoryKind.Bank => new InventoryResult(kind, _api.Bank.UsedSlots, _api.Bank.Slots, _api.Bank.Items.Select(ToDto).ToList()),
             InventoryKind.Temp => new InventoryResult(kind, _api.TempInv.Items.Count, null, _api.TempInv.Items.Select(ToTempDto).ToList()),
             InventoryKind.House => new InventoryResult(kind, _api.House.UsedSlots, _api.House.Slots, _api.House.Items.Select(ToDto).ToList()),
-            InventoryKind.Inventory => new InventoryResult(kind, _api.Inventory.UsedSlots, _api.Inventory.Slots, _api.Inventory.Items.Select(ToDto).ToList()),
+            InventoryKind.Inventory => InventoryWithSpaces(),
             _ => throw RpcErrors.Of(ErrorCode.InvalidArgument, $"'{kind}' isn't a kind of item store: inventory, bank, temp or house."),
         }, cancellationToken);
+    }
+
+    /// <summary>The inventory with its Bag Space, and its Misc Space unless the game has none (before AQW client 5.0).</summary>
+    private InventoryResult InventoryWithSpaces()
+    {
+        IScriptInventory inventory = _api.Inventory;
+        int miscSlots = inventory.MiscSlots;
+        return new InventoryResult(InventoryKind.Inventory, inventory.UsedSlots, inventory.Slots, inventory.Items.Select(ToDto).ToList(),
+            miscSlots > 0 ? inventory.MiscUsedSlots : null, miscSlots > 0 ? miscSlots : null);
     }
 
     /// <summary>
