@@ -309,13 +309,13 @@ public class ScriptApiTests
         await StacksAsync(session, "hud-aura self Fury 3 10", "stacks Self Fury 1 3");
         await StacksAsync(session, "hud-aura self Fury 1 10", "stacks Self Fury 3 1");
         await session.GameHost.DoAsync("target 1");
+        await PolledAsync(session, 1);
         await StacksAsync(session, "hud-aura 1 Shielded 2 0", "stacks Target Shielded 0 2");
         await StacksAsync(session, "hud-aura self Fury 0 0", "stacks Self Fury 1 0");
 
-        List<LogEntryDto> stacks = await session.Connection.WaitForLogsAsync(LogKind.Script, 5, e => e.Text!.StartsWith("stacks ", StringComparison.Ordinal));
         Assert.Equal(
             ["stacks Self Fury 0 1", "stacks Self Fury 1 3", "stacks Self Fury 3 1", "stacks Target Shielded 0 2", "stacks Self Fury 1 0"],
-            stacks.Select(e => e.Text));
+            await AuraLinesAsync(session, 5));
     }
 
     /// <summary>
@@ -338,12 +338,54 @@ public class ScriptApiTests
         await StacksAsync(session, "hud-aura self Fury 1 10", "stacks Self Fury 3 1");
         await StacksAsync(session, "hud-aura self Fury 0 0", "gone Self Fury");
 
-        List<LogEntryDto> lines = await session.Connection.WaitForLogsAsync(LogKind.Script, 5,
-            e => e.Text!.StartsWith("stacks ", StringComparison.Ordinal) || e.Text!.StartsWith("gone ", StringComparison.Ordinal));
         Assert.Equal(
             ["stacks Self Fury 0 3", "stacks Self Haste 0 1", "stacks Self Fury 3 1", "stacks Self Fury 1 0", "gone Self Fury"],
-            lines.Select(e => e.Text));
+            await AuraLinesAsync(session, 5));
     }
+
+    /// <summary>
+    /// The Target's auras are the targeted monster's: switching targets starts from the new target's auras and stacks without reporting the switch
+    /// as changes, and the new target's changes count from its own stacks.
+    /// </summary>
+    [Fact]
+    public async Task Switching_targets_reports_no_aura_changes_and_the_new_targets_count_from_its_own_stacks()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        await MonitorAurasAsync(sandbox, session);
+        foreach (string directive in (string[])["aura 1 Shielded 1", "aura 2 Shielded 1", "hud-aura 2 Shielded 5 0", "target 1"])
+            await session.GameHost.DoAsync(directive);
+        await PolledAsync(session, 1);
+
+        await StacksAsync(session, "hud-aura 1 Shielded 3 0", "stacks Target Shielded 0 3");
+        await session.GameHost.DoAsync("target 2");
+        await PolledAsync(session, 3);
+        await StacksAsync(session, "hud-aura 2 Shielded 4 0", "stacks Target Shielded 5 4");
+        await session.GameHost.DoAsync("target 1");
+        await PolledAsync(session, 5);
+        await session.GameHost.DoAsync("aura-off 1 Shielded");
+        await StacksAsync(session, "hud-aura 1 Shielded 0 0", "gone Target Shielded");
+
+        Assert.Equal(["stacks Target Shielded 0 3", "stacks Target Shielded 5 4", "stacks Target Shielded 3 0", "gone Target Shielded"],
+            await AuraLinesAsync(session, 4));
+    }
+
+    /// <summary>
+    /// Waits until the Aura Monitor has polled twice since now, by putting <paramref name="stacks"/> stacks of Mark on the player's HUD and then one more.
+    /// </summary>
+    private static async Task PolledAsync(GameFixture session, int stacks)
+    {
+        await StacksAsync(session, $"hud-aura self Mark {stacks} 0", $"stacks Self Mark {stacks - 1} {stacks}");
+        await StacksAsync(session, $"hud-aura self Mark {stacks + 1} 0", $"stacks Self Mark {stacks} {stacks + 1}");
+    }
+
+    /// <summary>The Script's stacks and gone lines, but for the Mark ones <see cref="PolledAsync"/> puts on, once there are <paramref name="count"/>.</summary>
+    private static async Task<IEnumerable<string?>> AuraLinesAsync(GameFixture session, int count) =>
+        (await session.Connection.WaitForLogsAsync(LogKind.Script, count,
+            e => (e.Text!.StartsWith("stacks ", StringComparison.Ordinal) || e.Text.StartsWith("gone ", StringComparison.Ordinal))
+                && !e.Text.StartsWith("stacks Self Mark ", StringComparison.Ordinal)))
+        .Select(e => e.Text);
 
     /// <summary>
     /// Starts a Script that logs the Aura Monitor's AuraStackChanged as <c>stacks &lt;subject&gt; &lt;name&gt; &lt;from&gt; &lt;to&gt;</c> and its
