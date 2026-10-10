@@ -92,6 +92,27 @@ public class ScriptApiTests
     }
 
     [Fact]
+    public async Task Magnetise_keeps_calling_the_magnetize_callback_skua_swf_registers()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+
+        await session.Connection.EvalAsync("Bot.Options.Magnetise = true; return 0;", cancellationToken: Ct);
+        // Setting the option calls it once; the Engine's options timer calls it again every 250 ms while the player plays.
+        Stopwatch waited = Stopwatch.StartNew();
+        string[] calls = await session.GameHost.CallsAsync();
+        while (calls.Count(c => c == "magnetize") < 3 && !calls.Contains("magnetise") && waited.Elapsed < TimeSpan.FromSeconds(5))
+        {
+            await Task.Delay(50, Ct);
+            calls = await session.GameHost.CallsAsync();
+        }
+
+        Assert.DoesNotContain("magnetise", calls);
+        Assert.True(calls.Count(c => c == "magnetize") >= 3, $"magnetize calls: {calls.Count(c => c == "magnetize")}");
+    }
+
+    [Fact]
     public async Task Inventory_EquipItem_equips_the_item_and_logs_nothing()
     {
         await using EngineSandbox sandbox = new();
