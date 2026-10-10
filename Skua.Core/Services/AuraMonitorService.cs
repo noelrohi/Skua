@@ -112,18 +112,22 @@ public class AuraMonitorService : IAuraMonitorService, IDisposable, IAsyncDispos
 
         try
         {
-            CheckAuras(_selfAuras.Auras, _selfAuraStates, SubjectType.Self);
             CheckStacks(_selfAuras.Snapshots, _selfAuraStacks, SubjectType.Self);
+            CheckAuras(_selfAuras.Auras, _selfAuraStates, _selfAuraStacks, SubjectType.Self);
 
-            CheckAuras(_targetAuras.Auras, _targetAuraStates, SubjectType.Target);
             CheckStacks(_targetAuras.Snapshots, _targetAuraStacks, SubjectType.Target);
+            CheckAuras(_targetAuras.Auras, _targetAuraStates, _targetAuraStacks, SubjectType.Target);
         }
         catch
         {
         }
     }
 
-    private void CheckAuras(List<Aura>? currentAuras, ConcurrentDictionary<string, AuraState> stateDict, SubjectType subject)
+    /// <summary>
+    /// Raises <see cref="AuraActivated"/> and <see cref="AuraDeactivated"/> as auras come and go. An aura that still has stacks on the HUD
+    /// isn't gone, though the game takes it out of its auras when it loses some.
+    /// </summary>
+    private void CheckAuras(List<Aura>? currentAuras, ConcurrentDictionary<string, AuraState> stateDict, ConcurrentDictionary<string, int> stackDict, SubjectType subject)
     {
         if (currentAuras == null) return;
 
@@ -161,7 +165,7 @@ public class AuraMonitorService : IAuraMonitorService, IDisposable, IAsyncDispos
         List<string> keysToRemove = new();
         foreach (KeyValuePair<string, AuraState> kvp in stateDict)
         {
-            if (!currentAuraNames.Contains(kvp.Key))
+            if (!currentAuraNames.Contains(kvp.Key) && !stackDict.ContainsKey(kvp.Key))
                 keysToRemove.Add(kvp.Key);
         }
 

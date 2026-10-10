@@ -55,6 +55,8 @@ internal sealed class FakeGame
     private int _miscSlots = 100;
     /// <summary>The HUD auras (<c>leaf.hudAuras</c>) of the player (<c>self</c>) and of each monster by its map ID, as AuraSnapshots reads them.</summary>
     private readonly Dictionary<string, List<JsonObject>> _hudAuras = [];
+    /// <summary>The auras (<c>leaf.auras</c>) of the player (<c>self</c>) and of each monster by its map ID, each with its effect value.</summary>
+    private readonly Dictionary<string, List<JsonObject>> _auras = [];
     /// <summary>The IDs of the items the player starred as Favorites in the game's inventory.</summary>
     private readonly HashSet<int> _favorites = [];
     private int _slimeSamples = 3;
@@ -173,6 +175,10 @@ internal sealed class FakeGame
                 // skua.swf's: the HUD auras of the player, or of the monster it targets, in the order they came.
                 ("GetAuraSnapshots", [string subject]) =>
                     Str(new JsonArray([.. HudAuras(subject == "Self" ? "self" : _target?.ToString()).Select(a => a.DeepClone())]).ToJsonString()),
+                // skua.swf's: the auras of a player, only the player's own in the fake, or of a monster by its map ID.
+                ("GetPlayerAura", [string player]) =>
+                    Str(new JsonArray([.. Auras(player == _username.ToLowerInvariant() ? "self" : null).Select(a => a.DeepClone())]).ToJsonString()),
+                ("GetMonsterAuraByID", [string id]) => Str(new JsonArray([.. Auras(id).Select(a => a.DeepClone())]).ToJsonString()),
                 // skua.swf's: none for a shop item, which needs nothing in the fake; else that it isn't in the loaded shop.
                 ("getUnmetPurchaseRequirements", [string id, string shopItemId, ..]) =>
                     Str(_shopId is not null && _shopItems.Any(i => (int)i["ItemID"]! == int.Parse(id) && (int)i["ShopItemID"]! == int.Parse(shopItemId))
@@ -288,6 +294,15 @@ internal sealed class FakeGame
                             ["nam"] = name, ["n"] = int.Parse(stacks), ["dur"] = int.Parse(duration), ["remaining"] = int.Parse(duration), ["persist"] = false,
                             ["icon"] = "", ["desc"] = "",
                         });
+                    return true;
+                case ["aura", string rest] when rest.Split(' ') is [string subject, string name, string value]:
+                    // An aura on the player (subject self) or a monster (its map ID) with its effect value, which isn't its stack count.
+                    Auras(subject).RemoveAll(a => (string)a["nam"]! == name);
+                    Auras(subject).Add(new JsonObject { ["nam"] = name, ["val"] = int.Parse(value), ["dur"] = 0, ["ts"] = 0 });
+                    return true;
+                case ["aura-off", string rest] when rest.Split(' ') is [string subject, string name]:
+                    // The aura leaves leaf.auras, as the game's aura-- takes it off when it loses stacks, even with stacks left on the HUD.
+                    Auras(subject).RemoveAll(a => (string)a["nam"]! == name);
                     return true;
                 case ["favorite", string id]:
                     _favorites.Add(int.Parse(id));
@@ -941,6 +956,9 @@ internal sealed class FakeGame
 
     /// <summary>The items the inventory holds as far as the game knows: none until it has arrived.</summary>
     private List<JsonObject> Owned() => InventoryLoaded ? _inventory : [];
+
+    private List<JsonObject> Auras(string? subject) =>
+        subject is null ? [] : _auras.TryGetValue(subject, out List<JsonObject>? auras) ? auras : _auras[subject] = [];
 
     private List<JsonObject> HudAuras(string? subject) =>
         subject is null ? [] : _hudAuras.TryGetValue(subject, out List<JsonObject>? auras) ? auras : _hudAuras[subject] = [];

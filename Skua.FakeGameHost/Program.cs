@@ -27,7 +27,8 @@
 // fills Misc Space), `drop-as <category> <id> <qty> <name>` (a drop of that category, e.g. a Pet, which fills Bag Space), `bag-slots <n>` and
 // `misc-slots <n>` (Bag Space and Misc Space, 40 and 100 unless set; client 5.0's rules decide which an item fills, and classes fill none),
 // `favorite <id>` (the player stars the item as a Favorite), `hud-aura <self|monster map id> <name> <stacks> <seconds>` (an aura on the HUD, 0 s for
-// one that doesn't expire; 0 stacks takes it off), `pickup <id>`, `own <id> <category> <name>` (another item in the inventory, unequipped; the game equips an item in place of its
+// one that doesn't expire; 0 stacks takes it off), `aura <self|monster map id> <name> <value>` (an aura with that effect value, apart from the HUD),
+// `aura-off <self|monster map id> <name>` (the aura leaves, as the game's aura-- takes it off even with stacks left on the HUD),`pickup <id>`, `own <id> <category> <name>` (another item in the inventory, unequipped; the game equips an item in place of its
 // category's), `stock <bank|temp|house> <id> <name>` (another item in that store), `shop-item <id> <name>` (another item every shop
 // sells; a loaded shop's buyItemByName finds it by its lower-cased name, as skua.swf does), `equip-delay <ms|never>` (how long the game server takes to equip one from now on, 0 at first, or never), `slime-samples <qty>` and `slime-crowns <qty>` (Slime Time's requirements; it is ready to turn in with 5 and 1, and a turn-in takes them), `quest-spacing <ms>` (the game server refuses a turn-in or accept within <ms> of the last with "Please slow down"; an accept it refuses stays accepted in the game), `focus <input|dynamic|none>` (the text field the stage's focus is on, e.g. chat's input), `packet <text>` (the game's
 // packet call, as for a packet it sends) and `server-packet <packet>` (a string packet from the game server, e.g. `%xt%chatm%-1%zone~hi%Bob%`,
