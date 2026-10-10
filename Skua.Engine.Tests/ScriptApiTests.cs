@@ -27,6 +27,23 @@ public class ScriptApiTests
     }
 
     [Fact]
+    public async Task Bank_Loaded_is_true_once_Bank_Load_has_the_bank_and_false_again_after_a_relogin()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+
+        EvalResult loaded = await session.Connection.EvalAsync("bool before = Bot.Bank.Loaded; Bot.Bank.Load(); bool after = Bot.Bank.Loaded; Bot.Bank.Load(); return $\"{before} {after} {Bot.Bank.Loaded}\";", cancellationToken: Ct);
+        await session.Connection.LogoutAsync(Ct);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        EvalResult relogged = await session.Connection.EvalAsync("return Bot.Bank.Loaded;", cancellationToken: Ct);
+
+        Assert.Null(loaded.Error);
+        Assert.Equal("False True True", loaded.Value!.Value.GetString());
+        Assert.False(relogged.Value!.Value.GetBoolean());
+    }
+
+    [Fact]
     public async Task A_bank_that_has_arrived_is_not_asked_for_again_by_Bank_Load_or_the_Engine()
     {
         await using EngineSandbox sandbox = new();
