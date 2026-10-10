@@ -111,11 +111,17 @@ public class ItemBase
     [JsonConverter(typeof(IntConverter))] // Workaround for UI elements not being visible.
     public virtual int ProcID { get; set; }
 
+    /// <summary>Raw house flag used by the game's inventory classification.</summary>
+    [JsonProperty("bHouse")]
+    [JsonConverter(typeof(StringBoolConverter))]
+    public virtual bool House { get; set; }
+
     private ItemCategory? _category = null;
 
+    /// <summary>The item's type as an <see cref="ItemCategory"/>; the game spells some types with a space ("Quest Item", "Wall Item"), which the member names leave out.</summary>
     public virtual ItemCategory Category => _category is not null
                 ? (ItemCategory)_category
-                : (ItemCategory)(_category = Enum.TryParse(CategoryString, true, out ItemCategory result) ? result : ItemCategory.Unknown);
+                : (ItemCategory)(_category = Enum.TryParse(CategoryString?.Replace(" ", string.Empty), true, out ItemCategory result) ? result : ItemCategory.Unknown);
 
     /// <summary>
     /// Indicates if the item is a temporary item.

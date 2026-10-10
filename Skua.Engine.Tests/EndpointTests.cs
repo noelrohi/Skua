@@ -20,6 +20,14 @@ public class EndpointTests
 
         Assert.Equal("/tmp/other/e.sock", endpoint.SocketPath);
         Assert.Equal("/tmp/skua/engines/default.lock", endpoint.LockPath);
+        Assert.Equal("/tmp/skua/engines/game-storage/default", endpoint.GameStorageDir);
+    }
+
+    [Fact]
+    public void Each_Engine_Name_keeps_its_own_game_storage_under_the_data_folder()
+    {
+        Assert.Equal("/tmp/skua/engines/game-storage/farm", EngineEndpoint.Resolve("farm", "/tmp/skua").GameStorageDir);
+        Assert.Equal("/tmp/skua/engines/game-storage/alt1", EngineEndpoint.Resolve("alt1", "/tmp/skua").GameStorageDir);
     }
 
     [Theory]

@@ -31,6 +31,7 @@ public sealed record EngineEndpoint
         KeptNoticePath = Path.Combine(EnginesDir, name + ".kept");
         LastRunPath = Path.Combine(EnginesDir, name + ".lastrun.json");
         LogFilesDir = Path.Combine(EnginesDir, "logs", name);
+        GameStorageDir = Path.Combine(EnginesDir, "game-storage", name);
     }
 
     public string Name { get; }
@@ -58,6 +59,12 @@ public sealed record EngineEndpoint
 
     /// <summary>Where the Engine writes one JSONL file of its log entries per start, keeping the last 10.</summary>
     public string LogFilesDir { get; }
+
+    /// <summary>
+    /// Where the Game Host keeps the game's local SharedObjects (its Favorites and options) for this Engine Name across restarts; no other
+    /// Engine Name reads or writes it (ADR 0008).
+    /// </summary>
+    public string GameStorageDir { get; }
 
     /// <summary>The default Skua data folder, honouring <c>SKUA_DIR</c>.</summary>
     public static string DefaultSkuaDir() =>

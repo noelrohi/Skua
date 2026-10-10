@@ -19,7 +19,7 @@ public interface IAuraMonitorService : IDisposable
 
     /// <summary>
     /// Event fired when an aura is activated.
-    /// Parameters: auraName, timeStarted, duration, stackValue, subject
+    /// Parameters: auraName, timeStarted, duration, value (the aura's effect value, not its stack count), subject
     /// </summary>
     event Action<string, DateTimeOffset, float, float, SubjectType>? AuraActivated;
 
@@ -30,7 +30,8 @@ public interface IAuraMonitorService : IDisposable
     event Action<string, SubjectType>? AuraDeactivated;
 
     /// <summary>
-    /// Event fired when an aura's stack value changes.
+    /// Event fired when an aura's HUD stack count changes, as GetAuraStacks reads it: from 0 when the aura comes, to 0 when it goes.
+    /// A change to only the aura's effect value doesn't fire it.
     /// Parameters: auraName, oldValue, newValue, subject
     /// </summary>
     event Action<string, float, float, SubjectType>? AuraStackChanged;

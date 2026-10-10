@@ -1,7 +1,6 @@
 using Skua.Core.Interfaces;
 using Skua.Core.Interfaces.Services;
 using Skua.Core.Models.Auras;
-using System.Collections.Concurrent;
 
 namespace Skua.Core.Services;
 
@@ -12,10 +11,13 @@ public class AuraMonitorService : IAuraMonitorService, IDisposable, IAsyncDispos
 {
     private readonly IScriptSelfAuras _selfAuras;
     private readonly IScriptTargetAuras _targetAuras;
+    private readonly Lazy<IScriptPlayer> _player;
     private readonly Timer _pollTimer;
-    private readonly ConcurrentDictionary<string, AuraState> _selfAuraStates = new();
-    private readonly ConcurrentDictionary<string, AuraState> _targetAuraStates = new();
+    private readonly SeenAuras _self = new();
+    private readonly SeenAuras _target = new();
     private readonly object _lockObject = new();
+    /// <summary>Held through a poll, so polls the timer starts while one runs skip, and the seen auras are only touched under it.</summary>
+    private readonly object _pollLock = new();
     private bool _disposed;
 
 
@@ -34,21 +36,44 @@ public class AuraMonitorService : IAuraMonitorService, IDisposable, IAsyncDispos
         (AuraDeactivated?.GetInvocationList().Length ?? 0) +
         (AuraStackChanged?.GetInvocationList().Length ?? 0);
 
-    private class AuraState
+    /// <summary>What the last poll saw of a subject's auras.</summary>
+    private sealed class SeenAuras
     {
-        public string Name { get; init; } = string.Empty;
-        public float StackValue { get; set; }
-        public DateTimeOffset TimeStarted { get; init; }
-        public int DurationSeconds { get; init; }
-        public bool IsActive { get; set; }
+        /// <summary>The map ID of the monster the auras are of, 0 for none, or null before the first poll; unused for the player's.</summary>
+        public int? Monster { get; set; }
+
+        /// <summary>The names of the auras that are active.</summary>
+        public HashSet<string> Active { get; } = [];
+
+        /// <summary>The HUD stack count of each aura on the HUD.</summary>
+        public Dictionary<string, int> Stacks { get; } = [];
+
+        /// <summary>Takes <paramref name="auras"/> and <paramref name="snapshots"/> as what was seen, without raising anything.</summary>
+        public void Seed(int monster, List<Aura> auras, List<AuraSnapshot> snapshots)
+        {
+            Clear();
+            Monster = monster;
+            Active.UnionWith(auras.Select(a => a.Name).Where(n => !string.IsNullOrEmpty(n)));
+            foreach (AuraSnapshot snapshot in WithStacks(snapshots))
+                Stacks[snapshot.Name] = snapshot.Stacks;
+        }
+
+        public void Clear()
+        {
+            Monster = null;
+            Active.Clear();
+            Stacks.Clear();
+        }
     }
 
     public AuraMonitorService(
         IScriptSelfAuras selfAuras,
-        IScriptTargetAuras targetAuras)
+        IScriptTargetAuras targetAuras,
+        Lazy<IScriptPlayer> player)
     {
         _selfAuras = selfAuras;
         _targetAuras = targetAuras;
+        _player = player;
         _pollTimer = new Timer(PollAuras, null, Timeout.Infinite, Timeout.Infinite);
     }
 
@@ -65,8 +90,7 @@ public class AuraMonitorService : IAuraMonitorService, IDisposable, IAsyncDispos
                 case true when SubscriberCount == 0:
                     IsMonitoring = false;
                     _pollTimer.Change(Timeout.Infinite, Timeout.Infinite);
-                    _selfAuraStates.Clear();
-                    _targetAuraStates.Clear();
+                    ClearSeen();
                     break;
             }
         }
@@ -104,79 +128,112 @@ public class AuraMonitorService : IAuraMonitorService, IDisposable, IAsyncDispos
             return;
         }
 
-        if (!IsMonitoring) return;
+        if (!IsMonitoring || !Monitor.TryEnter(_pollLock)) return;
 
         try
         {
-            CheckAuras(_selfAuras.Auras, _selfAuraStates, SubjectType.Self);
-
-            CheckAuras(_targetAuras.Auras, _targetAuraStates, SubjectType.Target);
+            Check(_self, _selfAuras.Snapshots, _selfAuras.Auras, SubjectType.Self);
+            PollTarget();
         }
         catch
         {
         }
+        finally
+        {
+            Monitor.Exit(_pollLock);
+        }
     }
 
-    private void CheckAuras(List<Aura>? currentAuras, ConcurrentDictionary<string, AuraState> stateDict, SubjectType subject)
+    /// <summary>
+    /// Checks the Target's auras, which are the targeted monster's: a poll that finds another monster targeted, or none, takes its auras as seen
+    /// without raising anything, so its changes count from its own stacks. The first poll reports the target's auras as coming, as the player's.
+    /// </summary>
+    private void PollTarget()
+    {
+        int monster = TargetedMonster();
+        List<AuraSnapshot> snapshots = _targetAuras.Snapshots;
+        List<Aura> auras = _targetAuras.Auras;
+        // The target changed while the poll read its auras, which may be either monster's.
+        if (TargetedMonster() != monster)
+            return;
+
+        if (_target.Monster is { } seen && seen != monster)
+        {
+            _target.Seed(monster, auras, snapshots);
+            return;
+        }
+        _target.Monster = monster;
+        Check(_target, snapshots, auras, SubjectType.Target);
+    }
+
+    private int TargetedMonster() => _player.Value.Target?.MapID ?? 0;
+
+    private void Check(SeenAuras seen, List<AuraSnapshot>? snapshots, List<Aura>? auras, SubjectType subject)
+    {
+        CheckStacks(seen, snapshots, subject);
+        CheckAuras(seen, auras, subject);
+    }
+
+    /// <summary>
+    /// Raises <see cref="AuraActivated"/> and <see cref="AuraDeactivated"/> as auras come and go. An aura that still has stacks on the HUD
+    /// isn't gone, though the game takes it out of its auras when it loses some.
+    /// </summary>
+    private void CheckAuras(SeenAuras seen, List<Aura>? currentAuras, SubjectType subject)
     {
         if (currentAuras == null) return;
 
-        HashSet<string> currentAuraNames = new(currentAuras.Select(a => a.Name ?? string.Empty));
-
         foreach (Aura aura in currentAuras)
         {
-            if (string.IsNullOrEmpty(aura.Name)) continue;
+            if (string.IsNullOrEmpty(aura.Name) || !seen.Active.Add(aura.Name)) continue;
 
-            float stackValue = aura.Value;
-
-            if (stateDict.TryGetValue(aura.Name, out AuraState? existingState))
-            {
-                if (existingState.StackValue == stackValue)
-                {
-                    continue;
-                }
-
-                float oldValue = existingState.StackValue;
-                existingState.StackValue = stackValue;
-
-                AuraStackChanged?.Invoke(aura.Name, oldValue, stackValue, subject);
-            }
-            else
-            {
-                AuraState newState = new()
-                {
-                    Name = aura.Name,
-                    StackValue = stackValue,
-                    TimeStarted = aura.TimeStamp,
-                    DurationSeconds = aura.Duration,
-                    IsActive = true
-                };
-
-                stateDict[aura.Name] = newState;
-
-                AuraActivated?.Invoke(
-                    aura.Name,
-                    newState.TimeStarted,
-                    newState.DurationSeconds,
-                    stackValue,
-                    subject
-                );
-            }
+            // The aura's effect value, which isn't its stack count.
+            AuraActivated?.Invoke(aura.Name, aura.TimeStamp, aura.Duration, aura.Value, subject);
         }
 
-        List<string> keysToRemove = new();
-        foreach (KeyValuePair<string, AuraState> kvp in stateDict)
+        HashSet<string> currentNames = new(currentAuras.Select(a => a.Name ?? string.Empty));
+        foreach (string name in seen.Active.Where(n => !currentNames.Contains(n) && !seen.Stacks.ContainsKey(n)).ToList())
         {
-            if (!currentAuraNames.Contains(kvp.Key))
-                keysToRemove.Add(kvp.Key);
+            seen.Active.Remove(name);
+            AuraDeactivated?.Invoke(name, subject);
+        }
+    }
+
+    /// <summary>
+    /// Raises <see cref="AuraStackChanged"/> for each aura whose HUD stack count changed since the last poll.
+    /// An aura that comes counts from 0 and one that goes counts to 0, as <see cref="IScriptAuras.GetAuraStacks"/> reads them.
+    /// </summary>
+    private void CheckStacks(SeenAuras seen, List<AuraSnapshot>? snapshots, SubjectType subject)
+    {
+        if (snapshots == null) return;
+
+        List<AuraSnapshot> stacked = WithStacks(snapshots);
+        foreach (AuraSnapshot snapshot in stacked)
+        {
+            int oldStacks = seen.Stacks.GetValueOrDefault(snapshot.Name);
+            if (oldStacks == snapshot.Stacks) continue;
+
+            seen.Stacks[snapshot.Name] = snapshot.Stacks;
+            AuraStackChanged?.Invoke(snapshot.Name, oldStacks, snapshot.Stacks, subject);
         }
 
-        foreach (string key in keysToRemove)
+        HashSet<string> currentNames = new(stacked.Select(s => s.Name));
+        foreach (string name in seen.Stacks.Keys.Where(n => !currentNames.Contains(n)).ToList())
         {
-            if (stateDict.TryRemove(key, out AuraState? removedState))
-            {
-                AuraDeactivated?.Invoke(removedState.Name, subject);
-            }
+            seen.Stacks.Remove(name, out int oldStacks);
+            AuraStackChanged?.Invoke(name, oldStacks, 0, subject);
+        }
+    }
+
+    /// <summary>The auras with stacks on the HUD: one the HUD keeps with none, as the game's aura+ with stk 0 leaves it, has none.</summary>
+    private static List<AuraSnapshot> WithStacks(List<AuraSnapshot> snapshots) =>
+        snapshots.Where(s => !string.IsNullOrEmpty(s.Name) && s.Stacks > 0).ToList();
+
+    private void ClearSeen()
+    {
+        lock (_pollLock)
+        {
+            _self.Clear();
+            _target.Clear();
         }
     }
 
@@ -187,8 +244,7 @@ public class AuraMonitorService : IAuraMonitorService, IDisposable, IAsyncDispos
 
         StopMonitoring();
         _pollTimer?.Dispose();
-        _selfAuraStates.Clear();
-        _targetAuraStates.Clear();
+        ClearSeen();
         GC.SuppressFinalize(this);
     }
 

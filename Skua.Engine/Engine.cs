@@ -134,6 +134,8 @@ internal sealed class Engine : IEngineRpc
                 EngineLog.Write(e.Message);
                 throw new EngineStartException(EngineExitCodes.GameHostMissing, e.Message);
             }
+            // Every Engine Name keeps its own game storage, so the game's Favorites survive a restart and side-by-side Engines never share them.
+            launch = launch with { StorageDir = endpoint.GameStorageDir };
             // Only the Mac App shows the game, so only its Game Host gets a Frame Buffer.
             if (!options.IsHeadless)
                 launch = launch with { WantsFrameBuffer = true };

@@ -1,4 +1,5 @@
 ﻿using Skua.Core.Interfaces;
+using Skua.Core.Models.Players;
 
 namespace Skua.Core.Skills;
 
@@ -136,18 +137,19 @@ public class AdvancedSkillCommand
             return false;
         try
         {
-            dynamic[]? players = _flash.GetGameObject<dynamic[]>("world.players");
-            if (players == null || players.Length == 0)
+            // The game keeps the other members' lower-cased names in world.partyMembers, and each player in the room as a leaf of uoTree.
+            string[]? members = _flash.GetGameObject<string[]>("world.partyMembers");
+            if (members == null || members.Length == 0)
                 return false;
 
-            foreach (dynamic targetPlayer in players)
+            foreach (string member in members)
             {
-                string? targetCell = targetPlayer.strFrame;
-                if (string.IsNullOrEmpty(targetCell) || targetCell != player.Cell)
+                PlayerInfo? targetPlayer = _flash.GetGameObject<PlayerInfo>($"world.uoTree[\"{member}\"]");
+                if (targetPlayer == null || string.IsNullOrEmpty(targetPlayer.Cell) || targetPlayer.Cell != player.Cell)
                     continue;
 
-                int targetHealth = targetPlayer.dataLeaf.intHP;
-                int targetMaxHealth = targetPlayer.dataLeaf.intHPMax;
+                int targetHealth = targetPlayer.HP;
+                int targetMaxHealth = targetPlayer.MaxHP;
 
                 if (targetHealth == 0 || (isPercentage && targetMaxHealth == 0))
                     continue;
@@ -216,26 +218,10 @@ public class AdvancedSkillCommand
     private float GetAuraStacks(IScriptPlayer player, IScriptSelfAuras self, IScriptTargetAuras target, string auraTarget, string auraName)
     {
         if (auraTarget.Equals("self", StringComparison.OrdinalIgnoreCase))
-        {
-            if (self.Auras != null && self.Auras.Count > 0)
-            {
-                return self.Auras
-                    .Where(a => a.Name != null && a.Name.Equals(auraName, StringComparison.OrdinalIgnoreCase))
-                    .Sum(a => a.Value);
-            }
-        }
-        else if (auraTarget.Equals("target", StringComparison.OrdinalIgnoreCase))
-        {
-            if (!player.HasTarget)
-                return 0;
+            return self.GetAuraStacks(auraName);
 
-            if (target.Auras != null && target.Auras.Count > 0)
-            {
-                return target.Auras
-                    .Where(a => a.Name != null && a.Name.Equals(auraName, StringComparison.OrdinalIgnoreCase))
-                    .Sum(a => a.Value);
-            }
-        }
+        if (auraTarget.Equals("target", StringComparison.OrdinalIgnoreCase) && player.HasTarget)
+            return target.GetAuraStacks(auraName);
 
         return 0;
     }

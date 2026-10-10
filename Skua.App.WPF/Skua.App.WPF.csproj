@@ -19,6 +19,14 @@
     <GenerateDocumentationFile>False</GenerateDocumentationFile>
     <BaseOutputPath>bin\</BaseOutputPath>
     <BaseIntermediateOutputPath>obj\</BaseIntermediateOutputPath>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!--
+      WFAC010: the WinForms SDK suggests configuring DPI via ApplicationHighDpiMode/SetHighDpiMode.
+      This is a WPF app with a custom Program.Main (StartupObject), so the WinForms bootstrap that
+      honors ApplicationHighDpiMode never runs. DPI awareness must therefore be declared in the
+      manifest so the OS loader applies PerMonitorV2 before any HWND is created.
+    -->
+    <NoWarn>$(NoWarn);WFAC010</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

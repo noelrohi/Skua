@@ -230,8 +230,11 @@ public enum InventoryKind
 public sealed record ItemDto(int Id, string Name, int Qty, int MaxStack, string Category, bool Equipped, int? EnhancementLevel);
 
 /// <summary>The reply to <c>inventory</c>.</summary>
-/// <param name="TotalSlots">How many slots the store has, or null for the temporary inventory, which has no limit.</param>
-public sealed record InventoryResult(InventoryKind Kind, int UsedSlots, int? TotalSlots, IReadOnlyList<ItemDto> Items);
+/// <param name="UsedSlots">How many slots the items fill; for the inventory, its Bag Space's.</param>
+/// <param name="TotalSlots">How many slots the store has, or null for the temporary inventory, which has no limit; for the inventory, its Bag Space.</param>
+/// <param name="MiscUsedSlots">How many slots of the inventory's Misc Space the items fill; null for the other stores, and when the game has no Misc Space.</param>
+/// <param name="MiscSlots">How many slots the inventory's Misc Space has; null for the other stores, and when the game has no Misc Space.</param>
+public sealed record InventoryResult(InventoryKind Kind, int UsedSlots, int? TotalSlots, IReadOnlyList<ItemDto> Items, int? MiscUsedSlots = null, int? MiscSlots = null);
 
 /// <summary>Which quests <c>quests</c> lists.</summary>
 public enum QuestFilter

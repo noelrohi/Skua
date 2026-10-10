@@ -8,6 +8,7 @@ usage: skua-gamehost [options] <skua.swf>
 
   --show-game                  show the game in a debug window (renders every 33 ms, no render budget)
   --frame-buffer=NAME          write frames to this Frame Buffer (POSIX shared memory) while the Game View is live
+  --storage=DIR                keep the game's SharedObjects in DIR across runs (default: in memory, lost on exit)
   --render-interval-ms=N       keep-alive render interval (default 1000; 0 = never render unasked)
   --render-budget-pct=N        render at most N% of wall time (default 10; 0 = off)
   --render-max-interval-ms=N   never stretch the render interval beyond this (default 5000)
@@ -46,6 +47,8 @@ pub struct Opts {
     pub show_game: bool,
     /// The Frame Buffer's shared-memory name.
     pub frame_buffer: Option<String>,
+    /// The Engine Name's game storage folder; `None` keeps SharedObjects in memory.
+    pub storage: Option<PathBuf>,
     pub render: RenderPolicy,
     pub render_thread: bool,
     pub pass_budget: u32,
@@ -72,6 +75,7 @@ impl Opts {
             swf: PathBuf::new(),
             show_game: false,
             frame_buffer: None,
+            storage: None,
             render: RenderPolicy {
                 interval: Some(Duration::from_millis(1000)),
                 budget_pct: 10,
@@ -103,6 +107,11 @@ impl Opts {
                             .ok_or("--frame-buffer needs a name")?
                             .to_string(),
                     )
+                }
+                "--storage" => {
+                    opts.storage = Some(PathBuf::from(
+                        value.filter(|v| !v.is_empty()).ok_or("--storage needs a folder")?,
+                    ))
                 }
                 "--render-interval-ms" => opts.render.interval = Some(ms()?).filter(|d| !d.is_zero()),
                 "--render-budget-pct" => opts.render.budget_pct = n()?,
@@ -196,6 +205,15 @@ mod tests {
         assert_eq!(o.render.interval, Some(ms(1000)));
         assert!(parse(&["--frame-buffer", "x.swf"]).is_err());
         assert!(parse(&["--frame-buffer=", "x.swf"]).is_err());
+    }
+
+    #[test]
+    fn storage_names_the_engines_game_storage_folder() {
+        assert_eq!(parse(&["x.swf"]).unwrap().storage, None);
+        let o = parse(&["--storage=/tmp/skua/engines/game-storage/farm", "x.swf"]).unwrap();
+        assert_eq!(o.storage, Some(PathBuf::from("/tmp/skua/engines/game-storage/farm")));
+        assert!(parse(&["--storage", "x.swf"]).is_err());
+        assert!(parse(&["--storage=", "x.swf"]).is_err());
     }
 
     #[test]

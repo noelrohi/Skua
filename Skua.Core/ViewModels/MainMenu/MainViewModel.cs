@@ -12,8 +12,6 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly ISettingsService _settingsService = Ioc.Default.GetRequiredService<ISettingsService>();
     private readonly IScriptPlayer _player = Ioc.Default.GetRequiredService<IScriptPlayer>();
     private readonly IDispatcherService _dispatcherService = Ioc.Default.GetRequiredService<IDispatcherService>();
-    private readonly System.Timers.Timer _titleUpdateTimer = new(1000);
-    private string _lastUsername = string.Empty;
 
     [ObservableProperty] private string _title = "Skua";
     [ObservableProperty] private bool _showUsernameInTitle;
@@ -23,42 +21,24 @@ public sealed partial class MainViewModel : ObservableObject
         ShowUsernameInTitle = _settingsService.Get("ShowUsernameInTitle", false);
 
         UpdateTitle();
-        _titleUpdateTimer.Elapsed += (_, _) =>
-        {
-            string username = _player.Username;
-
-            if (_lastUsername == username)
-                return;
-
-            _dispatcherService.Invoke(UpdateTitle);
-        };
-
-        if (ShowUsernameInTitle)
-            _titleUpdateTimer.Start();
+        StrongReferenceMessenger.Default.Register<MainViewModel, LoginMessage, int>(
+            this,
+            (int)MessageChannels.GameEvents,
+            static (recipient, message) =>
+                recipient._dispatcherService.Invoke(() => recipient.UpdateTitle(message.Username))
+        );
     }
 
     partial void OnShowUsernameInTitleChanged(bool value)
     {
         _settingsService.Set("ShowUsernameInTitle", value);
-
-        if (value)
-        {
-            UpdateTitle();
-            _titleUpdateTimer.Start();
-        }
-        else
-        {
-            _titleUpdateTimer.Stop();
-            _lastUsername = string.Empty;
-            UpdateTitle();
-        }
+        UpdateTitle();
     }
 
-    public void UpdateTitle()
-    {
-        string username = _player.Username;
-        _lastUsername = username;
+    public void UpdateTitle() => UpdateTitle(_player.Username);
 
+    private void UpdateTitle(string username)
+    {
         string title = $"Skua - {_settingsService.Get("ApplicationVersion", "0.0.0.0")}";
 
         if (ShowUsernameInTitle && !string.IsNullOrWhiteSpace(username))

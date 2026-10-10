@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.Messaging;
+using Newtonsoft.Json;
 using Skua.Core.Flash;
 using Skua.Core.Interfaces;
 using Skua.Core.Messaging;
@@ -27,8 +28,10 @@ public partial class ScriptBank : IScriptBank
         _lazyManager = manager;
         _lazyPlayer = player;
 
-        StrongReferenceMessenger.Default.Register<ScriptBank, BankLoadedMessage>(this, (r, m) => r.Loaded = true);
-        StrongReferenceMessenger.Default.Register<ScriptBank, LogoutMessage>(this, (r, m) => r.Loaded = false);
+        // The game's messages go on the game events channel. Each login starts the character with a bank still to load.
+        StrongReferenceMessenger.Default.Register<ScriptBank, BankLoadedMessage, int>(this, (int)MessageChannels.GameEvents, (r, m) => r.Loaded = true);
+        StrongReferenceMessenger.Default.Register<ScriptBank, LogoutMessage, int>(this, (int)MessageChannels.GameEvents, (r, m) => r.Loaded = false);
+        StrongReferenceMessenger.Default.Register<ScriptBank, LoginMessage, int>(this, (int)MessageChannels.GameEvents, (r, m) => r.Loaded = false);
     }
 
     private readonly Lazy<IFlashUtil> _lazyFlash;
@@ -63,7 +66,7 @@ public partial class ScriptBank : IScriptBank
     [MethodCallBinding("world.toggleBank", RunMethodPre = true, GameFunction = true)]
     private void _open()
     {
-        if (Flash.GetGameObject("ui.mcPopup.currentLabel") == "Bank")
+        if (Flash.GetGameObject<string>("ui.mcPopup.currentLabel") == "Bank")
             return;
     }
 
@@ -75,7 +78,12 @@ public partial class ScriptBank : IScriptBank
         // Once the bank has arrived the game keeps it current through every transfer, so it isn't asked for again: getBank's answer holds
         // the bank as it was when the request left, and adds an item it lists without removing any, so an answer landing after a transfer
         // lists the item again.
-        if (Flash.GetGameObject("ui.mcPopup.currentLabel") == "Bank" || Arrived())
+        if (Arrived())
+        {
+            Loaded = true;
+            return;
+        }
+        if (Flash.GetGameObject<string>("ui.mcPopup.currentLabel") == "Bank")
             return;
         // This loads the bank as the game itself does, with getBank over HTTP: the game server no longer answers the loadBank packet.
         // getBank needs the character's data, which the game has once the inventory has loaded.
@@ -83,8 +91,8 @@ public partial class ScriptBank : IScriptBank
         if (waitForLoad ? !Wait.ForTrue(InventoryLoaded, LoadWaitSleeps) : !InventoryLoaded())
             return;
         Flash.CallGameFunction("getBank");
-        if (waitForLoad)
-            Wait.ForBankLoad(LoadWaitSleeps);
+        if (waitForLoad && Wait.ForBankLoad(LoadWaitSleeps))
+            Loaded = true;
     }
 
     /// <summary>
@@ -98,9 +106,7 @@ public partial class ScriptBank : IScriptBank
 
     public bool Swap(string invItem, string bankItem)
     {
-        if (((IScriptBank)this).TryGetItem(bankItem, out InventoryItem? bank) && Inventory.TryGetItem(invItem, out InventoryItem? inv))
-            Swap(inv!, bank!);
-        return false;
+        return ((IScriptBank)this).TryGetItem(bankItem, out InventoryItem? bank) && Inventory.TryGetItem(invItem, out InventoryItem? inv) && Swap(inv!, bank!);
     }
 
     public bool Swap(int invItem, int bankItem)
@@ -110,6 +116,8 @@ public partial class ScriptBank : IScriptBank
 
     public bool Swap(InventoryItem invItem, InventoryItem bankItem)
     {
+        if (!Inventory.CanBank(invItem) || !HasSpaceForSwap(invItem, bankItem))
+            return false;
         Send.Packet($"%xt%zm%bankSwapInv%{Map.RoomID}%{invItem.ID}%{invItem.CharItemID}%{bankItem.ID}%{bankItem.CharItemID}%");
         Wait.ForInventoryToBank(invItem.ID);
         return Inventory.Contains(bankItem.ID);
@@ -117,14 +125,14 @@ public partial class ScriptBank : IScriptBank
 
     public bool EnsureSwap(string invItem, string bankItem, bool loadBank = true)
     {
+        if (!Inventory.TryGetItem(invItem, out InventoryItem? inv) || !Inventory.CanBank(inv!))
+            return false;
         if (loadBank)
             Load();
-        if (!((IScriptBank)this).TryGetItem(bankItem, out InventoryItem? bank) || !Inventory.TryGetItem(invItem, out InventoryItem? inv))
-            return false;
-        if (inv is null || bank is null)
+        if (!((IScriptBank)this).TryGetItem(bankItem, out InventoryItem? bank) || !HasSpaceForSwap(inv!, bank!))
             return false;
         int i = 0;
-        while (!Swap(inv, bank) && !Manager.ShouldExit && Player.Playing && ++i < Options.MaximumTries)
+        while (!Swap(inv!, bank!) && !Manager.ShouldExit && Player.Playing && ++i < Options.MaximumTries)
             Thread.Sleep(Options.ActionDelay);
 
         return Inventory.Contains(bankItem);
@@ -132,21 +140,26 @@ public partial class ScriptBank : IScriptBank
 
     public bool EnsureSwap(int invItem, int bankItem, bool loadBank = true)
     {
+        if (!Inventory.TryGetItem(invItem, out InventoryItem? inv) || !Inventory.CanBank(inv!))
+            return false;
         if (loadBank)
             Load();
-        if (!((IScriptBank)this).TryGetItem(bankItem, out InventoryItem? bank) || !Inventory.TryGetItem(invItem, out InventoryItem? inv))
-            return false;
-        if (inv is null || bank is null)
+        if (!((IScriptBank)this).TryGetItem(bankItem, out InventoryItem? bank) || !HasSpaceForSwap(inv!, bank!))
             return false;
         int i = 0;
         while (!Swap(invItem, bankItem) && !Manager.ShouldExit && Player.Playing && ++i < Options.MaximumTries)
             Thread.Sleep(Options.ActionDelay);
 
-        return Inventory.Contains(invItem);
+        return Inventory.Contains(bankItem);
     }
+
+    private bool HasSpaceForSwap(InventoryItem invItem, InventoryItem bankItem) =>
+        Flash.Call<bool>("inventoryHasSpaceFor", JsonConvert.SerializeObject(bankItem), 1, false, JsonConvert.SerializeObject(invItem));
 
     public bool ToInventory(InventoryItem item)
     {
+        if (!Inventory.HasSpaceFor(item))
+            return false;
         Send.Packet($"%xt%zm%bankToInv%{Map.RoomID}%{item.ID}%{item.CharItemID}%");
         Wait.ForBankToInventory(item!.Name);
         return Inventory.Contains(item.ID);
@@ -157,6 +170,8 @@ public partial class ScriptBank : IScriptBank
         if (loadBank)
             Load();
         if (!((IScriptBank)this).TryGetItem(name, out InventoryItem? item))
+            return false;
+        if (!Inventory.HasSpaceFor(item!))
             return false;
         int i = 0;
         while (!((IScriptBank)this).ToInventory(item) && !Manager.ShouldExit && Player.Playing && ++i < Options.MaximumTries)
@@ -170,6 +185,8 @@ public partial class ScriptBank : IScriptBank
         if (loadBank)
             Load();
         if (!((IScriptBank)this).TryGetItem(id, out InventoryItem? item))
+            return false;
+        if (!Inventory.HasSpaceFor(item!))
             return false;
         int i = 0;
         while (!((IScriptBank)this).ToInventory(item) && !Manager.ShouldExit && Player.Playing && ++i < Options.MaximumTries)

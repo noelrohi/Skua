@@ -87,3 +87,29 @@ _Avoid_: alt, bot account
 **Active Account**:
 The account in Keychain that a developer's login uses when it names none, chosen with `skua account`; by default the Test Account. An agent's login uses it only if it was added with `--allow-agents`, and the Test Account otherwise. A login may name another account, such as a Skua Manager account, without making it active.
 _Avoid_: profile, current user
+
+### The player's items
+
+**Inventory**:
+Everything the player holds outside the bank, whichever Space it fills, classes included.
+_Avoid_: bag
+
+**Space**:
+A limited number of slots in the Inventory that certain kinds of item fill, one slot per distinct item however many it stacks. Classes and houses fill no Space.
+_Avoid_: pool, slots (alone), inventory slots
+
+**Bag Space**:
+The Space for gear, pets and consumables; its size is the player's bag size, which they can buy more of.
+_Avoid_: item space, bag
+
+**Misc Space**:
+The 100-slot Space for items, notes, quest items and resources. A consumable is not a misc item even when the game labels it "Item".
+_Avoid_: misc bag, misc slots
+
+**Favorite**:
+An item the player starred in the game to keep it: Scripts don't sell or discard it unless one deliberately allows that, and never bank it to make room. The game keeps Favorites per character on one device, so a star made elsewhere isn't seen.
+_Avoid_: starred item, locked item
+
+**Boosted Gear**:
+Gear that raises the player's damage, against everything or a kind of foe, or the gold, XP, reputation or class points they earn. Banking to make room leaves it alone unless the player opts in.
+_Avoid_: meta gear, boosted weapon (when armor, helms, capes and pets count too)

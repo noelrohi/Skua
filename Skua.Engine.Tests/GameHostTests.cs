@@ -24,6 +24,21 @@ public class GameHostTests
     }
 
     [Fact]
+    public async Task The_Game_Host_keeps_the_games_storage_in_the_Engine_Names_folder()
+    {
+        await using EngineSandbox sandbox = new();
+        FakeGameHost gameHost = new(sandbox);
+        (_, EngineConnection connection) = await sandbox.StartEngineAsync(gameHost.Environment());
+        using (connection)
+        {
+            await gameHost.PidAsync();
+
+            // skua-gamehost creates its --storage folder as it starts, as the fake does.
+            Assert.True(Directory.Exists(Path.Combine(sandbox.SkuaDir, "engines", "game-storage", "default")));
+        }
+    }
+
+    [Fact]
     public async Task Status_reports_the_Game_Host_down_after_it_exits()
     {
         await using EngineSandbox sandbox = new();
