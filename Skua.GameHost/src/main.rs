@@ -12,6 +12,7 @@ mod frame_buffer;
 mod input;
 mod opts;
 mod render;
+mod storage;
 mod xml;
 
 use backends::{
@@ -143,6 +144,7 @@ fn main() {
     let player = builder
         .with_renderer(renderer)
         .with_navigator(navigator)
+        .with_storage(storage::open(opts.storage.as_deref()))
         .with_log(BridgeLog)
         .with_external_interface(Box::new(BridgeExternalInterface {
             panic_on: std::env::var("SKUA_GAMEHOST_PANIC_ON").ok(),
