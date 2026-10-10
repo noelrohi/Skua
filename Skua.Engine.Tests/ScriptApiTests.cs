@@ -303,15 +303,7 @@ public class ScriptApiTests
         await using EngineSandbox sandbox = new();
         await using GameFixture session = await GameFixture.StartAsync(sandbox);
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
-        TestScripts.Write(sandbox, "Tests/Stacks.cs", TestScripts.Main("""
-            bot.AuraMonitor.AuraStackChanged += (name, from, to, subject) => bot.Log($"stacks {subject} {name} {from} {to}");
-            bot.AuraMonitor.EnsureMonitoring(20);
-            bot.Log("monitoring");
-            while (!bot.ShouldExit)
-                Thread.Sleep(50);
-            """));
-        await session.Connection.ScriptStartAsync("Tests/Stacks.cs", cancellationToken: Ct);
-        await session.Connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text == "monitoring");
+        await MonitorAurasAsync(sandbox, session);
 
         await StacksAsync(session, "hud-aura self Fury 1 10", "stacks Self Fury 0 1");
         await StacksAsync(session, "hud-aura self Fury 3 10", "stacks Self Fury 1 3");
@@ -336,16 +328,7 @@ public class ScriptApiTests
         await using EngineSandbox sandbox = new();
         await using GameFixture session = await GameFixture.StartAsync(sandbox);
         await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
-        TestScripts.Write(sandbox, "Tests/Stacks.cs", TestScripts.Main("""
-            bot.AuraMonitor.AuraStackChanged += (name, from, to, subject) => bot.Log($"stacks {subject} {name} {from} {to}");
-            bot.AuraMonitor.AuraDeactivated += (name, subject) => bot.Log($"gone {subject} {name}");
-            bot.AuraMonitor.EnsureMonitoring(20);
-            bot.Log("monitoring");
-            while (!bot.ShouldExit)
-                Thread.Sleep(50);
-            """));
-        await session.Connection.ScriptStartAsync("Tests/Stacks.cs", cancellationToken: Ct);
-        await session.Connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text == "monitoring");
+        await MonitorAurasAsync(sandbox, session);
 
         await session.GameHost.DoAsync("aura self Fury 1");
         await StacksAsync(session, "hud-aura self Fury 3 10", "stacks Self Fury 0 3");
@@ -360,6 +343,24 @@ public class ScriptApiTests
         Assert.Equal(
             ["stacks Self Fury 0 3", "stacks Self Haste 0 1", "stacks Self Fury 3 1", "stacks Self Fury 1 0", "gone Self Fury"],
             lines.Select(e => e.Text));
+    }
+
+    /// <summary>
+    /// Starts a Script that logs the Aura Monitor's AuraStackChanged as <c>stacks &lt;subject&gt; &lt;name&gt; &lt;from&gt; &lt;to&gt;</c> and its
+    /// AuraDeactivated as <c>gone &lt;subject&gt; &lt;name&gt;</c>, and waits until it monitors.
+    /// </summary>
+    private static async Task MonitorAurasAsync(EngineSandbox sandbox, GameFixture session)
+    {
+        TestScripts.Write(sandbox, "Tests/Stacks.cs", TestScripts.Main("""
+            bot.AuraMonitor.AuraStackChanged += (name, from, to, subject) => bot.Log($"stacks {subject} {name} {from} {to}");
+            bot.AuraMonitor.AuraDeactivated += (name, subject) => bot.Log($"gone {subject} {name}");
+            bot.AuraMonitor.EnsureMonitoring(20);
+            bot.Log("monitoring");
+            while (!bot.ShouldExit)
+                Thread.Sleep(50);
+            """));
+        await session.Connection.ScriptStartAsync("Tests/Stacks.cs", cancellationToken: Ct);
+        await session.Connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text == "monitoring");
     }
 
     /// <summary>Runs the fake game's <paramref name="directive"/> and waits for the Script's <paramref name="line"/>.</summary>
