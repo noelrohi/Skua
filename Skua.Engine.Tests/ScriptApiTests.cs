@@ -152,4 +152,84 @@ public class ScriptApiTests
         Assert.Equal(new[] { $"{me} 10 Enter", "artixfan 42 r3" }.Order(), players.Value!.Value.EnumerateArray().Select(e => e.GetString()).Order());
         Assert.Equal(42, artixFan.Value!.Value.GetInt32());
     }
+
+    /// <summary>
+    /// Bot.Inventory asks the game's own rules (client 5.0's InvCat) which Space an item fills and whether it fits (#249): a full Bag Space
+    /// refuses a pet and a consumable, a full Misc Space a new misc item, while a class always fits and a held stack can be topped up.
+    /// </summary>
+    [Fact]
+    public async Task Inventory_tells_Bag_Space_from_Misc_Space_and_what_fits_in_each()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        // Default Sword fills the one bag slot and Treasure Chest (5 of 1000) the one misc slot.
+        await session.GameHost.DoAsync("bag-slots 1");
+        await session.GameHost.DoAsync("misc-slots 1");
+
+        const string Fits = """
+            Skua.Core.Models.Items.ItemBase Item(int id, string category, string meta = null) => new() { ID = id, Name = $"Item {id}", CategoryString = category, Meta = meta, Quantity = 1, MaxStack = 10 };
+            var items = new[] { Item(60, "Pet"), Item(61, "Resource"), Item(3, "Item"), Item(62, "Class"), Item(63, "Item", "5"), Item(64, "Floor Item") };
+            var inv = Bot.Inventory;
+            return $"{inv.UsedSlots}/{inv.Slots} {inv.MiscUsedSlots}/{inv.MiscSlots} " + string.Join(" ", items.Select(i => $"{inv.GetPool(i)}:{inv.HasSpaceFor(i)}"));
+            """;
+        EvalResult full = await session.Connection.EvalAsync(Fits, cancellationToken: Ct);
+        await session.GameHost.DoAsync("misc-slots 2");
+        EvalResult roomier = await session.Connection.EvalAsync(Fits, cancellationToken: Ct);
+
+        Assert.Null(full.Error);
+        Assert.Equal("1/1 1/1 bag:False misc:False misc:True class:True bag:False house:True", full.Value!.Value.GetString());
+        Assert.Equal("1/1 1/2 bag:False misc:True misc:True class:True bag:False house:True", roomier.Value!.Value.GetString());
+    }
+
+    /// <summary>
+    /// A Favorite is read from the game's own store (#249), and Bot.Shops refuses to sell one while ProtectFavorites is on, as the game's shop does.
+    /// </summary>
+    [Fact]
+    public async Task Shops_SellItem_refuses_a_Favorite_unless_ProtectFavorites_is_off()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        await session.GameHost.DoAsync("favorite 3");
+
+        EvalResult protectedSale = await session.Connection.EvalAsync(
+            """var favorites = $"{Bot.Inventory.IsFavorited(3)} {Bot.Inventory.IsFavorited(1)}"; Bot.Shops.SellItem("Treasure Chest"); return favorites;""",
+            cancellationToken: Ct);
+        string[] protectedCalls = await session.GameHost.CallsAsync();
+        EvalResult sale = await session.Connection.EvalAsync("""Bot.Shops.ProtectFavorites = false; Bot.Shops.SellItem("Treasure Chest");""", cancellationToken: Ct);
+        string[] calls = await session.GameHost.CallsAsync();
+
+        Assert.Null(protectedSale.Error);
+        Assert.Equal("True False", protectedSale.Value!.Value.GetString());
+        Assert.DoesNotContain(protectedCalls, c => c.Contains("%sellItem%", StringComparison.Ordinal));
+        Assert.Null(sale.Error);
+        Assert.Single(calls, c => c.StartsWith("send %xt%zm%sellItem%", StringComparison.Ordinal) && c.EndsWith("%3%5%103%", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Stack counts come from the game's HUD auras, the player's own and the target's (#249); without a target there are none.
+    /// </summary>
+    [Fact]
+    public async Task Self_and_Target_read_aura_stacks_from_the_HUD()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        await session.GameHost.DoAsync("hud-aura self Fury 3 10");
+        await session.GameHost.DoAsync("hud-aura 1 Shielded 2 0");
+        await session.GameHost.DoAsync("target 1");
+
+        EvalResult targeted = await session.Connection.EvalAsync(
+            """
+            return $"{Bot.Self.GetAuraStacks("fury")} {Bot.Self.GetAuraStacks("Shielded")} {Bot.Target.GetAuraStacks("Shielded")} {Bot.Self.GetAuraSnapshot("Fury")?.Duration} "
+                + string.Join(",", Bot.Self.Snapshots.Select(a => a.Name));
+            """, cancellationToken: Ct);
+        await session.GameHost.DoAsync("target none");
+        EvalResult untargeted = await session.Connection.EvalAsync("return Bot.Target.Snapshots.Count;", cancellationToken: Ct);
+
+        Assert.Null(targeted.Error);
+        Assert.Equal("3 0 2 10 Fury", targeted.Value!.Value.GetString());
+        Assert.Equal(0, untargeted.Value!.Value.GetInt32());
+    }
 }
