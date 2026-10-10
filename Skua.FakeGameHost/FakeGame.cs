@@ -167,20 +167,20 @@ internal sealed class FakeGame
                 ("rejectExcept", [string whitelist]) => Note($"rejectExcept {whitelist}"),
                 // skua.swf's Inventory API, which asks the game's InvCat; the fake's follows client 5.0's.
                 ("hasInventoryCategories", _) => Str(true),
-                ("inventoryBagUsedSlots", _) => Str(Owned().Count(i => SpaceOf(i) == "bag")),
+                ("inventoryBagUsedSlots", _) => Str(Used("bag")),
                 ("inventoryMiscSlots", _) => Str(_miscSpace),
-                ("inventoryMiscUsedSlots", _) => Str(Owned().Count(i => SpaceOf(i) == "misc")),
+                ("inventoryMiscUsedSlots", _) => Str(Used("misc")),
                 ("inventoryPool", [string item]) => Str(SpaceOf(JsonNode.Parse(item)!.AsObject())),
                 ("inventoryHasSpaceFor", [string item, ..]) => Str(HasSpaceFor(JsonNode.Parse(item)!.AsObject())),
                 // skua.swf's, from the game's FavStore: whether the player starred the item.
                 ("isFavoriteItem", [string id]) => Str(_favorites.Contains(int.Parse(id))),
                 // skua.swf's: the HUD auras of the player, or of the monster it targets, in the order they came.
                 ("GetAuraSnapshots", [string subject]) =>
-                    Str(new JsonArray([.. HudAuras(subject == "Self" ? "self" : _target?.ToString()).Select(a => a.DeepClone())]).ToJsonString()),
+                    AurasReply(HudAuras(subject == "Self" ? "self" : _target?.ToString())),
                 // skua.swf's: the auras of a player, only the player's own in the fake, or of a monster by its map ID.
                 ("GetPlayerAura", [string player]) =>
-                    Str(new JsonArray([.. Auras(player == _username.ToLowerInvariant() ? "self" : null).Select(a => a.DeepClone())]).ToJsonString()),
-                ("GetMonsterAuraByID", [string id]) => Str(new JsonArray([.. Auras(id).Select(a => a.DeepClone())]).ToJsonString()),
+                    AurasReply(Auras(player == _username.ToLowerInvariant() ? "self" : null)),
+                ("GetMonsterAuraByID", [string id]) => AurasReply(Auras(id)),
                 // skua.swf's: none for a shop item, which needs nothing in the fake; else that it isn't in the loaded shop.
                 ("getUnmetPurchaseRequirements", [string id, string shopItemId, ..]) =>
                     Str(_shopId is not null && _shopItems.Any(i => (int)i["ItemID"]! == int.Parse(id) && (int)i["ShopItemID"]! == int.Parse(shopItemId))
@@ -971,11 +971,19 @@ internal sealed class FakeGame
     /// <summary>The items the inventory holds as far as the game knows: none until it has arrived.</summary>
     private List<JsonObject> Owned() => InventoryLoaded ? _inventory : [];
 
-    private List<JsonObject> Auras(string? subject) =>
-        subject is null ? [] : _auras.TryGetValue(subject, out List<JsonObject>? auras) ? auras : _auras[subject] = [];
+    /// <summary>How many slots of the Space (<c>bag</c> or <c>misc</c>) the items the game knows of fill.</summary>
+    private int Used(string space) => Owned().Count(i => SpaceOf(i) == space);
 
-    private List<JsonObject> HudAuras(string? subject) =>
-        subject is null ? [] : _hudAuras.TryGetValue(subject, out List<JsonObject>? auras) ? auras : _hudAuras[subject] = [];
+    private List<JsonObject> Auras(string? subject) => Of(_auras, subject);
+
+    private List<JsonObject> HudAuras(string? subject) => Of(_hudAuras, subject);
+
+    /// <summary>The subject's auras, none for no subject.</summary>
+    private static List<JsonObject> Of(Dictionary<string, List<JsonObject>> bySubject, string? subject) =>
+        subject is null ? [] : bySubject.TryGetValue(subject, out List<JsonObject>? auras) ? auras : bySubject[subject] = [];
+
+    /// <summary>The auras as skua.swf's aura calls return them, a JSON array.</summary>
+    private static string AurasReply(List<JsonObject> auras) => Str(new JsonArray([.. auras.Select(a => a.DeepClone())]).ToJsonString());
 
     /// <summary>
     /// Whether the item fits, by the game's <c>InvCat.isFullFor</c>: a class always does, as does one that tops up a stack the player holds;
@@ -992,8 +1000,8 @@ internal sealed class FakeGame
         if (held is not null && (int)held["iQty"]! < (int)held["iStk"]!)
             return true;
         return space == "misc"
-            ? held is not null || Owned().Count(i => SpaceOf(i) == "misc") < _miscSpace
-            : Owned().Count(i => SpaceOf(i) == "bag") < _bagSpace;
+            ? held is not null || Used("misc") < _miscSpace
+            : Used("bag") < _bagSpace;
     }
 
     /// <summary>
