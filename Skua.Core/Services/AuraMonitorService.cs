@@ -15,6 +15,8 @@ public class AuraMonitorService : IAuraMonitorService, IDisposable, IAsyncDispos
     private readonly Timer _pollTimer;
     private readonly ConcurrentDictionary<string, AuraState> _selfAuraStates = new();
     private readonly ConcurrentDictionary<string, AuraState> _targetAuraStates = new();
+    private readonly ConcurrentDictionary<string, int> _selfAuraStacks = new();
+    private readonly ConcurrentDictionary<string, int> _targetAuraStacks = new();
     private readonly object _lockObject = new();
     private bool _disposed;
 
@@ -67,6 +69,8 @@ public class AuraMonitorService : IAuraMonitorService, IDisposable, IAsyncDispos
                     _pollTimer.Change(Timeout.Infinite, Timeout.Infinite);
                     _selfAuraStates.Clear();
                     _targetAuraStates.Clear();
+                    _selfAuraStacks.Clear();
+                    _targetAuraStacks.Clear();
                     break;
             }
         }
@@ -108,16 +112,22 @@ public class AuraMonitorService : IAuraMonitorService, IDisposable, IAsyncDispos
 
         try
         {
-            CheckAuras(_selfAuras.Auras, _selfAuraStates, SubjectType.Self);
+            CheckStacks(_selfAuras.Snapshots, _selfAuraStacks, SubjectType.Self);
+            CheckAuras(_selfAuras.Auras, _selfAuraStates, _selfAuraStacks, SubjectType.Self);
 
-            CheckAuras(_targetAuras.Auras, _targetAuraStates, SubjectType.Target);
+            CheckStacks(_targetAuras.Snapshots, _targetAuraStacks, SubjectType.Target);
+            CheckAuras(_targetAuras.Auras, _targetAuraStates, _targetAuraStacks, SubjectType.Target);
         }
         catch
         {
         }
     }
 
-    private void CheckAuras(List<Aura>? currentAuras, ConcurrentDictionary<string, AuraState> stateDict, SubjectType subject)
+    /// <summary>
+    /// Raises <see cref="AuraActivated"/> and <see cref="AuraDeactivated"/> as auras come and go. An aura that still has stacks on the HUD
+    /// isn't gone, though the game takes it out of its auras when it loses some.
+    /// </summary>
+    private void CheckAuras(List<Aura>? currentAuras, ConcurrentDictionary<string, AuraState> stateDict, ConcurrentDictionary<string, int> stackDict, SubjectType subject)
     {
         if (currentAuras == null) return;
 
@@ -129,19 +139,7 @@ public class AuraMonitorService : IAuraMonitorService, IDisposable, IAsyncDispos
 
             float stackValue = aura.Value;
 
-            if (stateDict.TryGetValue(aura.Name, out AuraState? existingState))
-            {
-                if (existingState.StackValue == stackValue)
-                {
-                    continue;
-                }
-
-                float oldValue = existingState.StackValue;
-                existingState.StackValue = stackValue;
-
-                AuraStackChanged?.Invoke(aura.Name, oldValue, stackValue, subject);
-            }
-            else
+            if (!stateDict.ContainsKey(aura.Name))
             {
                 AuraState newState = new()
                 {
@@ -167,7 +165,7 @@ public class AuraMonitorService : IAuraMonitorService, IDisposable, IAsyncDispos
         List<string> keysToRemove = new();
         foreach (KeyValuePair<string, AuraState> kvp in stateDict)
         {
-            if (!currentAuraNames.Contains(kvp.Key))
+            if (!currentAuraNames.Contains(kvp.Key) && !stackDict.ContainsKey(kvp.Key))
                 keysToRemove.Add(kvp.Key);
         }
 
@@ -176,6 +174,35 @@ public class AuraMonitorService : IAuraMonitorService, IDisposable, IAsyncDispos
             if (stateDict.TryRemove(key, out AuraState? removedState))
             {
                 AuraDeactivated?.Invoke(removedState.Name, subject);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Raises <see cref="AuraStackChanged"/> for each aura whose HUD stack count changed since the last poll.
+    /// An aura that comes counts from 0 and one that goes counts to 0, as <see cref="IScriptAuras.GetAuraStacks"/> reads them.
+    /// </summary>
+    private void CheckStacks(List<AuraSnapshot>? snapshots, ConcurrentDictionary<string, int> stackDict, SubjectType subject)
+    {
+        if (snapshots == null) return;
+
+        foreach (AuraSnapshot snapshot in snapshots)
+        {
+            if (string.IsNullOrEmpty(snapshot.Name)) continue;
+
+            int oldStacks = stackDict.TryGetValue(snapshot.Name, out int stacks) ? stacks : 0;
+            if (oldStacks == snapshot.Stacks) continue;
+
+            stackDict[snapshot.Name] = snapshot.Stacks;
+            AuraStackChanged?.Invoke(snapshot.Name, oldStacks, snapshot.Stacks, subject);
+        }
+
+        HashSet<string> currentNames = new(snapshots.Select(s => s.Name));
+        foreach (string name in stackDict.Keys.Where(n => !currentNames.Contains(n)).ToList())
+        {
+            if (stackDict.TryRemove(name, out int oldStacks))
+            {
+                AuraStackChanged?.Invoke(name, oldStacks, 0, subject);
             }
         }
     }
@@ -189,6 +216,8 @@ public class AuraMonitorService : IAuraMonitorService, IDisposable, IAsyncDispos
         _pollTimer?.Dispose();
         _selfAuraStates.Clear();
         _targetAuraStates.Clear();
+        _selfAuraStacks.Clear();
+        _targetAuraStacks.Clear();
         GC.SuppressFinalize(this);
     }
 
