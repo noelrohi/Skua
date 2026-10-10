@@ -24,9 +24,19 @@ public sealed record GameHostLaunch(string Executable, string Swf)
     /// <summary>Whether the Game Host gets a Frame Buffer for the Game View: in the Mac App, never in <c>skua-engine</c>.</summary>
     public bool WantsFrameBuffer { get; init; }
 
-    /// <summary>The Game Host's arguments, with the Frame Buffer's name when it has one.</summary>
+    /// <summary>
+    /// The folder where the Game Host keeps the game's local SharedObjects (its Favorites and options) across restarts: the Engine Name's
+    /// own (ADR 0008). Without one they live in memory and are lost when the Game Host exits.
+    /// </summary>
+    public string? StorageDir { get; init; }
+
+    /// <summary>The Game Host's arguments, with the storage folder and the Frame Buffer's name when it has them.</summary>
     public IReadOnlyList<string> Arguments(string? frameBufferName = null) =>
-        frameBufferName is null ? [Swf] : [$"--frame-buffer={frameBufferName}", Swf];
+    [
+        .. StorageDir is null ? [] : new[] { $"--storage={StorageDir}" },
+        .. frameBufferName is null ? [] : new[] { $"--frame-buffer={frameBufferName}" },
+        Swf,
+    ];
 
     /// <summary>
     /// Resolves both files next to <paramref name="baseDirectory"/> (the flat output layout), unless <c>SKUA_GAMEHOST</c>
