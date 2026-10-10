@@ -232,4 +232,44 @@ public class ScriptApiTests
         Assert.Equal("3 0 2 10 Fury", targeted.Value!.Value.GetString());
         Assert.Equal(0, untargeted.Value!.Value.GetInt32());
     }
+
+    /// <summary>
+    /// AuraStackChanged reports the HUD stack counts that GetAuraStacks reads (#252), the player's and the target's, from 0 when an aura comes
+    /// and to 0 when it goes; losing some stacks reports the stacks left.
+    /// </summary>
+    [Fact]
+    public async Task AuraStackChanged_reports_the_HUD_stack_counts()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        TestScripts.Write(sandbox, "Tests/Stacks.cs", TestScripts.Main("""
+            bot.AuraMonitor.AuraStackChanged += (name, from, to, subject) => bot.Log($"stacks {subject} {name} {from} {to}");
+            bot.AuraMonitor.EnsureMonitoring(20);
+            bot.Log("monitoring");
+            while (!bot.ShouldExit)
+                Thread.Sleep(50);
+            """));
+        await session.Connection.ScriptStartAsync("Tests/Stacks.cs", cancellationToken: Ct);
+        await session.Connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text == "monitoring");
+
+        await StacksAsync(session, "hud-aura self Fury 1 10", "stacks Self Fury 0 1");
+        await StacksAsync(session, "hud-aura self Fury 3 10", "stacks Self Fury 1 3");
+        await StacksAsync(session, "hud-aura self Fury 1 10", "stacks Self Fury 3 1");
+        await session.GameHost.DoAsync("target 1");
+        await StacksAsync(session, "hud-aura 1 Shielded 2 0", "stacks Target Shielded 0 2");
+        await StacksAsync(session, "hud-aura self Fury 0 0", "stacks Self Fury 1 0");
+
+        List<LogEntryDto> stacks = await session.Connection.WaitForLogsAsync(LogKind.Script, 5, e => e.Text!.StartsWith("stacks ", StringComparison.Ordinal));
+        Assert.Equal(
+            ["stacks Self Fury 0 1", "stacks Self Fury 1 3", "stacks Self Fury 3 1", "stacks Target Shielded 0 2", "stacks Self Fury 1 0"],
+            stacks.Select(e => e.Text));
+    }
+
+    /// <summary>Runs the fake game's <paramref name="directive"/> and waits for the Script's <paramref name="line"/>.</summary>
+    private static async Task StacksAsync(GameFixture session, string directive, string line)
+    {
+        await session.GameHost.DoAsync(directive);
+        await session.Connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Text == line);
+    }
 }

@@ -278,14 +278,16 @@ internal sealed class FakeGame
                     _bagSlots = int.Parse(slots);
                     return true;
                 case ["hud-aura", string rest] when rest.Split(' ') is [string subject, string name, string stacks, string duration]:
-                    // An aura on the player's HUD (subject self) or a monster's (its map ID), with its stack count and duration in seconds (0 for none).
+                    // An aura on the player's HUD (subject self) or a monster's (its map ID), with its stack count and duration in seconds (0 for none);
+                    // with 0 stacks it leaves the HUD, as the game deletes one that loses its last stack.
                     List<JsonObject> auras = HudAuras(subject);
                     auras.RemoveAll(a => (string)a["nam"]! == name);
-                    auras.Add(new JsonObject
-                    {
-                        ["nam"] = name, ["n"] = int.Parse(stacks), ["dur"] = int.Parse(duration), ["remaining"] = int.Parse(duration), ["persist"] = false,
-                        ["icon"] = "", ["desc"] = "",
-                    });
+                    if (int.Parse(stacks) > 0)
+                        auras.Add(new JsonObject
+                        {
+                            ["nam"] = name, ["n"] = int.Parse(stacks), ["dur"] = int.Parse(duration), ["remaining"] = int.Parse(duration), ["persist"] = false,
+                            ["icon"] = "", ["desc"] = "",
+                        });
                     return true;
                 case ["favorite", string id]:
                     _favorites.Add(int.Parse(id));
