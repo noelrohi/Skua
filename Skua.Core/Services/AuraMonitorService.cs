@@ -39,7 +39,7 @@ public class AuraMonitorService : IAuraMonitorService, IDisposable, IAsyncDispos
     /// <summary>What the last poll saw of a subject's auras.</summary>
     private sealed class SeenAuras
     {
-        /// <summary>The map ID of the monster the auras are of, 0 for none, or null before the first poll; the player's are never a monster's.</summary>
+        /// <summary>The map ID of the monster the auras are of, 0 for none, or null before the first poll; unused for the player's.</summary>
         public int? Monster { get; set; }
 
         /// <summary>The names of the auras that are active.</summary>

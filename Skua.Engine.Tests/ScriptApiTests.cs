@@ -392,7 +392,8 @@ public class ScriptApiTests
     }
 
     /// <summary>
-    /// Waits until the Aura Monitor has polled twice since now, by putting <paramref name="stacks"/> stacks of Mark on the player's HUD and then one more.
+    /// Waits until the Aura Monitor has polled twice since now, by putting <paramref name="stacks"/> stacks of Mark on the player's HUD and then
+    /// one more.
     /// </summary>
     private static async Task PolledAsync(GameFixture session, int stacks)
     {
@@ -400,7 +401,9 @@ public class ScriptApiTests
         await StacksAsync(session, $"hud-aura self Mark {stacks + 1} 0", $"stacks Self Mark {stacks} {stacks + 1}");
     }
 
-    /// <summary>The Script's stacks and gone lines, but for the Mark ones <see cref="PolledAsync"/> puts on, once there are <paramref name="count"/>.</summary>
+    /// <summary>
+    /// The Script's stacks and gone lines, but for the Mark ones <see cref="PolledAsync"/> puts on, once there are <paramref name="count"/>.
+    /// </summary>
     private static async Task<IEnumerable<string?>> AuraLinesAsync(GameFixture session, int count) =>
         (await session.Connection.WaitForLogsAsync(LogKind.Script, count,
             e => (e.Text!.StartsWith("stacks ", StringComparison.Ordinal) || e.Text.StartsWith("gone ", StringComparison.Ordinal))
