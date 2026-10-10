@@ -29,14 +29,6 @@ public class Inventory {
         return cat == null ? 0 : cat.countMisc(Main.instance.game.world.myAvatar.items);
     }
 
-    public static function inventoryClassUsedSlots():int {
-        var count:int = 0;
-        for each (var item:* in Main.instance.game.world.myAvatar.items) {
-            if (item.sType == "Class") count++;
-        }
-        return count;
-    }
-
     public static function inventoryPool(itemJson:String):String {
         var cat:* = categories();
         return cat == null ? "bag" : cat.poolOf(JSON.parse(itemJson));
