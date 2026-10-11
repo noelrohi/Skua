@@ -103,7 +103,7 @@ The Space for gear, pets and consumables; its size is the player's bag size, whi
 _Avoid_: item space, bag
 
 **Misc Space**:
-The 100-slot Space for items, notes, quest items and resources. A consumable is not a misc item even when the game labels it "Item".
+The Space for items, notes, quest items and resources, as many slots as Bag Space has. A consumable is not a misc item even when the game labels it "Item".
 _Avoid_: misc bag, misc slots
 
 **Favorite**:
