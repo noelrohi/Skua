@@ -24,12 +24,16 @@ internal sealed class GameHostSupervisor : IDisposable
     private readonly BridgeFlashUtil _flash;
     private readonly GameStateTracker _tracker;
     private readonly RespawnWatch _respawn;
+    private readonly GameSwfVersion _gameSwf;
     private readonly Timer? _stats;
 
-    private GameHostSupervisor(BridgeFlashUtil flash, GameStateTracker tracker, QuestTurnIns turnIns, QuestTraffic questTraffic, RespawnWatch respawn, EngineLogs logs)
+    private GameHostSupervisor(
+        BridgeFlashUtil flash, GameStateTracker tracker, QuestTurnIns turnIns, QuestTraffic questTraffic, RespawnWatch respawn, GameSwfVersion gameSwf,
+        EngineLogs logs)
     {
         _flash = flash;
         _tracker = tracker;
+        _gameSwf = gameSwf;
         TurnIns = turnIns;
         QuestTraffic = questTraffic;
         _respawn = respawn;
@@ -72,6 +76,7 @@ internal sealed class GameHostSupervisor : IDisposable
             services.GetRequiredService<IScriptMap>(), services.GetRequiredService<IScriptSend>(), tracker);
 
         BridgeFlashUtil flash = services.GetRequiredService<BridgeFlashUtil>();
+        GameSwfVersion gameSwf = new(flash, logs);
         GameHostLaunch launch = services.GetRequiredService<GameHostLaunch>();
         flash.GameHostStarted += pid =>
         {
@@ -83,6 +88,7 @@ internal sealed class GameHostSupervisor : IDisposable
         {
             logs.Event(EventTypes.GameHostExited, new { code });
             EngineLog.Write($"Game Host exited with code {code}.");
+            gameSwf.Clear();
             tracker.GameHostExited();
         };
         flash.GameHostLog += line => logs.Write(LogKind.Debug, $"[gamehost] {line}");
@@ -98,12 +104,14 @@ internal sealed class GameHostSupervisor : IDisposable
                     break;
                 case "loaded":
                     EngineLog.Write($"The Game Client has loaded; {flash.Callbacks.Count} callbacks registered.");
+                    // Before game.loaded, so status names the Game SWF once the game is at the login screen.
+                    gameSwf.Read();
                     tracker.Loaded();
                     break;
             }
         };
         flash.InitializeFlash();
-        return new GameHostSupervisor(flash, tracker, turnIns, questTraffic, respawn, logs);
+        return new GameHostSupervisor(flash, tracker, turnIns, questTraffic, respawn, gameSwf, logs);
     }
 
     /// <summary>
@@ -123,7 +131,7 @@ internal sealed class GameHostSupervisor : IDisposable
         }
     }
 
-    public GameStatusDto Status() => new(_flash.IsGameHostRunning, _tracker.State, _tracker.Server);
+    public GameStatusDto Status() => new(_flash.IsGameHostRunning, _tracker.State, _tracker.Server, GameSwf: _gameSwf.Loaded);
 
     /// <summary>Closes the Game Host and stops tracking the game. Safe to call more than once.</summary>
     public void Dispose()

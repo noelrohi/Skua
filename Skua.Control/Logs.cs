@@ -81,6 +81,14 @@ public static class EventTypes
     /// <summary>The Game Client has loaded and shows the login screen: <c>{}</c>.</summary>
     public const string GameLoaded = "game.loaded";
 
+    /// <summary>
+    /// The Game SWF the Game Client loaded: <c>{file, version, title}</c>, from the game's gameversion data (<c>sFile</c>, such as
+    /// <c>Game4000r2.swf</c>, <c>sVersion</c>, such as <c>R0048</c>, and <c>sTitle</c>). Recorded each time the Game Client loads, just before
+    /// <see cref="GameLoaded"/>; <c>status</c> reports the same Game SWF. A new file is a new Game SWF, whose changes can break what Skua reads
+    /// of the game.
+    /// </summary>
+    public const string GameVersion = "game.version";
+
     /// <summary>The game state changed: <c>{from, to}</c>, each a <see cref="GameState"/>; <c>status</c> reports the same state.</summary>
     public const string GameState = "game.state";
 

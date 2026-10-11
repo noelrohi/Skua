@@ -10,6 +10,10 @@ Skua is a third-party client for AdventureQuest Worlds that plays the game on a 
 Skua's own SWF together with the AQW game it loads; the thing that actually plays.
 _Avoid_: SWF, flash, client (alone)
 
+**Game SWF**:
+AQW's own game file that the Game Client loads, the one the game's gameversion data names (`Game4000r2.swf`); AQW replaces it without notice, and a new one can change what Skua reads of the game. The `game.version` event records the one loaded, with the game's `sVersion` (`R0048`); the SWF's own version string is its `Game.vParam` (`5.1`).
+_Avoid_: game client, AQW client, client version
+
 **Game Host**:
 The runtime that executes the Game Client.
 _Avoid_: Flash player, player, container

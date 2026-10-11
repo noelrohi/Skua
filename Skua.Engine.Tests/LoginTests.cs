@@ -60,7 +60,7 @@ public class LoginTests
             Assert.Equal(GameState.Playing, status.Game.State);
             Assert.Equal("Galanoth", status.Game.Server);
             Assert.Equal(
-                [EventTypes.GameLoaded, "notStarted→loginScreen", "loginScreen→loggingIn", "loggingIn→playing"],
+                [EventTypes.GameVersion, EventTypes.GameLoaded, "notStarted→loginScreen", "loginScreen→loggingIn", "loggingIn→playing"],
                 (await GameEvents.AllAsync(connection)).Select(GameEvents.Describe));
         }
     }
@@ -93,7 +93,7 @@ public class LoginTests
         Assert.Equal(new LoginResult("Sir Ver", false, "SkuaTester", IsTestAccount: true), other);
         Assert.Equal(("Sir Ver", GameState.Playing), (status.Game.Server, status.Game.State));
         Assert.Equal(
-            [EventTypes.GameLoaded, "notStarted→loginScreen", "loginScreen→loggingIn", "loggingIn→playing", "playing→loggingIn", "loggingIn→playing"],
+            [EventTypes.GameVersion, EventTypes.GameLoaded, "notStarted→loginScreen", "loginScreen→loggingIn", "loggingIn→playing", "playing→loggingIn", "loggingIn→playing"],
             (await GameEvents.AllAsync(session.Connection)).Select(GameEvents.Describe));
         // Each login reads the account afresh, since 'skua account' may have changed it.
         Assert.Equal(2, session.Keychain.Reads);
@@ -239,7 +239,7 @@ public class LoginTests
         Assert.False(again.WasLoggedIn);
         Assert.Equal((GameState.LoginScreen, null), (status.Game.State, status.Game.Server));
         Assert.Equal(
-            [EventTypes.GameLoaded, "notStarted→loginScreen", "loginScreen→loggingIn", "loggingIn→playing", "game.disconnected logout", "playing→loginScreen"],
+            [EventTypes.GameVersion, EventTypes.GameLoaded, "notStarted→loginScreen", "loginScreen→loggingIn", "loggingIn→playing", "game.disconnected logout", "playing→loginScreen"],
             (await GameEvents.AllAsync(session.Connection)).Select(GameEvents.Describe));
     }
 

@@ -1,0 +1,38 @@
+#!/bin/sh
+# Says when AQW ships a new Game SWF (its own game file, which the Game Client loads), which can change what Skua reads of the game:
+# Game4000r2.swf, which replaced Game4000r1.swf, dropped InvCat.MISC_SLOTS, and Misc Space read 0 until someone noticed.
+# docs/game-swf-updates.md has the routine for checking a new Game SWF.
+#
+# To use it, copy it into the data folder's hooks and run the Hook Runner (see BUILD.md, Hooks):
+#   cp docs/hooks/game.version "$SKUA_DIR/hooks/" && chmod +x "$SKUA_DIR/hooks/game.version" && skua hooks
+#
+# Each Engine records game.version as its Game Client loads. The Hook keeps the last Game SWF seen in <SkuaDIR>/game-swf.last: the
+# first event only records it, and a different file later prints the change and shows a notification. Engines loading the same Game SWF
+# after that stay quiet. The read and the write of that file aren't one step, so Engines that load a new Game SWF at the same moment can
+# each say so; the write itself is atomic, so the file always holds a whole name.
+
+event=$(cat)
+field() { printf '%s' "$event" | plutil -extract "$1" raw -o - - 2>/dev/null; }
+file=$(field data.file)
+version=$(field data.version)
+last_file="${SKUA_DIR:-.}/game-swf.last"
+last=$(cat "$last_file" 2>/dev/null)
+
+if [ -z "$file" ]; then
+    echo "$SKUA_ENGINE_NAME loaded a Game SWF the event doesn't name."
+    exit 0
+fi
+if [ "$file" = "$last" ]; then
+    echo "$SKUA_ENGINE_NAME loaded $file ($version), as before."
+    exit 0
+fi
+tmp="$last_file.$$"
+printf '%s\n' "$file" > "$tmp" && mv -f "$tmp" "$last_file"
+if [ -z "$last" ]; then
+    echo "$SKUA_ENGINE_NAME loaded $file ($version); remembering it."
+    exit 0
+fi
+msg="$file ($version) replaced $last: check what Skua reads of the game"
+echo "AQW has a new Game SWF: $file ($version), after $last. Check it with docs/game-swf-updates.md."
+# The message goes in as an argument, not as AppleScript source.
+osascript -e 'on run a' -e 'display notification (item 1 of a) with title "Skua: new AQW Game SWF"' -e 'end run' "$msg"

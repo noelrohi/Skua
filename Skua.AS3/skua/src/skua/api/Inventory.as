@@ -19,7 +19,7 @@ public class Inventory {
         return cat == null ? items.length : cat.countBag(items);
     }
 
-    // Client 5.0 (Game4000r1) kept the Misc Space size in InvCat.MISC_SLOTS; client 5.1 (r2) dropped it and sizes Misc Space as the bag.
+    // The 5.01 Game SWF (Game4000r1) kept the Misc Space size in InvCat.MISC_SLOTS; 5.1 (r2) dropped it and sizes Misc Space as the bag.
     public static function inventoryMiscSlots():int {
         var cat:* = categories();
         if (cat == null) return 0;
