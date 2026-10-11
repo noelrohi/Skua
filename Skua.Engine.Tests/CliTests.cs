@@ -804,7 +804,29 @@ public class CliTests
         Assert.Contains("ultra.attempt", section);
         Assert.Contains("skua scripts source noelrohi/Scripts@<branch>", section);
         Assert.Contains("skua scripts source --default", section);
+        Assert.Contains("login <server>", section);
         Assert.Contains("alt1", section);
+    }
+
+    [Fact]
+    public async Task Every_eval_the_skill_shows_compiles()
+    {
+        string skill = await File.ReadAllTextAsync(SkillPath(), TestContext.Current.CancellationToken);
+        string[] snippets =
+        [
+            .. Regex.Matches(skill, @"```csharp\n(.*?)\n *```", RegexOptions.Singleline).Select(m => m.Groups[1].Value),
+            .. Regex.Matches(skill, @"<<'EOF'\n(.*?)\n *EOF", RegexOptions.Singleline).Select(m => m.Groups[1].Value),
+        ];
+        await using EngineSandbox sandbox = new();
+        await using GameFixture game = await GameFixture.StartAsync(sandbox);
+
+        Assert.True(snippets.Length >= 3, $"Found only {snippets.Length} evals in the skill.");
+        foreach (string snippet in snippets)
+        {
+            // The fake game has no such quests, so a snippet may fail as it runs; only a compile failure fails the test.
+            ControlException? e = await Record.ExceptionAsync(() => game.Connection.EvalAsync(snippet, 5, TestContext.Current.CancellationToken)) as ControlException;
+            Assert.True(e?.Code != ErrorCode.CompileFailed, $"{snippet}\n{string.Join('\n', e?.Diagnostics ?? [])}");
+        }
     }
 
     [Fact]
