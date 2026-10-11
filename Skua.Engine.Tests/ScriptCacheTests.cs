@@ -21,7 +21,7 @@ public class ScriptCacheTests
         await using EngineSandbox sandbox = new();
         await using FakeGitHub github = new();
         github.Commit("noelrohi", "Scripts", "Skua", Version(0));
-        EngineEndpoint[] endpoints = [.. Enumerable.Range(1, 4).Select(i => EngineEndpoint.Resolve($"party{i}", sandbox.SkuaDir))];
+        EngineEndpoint[] endpoints = [.. Enumerable.Range(1, 4).Select(i => EngineEndpoint.Resolve($"alt{i}", sandbox.SkuaDir))];
         List<EngineConnection> connections = [];
         try
         {
@@ -88,7 +88,7 @@ public class ScriptCacheTests
             }
             """, "Party", "A party Script.");
         github.Commit("noelrohi", "Scripts", "Skua", Core(1), step, main);
-        EngineEndpoint endpoint = EngineEndpoint.Resolve("party1", sandbox.SkuaDir);
+        EngineEndpoint endpoint = EngineEndpoint.Resolve("alt1", sandbox.SkuaDir);
         using EngineConnection connection = await StartEngineAsync(sandbox, github, endpoint);
         try
         {
@@ -113,6 +113,57 @@ public class ScriptCacheTests
                 public const int Count = {{count}};
             }
             """);
+    }
+
+    /// <summary>
+    /// The Script's entry is keyed on the includes it compiled against, not on the include files as they are by then: another Engine's update
+    /// can replace one between the includes' compile and the Script's key, and a key read from the files would then name a Script compiled
+    /// against the old include. Here the replaced include keeps its old date, so only its contents say it changed.
+    /// </summary>
+    [Fact]
+    public async Task The_Script_recompiles_when_an_include_it_compiled_against_changes_whatever_the_files_dates()
+    {
+        await using EngineSandbox sandbox = new();
+        await using FakeGitHub github = new();
+        string core = TestScripts.Write(sandbox, "Party/Core.cs", Core(1));
+        TestScripts.Write(sandbox, "Party/Main.cs", """
+            //cs_include Scripts/Party/Core.cs
+            using System.Collections.Generic;
+            using Skua.Core.Interfaces;
+            using Skua.Core.Options;
+
+            public class PartyScript
+            {
+                // A constant is compiled into the Script that reads it, so a stale Script entry would still say 1.
+                public List<IOption> Options = new() { new Option<int>("count", "Count", "", PartyCore.Count) };
+
+                public void ScriptMain(IScriptInterface bot) { }
+            }
+            """);
+        EngineEndpoint endpoint = EngineEndpoint.Resolve("alt1", sandbox.SkuaDir);
+        using EngineConnection connection = await StartEngineAsync(sandbox, github, endpoint);
+        try
+        {
+            ScriptOptionsResult before = await connection.ScriptOptionsAsync("Party/Main.cs", Ct);
+            DateTime written = File.GetLastWriteTimeUtc(core);
+            TestScripts.Write(sandbox, "Party/Core.cs", Core(2));
+            File.SetLastWriteTimeUtc(core, written);
+            ScriptOptionsResult after = await connection.ScriptOptionsAsync("Party/Main.cs", Ct);
+
+            Assert.Equal("1", Assert.Single(before.Options).Default);
+            Assert.Equal("2", Assert.Single(after.Options).Default);
+        }
+        finally
+        {
+            await EngineClient.StopAsync(endpoint, EngineSandbox.StopTimeout);
+        }
+
+        static string Core(int count) => $$"""
+            public class PartyCore
+            {
+                public const int Count = {{count}};
+            }
+            """;
     }
 
     /// <summary>A Script with a chain of includes over a shared core, like a party Script over CoreBots, each file marked with its version.</summary>

@@ -388,16 +388,7 @@ public partial class ScriptManager : ObservableObject, IScriptManager, IDisposab
 
             references.UnionWith(compiledIncludes);
 
-            int cacheHash;
-            _includedFilesLock.EnterReadLock();
-            try
-            {
-                cacheHash = ComputeCacheHash(final, new List<string>(_includedFiles));
-            }
-            finally
-            {
-                _includedFilesLock.ExitReadLock();
-            }
+            int cacheHash = ComputeCacheHash(final, compiledIncludes);
             CompiledScript = final;
             string scriptName = Path.GetFileNameWithoutExtension(LoadedScript);
 
@@ -707,19 +698,16 @@ public partial class ScriptManager : ObservableObject, IScriptManager, IDisposab
         }
     }
 
-    private static int ComputeCacheHash(string source, List<string> includedFiles)
+    /// <param name="compiledIncludes">The include entries the Script compiles against, whose names hold their keys.</param>
+    /// <remarks>
+    /// Keyed on what the Script was compiled against, never on the include files as they are now: another Engine's update may replace one
+    /// between the includes' compile and this.
+    /// </remarks>
+    private static int ComputeCacheHash(string source, List<string> compiledIncludes)
     {
         List<byte[]> parts = [SHA256.HashData(Encoding.UTF8.GetBytes(source))];
-
-        foreach (string file in includedFiles.OrderBy(f => f))
-        {
-            if (File.Exists(file))
-            {
-                parts.Add(Encoding.UTF8.GetBytes(file));
-                parts.Add(BitConverter.GetBytes(File.GetLastWriteTimeUtc(file).Ticks));
-            }
-        }
-
+        foreach (string include in compiledIncludes.Select(Path.GetFileName).Order(StringComparer.Ordinal))
+            parts.Add(Encoding.UTF8.GetBytes(include + "\n"));
         return ScriptCompileCache.Key(parts);
     }
 
@@ -873,6 +861,11 @@ public partial class ScriptManager : ObservableObject, IScriptManager, IDisposab
             string includeSource = File.ReadAllText(newFile);
             CheckScriptVersionRequirement(includeSource);
             sources[newFile] = (includeSource, SHA256.HashData(Encoding.UTF8.GetBytes(includeSource)));
+            // Its own includes go into its key, as the first ones' do.
+            dependencyGraph[newFile] = ExtractIncludeDependencies(includeSource)
+                .Select(dep => filenameLookup.TryGetValue(Path.GetFileName(dep), out string? matchingFile) ? matchingFile : dep)
+                .Where(allReferencedFiles.Contains)
+                .ToList();
         }
 
         // An include compiles against the ones it includes, so its entry's key covers theirs too: a changed CoreBots recompiles every include over it.
@@ -993,7 +986,7 @@ public partial class ScriptManager : ObservableObject, IScriptManager, IDisposab
     /// <returns>False for a miss, or an entry that doesn't load, which compiling replaces.</returns>
     private static bool TryLoadCachedInclude(string compiledPath, ScriptLoadContext loadContext)
     {
-        if (!Compiler.IsValidAssembly(compiledPath))
+        if (!ScriptCompileCache.IsValidAssembly(compiledPath))
             return false;
         try
         {

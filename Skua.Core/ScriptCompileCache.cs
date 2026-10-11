@@ -14,13 +14,13 @@ namespace Skua.Core;
 /// <remarks>
 /// An entry's name holds a key over everything it was compiled from, so a changed source, include or Skua build makes a new entry rather
 /// than invalidating one. Entries are written whole, through a temp file and a rename, so a reader never sees half of one. Only the cleanup
-/// deletes entries, and only while no process compiles: a compile holds the lock file shared, the cleanup holds it exclusively.
+/// deletes entries, and only while no process compiles: a compile holds the lock file shared, the cleanup holds it exclusively (ADR 0009).
 /// </remarks>
 public static class ScriptCompileCache
 {
     private const string _lockFileName = ".lock";
     private const string _tempExtension = ".tmp";
-    private static readonly TimeSpan _sharedWait = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan _sharedWait = TimeSpan.FromMinutes(2);
 
     public static string Directory { get; } = Path.Combine(ClientFileSources.SkuaScriptsDIR, "Cached-Scripts");
 
@@ -30,8 +30,10 @@ public static class ScriptCompileCache
     public static byte[] BuildStamp { get; } = ComputeBuildStamp();
 
     /// <summary>
-    /// Holds the cache for a compile, so the cleanup deletes no entry it reads or references until it is disposed. Waits while a cleanup runs.
+    /// Takes the cache's lock file shared for a compile, so the cleanup, which needs it exclusively, deletes no entry the compile reads or
+    /// references until this is disposed. Any number of compiles, in any process, hold it at once; it waits while a cleanup runs.
     /// </summary>
+    /// <exception cref="IOException">The lock stayed taken exclusively for two minutes, far longer than a cleanup takes.</exception>
     public static IDisposable Use()
     {
         Stopwatch waited = Stopwatch.StartNew();
@@ -40,23 +42,19 @@ public static class ScriptCompileCache
             try
             {
                 System.IO.Directory.CreateDirectory(Directory);
-                // FileShare other than None takes a shared lock, which another process's exclusive one refuses until it closes.
+                // On Unix, .NET takes FileShare.None as an exclusive flock and any other FileShare as a shared one.
                 return new FileStream(LockPath, FileMode.OpenOrCreate, FileAccess.Read, FileShare.ReadWrite);
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
                 if (waited.Elapsed > _sharedWait)
-                {
-                    // A cleanup is never this long; better to compile unguarded than to fail the Script.
-                    Trace.WriteLine($"Compiling without the Script cache lock: {e.Message}");
-                    return new NoLock();
-                }
+                    throw new IOException($"The Script cache {Directory} stayed locked for {_sharedWait.TotalMinutes:0} minutes, so the Script wasn't compiled: {e.Message}", e);
                 Thread.Sleep(20);
             }
         }
     }
 
-    /// <summary>Runs <paramref name="clean"/> holding the cache exclusively, unless a process is compiling.</summary>
+    /// <summary>Runs <paramref name="clean"/> holding the cache's lock file exclusively, unless a process is compiling.</summary>
     /// <returns>Whether it ran.</returns>
     public static bool TryClean(Action clean)
     {
@@ -92,6 +90,22 @@ public static class ScriptCompileCache
     /// <summary>Writes an entry whole: a reader sees the old file or the new one, never part of it.</summary>
     public static void Write(string path, byte[] bytes)
     {
+        try
+        {
+            WriteWhole(path, bytes);
+        }
+        // Windows refuses to replace a file another process has open; that entry has the same key, so it is as good.
+        catch (Exception e) when ((e is IOException or UnauthorizedAccessException) && File.Exists(path))
+        {
+        }
+    }
+
+    /// <summary>
+    /// Writes <paramref name="path"/> through a temp file next to it and a rename, so another process reading it, as an Engine compiling a
+    /// Script while another updates the Scripts, sees the old file or the new one, never part of it.
+    /// </summary>
+    public static void WriteWhole(string path, byte[] bytes)
+    {
         System.IO.Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         string temp = $"{path}.{Guid.NewGuid():N}{_tempExtension}";
         try
@@ -99,12 +113,25 @@ public static class ScriptCompileCache
             File.WriteAllBytes(temp, bytes);
             File.Move(temp, path, overwrite: true);
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        finally
         {
             File.Delete(temp);
-            // Windows refuses to replace a file another process has open; that entry has the same key, so it is as good.
-            if (!File.Exists(path))
-                throw;
+        }
+    }
+
+    /// <summary>Whether <paramref name="path"/> is a whole assembly.</summary>
+    public static bool IsValidAssembly(string path)
+    {
+        if (!File.Exists(path))
+            return false;
+        try
+        {
+            AssemblyName.GetAssemblyName(path);
+            return true;
+        }
+        catch
+        {
+            return false;
         }
     }
 
@@ -126,12 +153,5 @@ public static class ScriptCompileCache
         foreach (Assembly assembly in new[] { typeof(ScriptCompileCache).Assembly, typeof(IScriptInterface).Assembly, typeof(ClientFileSources).Assembly, typeof(RangedObservableCollection<>).Assembly })
             stamp.Append('|').Append(assembly.ManifestModule.ModuleVersionId);
         return SHA256.HashData(Encoding.UTF8.GetBytes(stamp.ToString()));
-    }
-
-    private sealed class NoLock : IDisposable
-    {
-        public void Dispose()
-        {
-        }
     }
 }

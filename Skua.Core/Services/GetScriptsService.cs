@@ -131,17 +131,8 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
             await ValidatedHttpExtensions.GetAsync(HttpClients.GitHubRaw, source.RawFileUrl(info.FilePath), token);
 
         byte[] scriptBytes = await response.Content.ReadAsByteArrayAsync(token);
-        // Whole, through a rename: another Engine of the data folder may be compiling this file right now.
-        string temp = $"{info.LocalFile}.{Guid.NewGuid():N}.tmp";
-        try
-        {
-            await File.WriteAllBytesAsync(temp, scriptBytes, token);
-            File.Move(temp, info.LocalFile, overwrite: true);
-        }
-        finally
-        {
-            File.Delete(temp);
-        }
+        // Whole: another Engine of the data folder may be compiling this file right now.
+        ScriptCompileCache.WriteWhole(info.LocalFile, scriptBytes);
     }
 
     public async Task<int> DownloadAllWhereAsync(Func<ScriptInfo, bool> pred)

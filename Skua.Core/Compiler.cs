@@ -303,27 +303,11 @@ public class Compiler : CSharpScriptExecution
             string cachedPath = Path.Combine(_cacheDirectory, fileName);
 
             // One that doesn't read is a miss; compiling it replaces it, while another process may still be loading the old one.
-            return IsValidAssembly(cachedPath) ? cachedPath : null;
+            return ScriptCompileCache.IsValidAssembly(cachedPath) ? cachedPath : null;
         }
         catch
         {
             return null;
-        }
-    }
-
-    /// <summary>Whether <paramref name="path"/> is a whole assembly.</summary>
-    public static bool IsValidAssembly(string path)
-    {
-        if (!File.Exists(path))
-            return false;
-        try
-        {
-            AssemblyName.GetAssemblyName(path);
-            return true;
-        }
-        catch
-        {
-            return false;
         }
     }
 
@@ -356,7 +340,7 @@ public class Compiler : CSharpScriptExecution
 
         try
         {
-            if (IsValidAssembly(outputPath))
+            if (ScriptCompileCache.IsValidAssembly(outputPath))
             {
                 try
                 {
