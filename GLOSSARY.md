@@ -72,6 +72,10 @@ _Avoid_: script repo, scripts folder
 A structured result a Script records with `Bot.Report`, seen as a `script.report` event.
 _Avoid_: result log, report line
 
+**Attempt**:
+One fight of an Ultra boss by a party, from engaging the boss to its kill, a Wipe or a stop; each account's Script reports its part as an `ultra.attempt` Script Report, which `skua logs attempts` groups back into Attempts. A party fights in a **Comp**, which gives each account its class and **Role** in the fight.
+_Avoid_: run (a Script run spans many Attempts), try, pull
+
 **Script Dialog**:
 A message a Script raises for a human; it is either a Notice or a Question.
 _Avoid_: message box, popup, prompt

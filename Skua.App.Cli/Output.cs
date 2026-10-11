@@ -523,6 +523,39 @@ internal static class Output
         return text.ToString();
     }
 
+    /// <summary>
+    /// One line per Attempt, oldest first: its start (UTC), boss, Comp, outcome (with the boss's HP left after a wipe), length, then each account's
+    /// Engine, class/Role and deaths, with its own outcome and length where they differ from the Attempt's.
+    /// </summary>
+    public static string Attempts(AttemptsResult result)
+    {
+        string engines = string.Join(", ", result.Logs.Select(log => log.Engine));
+        StringBuilder text = new(result.Attempts.Count == 0
+            ? $"No {LogAttempts.ReportName} reports in the logs of {engines}."
+            : $"{Count(result.Attempts.Count, "Attempt")} in the logs of {engines}:");
+        foreach (Attempt attempt in result.Attempts)
+        {
+            string time = DateTimeOffset.FromUnixTimeMilliseconds(attempt.StartedAt).UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss'Z'");
+            string bossLeft = attempt is { Outcome: not "kill", BossHp: { } hp, BossMaxHp: > 0 and { } max } ? $" (boss {100.0 * hp / max:0}%)" : "";
+            text.Append('\n').Append($"{time}  {attempt.Boss}  {attempt.Comp}  {attempt.Outcome}{bossLeft}  {AttemptLength(attempt.DurationSec)}");
+            foreach (AttemptAccount account in attempt.Accounts)
+            {
+                text.Append($"  | {account.Engine} {account.Class}/{account.Role}");
+                if (account.Outcome != attempt.Outcome)
+                    text.Append($" {account.Outcome}");
+                // Accounts that leave the fight together end a few seconds apart.
+                if (account is { EndedAt: { } ended, DurationSec: { } length } && attempt.EndedAt - ended >= 5000)
+                    text.Append($" {AttemptLength(length)}");
+                text.Append(account.Deaths.Count == 0 ? ", no deaths" : $", died at {string.Join(", ", account.Deaths.Select(d => $"{d.AtSec:0.#} s"))}");
+            }
+        }
+        if (result.Unreadable > 0)
+            text.Append($"\n{Count(result.Unreadable, "report")} couldn't be read: data cut to 64 KB, or no start time.");
+        return text.ToString();
+    }
+
+    private static string AttemptLength(double? seconds) => seconds is { } value ? Duration(value) : "?";
+
     private static string GainRow(int itemId, string? name, long qty, double? perHour)
     {
         string rate = perHour is { } value ? $"{value:+0;-0;0}/h" : "";

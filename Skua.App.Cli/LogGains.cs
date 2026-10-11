@@ -42,20 +42,11 @@ internal static class LogGains
     /// <exception cref="ControlException"><see cref="ErrorCode.InvalidArgument"/>: no such log, or no such run in it.</exception>
     public static async Task<GainsResult> ReadAsync(string? file, int? run, CancellationToken cancellationToken)
     {
-        string path = file ?? NewestLog(Cli.Endpoint());
+        string path = file ?? SessionLog.Newest(Cli.Endpoint());
         Dictionary<int, RunTally> runs = [];
         Dictionary<int, string> names = [];
-        try
-        {
-            // The Engine may still be writing it.
-            using StreamReader reader = new(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete));
-            while (await reader.ReadLineAsync(cancellationToken) is { } line)
-                Read(line, runs, names);
-        }
-        catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException)
-        {
-            throw new ControlException(ErrorCode.InvalidArgument, $"There is no session log at {path}.");
-        }
+        await foreach (LogEntryDto entry in SessionLog.ReadAsync(path, cancellationToken: cancellationToken))
+            Read(entry, runs, names);
 
         if (runs.Count == 0)
             throw new ControlException(ErrorCode.InvalidArgument, $"{path} has no runs.");
@@ -69,25 +60,8 @@ internal static class LogGains
         return tally.Result(path, number, names);
     }
 
-    /// <summary>The newest of the Engine's session logs, which are named after their start time.</summary>
-    private static string NewestLog(EngineEndpoint endpoint) =>
-        (Directory.Exists(endpoint.LogFilesDir) ? Directory.GetFiles(endpoint.LogFilesDir, "*.jsonl").Order(StringComparer.Ordinal).LastOrDefault() : null)
-        ?? throw new ControlException(ErrorCode.InvalidArgument, $"Engine '{endpoint.Name}' has no session logs in {endpoint.LogFilesDir}.");
-
-    private static void Read(string line, Dictionary<int, RunTally> runs, Dictionary<int, string> names)
+    private static void Read(LogEntryDto entry, Dictionary<int, RunTally> runs, Dictionary<int, string> names)
     {
-        LogEntryDto? entry;
-        try
-        {
-            entry = JsonSerializer.Deserialize<LogEntryDto>(line, ControlJson.Options);
-        }
-        catch (JsonException)
-        {
-            return;
-        }
-        if (entry is null)
-            return;
-
         JsonElement? packet = entry.Kind == LogKind.Flash ? Received(entry.Text) : null;
         bool turningIn = entry.Kind == LogKind.Flash && entry.Text?.Contains(TryQuestComplete, StringComparison.Ordinal) == true;
         if (packet is { } received)
@@ -100,8 +74,8 @@ internal static class LogGains
         if (!runs.TryGetValue(number, out RunTally? tally))
             runs[number] = tally = new RunTally(entry.Ts);
         tally.Last = entry.Ts;
-        if (entry.Type == EventTypes.ScriptStarted && entry.Data?.TryGetProperty("script", out JsonElement script) == true)
-            tally.Script ??= script.GetString();
+        if (entry.Type == EventTypes.ScriptStarted && entry.Data is { ValueKind: JsonValueKind.Object } started)
+            tally.Script ??= SessionLog.String(started, "script");
         if (turningIn)
             tally.StartTurnIn(entry.Ts);
         if (packet is { } o)
