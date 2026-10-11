@@ -93,6 +93,7 @@ internal static class Output
         GameStatusDto game = status.Game;
         string gameLine = game.GameHostUp
             ? $"Game Host up, {Name(game.State)}{(game.Server is { } server ? $" on {server}" : "")}"
+                + (game.Client is { } client ? $", client {client.File}{(client.Version is { } version ? $" {version}" : "")}" : "")
             : "Game Host down";
         string text = $"""
             Game    {gameLine}

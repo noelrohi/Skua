@@ -75,6 +75,13 @@ public sealed class FakeGameHost
         return this;
     }
 
+    /// <summary>The game client the simulated game's gameversion data names; Game4000r1.swf R0047 unless set.</summary>
+    public FakeGameHost Client(string file, string version, string title)
+    {
+        _lines.Insert(_lines.FindIndex(l => l.StartsWith("game ", StringComparison.Ordinal)) + 1, $"client {file} {version} {title}");
+        return this;
+    }
+
     /// <summary>The simulated game also accepts this account, e.g. one that <c>skua account add</c> stores.</summary>
     public FakeGameHost Account(string username, string password)
     {

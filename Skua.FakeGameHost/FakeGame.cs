@@ -53,6 +53,8 @@ internal sealed class FakeGame
     private int _inventoryDelay = 500;
     private int _bagSpace = 40;
     private int _miscSpace = 100;
+    /// <summary>The game's gameversion data, which skua.swf keeps as <c>params.vars</c>: the client it loaded, as <c>client</c> last set it.</summary>
+    private JsonObject _gameVersion = GameVersion("Game4000r1.swf", "R0047", "Fake Title");
     /// <summary>The HUD auras (<c>leaf.hudAuras</c>) of the player (<c>self</c>) and of each monster by its map ID, as AuraSnapshots reads them.</summary>
     private readonly Dictionary<string, List<JsonObject>> _hudAuras = [];
     /// <summary>The auras (<c>leaf.auras</c>) of the player (<c>self</c>) and of each monster by its map ID, each with its effect value.</summary>
@@ -285,6 +287,10 @@ internal sealed class FakeGame
                 case ["bag-space", string slots]:
                     _bagSpace = int.Parse(slots);
                     return true;
+                case ["client", string rest] when rest.Split(' ', 3) is [string file, string version, string title]:
+                    // The client the next load of the game names, as the gameversion data names a new one.
+                    _gameVersion = GameVersion(file, version, title);
+                    return true;
                 case ["hud-aura", string rest] when rest.Split(' ') is [string subject, string name, string stacks, string duration]:
                     // An aura on the player's HUD (subject self) or a monster's (its map ID), with its stack count and duration in seconds (0 for none);
                     // with 0 stacks it stays on the HUD with n 0, as the game's aura+ with stk 0 leaves it.
@@ -410,6 +416,7 @@ internal sealed class FakeGame
         "world" => _world ? new JsonObject() : null,
         "world.myAvatar" => _world ? new JsonObject() : null,
         "world.myAvatar.uid" => _world ? PlayerId : null,
+        "params.vars" => _gameVersion.DeepClone(),
         "sfc" => new JsonObject(),
         "sfc.isConnected" => _connected,
         "mcConnDetail.stage" => _connDetail is null ? null : new JsonObject(),
@@ -1083,6 +1090,10 @@ internal sealed class FakeGame
         ["ItemID"] = id, ["CharItemID"] = id + 100, ["sName"] = name, ["sDesc"] = "", ["iQty"] = qty, ["iStk"] = maxStack, ["sType"] = category,
         ["bEquip"] = equipped ? "1" : "0", ["bTemp"] = temp ? "1" : "0", ["bUpg"] = "0", ["bCoins"] = "0", ["EnhLvl"] = enhancement, ["iLvl"] = 1,
     };
+
+    /// <summary>The gameversion data as the game's API returns it.</summary>
+    private static JsonObject GameVersion(string file, string version, string title) =>
+        new() { ["sFile"] = file, ["sTitle"] = title, ["sBG"] = "Generic2.swf", ["sVersion"] = version };
 
     private void Pext(JsonObject data) => Send("pext", new JsonObject { ["params"] = new JsonObject { ["type"] = "json", ["dataObj"] = data } }.ToJsonString());
 

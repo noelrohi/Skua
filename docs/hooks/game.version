@@ -1,0 +1,33 @@
+#!/bin/sh
+# Says when AQW ships a new game client, which can change what Skua reads of the game: the client that replaced Game4000r1.swf dropped
+# InvCat.MISC_SLOTS, and Misc Space read 0 until someone noticed. docs/game-client-updates.md has the routine for checking a new client.
+#
+# To use it, copy it into the data folder's hooks and run the Hook Runner (see BUILD.md, Hooks):
+#   cp docs/hooks/game.version "$SKUA_DIR/hooks/" && chmod +x "$SKUA_DIR/hooks/game.version" && skua hooks
+#
+# Each Engine records game.version as its Game Client loads. The Hook keeps the last client file seen in <SkuaDIR>/game-client.last: the
+# first event only records it, and a different file later prints the change and shows a notification. Engines loading the same client
+# after that stay quiet.
+
+event=$(cat)
+field() { printf '%s' "$event" | plutil -extract "$1" raw -o - - 2>/dev/null; }
+file=$(field data.file)
+version=$(field data.version)
+last_file="${SKUA_DIR:-.}/game-client.last"
+last=$(cat "$last_file" 2>/dev/null)
+
+if [ -z "$file" ]; then
+    echo "$SKUA_ENGINE_NAME loaded a game client the event doesn't name."
+    exit 0
+fi
+if [ "$file" = "$last" ]; then
+    echo "$SKUA_ENGINE_NAME loaded $file ($version), as before."
+    exit 0
+fi
+printf '%s\n' "$file" > "$last_file"
+if [ -z "$last" ]; then
+    echo "$SKUA_ENGINE_NAME loaded $file ($version); remembering it."
+    exit 0
+fi
+echo "AQW has a new game client: $file ($version), after $last. Check it with docs/game-client-updates.md."
+osascript -e "display notification \"$file ($version) replaced $last: check what Skua reads of the game\" with title \"Skua: new AQW game client\""

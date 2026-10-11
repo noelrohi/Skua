@@ -26,8 +26,50 @@ public class GameStateTests
 
             Assert.Equal(GameState.LoginScreen, status.Game.State);
             Assert.Null(status.Game.Server);
-            Assert.Equal([EventTypes.GameLoaded, "notStarted→loginScreen"], events.Select(GameEvents.Describe));
+            Assert.Equal([EventTypes.GameVersion, EventTypes.GameLoaded, "notStarted→loginScreen"], events.Select(GameEvents.Describe));
         }
+    }
+
+    [Fact]
+    public async Task The_loaded_Game_Client_records_the_game_client_it_loaded_and_status_names_it()
+    {
+        await using EngineSandbox sandbox = new();
+        FakeKeychain keychain = new(sandbox);
+        (_, EngineConnection connection) =
+            await sandbox.StartEngineAsync(new FakeGameHost(sandbox).Game(keychain).Client("Game4000r2.swf", "R0048", "18th Upholder!").Environment());
+        using (connection)
+        {
+            await connection.WaitForEventAsync(EventTypes.GameState, e => GameEvents.To(e) == "loginScreen");
+
+            LogEntryDto version = Assert.Single(await GameEvents.AllAsync(connection), e => e.Type == EventTypes.GameVersion);
+            StatusDto status = await connection.StatusAsync(Ct);
+
+            Assert.Equal(("Game4000r2.swf", "R0048", "18th Upholder!"), (Field(version, "file"), Field(version, "version"), Field(version, "title")));
+            Assert.Equal(new GameClientDto("Game4000r2.swf", "R0048", "18th Upholder!"), status.Game.Client);
+        }
+    }
+
+    [Fact]
+    public async Task A_reload_of_the_Game_Client_records_the_new_game_client_and_a_Game_Host_exit_forgets_it()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.WaitForEventAsync(EventTypes.GameVersion);
+
+        // The game ships a new client, which the Game Client loads when it next loads the game.
+        await session.GameHost.DoAsync("client Game4000r2.swf R0048 18th Upholder!");
+        await session.GameHost.DoAsync("""send E <invoke name="loaded" returntype="xml"><arguments></arguments></invoke>""");
+        await session.Connection.WaitForEventAsync(EventTypes.GameVersion, e => Field(e, "file") == "Game4000r2.swf");
+        GameClientDto? reloaded = (await session.Connection.StatusAsync(Ct)).Game.Client;
+        using (Process gameHost = Process.GetProcessById(await session.GameHost.PidAsync()))
+            gameHost.Kill();
+        await session.Connection.WaitForEventAsync(EventTypes.GameState, e => GameEvents.To(e) == "notStarted");
+
+        Assert.Equal(
+            ["Game4000r1.swf", "Game4000r2.swf"],
+            (await GameEvents.AllAsync(session.Connection)).Where(e => e.Type == EventTypes.GameVersion).Select(e => Field(e, "file")));
+        Assert.Equal(new GameClientDto("Game4000r2.swf", "R0048", "18th Upholder!"), reloaded);
+        Assert.Null((await session.Connection.StatusAsync(Ct)).Game.Client);
     }
 
     [Theory]
@@ -213,7 +255,7 @@ public class GameStateTests
 
         Assert.Equal(GameState.Disconnected, waiting);
         Assert.Equal(
-            [EventTypes.GameLoaded, "notStarted→loginScreen", "loginScreen→loggingIn", "loggingIn→playing", "game.disconnected kicked", "playing→disconnected",
+            [EventTypes.GameVersion, EventTypes.GameLoaded, "notStarted→loginScreen", "loginScreen→loggingIn", "loggingIn→playing", "game.disconnected kicked", "playing→disconnected",
              "disconnected→loggingIn", "loggingIn→playing"],
             (await GameEvents.AllAsync(session.Connection)).Select(GameEvents.Describe));
     }
