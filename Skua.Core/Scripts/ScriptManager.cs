@@ -22,7 +22,7 @@ public partial class ScriptManager : ObservableObject, IScriptManager, IDisposab
 {
     private static readonly Regex _versionRegex = new(@"^/\*[\s\S]*?version:\s*(\d+\.\d+\.\d+\.\d+)[\s\S]*?\*/", RegexOptions.Multiline | RegexOptions.Compiled);
     private static readonly Regex _accessibilityRegex = new(@"\b(public\s+|internal\s+|private\s+)?class\s+\w+", RegexOptions.Multiline | RegexOptions.Compiled);
-    private static readonly string _cacheScriptsDir = Path.Combine(ClientFileSources.SkuaScriptsDIR, "Cached-Scripts");
+    private static readonly string _cacheScriptsDir = ScriptCompileCache.Directory;
     public ScriptManager(
         ILogService logger,
         Lazy<IScriptInterface> scriptInterface,
@@ -379,31 +379,37 @@ public partial class ScriptManager : ObservableObject, IScriptManager, IDisposab
                 _compileLoadContext = loadContext;
         }
 
-        List<string> compiledIncludes = CompileIncludedFiles(references, loadContext);
-
-        references.UnionWith(compiledIncludes);
-
-        int cacheHash;
-        _includedFilesLock.EnterReadLock();
-        try
-        {
-            cacheHash = ComputeCacheHash(final, new List<string>(_includedFiles));
-        }
-        finally
-        {
-            _includedFilesLock.ExitReadLock();
-        }
-        CompiledScript = final;
-        string scriptName = Path.GetFileNameWithoutExtension(LoadedScript);
-
         Compiler compiler = Ioc.Default.GetRequiredService<Compiler>();
-        compiler.AddDefaultReferencesAndNamespaces();
-        compiler.AllowReferencesInCode = true;
+        dynamic? assembly;
+        // Other Engines of the data folder share the cache: no entry this compile reads or references is deleted until it ends.
+        using (ScriptCompileCache.Use())
+        {
+            List<string> compiledIncludes = CompileIncludedFiles(references, loadContext);
 
-        if (references.Count > 0)
-            compiler.AddAssemblies(references.ToArray());
+            references.UnionWith(compiledIncludes);
 
-        dynamic? assembly = compiler.CompileClass(final, cacheHash, loadContext, scriptName);
+            int cacheHash;
+            _includedFilesLock.EnterReadLock();
+            try
+            {
+                cacheHash = ComputeCacheHash(final, new List<string>(_includedFiles));
+            }
+            finally
+            {
+                _includedFilesLock.ExitReadLock();
+            }
+            CompiledScript = final;
+            string scriptName = Path.GetFileNameWithoutExtension(LoadedScript);
+
+            compiler.AddDefaultReferencesAndNamespaces();
+            compiler.AllowReferencesInCode = true;
+
+            if (references.Count > 0)
+                compiler.AddAssemblies(references.ToArray());
+
+            assembly = compiler.CompileClass(final, cacheHash, loadContext, scriptName);
+        }
+        Compiler.CleanCache();
 
         sw.Stop();
         Trace.WriteLine($"Script compilation took {sw.ElapsedMilliseconds}ms.");
@@ -703,27 +709,18 @@ public partial class ScriptManager : ObservableObject, IScriptManager, IDisposab
 
     private static int ComputeCacheHash(string source, List<string> includedFiles)
     {
-        using SHA256 sha256 = SHA256.Create();
-        byte[] sourceBytes = Encoding.UTF8.GetBytes(source);
-        byte[] sourceHash = sha256.ComputeHash(sourceBytes);
-        using MemoryStream ms = new();
-        ms.Write(sourceHash, 0, sourceHash.Length);
+        List<byte[]> parts = [SHA256.HashData(Encoding.UTF8.GetBytes(source))];
 
         foreach (string file in includedFiles.OrderBy(f => f))
         {
             if (File.Exists(file))
             {
-                byte[] pathBytes = Encoding.UTF8.GetBytes(file);
-                ms.Write(pathBytes, 0, pathBytes.Length);
-
-                long ticks = File.GetLastWriteTimeUtc(file).Ticks;
-                byte[] ticksBytes = BitConverter.GetBytes(ticks);
-                ms.Write(ticksBytes, 0, ticksBytes.Length);
+                parts.Add(Encoding.UTF8.GetBytes(file));
+                parts.Add(BitConverter.GetBytes(File.GetLastWriteTimeUtc(file).Ticks));
             }
         }
 
-        byte[] combinedHash = sha256.ComputeHash(ms.ToArray());
-        return BitConverter.ToInt32(combinedHash, 0);
+        return ScriptCompileCache.Key(parts);
     }
 
     private void CheckScriptVersionRequirement(string source)
@@ -776,6 +773,8 @@ public partial class ScriptManager : ObservableObject, IScriptManager, IDisposab
             _includedFilesLock.ExitReadLock();
         }
 
+        ConcurrentDictionary<string, (string source, byte[] hash)> sources = new();
+
         Parallel.ForEach(includedFilesSnapshot, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, includedFile =>
         {
             string includeSource = File.ReadAllText(includedFile);
@@ -807,38 +806,7 @@ public partial class ScriptManager : ObservableObject, IScriptManager, IDisposab
                 }
             }
             dependencyGraph[includedFile] = normalizedDeps;
-
-            string includeFileName = Path.GetFileNameWithoutExtension(includedFile);
-            using SHA256 sha256 = SHA256.Create();
-            byte[] hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(includeSource));
-            int includeHash = BitConverter.ToInt32(hashBytes, 0);
-            string compiledPath = Path.Combine(cacheDir, $"{includeHash}-{includeFileName}.dll");
-
-            if (File.Exists(compiledPath))
-            {
-                try
-                {
-                    AssemblyName.GetAssemblyName(compiledPath);
-                    validCachedFiles.Add(includedFile);
-                    compiledPaths[includedFile] = compiledPath;
-                    compilationCompleted[includedFile] = true;
-                    Compiler.RegisterCompiled(includeHash, compiledPath);
-                    fileInfoCache[includedFile] = (string.Empty, includeFileName, includeHash, compiledPath);
-                    return;
-                }
-                catch
-                {
-                    try
-                    {
-                        File.Delete(compiledPath);
-                    }
-                    catch
-                    {
-                    }
-                }
-            }
-
-            fileInfoCache[includedFile] = (includeSource, includeFileName, includeHash, compiledPath);
+            sources[includedFile] = (includeSource, SHA256.HashData(Encoding.UTF8.GetBytes(includeSource)));
         });
 
         HashSet<string> processed = new(validCachedFiles);
@@ -904,31 +872,38 @@ public partial class ScriptManager : ObservableObject, IScriptManager, IDisposab
         {
             string includeSource = File.ReadAllText(newFile);
             CheckScriptVersionRequirement(includeSource);
-            string includeFileName = Path.GetFileNameWithoutExtension(newFile);
-            using SHA256 sha256 = SHA256.Create();
-            byte[] hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(includeSource));
-            int includeHash = BitConverter.ToInt32(hashBytes, 0);
+            sources[newFile] = (includeSource, SHA256.HashData(Encoding.UTF8.GetBytes(includeSource)));
+        }
+
+        // An include compiles against the ones it includes, so its entry's key covers theirs too: a changed CoreBots recompiles every include over it.
+        foreach ((string includedFile, (string includeSource, byte[] sourceHash)) in sources)
+        {
+            HashSet<string> deps = new();
+            GetTransitiveDependencies(includedFile, dependencyGraph, deps);
+            List<byte[]> parts = [sourceHash];
+            foreach (string dep in deps.Where(d => d != includedFile).Order(StringComparer.Ordinal))
+            {
+                if (sources.TryGetValue(dep, out (string source, byte[] hash) depSource))
+                {
+                    parts.Add(Encoding.UTF8.GetBytes(dep));
+                    parts.Add(depSource.hash);
+                }
+            }
+            int includeHash = ScriptCompileCache.Key(parts);
+            string includeFileName = Path.GetFileNameWithoutExtension(includedFile);
             string compiledPath = Path.Combine(cacheDir, $"{includeHash}-{includeFileName}.dll");
 
-            if (File.Exists(compiledPath))
+            if (TryLoadCachedInclude(compiledPath, loadContext))
             {
-                try
-                {
-                    AssemblyName.GetAssemblyName(compiledPath);
-                    validCachedFiles.Add(newFile);
-                    compiledPaths[newFile] = compiledPath;
-                    compilationCompleted[newFile] = true;
-                    Compiler.RegisterCompiled(includeHash, compiledPath);
-                    fileInfoCache[newFile] = (string.Empty, includeFileName, includeHash, compiledPath);
-                }
-                catch
-                {
-                    fileInfoCache[newFile] = (includeSource, includeFileName, includeHash, compiledPath);
-                }
+                validCachedFiles.Add(includedFile);
+                compiledPaths[includedFile] = compiledPath;
+                compilationCompleted[includedFile] = true;
+                Compiler.RegisterCompiled(includeHash, compiledPath);
+                fileInfoCache[includedFile] = (string.Empty, includeFileName, includeHash, compiledPath);
             }
             else
             {
-                fileInfoCache[newFile] = (includeSource, includeFileName, includeHash, compiledPath);
+                fileInfoCache[includedFile] = (includeSource, includeFileName, includeHash, compiledPath);
             }
         }
 
@@ -1013,6 +988,24 @@ public partial class ScriptManager : ObservableObject, IScriptManager, IDisposab
         return compiledPaths.Values.ToList();
     }
 
+
+    /// <summary>Loads an include's cache entry into the Script's context now, so nothing reads the cache once the compile ends.</summary>
+    /// <returns>False for a miss, or an entry that doesn't load, which compiling replaces.</returns>
+    private static bool TryLoadCachedInclude(string compiledPath, ScriptLoadContext loadContext)
+    {
+        if (!Compiler.IsValidAssembly(compiledPath))
+            return false;
+        try
+        {
+            using MemoryStream stream = new(File.ReadAllBytes(compiledPath));
+            Compiler.RegisterLoaded(compiledPath, loadContext.LoadFromStream(stream));
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     private void CompileIncludeRecursive(
         string includedFile,

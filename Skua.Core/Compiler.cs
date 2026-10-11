@@ -16,7 +16,7 @@ namespace Skua.Core;
 public class Compiler : CSharpScriptExecution
 {
     private const int _maxCachedAssemblies = 1024;
-    private static readonly string _cacheDirectory = Path.Combine(ClientFileSources.SkuaScriptsDIR, "Cached-Scripts");
+    private static readonly string _cacheDirectory = ScriptCompileCache.Directory;
     private static readonly TimeSpan _cacheExpiration = TimeSpan.FromDays(7);
     private static readonly TimeSpan _cleanupThrottle = TimeSpan.FromMinutes(5);
     private static DateTime _lastCleanupTime = DateTime.MinValue;
@@ -118,13 +118,7 @@ public class Compiler : CSharpScriptExecution
                 }
                 catch
                 {
-                    try
-                    {
-                        File.Delete(cachedAssemblyPath);
-                    }
-                    catch
-                    {
-                    }
+                    // Compiled again below, which replaces it.
                     cachedAssemblyPath = null;
                 }
             }
@@ -305,32 +299,11 @@ public class Compiler : CSharpScriptExecution
             if (!Directory.Exists(_cacheDirectory))
                 return null;
 
-            TryRunCleanup();
-
             string fileName = string.IsNullOrEmpty(scriptName) ? $"{hash}.dll" : $"{hash}-{scriptName}.dll";
             string cachedPath = Path.Combine(_cacheDirectory, fileName);
 
-            if (File.Exists(cachedPath))
-            {
-                try
-                {
-                    AssemblyName.GetAssemblyName(cachedPath);
-                    return cachedPath;
-                }
-                catch
-                {
-                    try
-                    {
-                        File.Delete(cachedPath);
-                    }
-                    catch
-                    {
-                    }
-                    return null;
-                }
-            }
-
-            return null;
+            // One that doesn't read is a miss; compiling it replaces it, while another process may still be loading the old one.
+            return IsValidAssembly(cachedPath) ? cachedPath : null;
         }
         catch
         {
@@ -338,29 +311,36 @@ public class Compiler : CSharpScriptExecution
         }
     }
 
+    /// <summary>Whether <paramref name="path"/> is a whole assembly.</summary>
+    public static bool IsValidAssembly(string path)
+    {
+        if (!File.Exists(path))
+            return false;
+        try
+        {
+            AssemblyName.GetAssemblyName(path);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static string GetDiskCachePath(int hash, string? scriptName = null)
     {
-        if (!Directory.Exists(_cacheDirectory))
-            Directory.CreateDirectory(_cacheDirectory);
-
-        if (!string.IsNullOrEmpty(scriptName))
-        {
-            DeleteOldVersions(scriptName, hash);
-        }
-
         string fileName = string.IsNullOrEmpty(scriptName) ? $"{hash}.dll" : $"{hash}-{scriptName}.dll";
         return Path.Combine(_cacheDirectory, fileName);
     }
 
     private bool CompileOrWaitForAssembly(string source, string outputPath, ScriptLoadContext? loadContext)
     {
+        // Across processes too: an Engine compiling the same entry waits for the other's and loads it.
         string mutexName = $"Global\\Skua_Compile_{Path.GetFileName(outputPath).Replace(".dll", "").Replace("-", "_")}";
-        Mutex? compilationMutex = null;
+        using Mutex compilationMutex = new(false, mutexName);
 
         try
         {
-            compilationMutex = new Mutex(false, mutexName);
-
             if (!compilationMutex.WaitOne(TimeSpan.FromMinutes(2)))
             {
                 ErrorType = ExecutionErrorTypes.Compilation;
@@ -368,106 +348,58 @@ public class Compiler : CSharpScriptExecution
                 SetErrors(new ApplicationException(ErrorMessage));
                 return false;
             }
-
-            try
-            {
-                string scriptName = Path.GetFileNameWithoutExtension(outputPath);
-                int dashIndex = scriptName.LastIndexOf('-');
-                if (dashIndex > 0)
-                {
-                    string actualScriptName = scriptName[(dashIndex + 1)..];
-                    if (int.TryParse(scriptName[..dashIndex], out int currentHash))
-                    {
-                        DeleteOldVersions(actualScriptName, currentHash);
-                    }
-                }
-
-                if (File.Exists(outputPath))
-                {
-                    try
-                    {
-                        AssemblyName.GetAssemblyName(outputPath);
-
-                        if (loadContext != null)
-                        {
-                            using FileStream stream = File.OpenRead(outputPath);
-                            Assembly = loadContext.LoadFromStream(stream);
-                        }
-                        else
-                        {
-                            Assembly = Assembly.LoadFrom(outputPath);
-                        }
-                        return true;
-                    }
-                    catch
-                    {
-                        try
-                        {
-                            File.Delete(outputPath);
-                        }
-                        catch
-                        {
-                        }
-                    }
-                }
-
-                if (!CompileAssemblyToDisk(source, outputPath))
-                    return false;
-
-                if (loadContext != null)
-                {
-                    using FileStream stream = File.OpenRead(outputPath);
-                    Assembly = loadContext.LoadFromStream(stream);
-                }
-                else
-                {
-                    Assembly = Assembly.LoadFrom(outputPath);
-                }
-                return true;
-            }
-            finally
-            {
-                compilationMutex.ReleaseMutex();
-            }
         }
         catch (AbandonedMutexException)
         {
-            if (File.Exists(outputPath))
+            // A process died holding it; this one owns it now.
+        }
+
+        try
+        {
+            if (IsValidAssembly(outputPath))
             {
                 try
                 {
-                    AssemblyName.GetAssemblyName(outputPath);
-
-                    if (loadContext != null)
-                    {
-                        using FileStream stream = File.OpenRead(outputPath);
-                        Assembly = loadContext.LoadFromStream(stream);
-                    }
-                    else
-                    {
-                        Assembly = Assembly.LoadFrom(outputPath);
-                    }
+                    LoadCompiled(outputPath, null, loadContext);
                     return true;
                 }
                 catch
                 {
+                    // Compiled again below, which replaces it.
                 }
             }
 
-            ErrorType = ExecutionErrorTypes.Compilation;
-            ErrorMessage = "Compilation was abandoned by another process.";
-            SetErrors(new ApplicationException(ErrorMessage));
-            return false;
+            if (!CompileAssemblyToBytes(source, outputPath, out byte[] bytes))
+                return false;
+
+            ScriptCompileCache.Write(outputPath, bytes);
+            LoadCompiled(outputPath, bytes, loadContext);
+            return true;
         }
         finally
         {
-            compilationMutex?.Dispose();
+            compilationMutex.ReleaseMutex();
         }
     }
 
-    private bool CompileAssemblyToDisk(string source, string outputPath)
+    /// <param name="bytes">The assembly just compiled, which loads without reading the file back; null to read it.</param>
+    private void LoadCompiled(string path, byte[]? bytes, ScriptLoadContext? loadContext)
+    {
+        if (loadContext == null)
+        {
+            Assembly = Assembly.LoadFrom(path);
+            return;
+        }
+
+        using Stream stream = bytes != null ? new MemoryStream(bytes) : File.OpenRead(path);
+        Assembly = loadContext.LoadFromStream(stream);
+    }
+
+    /// <param name="outputPath">The cache entry, which names the assembly.</param>
+    private bool CompileAssemblyToBytes(string source, string outputPath, out byte[] bytes)
     {
         ClearErrors();
+        bytes = [];
 
         SyntaxTree tree = CSharpSyntaxTree.ParseText(source.Trim(), _parseOptions);
 
@@ -483,7 +415,7 @@ public class Compiler : CSharpScriptExecution
         if (SaveGeneratedCode)
             GeneratedClassCode = tree.ToString();
 
-        using FileStream codeStream = new(outputPath, FileMode.Create, FileAccess.Write);
+        using MemoryStream codeStream = new();
         EmitResult? compilationResult = null;
         if (CompileWithDebug)
         {
@@ -511,19 +443,32 @@ public class Compiler : CSharpScriptExecution
             return false;
         }
 
+        bytes = codeStream.ToArray();
         return true;
     }
 
-    private static void TryRunCleanup()
+    /// <summary>
+    /// Deletes expired, superseded and excess entries, at most every few minutes, and only while no process compiles; a compile calls it once
+    /// it no longer uses the cache.
+    /// </summary>
+    public static void CleanCache()
     {
         lock (_cleanupLock)
         {
             if ((DateTime.Now - _lastCleanupTime) < _cleanupThrottle)
                 return;
-
-            Task.Run(() => CleanupOldCachedAssemblies());
             _lastCleanupTime = DateTime.Now;
         }
+
+        Task.Run(() =>
+        {
+            if (!ScriptCompileCache.TryClean(CleanupOldCachedAssemblies))
+            {
+                // Another process compiles; the next compile tries again.
+                lock (_cleanupLock)
+                    _lastCleanupTime = DateTime.MinValue;
+            }
+        });
     }
 
     private static void CleanupOldCachedAssemblies()
@@ -620,55 +565,5 @@ public class Compiler : CSharpScriptExecution
         int lastDashIndex = nameWithoutExt.LastIndexOf('-');
 
         return lastDashIndex <= 0 ? string.Empty : new string(nameWithoutExt[(lastDashIndex + 1)..]);
-    }
-
-    private static void DeleteOldVersions(string scriptName, int currentHash)
-    {
-        try
-        {
-            if (!Directory.Exists(_cacheDirectory))
-                return;
-
-            foreach (string file in Directory.GetFiles(_cacheDirectory, $"*-{scriptName}.dll"))
-            {
-                string fileName = Path.GetFileName(file);
-                string cachedScriptName = GetScriptNameFromCacheFile(fileName);
-
-                if (cachedScriptName != scriptName)
-                    continue;
-
-                ReadOnlySpan<char> fileNameWithoutExt = Path.GetFileNameWithoutExtension(fileName.AsSpan());
-                int dashIndex = fileNameWithoutExt.LastIndexOf('-');
-
-                if (dashIndex > 0 && int.TryParse(fileNameWithoutExt[..dashIndex], out int fileHash) && fileHash != currentHash)
-                {
-                    bool deleted = false;
-                    for (int attempt = 0; attempt < 3 && !deleted; attempt++)
-                    {
-                        try
-                        {
-                            File.Delete(file);
-                            deleted = true;
-                        }
-                        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                        {
-                            if (attempt < 2)
-                            {
-                                GC.Collect();
-                                GC.WaitForPendingFinalizers();
-                                Thread.Sleep(100);
-                            }
-                        }
-                        catch
-                        {
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        catch
-        {
-        }
     }
 }
