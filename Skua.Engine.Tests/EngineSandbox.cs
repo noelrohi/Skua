@@ -51,9 +51,9 @@ public sealed class EngineSandbox : IAsyncDisposable
         throw new TimeoutException("skua-engine didn't answer.");
     }
 
-    public Process StartEngineProcess(IDictionary<string, string>? environment = null)
+    public Process StartEngineProcess(IDictionary<string, string>? environment = null, params string[] arguments)
     {
-        ProcessStartInfo startInfo = new(EngineExecutable) { RedirectStandardError = true, RedirectStandardOutput = true };
+        ProcessStartInfo startInfo = new(EngineExecutable, arguments) { RedirectStandardError = true, RedirectStandardOutput = true };
         foreach ((string key, string value) in Endpoint.EngineEnvironment())
             startInfo.Environment[key] = value;
         foreach ((string key, string value) in environment ?? new Dictionary<string, string>())

@@ -131,7 +131,8 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
             await ValidatedHttpExtensions.GetAsync(HttpClients.GitHubRaw, source.RawFileUrl(info.FilePath), token);
 
         byte[] scriptBytes = await response.Content.ReadAsByteArrayAsync(token);
-        await File.WriteAllBytesAsync(info.LocalFile, scriptBytes, token);
+        // Whole: another Engine of the data folder may be compiling this file right now.
+        ScriptCompileCache.WriteWhole(info.LocalFile, scriptBytes);
     }
 
     public async Task<int> DownloadAllWhereAsync(Func<ScriptInfo, bool> pred)
@@ -143,22 +144,7 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
             await DownloadScriptAsync(script);
         });
 
-        if (toUpdate.Count > 0)
-            ClearCachedScriptsDirectory();
-
         return toUpdate.Count;
-    }
-
-    private static void ClearCachedScriptsDirectory()
-    {
-        string path = Path.Combine(ClientFileSources.SkuaScriptsDIR, "Cached-Scripts");
-
-        try
-        {
-            if (Directory.Exists(path))
-                Directory.Delete(path, true);
-        }
-        catch { }
     }
 
     public Task DeleteScriptAsync(ScriptInfo info)
@@ -390,9 +376,6 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
             }
         });
 
-        if (downloaded > 0)
-            ClearCachedScriptsDirectory();
-
         if (failed.IsEmpty)
             await StoreCommitShaAsync(source, headSha);
 
@@ -484,9 +467,6 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
             }
 
             await StoreCommitShaAsync(Source, currentSha);
-
-            if (updated > 0)
-                ClearCachedScriptsDirectory();
 
             progress?.Report($"Done. {updated} scripts updated.");
             return updated;
