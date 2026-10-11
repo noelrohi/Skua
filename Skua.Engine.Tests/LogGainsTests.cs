@@ -204,6 +204,27 @@ public class LogGainsTests
     }
 
     [Fact]
+    public async Task Gains_credits_the_Wheel_of_Doom_spin_to_its_quest()
+    {
+        await using EngineSandbox sandbox = new();
+        // The Wheel of Doom pays with one Wheel packet: Treasure Potions (dropQty of them), a Daily XP Boost, and a prize (Item) at times.
+        string log = WriteLog(sandbox,
+        [
+            Started(1, 0),
+            Sent(2, 1000, "%xt%zm%tryQuestComplete%1%3075%-1%false%1%wvz%"),
+            Received(3, 1200, """{"cmd":"Wheel","dropItems":{"18927":{"ItemID":18927,"sName":"Treasure Potion"},"19189":{"ItemID":19189,"sName":"Daily XP Boost! (1 hr)"}},"charItem1":1,"charItem2":2,"dropQty":2,"iQty1":737,"iQty2":1,"Item":{"ItemID":5000,"sName":"Prize","bTemp":false}}"""),
+            Received(4, 1400, """{"cmd":"ccqr","bSuccess":1,"QuestID":3075,"sName":"Doom Member Free Spin"}"""),
+            Stopped(5, 3_600_000),
+        ]);
+
+        using JsonDocument json = await GainsAsync(sandbox, log);
+
+        JsonElement spin = Source(json.RootElement, "Doom Member Free Spin");
+        Assert.Equal("18927:2, 5000:1, 19189:1", Counts(spin, "gained"));
+        Assert.Equal("Daily XP Boost! (1 hr)", Item(spin.GetProperty("gained"), 19189).GetProperty("name").GetString());
+    }
+
+    [Fact]
     public async Task Gains_names_an_item_from_the_inventory_the_game_loads()
     {
         await using EngineSandbox sandbox = new();

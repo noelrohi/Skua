@@ -30,8 +30,9 @@ public sealed record GainsResult(string File, int Run, string? Script, double Du
 /// Attributes every item gain of a run in an Engine's session log to the source that paid it. A turn-in starts with the
 /// <c>tryQuestComplete</c> Skua sends, or with the server's <c>turnIn</c> (what it took) in a log that lacks what was sent, and ends
 /// with its <c>ccqr</c>, or a few seconds later if none comes. Its rewards count once the <c>ccqr</c> says it succeeded: what arrives
-/// meanwhile, and the drops it offers then (<c>dropItem</c>) once picked up (<c>getDrop</c>). Anything else that arrives, an
-/// <c>addItems</c> or a <c>getDrop</c>, is a monster drop picked up. Temporary items are no gain.
+/// meanwhile (<c>addItems</c>, or the Wheel of Doom's <c>Wheel</c>), and the drops it offers then (<c>dropItem</c>) once picked up
+/// (<c>getDrop</c>). Anything else that arrives, an <c>addItems</c> or a <c>getDrop</c>, is a monster drop picked up. Temporary items
+/// are no gain.
 /// </summary>
 internal static class LogGains
 {
@@ -109,6 +110,9 @@ internal static class LogGains
 
     /// <summary>The packet Skua sends to turn a quest in, as the flash log records it: <c>[Net] [Sending - STR]: %xt%zm%tryQuestComplete%…</c>.</summary>
     private const string TryQuestComplete = "%xt%zm%tryQuestComplete%";
+
+    /// <summary>The Wheel of Doom's Treasure Potion, of which a spin pays <c>dropQty</c>.</summary>
+    private const int TreasurePotion = 18927;
 
     /// <summary>How long a turn-in waits for its <c>ccqr</c>: the server answers within a second.</summary>
     private const long TurnInWindowMs = 10_000;
@@ -261,6 +265,19 @@ internal static class LogGains
                         if (int.TryParse(item.Name, out int id) && item.Value.ValueKind == JsonValueKind.Object && !Flag(item.Value, "bTemp"))
                             LogGains.Add(TurningIn(ts) ? _paying : _drops, id, Number(item.Value, "iQty"));
                     }
+                    break;
+                case "Wheel" when o.TryGetProperty("dropItems", out JsonElement wheel) && wheel.ValueKind == JsonValueKind.Object:
+                    // The Wheel of Doom's spin, as the game adds it: dropQty Treasure Potions, one of each other item, and its prize.
+                    Dictionary<int, long> spun = TurningIn(ts) ? _paying : _drops;
+                    long potions = o.TryGetProperty("dropQty", out JsonElement dropQty) && dropQty.ValueKind == JsonValueKind.Number ? dropQty.GetInt64() : 1;
+                    foreach (JsonProperty item in wheel.EnumerateObject())
+                    {
+                        if (int.TryParse(item.Name, out int id))
+                            LogGains.Add(spun, id, id == TreasurePotion ? potions : 1);
+                    }
+                    if (o.TryGetProperty("Item", out JsonElement prize) && prize.ValueKind == JsonValueKind.Object && !Flag(prize, "bTemp")
+                        && prize.TryGetProperty("ItemID", out JsonElement prizeId) && prizeId.TryGetInt32(out int prized))
+                        LogGains.Add(spun, prized, 1);
                     break;
                 case "dropItem" when TurningIn(ts) && o.TryGetProperty("items", out JsonElement offered) && offered.ValueKind == JsonValueKind.Object:
                     foreach (JsonProperty item in offered.EnumerateObject())
