@@ -816,16 +816,20 @@ public class CliTests
         [
             .. Regex.Matches(skill, @"```csharp\n(.*?)\n *```", RegexOptions.Singleline).Select(m => m.Groups[1].Value),
             .. Regex.Matches(skill, @"<<'EOF'\n(.*?)\n *EOF", RegexOptions.Singleline).Select(m => m.Groups[1].Value),
+            // Inline: `eval '<code>'` and "with `eval`: `<code>`".
+            .. Regex.Matches(skill, @"\beval '([^']+)'").Select(m => m.Groups[1].Value),
+            .. Regex.Matches(skill, @"`eval`: `([^`]+)`").Select(m => m.Groups[1].Value),
         ];
         await using EngineSandbox sandbox = new();
         await using GameFixture game = await GameFixture.StartAsync(sandbox);
 
-        Assert.True(snippets.Length >= 3, $"Found only {snippets.Length} evals in the skill.");
+        Assert.True(snippets.Length >= 5, $"Found only {snippets.Length} evals in the skill.");
         foreach (string snippet in snippets)
         {
-            // The fake game has no such quests, so a snippet may fail as it runs; only a compile failure fails the test.
-            ControlException? e = await Record.ExceptionAsync(() => game.Connection.EvalAsync(snippet, 5, TestContext.Current.CancellationToken)) as ControlException;
-            Assert.True(e?.Code != ErrorCode.CompileFailed, $"{snippet}\n{string.Join('\n', e?.Diagnostics ?? [])}");
+            // The fake game has no such quests or items, so a snippet may fail as it runs; only a compile failure fails the test.
+            Exception? e = await Record.ExceptionAsync(() => game.Connection.EvalAsync(snippet, 5, TestContext.Current.CancellationToken));
+            Assert.True(e is null || e is ControlException { Code: not ErrorCode.CompileFailed },
+                $"{snippet}\n{e}\n{string.Join('\n', (e as ControlException)?.Diagnostics ?? [])}");
         }
     }
 

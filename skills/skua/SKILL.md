@@ -27,6 +27,11 @@ Paths below are in the data folder, `<SkuaDIR>`: `~/Library/Application Support/
 - **The run**: `skua --engine <name> status --json`. Its `script.run` has `kills`, `killsPerMin`, `deaths`, `questIdleSec` (seconds since a quest the run farms progressed) and `goal` (the quest, the item it buys, the material it farms with its count). A run whose quests idle for 10 minutes with no kills is stuck; one that still kills is grinding a rare drop.
 - **Quests**: `skua --engine <name> quests active --json` gives each requirement of the accepted quests its `have` and `qty`, `inBank`, `gainPerHour` and `idleSec` (since its count rose). A quest's `status` is `completable` when it is ready to turn in; a daily, weekly or monthly quest has `repeat` and `repeatDone` (turned in since the game reset it); `lastRejection` is the game server's reason for refusing its last turn-in. For a quest not accepted or not loaded, use `eval`.
 - **Turn-ins**: `skua --engine <name> quests complete <id>` turns a quest in and prints the game server's answer, exiting with 1 when it refuses. Every turn-in, a Script's too, is a `quest.completed` or `quest.rejected` event (`{id, name, reason}`), and a refusal is also a Script log line.
+- **Refusals**, as a `quest.rejected` event's `reason` or a quest's `lastRejection`: `Missing Badge` means the quest was already turned in this period. `Missing Quest Progress` means the account's story hasn't reached the quest, though it may hold every item: the quest unlocks once the story quests before it raise its slot to `Value - 1`, which `Bot.Quests.IsUnlocked(id)` checks. To see how far it is (`gated` false means no story gate):
+  ```csharp
+  var q = Bot.Quests.EnsureLoad(9173);
+  return new { gated = q.Slot >= 0, progress = q.Slot < 0 ? 0 : Bot.Flash.CallGameFunction<int>("world.getQuestValue", q.Slot), needs = q.Value - 1 };
+  ```
 - **eval**: pass the code on stdin through a quoted heredoc, so item names with apostrophes survive the shell:
   ```sh
   skua --engine <name> eval - <<'EOF'
@@ -35,11 +40,6 @@ Paths below are in the data folder, `<SkuaDIR>`: `~/Library/Application Support/
   ```
 - **Quest done**: `Bot.Quests.HasBeenCompleted(id)` reads the quest value, as CoreBots' `isCompletedBefore` does. The game's `world.isQuestComplete` reported a finished quest as not done.
 - **Done this period**: `Bot.Quests.IsDailyComplete(id)` covers daily, weekly and monthly quests alike. It reads the same bit as the quest's `repeatDone`, which the game clears at each reset.
-- **Refusals**: `Missing Badge` means the quest was already turned in this period. `Missing Quest Progress` means the account's story hasn't reached the quest, though it may hold every item: `Bot.Quests.IsUnlocked(id)` is false until the story quests before it are done. To see how far it is:
-  ```csharp
-  var q = Bot.Quests.EnsureLoad(9173);
-  return new { progress = Bot.Flash.CallGameFunction<int>("world.getQuestValue", q.Slot), needs = q.Value - 1 };
-  ```
 - **What a quest needs**: `AcceptRequirements` to accept it, `Requirements` to turn it in:
   ```csharp
   var q = Bot.Quests.EnsureLoad(8741);
@@ -83,7 +83,7 @@ The Scripts fork's [glossary](https://github.com/noelrohi/Scripts/blob/Skua/GLOS
 3. **Scripts**: while the Comp is only on an unmerged Scripts branch, pull the Scripts from it: `skua scripts source noelrohi/Scripts@<branch>`, then `skua scripts update --verify`, which downloads every Script whose file differs from the branch's `scripts.json`; a plain `update` fetches only the commits since the last sync, so a Script that changed otherwise keeps its old code. Both are refused while any Engine of the data folder runs a Script, and every Engine of the data folder shares the result. Then `skua scripts check` the boss Script. After testing, put the default back: `skua scripts source --default`, then `skua scripts update --verify`.
 4. **Potions**: the Script buys each Loadout's potions, except Unstable Malevolence Elixir, which the potion buyer can't make. Check with `eval` that the account playing a class whose Loadout has it holds some.
 5. **Options**: a boss Script reads its `<Boss>Comp` and `<Boss>Layout` `DoAllUltras` options, e.g. `UltraNulgathComp=dot-lr-ap-loo` and `UltraNulgathLayout=<account>=<class>; ...`. No command sets them: while no `DoAllUltras` runs, back up `<SkuaDIR>/options/DoAllUltras.cfg` and set its `Options:UltraNulgathComp=` and `Options:UltraNulgathLayout=` lines, adding either line the file lacks. Set the Comp and its layout together: a layout naming a class outside the Comp stops the Script. All four Engines read that one file. A kill spends the boss's quest for its period: before any test of a weekly boss, warn the developer and wait for their go-ahead.
-6. **Same server**: `skua --engine <name> login <server> --account <name>` on each of the 4 Engines, the same `<server>` for all, until `status` shows it on all 4.
+6. **Same server**: log in the 4 accounts the developer named for this Comp, each on its Engine and all on one `<server>`, `skua --engine <name> login <server> --account <name>`, until `status` shows that server on all 4.
 7. **Start and follow**: on each of the 4 Engines in turn, `skua --engine <name> script start Ultrasv3/IndividualUltras/<boss script>`, e.g. `6UltraNulgathv3.cs`, and follow its `logs events -f` for the `script.report` events named `ultra.attempt`. Their `data` is `{boss, comp, class, role, startedAt, endedAt, outcome, bossHp, bossMaxHp, deaths: [{atSec}]}`, `outcome` being `kill`, `wipe` or `stopped`; Speaker's Script detects no Wipe, so its outcomes are `kill` or `stopped`. Data over 64 KB arrives as a string, its JSON text cut to 64 KB. A Script Report names no account; the Engine it came from does. Each account stamps `startedAt` on its own clock: merge the four accounts' reports into one Attempt by boss, Comp and `startedAt` within a few seconds of each other.
 8. **Stop**: at the first `kill`, or the session's third `wipe`, `skua --engine <name> script stop` on every Engine. A boss Script refights after a Wipe on its own.
 9. **Results**: add one row per Attempt to the boss's results table in the playbook: date, Comp, Party Layout as `alt1=<class>; ...`, outcome, duration (`endedAt` minus `startedAt`), deaths as `<Role> @ <atSec>`, and a note. The playbook is public: write the accounts as `alt1`…`alt4`, the same alt for the same account in every row.
