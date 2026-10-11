@@ -22,9 +22,10 @@ internal static class Cli
     /// How every command connects: it replaces an idle Engine from another build, and says so on stderr. A command that only reads keeps one that
     /// speaks this protocol version, and answers from it.
     /// </summary>
-    public static EngineClientOptions Options(bool reads = false) => new()
+    /// <param name="endpoint">Another Engine than <see cref="Endpoint"/>'s.</param>
+    public static EngineClientOptions Options(bool reads = false, EngineEndpoint? endpoint = null) => new()
     {
-        Endpoint = Endpoint(),
+        Endpoint = endpoint ?? Endpoint(),
         ReplaceStale = true,
         KeepCompatibleStale = reads,
         Notice = line => Console.Error.WriteLine($"skua: {line}"),
@@ -61,21 +62,17 @@ internal static class Cli
         {
             using EngineConnection connection = await EngineClient.ConnectAsync(Options(reads: true), cancellationToken);
             HashSet<long> replayed = [];
-            if (tail is { } newest)
+            if (tail is not null)
             {
-                // A tail reads one kind, so several are read one after another and merged. Following on from the first one's cursor misses no
-                // entry recorded in between; one a later tail already printed is skipped.
-                List<LogPage> pages = [];
-                foreach (LogKind kind in kinds)
-                    pages.Add(await connection.LogsAsync(kind, after, null, newest, cancellationToken));
-                if (pages.Any(page => page.Gap))
+                Replay backlog = await ReplayAsync(connection, kinds, after, tail, cancellationToken);
+                if (backlog.Gap)
                     Console.Error.WriteLine($"skua: {Output.GapNotice}");
-                foreach (LogEntryDto entry in pages.SelectMany(page => page.Entries).OrderBy(entry => entry.Seq).TakeLast(newest))
+                foreach (LogEntryDto entry in backlog.Entries)
                 {
                     replayed.Add(entry.Seq);
                     Print(entry);
                 }
-                after = pages[0].Next;
+                after = backlog.Next;
             }
             await foreach (LogPage page in connection.SubscribeAsync(kinds, after, cancellationToken))
             {
@@ -100,6 +97,40 @@ internal static class Cli
 
         void Print(LogEntryDto entry) => Console.WriteLine(json ? JsonSerializer.Serialize(entry, ControlJson.Options) : Output.Entry(entry));
     }
+
+    /// <summary>What a follow replays before it follows: the entries in seq order, and the cursor it follows on from.</summary>
+    /// <param name="Next">The cursor to subscribe from; the follow skips an entry after it that the replay printed already, by its seq.</param>
+    public sealed record Replay(IReadOnlyList<LogEntryDto> Entries, string Next, bool Gap);
+
+    /// <summary>The entries of the given kinds after the cursor: with <paramref name="tail"/> only the newest that many, otherwise every one held.</summary>
+    public static async Task<Replay> ReplayAsync(EngineConnection connection, LogKind[] kinds, string? after, int? tail, CancellationToken cancellationToken)
+    {
+        // A page reads one kind, so several are read one after another and merged. Following on from the first one's cursor misses no entry
+        // recorded in between; one a later read already returned is skipped by the follow.
+        List<LogEntryDto> entries = [];
+        string? next = null;
+        bool gap = false;
+        foreach (LogKind kind in kinds)
+        {
+            string? cursor = after;
+            LogPage page;
+            do
+            {
+                page = await connection.LogsAsync(kind, cursor, tail is null ? MaxPage : null, tail, cancellationToken);
+                entries.AddRange(page.Entries);
+                gap |= page.Gap;
+                cursor = page.Next;
+            }
+            // A page can stop short of its max at the reply's size cap, so only an empty one is the end.
+            while (tail is null && page.Entries.Count > 0);
+            next ??= cursor;
+        }
+        IEnumerable<LogEntryDto> ordered = entries.DistinctBy(entry => entry.Seq).OrderBy(entry => entry.Seq);
+        return new Replay([.. tail is { } newest ? ordered.TakeLast(newest) : ordered], next!, gap);
+    }
+
+    /// <summary>The most entries a <c>logs</c> page holds.</summary>
+    private const int MaxPage = 1000;
 
     /// <summary>
     /// Brings the Scripts up to date before <c>skua script start</c>, and says so in one line when it downloaded any: on stdout, or on stderr with

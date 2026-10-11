@@ -15,14 +15,18 @@ Option<bool> json = new("--json")
 
 Option<string?> engineName = new("--engine")
 {
-    Description = "The Engine Name of the Engine to talk to (or auto-start). It wins over SKUA_ENGINE_SOCKET; without it, the Engine at SKUA_ENGINE_SOCKET is named after the socket's file, else default.",
+    Description = "The Engine Name of the Engine to talk to (or auto-start). It wins over SKUA_ENGINE_SOCKET; without it, the Engine at SKUA_ENGINE_SOCKET is named after the socket's file, else default. "
+        + "'logs -f' and 'logs attempts' take several, comma-separated.",
     HelpName = "name",
     Recursive = true,
 };
 engineName.Validators.Add(result =>
 {
-    if (result.GetValueOrDefault<string?>() is { } name && !EngineName.IsValid(name))
-        result.AddError($"Engine Name '{name}' is invalid; it must match [a-z0-9-]{{1,16}}.");
+    foreach (string name in result.GetValueOrDefault<string?>() is { } names ? FollowEngines.Names(names) : [])
+    {
+        if (!EngineName.IsValid(name))
+            result.AddError($"Engine Name '{name}' is invalid; it must match [a-z0-9-]{{1,16}}.");
+    }
 });
 
 Command status = new("status", "Show a running Engine, its game and its Script; it starts none, and fails when the Engine isn't running.");
@@ -111,20 +115,45 @@ Argument<LogKind[]> logKinds = new("kind")
 Option<string?> logsAfter = new("--after") { Description = "Start after this cursor: the 'next' of an earlier reply." };
 Option<int?> logsMax = new("--max") { Description = "Entries per page: 200 by default, at most 1000." };
 Option<int?> logsTail = new("--tail") { Description = "Instead of --max: the newest N entries (after --after's cursor, if given), still oldest first; at most 1000. With -f, it replays them, then follows." };
-Option<bool> follow = new("--follow", "-f") { Description = "Replay from the cursor, then print new entries as they arrive, until interrupted." };
-Command logs = new("logs", "Page through the Engine's logs and events, or follow them with -f; -f --tail N follows on from the newest N, like tail -f -n N.") { logKinds, logsAfter, logsMax, logsTail, follow };
+Option<bool> follow = new("--follow", "-f")
+{
+    Description = "Replay from the cursor, then print new entries as they arrive, until interrupted. Each entry is written as it arrives; a filter "
+        + "after it in a pipeline must flush per line too (grep --line-buffered), or its matches wait in its buffer.",
+};
+Option<bool> logsAllEngines = new("--all-engines")
+{
+    Description = "With -f: follow every Engine in the data folder that is running now (none is started), as --engine a,b,c follows those; each line starts with its Engine Name "
+        + "(--json: an engine field), and --tail N replays each one's newest N, merged by time.",
+};
+Command logs = new("logs", "Page through the Engine's logs and events, or follow them with -f; -f --tail N follows on from the newest N, like tail -f -n N. "
+    + "-f follows several Engines with --engine a,b,c or --all-engines.")
+{
+    logKinds, logsAfter, logsMax, logsTail, follow, logsAllEngines,
+};
 logs.Validators.Add(result =>
 {
+    // 'logs gains' and 'logs attempts' check their own.
+    if (result.Command.Subcommands.Any(subcommand => result.GetResult(subcommand) is not null))
+        return;
     if (!result.GetValue(follow) && result.GetValue(logKinds)!.Length > 1)
         result.AddError("A page takes one kind; follow several with -f.");
     if (result.GetValue(follow) && result.GetValue(logsMax) is not null)
         result.AddError("--max applies to one page, not to -f.");
     if (result.GetValue(logsTail) is not null && result.GetValue(logsMax) is not null)
         result.AddError("Give --max or --tail, not both.");
+    bool several = result.GetValue(logsAllEngines) || FollowEngines.Several(result.GetValue(engineName));
+    if (several && !result.GetValue(follow))
+        result.AddError("A page reads one Engine; follow several with -f.");
+    if (several && result.GetValue(logsAfter) is not null)
+        result.AddError("A cursor belongs to one Engine; --after doesn't take several.");
+    if (result.GetValue(logsAllEngines) && result.GetValue(engineName) is not null)
+        result.AddError("Give --engine or --all-engines, not both.");
 });
 logs.SetAction((parse, ct) =>
 {
     LogKind[] kinds = parse.GetValue(logKinds) is { Length: > 0 } given ? given : [LogKind.All];
+    if (parse.GetValue(logsAllEngines) || FollowEngines.Several(parse.GetValue(engineName)))
+        return FollowEngines.RunAsync(parse.GetValue(json), parse.GetValue(engineName) is { } names ? FollowEngines.Names(names) : null, kinds, parse.GetValue(logsTail), ct);
     return parse.GetValue(follow)
         ? Cli.FollowLogsAsync(parse.GetValue(json), kinds, parse.GetValue(logsAfter), parse.GetValue(logsTail), ct)
         : Cli.RunAsync(parse.GetValue(json), async options =>
@@ -143,6 +172,41 @@ Command logsGains = new("gains",
 };
 logsGains.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), _ => LogGains.ReadAsync(parse.GetValue(gainsFile), parse.GetValue(gainsRun), ct), Output.Gains));
 logs.Subcommands.Add(logsGains);
+
+Option<string[]> attemptsFiles = new("--file")
+{
+    Description = "A session log to read, instead of the Engines' newest; give it again for each log. Its Engine is the one whose engines/logs/<name>/ folder holds it, else the one its engine.started names.",
+    HelpName = "path",
+};
+Option<bool> attemptsAllEngines = new("--all-engines")
+{
+    Description = "Read the newest session log of every Engine that has session logs, in <SKUA_DIR>/engines/logs/, whether or not it is running.",
+};
+Command logsAttempts = new("attempts",
+    "Group the ultra.attempt reports of the Ultra boss Scripts into Attempts across accounts: the newest session log of each Engine of --engine a,b,c "
+    + "(or --all-engines, or --file), same boss and Comp started within 15 s. One line per Attempt: start, boss, Comp, outcome, length, and each "
+    + "Engine's class/Role and deaths; --json adds each account's loadout.")
+{
+    attemptsFiles, attemptsAllEngines,
+};
+logsAttempts.Validators.Add(result =>
+{
+    int sources = (result.GetValue(attemptsFiles) is { Length: > 0 } ? 1 : 0) + (result.GetValue(attemptsAllEngines) ? 1 : 0)
+        + (result.GetValue(engineName) is not null ? 1 : 0);
+    if (sources > 1)
+        result.AddError("Give one of --file, --engine and --all-engines.");
+});
+logsAttempts.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), _ => LogAttempts.ReadAsync(
+    parse.GetValue(attemptsFiles) ?? [], parse.GetValue(engineName) is { } names ? FollowEngines.Names(names) : null, parse.GetValue(attemptsAllEngines), ct),
+    Output.Attempts));
+logs.Subcommands.Add(logsAttempts);
+
+// Only the commands that read several Engines take several names.
+engineName.Validators.Add(result =>
+{
+    if (FollowEngines.Several(result.GetValueOrDefault<string?>()) && (result.GetResult(logs) is null || result.GetResult(logsGains) is not null))
+        result.AddError("Only 'skua logs -f' and 'skua logs attempts' take several Engines.");
+});
 
 Command servers = new("servers", "List the game servers: players, member-only and language. Works before login.");
 servers.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), async options =>
@@ -460,5 +524,6 @@ RootCommand root = new("Drive a Skua Engine.")
 };
 Skill.AddTo(root);
 ParseResult parsed = root.Parse(args);
-Cli.EngineName = parsed.GetValue(engineName);
+// Several names are no one Engine; the commands that take several read them from the option.
+Cli.EngineName = parsed.GetValue(engineName) is { } named && !FollowEngines.Several(named) ? named : null;
 return await parsed.InvokeAsync();

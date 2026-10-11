@@ -30,7 +30,7 @@ public sealed record EngineEndpoint
         LogPath = Path.Combine(EnginesDir, name + ".log");
         KeptNoticePath = Path.Combine(EnginesDir, name + ".kept");
         LastRunPath = Path.Combine(EnginesDir, name + ".lastrun.json");
-        LogFilesDir = Path.Combine(EnginesDir, "logs", name);
+        LogFilesDir = Path.Combine(LogFilesRoot(skuaDir), name);
         GameStorageDir = Path.Combine(EnginesDir, "game-storage", name);
     }
 
@@ -59,6 +59,23 @@ public sealed record EngineEndpoint
 
     /// <summary>Where the Engine writes one JSONL file of its log entries per start, keeping the last 10.</summary>
     public string LogFilesDir { get; }
+
+    /// <summary>The newest of the Engine's session logs, which are named after their start time; null when it has none.</summary>
+    public string? NewestLogFile() =>
+        Directory.Exists(LogFilesDir) ? Directory.GetFiles(LogFilesDir, "*.jsonl").Order(StringComparer.Ordinal).LastOrDefault() : null;
+
+    /// <summary>The folder of every Engine's <see cref="LogFilesDir"/>, each named after its Engine.</summary>
+    public static string LogFilesRoot(string skuaDir) => Path.Combine(skuaDir, "engines", "logs");
+
+    /// <summary>The endpoints of the Engines that have session logs in a data folder, by name, whether or not they run.</summary>
+    public static IReadOnlyList<EngineEndpoint> WithLogFiles(string skuaDir)
+    {
+        string root = LogFilesRoot(skuaDir);
+        if (!Directory.Exists(root))
+            return [];
+        return [.. Directory.EnumerateDirectories(root).Select(Path.GetFileName).OfType<string>().Where(EngineName.IsValid)
+            .Order(StringComparer.Ordinal).Select(name => Resolve(name, skuaDir)).Where(endpoint => endpoint.NewestLogFile() is not null)];
+    }
 
     /// <summary>
     /// Where the Game Host keeps the game's local SharedObjects (its Favorites and options) for this Engine Name across restarts; no other
