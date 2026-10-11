@@ -1,11 +1,13 @@
 package {
 import flash.display.*;
 import flash.external.ExternalInterface;
+import flash.utils.ByteArray;
 import flash.utils.Dictionary;
 // The game's own objects as skua.swf's getGameObject reads them: JSON.stringify, then back over the Bridge.
 // Shaped like the live game (#49): inventory items with CharItemIDs past 2^28, a weak-key Dictionary of
 // players keyed by name that the game enumerates and edits (read as the Engine does: the names from a
-// Vector.<String>, then each player by key), a class instance with getters, and big payloads.
+// Vector.<String>, then each player by key), a class instance with getters, and big payloads. And the
+// inventory as the game's addItems leaves it (#263): entries enumerated to the end, then given a new key.
 public class Reads extends Sprite {
     private var world:Object = {};
 
@@ -18,6 +20,7 @@ public class Reads extends Sprite {
         world.odd = {negZero: -0, half: 0.5, big: 4294967296, huge: 1e21, tiny: 1.5e-7, min: -268435457, nan: NaN,
             text: "a & <b> \"q\" ' ’ é 🐉 \\ / \t\n"};
         world.bankinfo = new Bank(world.bank);
+        world.myAvatar = {items: inventory()};
         ExternalInterface.addCallback("getGameObject", getGameObject);
         ExternalInterface.addCallback("getGameObjectKey", getGameObjectKey);
     }
@@ -39,6 +42,54 @@ public class Reads extends Sprite {
                 iQty: i % 7 + 1, iStk: 99, bEquip: i == from, sType: i == from ? "Class" : "Sword", EnhLvl: 0, bTemp: false,
                 iHrs: 12.25, tPurchase: 1790499068112 + i});
         return a;
+    }
+
+    // world.myAvatar.items after addItems: each entry enumerated to the end (copyObj's AMF round trip, or a for-in),
+    // then given a new key and moved out of the bank. A Ruffle that trusts the position that enumeration cached
+    // after the insert has JSON.stringify list one key twice and lose another (live: ItemID). Entries come from
+    // JSON, as the HTTP bank sends them, and from literals; i picks the source, the enumeration and the new key.
+    private static const ADDED:Array = ["iQtyNow", "EnhLvl", "bHouse", "iReqCP"];
+
+    private static function inventory():Array {
+        var a:Array = [];
+        for (var i:int = 0; i < 16; i++) {
+            var item:Object = i & 1 ? inventoryItem(i) : JSON.parse(inventoryJson(i));
+            if (i & 2) {
+                for (var k:String in item) {}
+            } else {
+                copyObj(item);
+            }
+            item[ADDED[i >> 2]] = item.iQty;
+            item.bBank = 0;
+            a.push(item);
+        }
+        return a;
+    }
+
+    // The game's copyObj.
+    private static function copyObj(o:Object):Object {
+        var b:ByteArray = new ByteArray();
+        b.writeObject(o);
+        b.position = 0;
+        return b.readObject();
+    }
+
+    // An AQW inventory entry's 29 keys, in the game's order.
+    private static function inventoryJson(i:int):String {
+        return '{"sIcon":"iwsword","bEquip":0,"EnhID":0,"sFile":"items/swords/sword' + i + '.swf","bUpg":0,' +
+            '"iCost":0,"iType":0,"tPurchase":"2026-09-01T12:00:00","CharID":91234567,"sES":"Weapon",' +
+            '"sLink":"Sword' + i + '","iDPS":100,"bStaff":0,"iHrs":12,"sElmt":"None","sName":"Item ' + i + '",' +
+            '"sType":"Sword","dPurchase":"2026-09-01T12:00:00","iRng":10,"iLvl":1,"bCoins":0,"iQty":' + (i + 1) + ',' +
+            '"iStk":99,"bBank":1,"sDesc":"Tom & Jerry\'s <sword>","iRty":10,"bTemp":0,"ItemID":' + (5000 + i) + ',' +
+            '"CharItemID":' + (1600000000 + i) + '}';
+    }
+
+    private static function inventoryItem(i:int):Object {
+        return {sIcon: "iwsword", bEquip: 0, EnhID: 0, sFile: "items/swords/sword" + i + ".swf", bUpg: 0, iCost: 0,
+            iType: 0, tPurchase: "2026-09-01T12:00:00", CharID: 91234567, sES: "Weapon", sLink: "Sword" + i,
+            iDPS: 100, bStaff: 0, iHrs: 12, sElmt: "None", sName: "Item " + i, sType: "Sword",
+            dPurchase: "2026-09-01T12:00:00", iRng: 10, iLvl: 1, bCoins: 0, iQty: i + 1, iStk: 99, bBank: 1,
+            sDesc: "Tom & Jerry's <sword>", iRty: 10, bTemp: 0, ItemID: 5000 + i, CharItemID: 1600000000 + i};
     }
 
     // world.uoTree: new Dictionary(true) with string keys; players leave and join while the game enumerates it.
