@@ -25,12 +25,13 @@ public class LogGainsTests
         JsonElement gains = json.RootElement;
         Assert.Equal((2, "Nation/Materials/DiamondofNulgath.cs", 1946.365), (gains.GetProperty("run").GetInt32(), gains.GetProperty("script").GetString(), gains.GetProperty("durationSec").GetDouble()));
         Assert.Equal(
-            ["Bamboozle vs Drudgen 3", "Supplies to Spin The Wheel of Chance 3", "Swindle's Bonus Deal 2", "The Assistant 1", "Swindle's Return Policy 1", "Monster drops "],
+            ["Bamboozle vs Drudgen 3", "Supplies to Spin The Wheel of Chance 3", "Swindle's Bonus Deal 2", "The Assistant 1", "Swindle's Return Policy 1"],
             gains.GetProperty("sources").EnumerateArray().Select(s => $"{s.GetProperty("name")} {s.GetProperty("turnIns")}"));
 
         JsonElement assistant = Source(gains, "The Assistant");
         Assert.Equal(2859, assistant.GetProperty("questId").GetInt32());
-        Assert.Equal("4771:333, 4723:250, 4770:69, 6136:54, 4762:3", Counts(assistant, "gained"));
+        // The Assistant also offers rewards as drops during its turn-in; the five the Script picked up after it are its too.
+        Assert.Equal("4771:333, 4723:250, 4770:69, 6136:54, 4762:3, 4718:1, 4747:1, 4750:1, 4751:1, 4858:1", Counts(assistant, "gained"));
         Assert.Equal("52824:250", Counts(assistant, "spent"));
         Assert.Equal("4723:3, 4770:3, 4771:3, 4861:1, 6136:1", Counts(Source(gains, "Supplies to Spin The Wheel of Chance"), "gained"));
         Assert.Equal("67266:3", Counts(Source(gains, "Supplies to Spin The Wheel of Chance"), "spent"));
@@ -38,8 +39,6 @@ public class LogGainsTests
         Assert.Equal("4771:140, 57446:6", Counts(Source(gains, "Swindle's Bonus Deal"), "gained"));
         Assert.Equal("4747:2, 4748:2, 4750:2, 4751:2, 4858:2", Counts(Source(gains, "Swindle's Bonus Deal"), "spent"));
         Assert.Equal("4771:70, 57446:3", Counts(Source(gains, "Swindle's Return Policy"), "gained"));
-        Assert.Equal("4718:1, 4747:1, 4750:1, 4751:1, 4858:1", Counts(Source(gains, "Monster drops"), "gained"));
-        Assert.Equal(JsonValueKind.Null, Source(gains, "Monster drops").GetProperty("questId").ValueKind);
         Assert.Equal("Unidentified 13", Item(assistant.GetProperty("gained"), 4762).GetProperty("name").GetString());
 
         // The prototype's turn-ins/h and pays per hour.
@@ -150,6 +149,78 @@ public class LogGainsTests
     }
 
     [Fact]
+    public async Task Gains_credits_a_quest_that_takes_nothing_from_its_turn_in_and_names_the_reward_from_the_quest()
+    {
+        await using EngineSandbox sandbox = new();
+        // Free Daily Boost takes no items, so no turnIn packet comes: the turn-in starts with what Skua sent. The reward is a boost
+        // the player already held, whose addItems has no name; the quest's rewards name it.
+        string log = WriteLog(sandbox,
+        [
+            Started(1, 0),
+            Received(2, 1000, """{"cmd":"getQuests","quests":{"4069":{"QuestID":4069,"sName":"Free Daily Boost","oRewards":{"itemsC":{"0":{"ItemID":27555,"sName":"Class Boost! (60 Min)","iQty":1}}}}}}"""),
+            Sent(3, 2000, "%xt%zm%tryQuestComplete%1%4069%27555%false%1%wvz%"),
+            Received(4, 2200, """{"cmd":"addItems","items":{"27555":{"iQty":1,"iQtyNow":3,"CharItemID":1,"bBank":0}}}"""),
+            Received(5, 2400, """{"cmd":"ccqr","bSuccess":1,"QuestID":4069,"sName":"Free Daily Boost"}"""),
+            Stopped(6, 3_600_000),
+        ]);
+
+        using JsonDocument json = await GainsAsync(sandbox, log);
+
+        JsonElement gains = json.RootElement;
+        Assert.Equal(["Free Daily Boost 1"], gains.GetProperty("sources").EnumerateArray().Select(s => $"{s.GetProperty("name")} {s.GetProperty("turnIns")}"));
+        JsonElement boost = Item(Source(gains, "Free Daily Boost").GetProperty("gained"), 27555);
+        Assert.Equal((1L, "Class Boost! (60 Min)"), (boost.GetProperty("qty").GetInt64(), boost.GetProperty("name").GetString()));
+    }
+
+    [Fact]
+    public async Task Gains_credits_a_reward_the_game_drops_to_its_quest_and_other_drops_to_monsters()
+    {
+        await using EngineSandbox sandbox = new();
+        // Odd's 'n' Ends pays its Crypto Token as a drop: offered (dropItem) during the turn-in, picked up (getDrop) after its ccqr.
+        string log = WriteLog(sandbox,
+        [
+            Started(1, 0),
+            Sent(2, 1000, "%xt%zm%tryQuestComplete%1%6187%-1%false%1%wvz%"),
+            Received(3, 1200, """{"cmd":"turnIn","sItems":"42658:1"}"""),
+            Received(4, 1300, """{"cmd":"dropItem","items":{"42657":{"ItemID":42657,"sName":"Crypto Token","iQty":1}}}"""),
+            Received(5, 1400, """{"cmd":"ccqr","bSuccess":1,"QuestID":6187,"sName":"Odd's 'n' Ends"}"""),
+            Received(6, 1600, """{"cmd":"getDrop","ItemID":42657,"bSuccess":1,"bBank":1,"iQty":1,"iQtyNow":33}"""),
+            Received(7, 5000, """{"cmd":"dropItem","items":{"5574":{"ItemID":5574,"sName":"Slain Gorillaphant","iQty":1}}}"""),
+            Received(8, 5200, """{"cmd":"getDrop","ItemID":5574,"bSuccess":1,"iQty":1,"iQtyNow":1}"""),
+            // A turn-in the server never answers is over a few seconds later: what comes after is a drop again.
+            Sent(9, 6000, "%xt%zm%tryQuestComplete%1%802%-1%false%1%wvz%"),
+            Received(10, 40_000, """{"cmd":"addItems","items":{"5574":{"ItemID":5574,"sName":"Slain Gorillaphant","iQty":1}}}"""),
+            Stopped(11, 3_600_000),
+        ]);
+
+        using JsonDocument json = await GainsAsync(sandbox, log);
+
+        JsonElement gains = json.RootElement;
+        Assert.Equal(["Odd's 'n' Ends 1", "Monster drops "], gains.GetProperty("sources").EnumerateArray().Select(s => $"{s.GetProperty("name")} {s.GetProperty("turnIns")}"));
+        Assert.Equal("42657:1", Counts(Source(gains, "Odd's 'n' Ends"), "gained"));
+        Assert.Equal("42658:1", Counts(Source(gains, "Odd's 'n' Ends"), "spent"));
+        Assert.Equal("5574:2", Counts(Source(gains, "Monster drops"), "gained"));
+        Assert.Equal("Crypto Token", Item(Source(gains, "Odd's 'n' Ends").GetProperty("gained"), 42657).GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task Gains_names_an_item_from_the_inventory_the_game_loads()
+    {
+        await using EngineSandbox sandbox = new();
+        string log = WriteLog(sandbox,
+        [
+            Received(1, 0, """{"cmd":"loadInventoryBig","items":[{"ItemID":4771,"sName":"Diamond of Nulgath","iQty":10}]}""", run: null),
+            Started(2, 0),
+            Received(3, 1000, """{"cmd":"addItems","items":{"4771":{"iQty":5,"iQtyNow":15}}}"""),
+            Stopped(4, 3_600_000),
+        ]);
+
+        using JsonDocument json = await GainsAsync(sandbox, log);
+
+        Assert.Equal("Diamond of Nulgath", Item(Source(json.RootElement, "Monster drops").GetProperty("gained"), 4771).GetProperty("name").GetString());
+    }
+
+    [Fact]
     public async Task Gains_of_a_run_the_log_lacks_names_the_runs_it_has()
     {
         await using EngineSandbox sandbox = new();
@@ -158,6 +229,33 @@ public class LogGainsTests
 
         Assert.Equal(ExitCodes.For(ErrorCode.InvalidArgument), result.ExitCode);
         Assert.Equal($"skua: Run 7 isn't in {Fixture}; it has runs 1 and 2.", result.Stderr.Trim());
+    }
+
+    private static string Entry(object fields) => JsonSerializer.Serialize(fields, ControlJson.Options);
+
+    private static string Started(long seq, long ts) =>
+        Entry(new { seq, ts, kind = "events", run = 1, type = "script.started",
+            data = new { run = 1, script = "Tests/Dailies.cs", restart = false, inventory = Array.Empty<object>(), temp = Array.Empty<object>(), bank = (object?)null } });
+
+    private static string Stopped(long seq, long ts) => Entry(new { seq, ts, kind = "events", run = 1, type = "script.stopped", data = new { run = 1 } });
+
+    private static string Received(long seq, long ts, string o, int? run = 1) =>
+        Entry(new { seq, ts, kind = "flash", run, text = $$$"""[Net] [ RECEIVED ]: {"t":"xt","b":{"r":-1,"o":{{{o}}}}}, (len: 0)""" });
+
+    private static string Sent(long seq, long ts, string packet) => Entry(new { seq, ts, kind = "flash", run = 1, text = $"[Net] [Sending - STR]: {packet}\n" });
+
+    private static string WriteLog(EngineSandbox sandbox, string[] entries)
+    {
+        string log = Path.Combine(sandbox.SkuaDir, "session.jsonl");
+        File.WriteAllLines(log, entries);
+        return log;
+    }
+
+    private static async Task<JsonDocument> GainsAsync(EngineSandbox sandbox, string log)
+    {
+        ProcessResult result = await sandbox.RunCliAsync("logs", "gains", "--file", log, "--json");
+        Assert.True(result.ExitCode == 0, result.Stderr);
+        return JsonDocument.Parse(result.Stdout);
     }
 
     private static JsonElement Source(JsonElement gains, string name) =>
