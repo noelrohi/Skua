@@ -234,13 +234,18 @@ class Suite:
     # reads: getGameObject of AQW-shaped objects (#49). Each reply parses as JSON with every entry, and every
     # whole number is written as Flash writes it, "1500000000" and not "1500000000.0": Core's Newtonsoft models
     # reject the latter for an int, and the whole list then reads as empty. The players' weak-key Dictionary is
-    # written as "Dictionary", as Flash writes it, so the Engine reads it by key.
+    # written as "Dictionary", as Flash writes it, so the Engine reads it by key. Each inventory entry that the
+    # game enumerated and then gave a new key (#263) lists its 29 keys and the new one, each once: a Ruffle that
+    # trusts a stale enumeration position lists one key twice and loses another (live: ItemID).
+    INVENTORY_KEYS = set("sIcon bEquip EnhID sFile bUpg iCost iType tPurchase CharID sES sLink iDPS bStaff iHrs sElmt "
+                         "sName sType dPurchase iRng iLvl bCoins iQty iStk bBank sDesc iRty bTemp ItemID CharItemID".split())
+
     def reads(self):
         h = self.host(self.swf("Reads"), "reads")
         h.wait_for(lambda: "getGameObjectKey" in h.callbacks, timeout=20)
         # Each path's entry count, or for the Dictionary the string Flash writes for it.
         expect = {("items",): 17, ("bankinfo.items",): 1000, ("uoTree",): "Dictionary", ("areaUsers",): 5,
-                  ("uoTree", "maada"): 14, ("odd",): 8}
+                  ("uoTree", "maada"): 14, ("odd",): 8, ("myAvatar.items",): 16}
         problems, sizes = [], []
         for args, count in expect.items():
             path = args[0] + "".join(f"[{a}]" for a in args[1:])
@@ -263,6 +268,16 @@ class Suite:
                           and not re.fullmatch(r"-?\d+", t)})
             if bad:
                 problems.append(f"{path}: whole numbers not written as integers: {bad[:4]}")
+            if path == "myAvatar.items":
+                broken = []
+                for n, pairs in enumerate(json.loads(text, object_pairs_hook=lambda p: p)):
+                    keys = [k for k, _ in pairs]
+                    twice = sorted({k for k in keys if keys.count(k) > 1})
+                    lost = sorted(self.INVENTORY_KEYS - set(keys))
+                    if twice or lost or len(keys) != len(self.INVENTORY_KEYS) + 1:
+                        broken.append(f"[{n}] {len(keys)} keys, twice {twice}, lost {lost}")
+                if broken:
+                    problems.append(f"{path}: {len(broken)} entries with keys listed twice or lost, first {broken[0]}")
         uncaught = h.uncaught()
         h.close()
         self.check("reads", not problems and not uncaught,
