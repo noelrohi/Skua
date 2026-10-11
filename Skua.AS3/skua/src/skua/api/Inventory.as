@@ -19,9 +19,11 @@ public class Inventory {
         return cat == null ? items.length : cat.countBag(items);
     }
 
+    // Client 5.0 (Game4000r1) kept the Misc Space size in InvCat.MISC_SLOTS; client 5.1 (r2) dropped it and sizes Misc Space as the bag.
     public static function inventoryMiscSlots():int {
         var cat:* = categories();
-        return cat == null ? 0 : cat.MISC_SLOTS;
+        if (cat == null) return 0;
+        return "MISC_SLOTS" in cat ? int(cat.MISC_SLOTS) : int(Main.instance.game.world.myAvatar.objData.iBagSlots);
     }
 
     public static function inventoryMiscUsedSlots():int {

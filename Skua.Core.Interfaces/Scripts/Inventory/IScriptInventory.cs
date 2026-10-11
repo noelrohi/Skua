@@ -12,7 +12,7 @@ public interface IScriptInventory : ICanEquip
     /// <summary>Whether the game provides separate bag, misc, class and house pools.</summary>
     bool HasCategories { get; }
 
-    /// <summary>The current misc capacity, including server overrides; zero on older games.</summary>
+    /// <summary>The size of Misc Space: as many slots as the bag since client 5.1; zero on games without Spaces.</summary>
     int MiscSlots { get; }
     int MiscUsedSlots { get; }
     int MiscFreeSlots { get; }
