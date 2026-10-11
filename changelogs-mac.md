@@ -7,7 +7,7 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 ## October 11, 2026
 
 ### New
-* The Engine records the AQW game client it loaded as a `game.version` event (`{file, version, title}`), and `skua status` names it on its Game line, such as `client Game4000r2.swf R0048`. The example Hook `docs/hooks/game.version` says when AQW ships a new client, and [docs/game-client-updates.md](./docs/game-client-updates.md) has the routine for checking one. See [Logs and events](./BUILD.md#logs-and-events).
+* The Engine records the Game SWF it loaded, AQW's own game file, as a `game.version` event (`{file, version, title}`), and `skua status` names it on its Game line, such as `Game SWF Game4000r2.swf R0048`. The example Hook `docs/hooks/game.version` says when AQW ships a new Game SWF, and [docs/game-swf-updates.md](./docs/game-swf-updates.md) has the routine for checking one. See [Logs and events](./BUILD.md#logs-and-events).
 
 ## October 9, 2026
 

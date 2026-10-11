@@ -331,7 +331,7 @@ public class CliTests
         ProcessResult down = await sandbox.RunCliAsync("status");
         ProcessResult downJson = await sandbox.RunCliAsync("status", "--json");
 
-        Assert.Contains("Game Host up, loginScreen, client Game4000r1.swf R0047", loginScreen.Stdout);
+        Assert.Contains("Game Host up, loginScreen, Game SWF Game4000r1.swf R0047", loginScreen.Stdout);
         Assert.Contains("Player  none (not playing)", loginScreen.Stdout);
         Assert.Contains("Game Host down", down.Stdout);
         Assert.Contains("Player  none (not playing)", down.Stdout);

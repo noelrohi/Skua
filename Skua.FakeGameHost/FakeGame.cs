@@ -53,7 +53,7 @@ internal sealed class FakeGame
     private int _inventoryDelay = 500;
     private int _bagSpace = 40;
     private int _miscSpace = 100;
-    /// <summary>The game's gameversion data, which skua.swf keeps as <c>params.vars</c>: the client it loaded, as <c>client</c> last set it.</summary>
+    /// <summary>The game's gameversion data, which skua.swf keeps as <c>params.vars</c>: the Game SWF it loaded, as <c>game-swf</c> last set it.</summary>
     private JsonObject _gameVersion = GameVersion("Game4000r1.swf", "R0047", "Fake Title");
     /// <summary>The HUD auras (<c>leaf.hudAuras</c>) of the player (<c>self</c>) and of each monster by its map ID, as AuraSnapshots reads them.</summary>
     private readonly Dictionary<string, List<JsonObject>> _hudAuras = [];
@@ -167,7 +167,7 @@ internal sealed class FakeGame
                 ("buyItemByID", [string id, string shopItemId, string qty]) =>
                     Buy(_shopItems.FirstOrDefault(i => (int)i["ItemID"]! == int.Parse(id) && (shopItemId == "-1" || (int)i["ShopItemID"]! == int.Parse(shopItemId))), qty),
                 ("rejectExcept", [string whitelist]) => Note($"rejectExcept {whitelist}"),
-                // skua.swf's Inventory API, which asks the game's InvCat; the fake's follows client 5.0's.
+                // skua.swf's Inventory API, which asks the game's InvCat; the fake's follows the 5.01 Game SWF's (Game4000r1.swf).
                 ("hasInventoryCategories", _) => Str(true),
                 ("inventoryBagUsedSlots", _) => Str(Used("bag")),
                 ("inventoryMiscSlots", _) => Str(_miscSpace),
@@ -287,8 +287,8 @@ internal sealed class FakeGame
                 case ["bag-space", string slots]:
                     _bagSpace = int.Parse(slots);
                     return true;
-                case ["client", string rest] when rest.Split(' ', 3) is [string file, string version, string title]:
-                    // The client the next load of the game names, as the gameversion data names a new one.
+                case ["game-swf", string rest] when rest.Split(' ', 3) is [string file, string version, string title]:
+                    // The Game SWF the next load of the game names, as the gameversion data names a new one.
                     _gameVersion = GameVersion(file, version, title);
                     return true;
                 case ["hud-aura", string rest] when rest.Split(' ') is [string subject, string name, string stacks, string duration]:

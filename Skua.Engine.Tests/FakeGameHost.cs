@@ -75,10 +75,10 @@ public sealed class FakeGameHost
         return this;
     }
 
-    /// <summary>The game client the simulated game's gameversion data names; Game4000r1.swf R0047 unless set.</summary>
-    public FakeGameHost Client(string file, string version, string title)
+    /// <summary>The Game SWF the simulated game's gameversion data names; Game4000r1.swf R0047 unless set.</summary>
+    public FakeGameHost GameSwf(string file, string version, string title)
     {
-        _lines.Insert(_lines.FindIndex(l => l.StartsWith("game ", StringComparison.Ordinal)) + 1, $"client {file} {version} {title}");
+        _lines.Insert(_lines.FindIndex(l => l.StartsWith("game ", StringComparison.Ordinal)) + 1, $"game-swf {file} {version} {title}");
         return this;
     }
 

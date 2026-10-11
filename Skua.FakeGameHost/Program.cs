@@ -28,9 +28,9 @@
 // game state tracker has read it, i.e. asked isKicked; the call log records `blip read <n>`, from 1), `connection-message <message>`,
 // `broken-login`, `login-response` (the last login's response again), `lock-map <map>` (transfers to it are ignored),
 // `drop <id> <qty> <name>` (an Item, which fills Misc Space), `drop-as <category> <id> <qty> <name>` (a drop of that category, e.g. a Pet,
-// which fills Bag Space), `bag-space <n>` and `misc-space <n>` (Bag Space and Misc Space, 40 and 100 unless set; client 5.0's rules decide
-// which an item fills, and classes fill none), `client <file> <version> <title>` (the game client the gameversion data names, and the
-// game's params.vars holds; Game4000r1.swf R0047 unless set), `favorite <id>` (the player stars the item as a Favorite),
+// which fills Bag Space), `bag-space <n>` and `misc-space <n>` (Bag Space and Misc Space, 40 and 100 unless set; the 5.01 Game SWF's
+// rules decide which an item fills, and classes fill none), `game-swf <file> <version> <title>` (the Game SWF the gameversion data names,
+// and the game's params.vars holds; Game4000r1.swf R0047 unless set), `favorite <id>` (the player stars the item as a Favorite),
 // `party <player>` (another player joins the player's party), `hud-aura <self|monster map id> <name> <stacks> <seconds>` (an aura on the
 // HUD, 0 s for one that doesn't expire; with 0 stacks it stays on with none), `hud-aura-off <self|monster map id> <name>` (the aura leaves the HUD),
 // `aura <self|monster map id> <name> <value>` (an aura with that effect value, apart from the HUD), `aura-off <self|monster map id> <name>`

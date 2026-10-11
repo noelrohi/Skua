@@ -31,16 +31,16 @@ public sealed record EngineInfoDto(string Name, string Build, int Protocol, doub
 /// How many seconds ago <paramref name="Player"/> was read, when the game didn't answer in time (or the read failed) and it is the last reading; null when it is fresh.
 /// </param>
 /// <param name="Options">Skua's options for playing the game, as Scripts set them on <c>Bot.Options</c>; null only from a Game Host alone.</param>
-/// <param name="Client">The AQW game client the Game Client loaded, as <c>game.version</c> records it; null until it has loaded.</param>
+/// <param name="GameSwf">The Game SWF the Game Client loaded, as <c>game.version</c> records it; null until it has loaded.</param>
 public sealed record GameStatusDto(
     bool GameHostUp, GameState State, string? Server, PlayerDto? Player = null, double? PlayerAgeSec = null, GameOptionsDto? Options = null,
-    GameClientDto? Client = null);
+    GameSwfDto? GameSwf = null);
 
-/// <summary>The AQW game client, from the game's gameversion data.</summary>
-/// <param name="File">The client's SWF (<c>sFile</c>), such as <c>Game4000r2.swf</c>.</param>
-/// <param name="Version">The game's version (<c>sVersion</c>), such as <c>R0048</c>.</param>
+/// <summary>The Game SWF, AQW's own game file, from the game's gameversion data.</summary>
+/// <param name="File">The Game SWF's file (<c>sFile</c>), such as <c>Game4000r2.swf</c>.</param>
+/// <param name="Version">The game's version (<c>sVersion</c>), such as <c>R0048</c>; not the SWF's own <c>Game.vParam</c> (<c>5.1</c>).</param>
 /// <param name="Title">The title the game shows on its login screen (<c>sTitle</c>).</param>
-public sealed record GameClientDto(string File, string? Version, string? Title);
+public sealed record GameSwfDto(string File, string? Version, string? Title);
 
 /// <summary>Skua's options for playing the game, the switches of <c>Bot.Options</c> that change how it plays.</summary>
 /// <param name="AggroMonsters">Whether it aggroes the monsters in the player's cell.</param>
