@@ -131,8 +131,8 @@ The lag killer is also on while headless, but the Engine owns that.
 `Cargo.toml` takes `ruffle_core`, `ruffle_render`, `ruffle_render_wgpu` and `ruffle_frontend_utils` from
 [`noelrohi/ruffle`](https://github.com/noelrohi/ruffle) by full `rev`:
 
-- **rev** `171ab779ee77ca36650531faaa215db713d97d2e`
-- **tag** `skua-20260927b-a1277c0` (tags are immutable and never deleted, so every rev a Skua commit names stays reachable)
+- **rev** `6d13d1167b144b7dda7d3bccdb5620aabda45938`
+- **tag** `skua-20261011-a1277c0` (tags are immutable and never deleted, so every rev a Skua commit names stays reachable)
 - **base** upstream Ruffle `a1277c0`
 
 There is no `[patch]` section: wgpu-hal and gc-arena are stock. The `skua` branch holds one commit per fix, with
@@ -154,6 +154,7 @@ Commits are named by subject from now on. This table keeps the old resolutions r
 | 0016 | `skua: Hold the keys of a weak-key Dictionary weakly` |
 | 0017 (without its census) | `skua: Draw finished blend layers early` (`set_layer_flush`, default 8) |
 | (none; #49) | `skua: Write whole numbers in JSON.stringify as Flash does` |
+| (none; #263) | `skua: Trust the cached enumeration position only while no key was added or removed` |
 | 0001, 0007 stats, 0009 counter, 0012, 0014, 0017 census | 6 commits on `skua-diag` (not shipped) |
 | 0002 (wgpu-hal peak counter) | `diag/wgpu-hal-30.0.1-peak-counter.patch` (not shipped) |
 | gc-arena census | `diag/gc-arena-0.7.0-census.patch` (not shipped) |
@@ -164,6 +165,7 @@ Offering these upstream would shrink the fork. Nobody has offered them yet.
 
 - `skua: Hold the keys of a weak-key Dictionary weakly`
 - `skua: Write whole numbers in JSON.stringify as Flash does`
+- `skua: Trust the cached enumeration position only while no key was added or removed`
 - `skua: End the null audio backend's event sounds after their duration`
 - `skua: Trim the texture pools, on by default`
 - `skua: Flush mid-frame once a pass budget is reached` (a PR draft is on branch `prototype/gamehost-flush`)
@@ -204,7 +206,7 @@ One Skua commit carries the new `rev`, the toolchain and `Cargo.lock` together.
 Each step gates the next.
 
 1. **Ruffle's own tests, on the fork at the new tag.**
-   - Run `cargo test -p tests --test tests -- avm2/`, then `-- avm1/`. The baseline at `skua-20260927b-a1277c0`
+   - Run `cargo test -p tests --test tests -- avm2/`, then `-- avm1/`. The baseline at `skua-20261011-a1277c0`
      is avm2 1,171 passed and avm1 765 passed.
    - Run #24590's lifetime tests (`loader_unload_releases_library`, `retained_class_keeps_library`,
      `released_class_frees_library`) and `weak_keys_are_collected`, one filter at a time.

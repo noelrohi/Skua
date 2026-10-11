@@ -13,7 +13,8 @@ public class QuestItemRates extends Module {
         var modalStack:* = game.ui.ModalStack;
         if (modalStack.numChildren) {
             var cFrame:* = modalStack.getChildAt(0);
-            if (getQualifiedClassName(cFrame) == "QFrameMC" && cFrame.cnt.core && cFrame.cnt.core.rewardsRoll) {
+            // A quest frame has no qData while it loads the quest.
+            if (getQualifiedClassName(cFrame) == "QFrameMC" && cFrame.qData && cFrame.cnt.core && cFrame.cnt.core.rewardsRoll) {
                 var rewardsRoll:* = cFrame.cnt.core.rewardsRoll;
                 var rewardList:* = cFrame.qData.reward;
                 for (var i:int = 1; i < rewardsRoll.numChildren; i++) {

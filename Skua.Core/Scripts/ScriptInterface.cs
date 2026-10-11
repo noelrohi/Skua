@@ -531,12 +531,13 @@ public class ScriptInterface : IScriptInterface, IScriptInterfaceManager, IDispo
                             string addItems = Convert.ToString(data["items"]);
                             Dictionary<int, dynamic> addedItem = JsonConvert.DeserializeObject<Dictionary<int, dynamic>>(addItems)!;
                             int itemID = addedItem.Keys.First()!;
-                            ItemBase invItem = Inventory.GetItem(itemID) ?? TempInv.GetItem(itemID)!;
+                            ItemBase? invItem = Inventory.GetItem(itemID) ?? TempInv.GetItem(itemID);
                             Stats.GetSpace();
                             if (invItem is null)
                             {
-                                invItem = Bank.GetItem(itemID)!;
-                                Messenger.Send<ItemAddedToBankMessage, int>(new(invItem, invItem.Quantity), (int)MessageChannels.GameEvents);
+                                // An item the game keeps in neither store, as the bank before it loads, has nothing to report.
+                                if (Bank.GetItem(itemID) is { } bankItem)
+                                    Messenger.Send<ItemAddedToBankMessage, int>(new(bankItem, bankItem.Quantity), (int)MessageChannels.GameEvents);
                                 break;
                             }
                             if (!invItem.Temp)

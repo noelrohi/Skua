@@ -27,9 +27,11 @@ public sealed record ItemGains(int ItemId, string? Name, long Gained, long Spent
 public sealed record GainsResult(string File, int Run, string? Script, double DurationSec, IReadOnlyList<GainSource> Sources, IReadOnlyList<ItemGains> Items);
 
 /// <summary>
-/// Attributes every item gain of a run in an Engine's session log to the source that paid it. A quest's rewards arrive between its
-/// <c>turnIn</c> and its <c>ccqr</c> packets, and count once the <c>ccqr</c> says it succeeded, together with what the <c>turnIn</c> took.
-/// Anything else that arrives, an <c>addItems</c> or a <c>getDrop</c>, is a monster drop picked up. Temporary items are no gain.
+/// Attributes every item gain of a run in an Engine's session log to the source that paid it. A turn-in starts with the
+/// <c>tryQuestComplete</c> Skua sends, or with the server's <c>turnIn</c> (what it took) in a log that lacks what was sent, and ends
+/// with its <c>ccqr</c>, or a few seconds later if none comes. Its rewards count once the <c>ccqr</c> says it succeeded: what arrives
+/// meanwhile, and the drops it offers then (<c>dropItem</c>) once picked up (<c>getDrop</c>). Anything else that arrives, an
+/// <c>addItems</c> or a <c>getDrop</c>, is a monster drop picked up. Temporary items are no gain.
 /// </summary>
 internal static class LogGains
 {
@@ -86,6 +88,7 @@ internal static class LogGains
             return;
 
         JsonElement? packet = entry.Kind == LogKind.Flash ? Received(entry.Text) : null;
+        bool turningIn = entry.Kind == LogKind.Flash && entry.Text?.Contains(TryQuestComplete, StringComparison.Ordinal) == true;
         if (packet is { } received)
             CollectNames(received, names);
         if (entry.Kind == LogKind.Events && entry.Type == EventTypes.ScriptStarted && entry.Data is { } data)
@@ -98,9 +101,17 @@ internal static class LogGains
         tally.Last = entry.Ts;
         if (entry.Type == EventTypes.ScriptStarted && entry.Data?.TryGetProperty("script", out JsonElement script) == true)
             tally.Script ??= script.GetString();
+        if (turningIn)
+            tally.StartTurnIn(entry.Ts);
         if (packet is { } o)
-            tally.Add(o);
+            tally.Add(o, entry.Ts);
     }
+
+    /// <summary>The packet Skua sends to turn a quest in, as the flash log records it: <c>[Net] [Sending - STR]: %xt%zm%tryQuestComplete%…</c>.</summary>
+    private const string TryQuestComplete = "%xt%zm%tryQuestComplete%";
+
+    /// <summary>How long a turn-in waits for its <c>ccqr</c>: the server answers within a second.</summary>
+    private const long TurnInWindowMs = 10_000;
 
     /// <summary>The <c>b.o</c> object of a packet the game server sent, as the flash log records it: <c>[Net] [ RECEIVED ]: {…}, (len: n)</c>.</summary>
     private static JsonElement? Received(string? text)
@@ -126,11 +137,12 @@ internal static class LogGains
     }
 
     /// <summary>
-    /// Item names, which a reward's <c>addItems</c> lacks: from the items of other packets (<c>dropItem</c>, a drop's <c>addItems</c>), and from
-    /// what the player held as a run started.
+    /// Item names, which a reward's <c>addItems</c> lacks: from the items of other packets (<c>dropItem</c>, a drop's <c>addItems</c>, the
+    /// inventory the game loads, the quests' rewards and turn-ins), and from what the player held as a run started.
     /// </summary>
     private static void CollectNames(JsonElement source, Dictionary<int, string> names)
     {
+        CollectItemNames(source, names, 0);
         if (source.TryGetProperty("items", out JsonElement items) && items.ValueKind == JsonValueKind.Object)
         {
             foreach (JsonProperty item in items.EnumerateObject())
@@ -153,6 +165,29 @@ internal static class LogGains
         }
     }
 
+    /// <summary>Every object, however deep in a packet, that names an item: an <c>ItemID</c> with an <c>sName</c>.</summary>
+    private static void CollectItemNames(JsonElement element, Dictionary<int, string> names, int depth)
+    {
+        if (depth > 8)
+            return;
+        if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (JsonElement child in element.EnumerateArray())
+                CollectItemNames(child, names, depth + 1);
+            return;
+        }
+        if (element.ValueKind != JsonValueKind.Object)
+            return;
+        if (element.TryGetProperty("ItemID", out JsonElement itemId) && element.TryGetProperty("sName", out JsonElement name) && name.ValueKind == JsonValueKind.String
+            && (itemId.ValueKind == JsonValueKind.Number ? itemId.TryGetInt32(out int id) : int.TryParse(itemId.GetString(), out id)))
+            names[id] = name.GetString()!;
+        foreach (JsonProperty property in element.EnumerateObject())
+        {
+            if (property.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array)
+                CollectItemNames(property.Value, names, depth + 1);
+        }
+    }
+
     private static long Number(JsonElement o, string property) =>
         o.TryGetProperty(property, out JsonElement value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out long number) ? number : 0;
 
@@ -171,22 +206,45 @@ internal static class LogGains
         private readonly Dictionary<int, QuestTally> _quests = [];
         private readonly Dictionary<int, long> _drops = [];
 
-        /// <summary>A turn-in is under way: what arrives is its reward, and <see cref="_taking"/> what it took.</summary>
+        /// <summary>A turn-in is under way, since <see cref="_turnInSince"/>: what arrives is its reward, and <see cref="_taking"/> what it took.</summary>
         private bool _turningIn;
+        private long _turnInSince;
         private readonly Dictionary<int, long> _paying = [];
         private readonly Dictionary<int, long> _taking = [];
+        /// <summary>The drops the turn-in under way offered.</summary>
+        private readonly HashSet<int> _offered = [];
+        /// <summary>Drops a successful turn-in offered and the player hasn't picked up yet, with the quest they pay.</summary>
+        private readonly Dictionary<int, QuestTally> _questDrops = [];
 
         public long Last { get; set; } = first;
 
         public string? Script { get; set; }
 
-        public void Add(JsonElement o)
+        public void StartTurnIn(long ts)
+        {
+            _turningIn = true;
+            _turnInSince = ts;
+            _paying.Clear();
+            _taking.Clear();
+            _offered.Clear();
+        }
+
+        /// <summary>Whether a turn-in is under way at <paramref name="ts"/>; one the server never answered is over after <see cref="TurnInWindowMs"/>.</summary>
+        private bool TurningIn(long ts)
+        {
+            if (_turningIn && ts - _turnInSince > TurnInWindowMs)
+                _turningIn = false;
+            return _turningIn;
+        }
+
+        public void Add(JsonElement o, long ts)
         {
             switch (o.TryGetProperty("cmd", out JsonElement cmd) ? cmd.GetString() : null)
             {
                 case "turnIn":
-                    _turningIn = true;
-                    _paying.Clear();
+                    // What Skua sent started the turn-in already, unless the log lacks it.
+                    if (!TurningIn(ts))
+                        StartTurnIn(ts);
                     _taking.Clear();
                     if (o.TryGetProperty("sItems", out JsonElement sItems) && sItems.ValueKind == JsonValueKind.String)
                     {
@@ -201,11 +259,21 @@ internal static class LogGains
                     foreach (JsonProperty item in items.EnumerateObject())
                     {
                         if (int.TryParse(item.Name, out int id) && item.Value.ValueKind == JsonValueKind.Object && !Flag(item.Value, "bTemp"))
-                            LogGains.Add(_turningIn ? _paying : _drops, id, Number(item.Value, "iQty"));
+                            LogGains.Add(TurningIn(ts) ? _paying : _drops, id, Number(item.Value, "iQty"));
                     }
                     break;
-                case "getDrop" when !_turningIn && o.TryGetProperty("ItemID", out JsonElement itemId) && itemId.TryGetInt32(out int dropped):
-                    LogGains.Add(_drops, dropped, Number(o, "iQty"));
+                case "dropItem" when TurningIn(ts) && o.TryGetProperty("items", out JsonElement offered) && offered.ValueKind == JsonValueKind.Object:
+                    foreach (JsonProperty item in offered.EnumerateObject())
+                    {
+                        if (int.TryParse(item.Name, out int id) && item.Value.ValueKind == JsonValueKind.Object && !Flag(item.Value, "bTemp"))
+                            _offered.Add(id);
+                    }
+                    break;
+                case "getDrop" when o.TryGetProperty("ItemID", out JsonElement itemId) && itemId.TryGetInt32(out int dropped):
+                    if (_questDrops.Remove(dropped, out QuestTally? paid))
+                        LogGains.Add(paid.Gained, dropped, Number(o, "iQty"));
+                    else if (!TurningIn(ts))
+                        LogGains.Add(_drops, dropped, Number(o, "iQty"));
                     break;
                 case "ccqr" when _turningIn:
                     _turningIn = false;
@@ -218,6 +286,8 @@ internal static class LogGains
                         LogGains.Add(tally.Gained, id, qty);
                     foreach ((int id, long qty) in _taking)
                         LogGains.Add(tally.Spent, id, qty);
+                    foreach (int id in _offered)
+                        _questDrops[id] = tally;
                     break;
             }
         }
