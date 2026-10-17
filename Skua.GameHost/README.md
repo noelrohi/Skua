@@ -15,7 +15,7 @@ cargo build --release --locked   # target/release/skua-gamehost
 cargo test --locked              # framing, XML and options; tests/game_storage.rs runs the host on Metal with a test SWF
 ```
 
-- The toolchain is pinned in `rust-toolchain.toml` (1.98.1, `aarch64-apple-darwin`); rustup installs it on first use.
+- The toolchain is pinned in `rust-toolchain.toml` (1.99.1, `aarch64-apple-darwin`); rustup installs it on first use.
   It moves only together with the Ruffle pin.
 - The build needs the macOS SDK (Xcode or the Command Line Tools). wgpu compiles its Metal shaders at runtime.
 - A cold build takes about 5 minutes on an M4 Pro. Always use the release build with the Engine: the debug build
@@ -131,9 +131,9 @@ The lag killer is also on while headless, but the Engine owns that.
 `Cargo.toml` takes `ruffle_core`, `ruffle_render`, `ruffle_render_wgpu` and `ruffle_frontend_utils` from
 [`noelrohi/ruffle`](https://github.com/noelrohi/ruffle) by full `rev`:
 
-- **rev** `6d13d1167b144b7dda7d3bccdb5620aabda45938`
-- **tag** `skua-20261011-a1277c0` (tags are immutable and never deleted, so every rev a Skua commit names stays reachable)
-- **base** upstream Ruffle `a1277c0`
+- **rev** `8adb80246ce658510a07fb248ab023e830dcefc9`
+- **tag** `skua-20261017-4536637` (tags are immutable and never deleted, so every rev a Skua commit names stays reachable)
+- **base** upstream Ruffle `4536637`
 
 There is no `[patch]` section: wgpu-hal and gc-arena are stock. The `skua` branch holds one commit per fix, with
 no diagnostics and no `SKUA_*` environment hooks. The host calls the setters instead.
@@ -206,8 +206,8 @@ One Skua commit carries the new `rev`, the toolchain and `Cargo.lock` together.
 Each step gates the next.
 
 1. **Ruffle's own tests, on the fork at the new tag.**
-   - Run `cargo test -p tests --test tests -- avm2/`, then `-- avm1/`. The baseline at `skua-20261011-a1277c0`
-     is avm2 1,171 passed and avm1 765 passed.
+   - Run `cargo test -p tests --test tests -- avm2/`, then `-- avm1/`. The baseline at `skua-20261017-4536637`
+     is avm2 1,183 passed and avm1 771 passed.
    - Run #24590's lifetime tests (`loader_unload_releases_library`, `retained_class_keeps_library`,
      `released_class_frees_library`) and `weak_keys_are_collected`, one filter at a time.
    - A failure fails the step, unless the upstream base fails it too.
@@ -249,7 +249,7 @@ stderr and the smoke screenshot go to `stress/out/`.
 | `weakdict` | `WeakDict.as`: AQW's `Game._colorCache`, a weak-key `Dictionary` | dead keys are collected: the count falls back to a fresh cycle's and stays under baseline + 20% |
 | `events` | `Events.as`: 30,000 numbered `ExternalInterface.call`s in three interleaved streams | every event arrives, in order |
 | `reads` | `Reads.as`: `getGameObject` of AQW-shaped objects: items with CharItemIDs past 2^28, a 1,000-item bank behind a getter, the players' weak-key `Dictionary` (and each player by key, as the Engine reads them), odd numbers and text, and the inventory as `addItems` leaves it: entries from JSON and literals, each enumerated to the end (`copyObj`'s AMF round trip or a for-in) and then given a new key such as `iQtyNow` | every reply parses as JSON with all its entries; every whole number is written as an integer and the `Dictionary` as `"Dictionary"`, as Flash writes them; every inventory entry lists each of its keys once, `ItemID` included (#263; it fails without the fork's commit `skua: Trust the cached enumeration position only while no key was added or removed`) |
-| `smoke` | `skua.swf` | the game loads, all 73 callbacks register, the screenshot is a 958×550 login screen, and no uncaught AS3 error reaches the flash log |
+| `smoke` | `skua.swf` | the game loads, all 84 callbacks register, the screenshot is a 958×550 login screen, and no uncaught AS3 error reaches the flash log |
 | `lifecycle` | `Events.as` | closing stdin ends the host within 1 s; a panic inside Ruffle aborts it with SIGABRT and an `L` frame |
 
 "Flat" means the least-squares slope after warm-up is at most 10% of the baseline per minute. Without the
