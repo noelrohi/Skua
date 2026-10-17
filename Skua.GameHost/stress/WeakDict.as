@@ -6,6 +6,8 @@ import flash.utils.Dictionary;
 // #13: AQW Game._colorCache pattern. A weak-key Dictionary caches every short-lived clip.
 // Flash: dead keys disappear. Ruffle before 0015: every key stays forever.
 public class WeakDict extends Sprite {
+    private static const FRAMES_PER_TRACE:int = 60;
+    private static const LIVE_KEYS:int = 3;
     private var weak:Dictionary = new Dictionary(true);
     private var strong:Dictionary = new Dictionary();
     private var keep:Sprite = new Sprite();          // a key that stays referenced
@@ -14,6 +16,7 @@ public class WeakDict extends Sprite {
     public function WeakDict() {
         weak[keep] = {typ: "kept"};
         weak["str"] = 1;                             // non-object key: always kept
+        trace("weakdict every " + FRAMES_PER_TRACE + " live " + LIVE_KEYS);
         addEventListener(Event.ENTER_FRAME, onFrame);
     }
     private function onFrame(e:Event):void {
@@ -23,7 +26,7 @@ public class WeakDict extends Sprite {
         addChild(cur);
         weak[cur] = {avatarMC: this, typ: "a"};
         if (frames < 50) strong[new Sprite()] = frames;
-        if (++frames % 60 == 0) {
+        if (++frames % FRAMES_PER_TRACE == 0) {
             System.gc();
             var n:int = 0, s:int = 0;
             for (var k:* in weak) n++;
