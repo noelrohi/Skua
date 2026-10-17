@@ -131,8 +131,8 @@ The lag killer is also on while headless, but the Engine owns that.
 `Cargo.toml` takes `ruffle_core`, `ruffle_render`, `ruffle_render_wgpu` and `ruffle_frontend_utils` from
 [`noelrohi/ruffle`](https://github.com/noelrohi/ruffle) by full `rev`:
 
-- **rev** `8adb80246ce658510a07fb248ab023e830dcefc9`
-- **tag** `skua-20261017-4536637` (tags are immutable and never deleted, so every rev a Skua commit names stays reachable)
+- **rev** `43cb31710603c348197e60b5f42f35117c442098`
+- **tag** `skua-20261017f-4536637` (tags are immutable and never deleted, so every rev a Skua commit names stays reachable)
 - **base** upstream Ruffle `4536637`
 
 There is no `[patch]` section: wgpu-hal and gc-arena are stock. The `skua` branch holds one commit per fix, with
@@ -155,9 +155,18 @@ Commits are named by subject from now on. This table keeps the old resolutions r
 | 0017 (without its census) | `skua: Draw finished blend layers early` (`set_layer_flush`, default 8) |
 | (none; #49) | `skua: Write whole numbers in JSON.stringify as Flash does` |
 | (none; #263) | `skua: Trust the cached enumeration position only while no key was added or removed` |
+| (none; Artix's Ruffle build) | `skua: Stop the listeners, timers and sounds of content that unloadAndStop unloads` |
+| (none; Artix's Ruffle build, Ruffle PR #23897) | `skua: Hold the listeners added with useWeakReference weakly` |
+| (none; Artix's Ruffle build, Ruffle PR #23897) | `skua: Collect when content calls System.gc()` |
+| (none; Artix's Ruffle build) | `skua: Cancel a Loader's loads on reuse, close and unload` (with an upstream image-load leak the `mapswap` case found) |
+| (none; Artix's Ruffle build) | `skua: Dispatch uncaught errors to uncaughtErrorEvents` |
+| (none; Artix's Ruffle build) | `skua: Unregister a released movie library's sounds` |
 | 0001, 0007 stats, 0009 counter, 0012, 0014, 0017 census | 6 commits on `skua-diag` (not shipped) |
 | 0002 (wgpu-hal peak counter) | `diag/wgpu-hal-30.0.1-peak-counter.patch` (not shipped) |
 | gc-arena census | `diag/gc-arena-0.7.0-census.patch` (not shipped) |
+
+Each Artix port carries the fixes of three reviews. Up to `skua-20261017e-4536637` those fixes were commits of their
+own, and that tag and the ones before it keep them.
 
 ### Upstreaming candidates
 
@@ -170,6 +179,8 @@ Offering these upstream would shrink the fork. Nobody has offered them yet.
 - `skua: Trim the texture pools, on by default`
 - `skua: Flush mid-frame once a pass budget is reached` (a PR draft is on branch `prototype/gamehost-flush`)
 - `skua: Draw finished blend layers early` (it would need `Send` bounds on Ruffle's handle traits)
+- the image-load part of `skua: Cancel a Loader's loads on reuse, close and unload` (upstream keeps every image load
+  into an AS3 `Loader` registered, and what it reaches alive, for the session)
 
 Not candidates:
 
@@ -179,6 +190,13 @@ Not candidates:
 
 Known limit: the pass counter and the in-flight queue are process-global. That is fine with one Ruffle `Player` per Game
 Host. The upstreaming shape moves both onto `Descriptors`.
+
+### Known limitations
+
+- A play queued on an AS3 `Sound` whose fetch failed is not cancelled by `unloadAndStop`. If a movie that survives the
+  unload keeps that `Sound`, the play still starts later, and it keeps the unloaded movie alive.
+- The content's own `unload` handlers run after `unloadAndStop`'s sweep, so a listener, timer or sound one of them
+  starts is not swept. In Flash a strong listener that content adds keeps it alive anyway.
 
 ## Changing Ruffle
 
@@ -206,10 +224,16 @@ One Skua commit carries the new `rev`, the toolchain and `Cargo.lock` together.
 Each step gates the next.
 
 1. **Ruffle's own tests, on the fork at the new tag.**
-   - Run `cargo test -p tests --test tests -- avm2/`, then `-- avm1/`. The baseline at `skua-20261017-4536637`
-     is avm2 1,183 passed and avm1 771 passed.
+   - Run `cargo test -p tests --test tests -- avm2/`, then `-- avm1/`. The baseline at `skua-20261017f-4536637`
+     is avm2 1,204 passed and avm1 771 passed.
    - Run #24590's lifetime tests (`loader_unload_releases_library`, `retained_class_keeps_library`,
-     `released_class_frees_library`) and `weak_keys_are_collected`, one filter at a time.
+     `released_class_frees_library`), `loader_unload_unregisters_sounds` and `weak_keys_are_collected`, then the
+     fork's own (`requested_gc_is_postponed_not_dropped`, `released_importer_keeps_imported_sound`,
+     `unregistered_sound_fails_to_start`, `settled_loads_leave_the_load_manager`,
+     `loader_cancellations_are_not_errors`, `cancelled_uncaught_errors_are_logged`,
+     `dead_weak_listeners_are_pruned_on_dispatch`, `unloading_cancels_loads`, `unloading_itself_releases_library`,
+     `unloading_drops_queued_sounds`),
+     one `--exact` filter at a time: `avm2/` does not reach them.
    - A failure fails the step, unless the upstream base fails it too.
 2. **The offline stress suite:** `stress/check.sh` (below). Every case must pass against `stress/baseline.txt`.
 3. **One live smoke** with one Test Account login.

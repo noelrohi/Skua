@@ -6,13 +6,13 @@ publish = false
 description = "Skua's macOS Game Host: runs skua.swf in embedded Ruffle and carries the Bridge over stdin/stdout"
 
 # Ruffle comes from the noelrohi/ruffle fork by full rev (ADR 0004); the tag keeps the rev reachable.
-# rev 8adb80246ce658510a07fb248ab023e830dcefc9 = tag skua-20261017-4536637 (branch skua on upstream 4536637).
+# rev 43cb31710603c348197e60b5f42f35117c442098 = tag skua-20261017f-4536637 (branch skua on upstream 4536637).
 # No [patch] section: wgpu-hal and gc-arena are stock. Local Ruffle work: see README.md.
 [dependencies]
-ruffle_core = { git = "https://github.com/noelrohi/ruffle", rev = "8adb80246ce658510a07fb248ab023e830dcefc9", features = ["default_font", "lzma", "default_compatibility_rules"] }
-ruffle_render = { git = "https://github.com/noelrohi/ruffle", rev = "8adb80246ce658510a07fb248ab023e830dcefc9" }
-ruffle_render_wgpu = { git = "https://github.com/noelrohi/ruffle", rev = "8adb80246ce658510a07fb248ab023e830dcefc9" }
-ruffle_frontend_utils = { git = "https://github.com/noelrohi/ruffle", rev = "8adb80246ce658510a07fb248ab023e830dcefc9", features = ["navigator"] }
+ruffle_core = { git = "https://github.com/noelrohi/ruffle", rev = "43cb31710603c348197e60b5f42f35117c442098", features = ["default_font", "lzma", "default_compatibility_rules"] }
+ruffle_render = { git = "https://github.com/noelrohi/ruffle", rev = "43cb31710603c348197e60b5f42f35117c442098" }
+ruffle_render_wgpu = { git = "https://github.com/noelrohi/ruffle", rev = "43cb31710603c348197e60b5f42f35117c442098" }
+ruffle_frontend_utils = { git = "https://github.com/noelrohi/ruffle", rev = "43cb31710603c348197e60b5f42f35117c442098", features = ["navigator"] }
 tokio = { version = "1", features = ["rt-multi-thread"] }
 async-task = "4.7.1"
 futures = "0.3"
