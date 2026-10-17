@@ -470,7 +470,11 @@ impl Host {
             take(&rs.main_blocked_n),
             take(&rs.main_blocked_max_us),
         );
-        let frame_rate = self.player().frame_rate();
+        let (frame_rate, movies) = {
+            let mut p = self.player();
+            let movies = p.mutate_with_update_context(|c| c.library.known_movies().count());
+            (p.frame_rate(), movies)
+        };
         let s = &mut self.stats;
         let (prep_us, prep_max_us, prep_n) = (
             std::mem::take(&mut s.prep_sum).as_micros() as u64,
@@ -485,7 +489,7 @@ impl Host {
                 "\"prepN\":{},\"prepMsAvg\":{:.1},\"prepMsMax\":{:.1},\"prepMsSum\":{:.0},",
                 "\"mainBlockedN\":{},\"mainBlockedMsSum\":{:.0},\"mainBlockedMsMax\":{:.1},",
                 "\"renderGapMs\":{},\"threaded\":{},\"live\":{},\"framesWritten\":{},\"inputEvents\":{},",
-                "\"viewportWidth\":{},\"viewportHeight\":{}"
+                "\"viewportWidth\":{},\"viewportHeight\":{},\"movies\":{}"
             ),
             self.started.elapsed().as_millis(),
             s.ticks,
@@ -515,6 +519,7 @@ impl Host {
             s.input_events,
             self.viewport.width,
             self.viewport.height,
+            movies,
         );
         #[cfg(feature = "diag")]
         let json = format!("{json},{}", diag::stats_extra());

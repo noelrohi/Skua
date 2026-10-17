@@ -223,7 +223,9 @@ const REPEAT_WINDOW: Duration = Duration::from_secs(10);
 const MAX_SEEN: usize = 256;
 
 /// Forwards tracing events at WARN and above as 'L' frames, collapsing identical lines within 10 s.
-/// Uncaught AS3 errors arrive here as ERROR from `ruffle_core::avm2` and are also sent as 'F'.
+/// Uncaught AS3 errors arrive here as ERROR from `ruffle_core::avm2`, and those an `uncaughtError` listener
+/// cancelled as WARN from `ruffle_core::avm2::uncaught_cancelled`, with the URL of the movie that threw in the
+/// field `movie`; both are also sent as 'F', the cancelled ones as `[uncaught-cancelled] movie=<url> ...`.
 #[derive(Default)]
 pub struct FrameLayer {
     seen: Mutex<HashMap<String, (Instant, u64)>>,
@@ -235,20 +237,37 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for FrameLayer {
         if level > tracing::Level::WARN {
             return;
         }
-        struct Message(String);
-        impl tracing::field::Visit for Message {
+        #[derive(Default)]
+        struct Fields {
+            message: String,
+            movie: String,
+        }
+        impl tracing::field::Visit for Fields {
+            fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+                match field.name() {
+                    "movie" => self.movie = value.to_owned(),
+                    _ => self.record_debug(field, &value),
+                }
+            }
             fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
                 if field.name() == "message" {
-                    self.0 = format!("{value:?}");
+                    self.message = format!("{value:?}");
                 }
             }
         }
-        let mut msg = Message(String::new());
-        event.record(&mut msg);
-        let mut text = format!("[{}] {}", event.metadata().target(), msg.0);
+        let mut fields = Fields::default();
+        event.record(&mut fields);
+        let mut text = format!("[{}] {}", event.metadata().target(), fields.message);
         // Every uncaught AS3 error reaches the flash log; only the 'L' copy is collapsed.
-        if event.metadata().target() == "ruffle_core::avm2" && level == tracing::Level::ERROR {
-            bridge::send(frame::encode(b'F', format!("[uncaught] {text}").as_bytes()));
+        let flash_log = match (event.metadata().target(), level) {
+            ("ruffle_core::avm2", tracing::Level::ERROR) => Some("[uncaught]".to_owned()),
+            ("ruffle_core::avm2::uncaught_cancelled", _) => {
+                Some(format!("[uncaught-cancelled] movie={}", fields.movie))
+            }
+            _ => None,
+        };
+        if let Some(prefix) = flash_log {
+            bridge::send(frame::encode(b'F', format!("{prefix} {text}").as_bytes()));
         }
         {
             let mut seen = self.seen.lock().unwrap();
