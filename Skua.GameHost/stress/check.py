@@ -24,6 +24,7 @@ class Host:
                                   stderr=self.stderr, env={**os.environ, **(env or {})})
         self.cv = threading.Condition()
         self.replies, self.events, self.traces, self.logs, self.callbacks = {}, [], [], [], []
+        self.trace_times = []
         self.on_event = None
         self.nid = 0
         self.wlock = threading.Lock()
@@ -44,6 +45,7 @@ class Host:
                     self.events.append(payload.decode("utf-8", "replace"))
                 elif kind == b"F":
                     self.traces.append(payload.decode("utf-8", "replace"))
+                    self.trace_times.append(time.time())
                 elif kind == b"L":
                     self.logs.append(payload[1:].decode("utf-8", "replace"))
                 elif kind == b"X":
@@ -88,6 +90,14 @@ class Host:
     def uncaught(self):
         """Uncaught AS3 errors: the host prefixes their flash-log copy with "[uncaught]" (src/backends.rs)."""
         return [t[:200] for t in self.traces if t.startswith("[uncaught]")]
+
+    def uncaught_cancelled(self):
+        """(movie file name, trace) for each uncaught AS3 error an uncaughtError listener cancelled."""
+        cancelled = []
+        for t in self.traces:
+            if m := re.match(r"\[uncaught-cancelled\] movie=(\S*) ", t):
+                cancelled.append((m.group(1).rsplit("/", 1)[-1], t))
+        return cancelled
 
     def close(self, timeout=5):
         try:
@@ -188,24 +198,28 @@ class Suite:
         self.check("sounds", not grows and max(steady) <= limit,
                    f"active channels {steady} (limit {limit}){'; growing' if grows else ''}")
 
-    # WeakDict: AQW's Game._colorCache. Ruffle's System.gc() doesn't force a collection, so dead keys go at the
-    # end of a GC cycle: the count must fall back to a fresh cycle's size (<= 62: one trace of keys plus the
-    # two live ones) and stay under baseline + tolerance. Without the weak-key fix it grows by 60 every trace.
+    # WeakDict: AQW's Game._colorCache. Dead keys go when a collection finishes: the count must fall back to a fresh
+    # cycle's size (one trace's worth of dead keys plus the live ones, as the clip reports them), or never leave it
+    # when the System.gc() before each trace collects, and stay under baseline + tolerance. Without the weak-key fix
+    # it grows by one trace's worth every trace.
     def weakdict(self):
         h = self.host(self.swf("WeakDict"), "weakdict")
         time.sleep(self.base["weakdict_secs"])
         h.close()
+        clip = next((m.groups() for t in h.traces if (m := re.match(r"weakdict every (\d+) live (\d+)", t))), None)
         rows = [m.groups() for t in h.traces if (m := re.match(r"weak (\d+) strong (\d+) kept (\w+) str (\S+)", t))]
-        if len(rows) < 3:
-            return self.check("weakdict", False, f"only {len(rows)} traces")
+        if not clip or len(rows) < 3:
+            return self.check("weakdict", False, f"clip constants {clip}, only {len(rows)} traces")
+        fresh = int(clip[0]) + int(clip[1])
         weak = [int(r[0]) for r in rows]
         drops = sum(b < a for a, b in zip(weak, weak[1:]))
         low = min((b for a, b in zip(weak, weak[1:]) if b < a), default=None)
         last = rows[-1]
         self.record("weakdict.max_keys", max(weak))
         limit = math.ceil(self.limit("weakdict.max_keys"))
-        self.check("weakdict", low is not None and low <= 62 and max(weak) <= limit and last[1:] == ("50", "true", "1"),
-                   f"weak keys {weak}: {drops} drops to as low as {low}, max {max(weak)} (limit {limit}); "
+        collected = (low is not None and low <= fresh) or max(weak) <= fresh
+        self.check("weakdict", collected and max(weak) <= limit and last[1:] == ("50", "true", "1"),
+                   f"weak keys {weak}: {drops} drops to as low as {low}, max {max(weak)} (fresh cycle {fresh}, limit {limit}); "
                    f"last strong={last[1]} kept={last[2]} str={last[3]}")
 
     # Events: 30,000 numbered ExternalInterface calls in three interleaved streams arrive complete, in order.
@@ -284,8 +298,80 @@ class Suite:
                    f"{'; '.join(sizes)}{'; ' + '; '.join(problems) if problems else ''}"
                    f"{'; uncaught: ' + uncaught[0] if uncaught else ''}")
 
-    # smoke: skua.swf loads the game to the login screen; 73 callbacks register; a 958x550 screenshot;
-    # no uncaught AS3 errors while it sits there (skua.swf's modules run every frame, before login too).
+    # mapswap: AQW's map change (World.cleanupMap: close, unloadAndStop(true), System.gc()), every 12 frames and every
+    # fourth map after only 5, with every third map replaced while its load is in flight, every fifth unloaded after its
+    # content is in but before its init and followed by a quiet spell with no map, and an image Loader of the parent's
+    # unloaded with each change (MapSwap.as). Once a later map has loaded, no map's stage enterFrame listener or Timer
+    # may fire, nor its weak sharedEvents listener once a map later still has; a map replaced while loading, or
+    # unloaded before its init, never loads, and no map loads during a quiet spell. The parent's stage listener and
+    # Timer keep running to the end. The resident movie libraries ("movies" in the Q stats) stay flat and under
+    # baseline + tolerance, and in the second half of every quiet spell, once the change's collection has run, they
+    # come down to exactly QUIET_MOVIES, MapSwap.swf alone.
+    QUIET_MOVIES = 1
+
+    def mapswap(self):
+        h = self.host(self.swf("MapSwap"), "mapswap")
+        t0, samples = time.time(), []
+        while time.time() - t0 < self.base["mapswap_secs"] and h.p.poll() is None:
+            time.sleep(0.25)
+            samples.append((time.time(), h.stats().get("movies", -1)))
+        bad, uncaught, alive = h.bad_logs(), h.uncaught(), h.p.poll() is None
+        h.close()
+        movies = [n for _, n in samples]
+        loaded, replaced, before_init, zombies, parent, rate = [], set(), set(), [], [], None
+        quiet, quiet_start, quiet_inits = [], None, []
+        for t, at in zip(h.traces, h.trace_times):
+            if m := re.match(r"parent traces every (\d+) frames at ([\d.]+) fps", t):
+                rate = int(m.group(1)), float(m.group(2))
+            elif m := re.match(r"map (\d+) loaded", t):
+                loaded.append(int(m.group(1)))
+                if quiet_start is not None:
+                    quiet_inits.append(t)
+            elif m := re.match(r"map (\d+) replaced while loading", t):
+                replaced.add(int(m.group(1)))
+            elif m := re.match(r"map (\d+) unloaded before init", t):
+                before_init.add(int(m.group(1)))
+                quiet_start = at
+            elif t == "quiet spell over" and quiet_start is not None:
+                late = [n for s_at, n in samples if (quiet_start + at) / 2 <= s_at <= at]
+                quiet.append(min(late) if late else None)
+                quiet_start = None
+            elif m := re.match(r"map (\d+) (stage enterFrame|ping|timer)", t):
+                later = [n for n in loaded if n > int(m.group(1))]
+                if len(later) >= (2 if m.group(2) == "ping" else 1):
+                    zombies.append(t)
+            elif m := re.match(r"parent frames (\d+) ticks (\d+)", t):
+                parent.append((int(m.group(1)), int(m.group(2))))
+        maps = len(loaded)
+        steady = movies[len(movies) // 4:]
+        quiet_measured = [n for n in quiet if n is not None]
+        if maps < 10 or len(steady) < 3 or not quiet_measured:
+            return self.check("mapswap", False, f"{maps} maps loaded, {len(movies)} stats samples, quiet spells {quiet}; "
+                              f"parent {len(parent)} traces, last {parent[-1] if parent else None}; "
+                              f"last trace {h.traces[-1] if h.traces else None!r}; {bad}")
+        half = len(steady) // 2
+        grows = max(steady[half:]) > max(steady[:half])
+        loaded_replaced = sorted((replaced | before_init) & set(loaded))
+        quiet_ok = all(n == self.QUIET_MOVIES for n in quiet_measured)
+        min_parent_traces = self.base["mapswap_secs"] * rate[1] / rate[0] / 2 if rate else math.inf
+        parent_alive = len(parent) >= min_parent_traces and all(b[1] > a[1] for a, b in zip(parent, parent[1:]))
+        self.record("mapswap.max_movies", max(steady))
+        limit = math.ceil(self.limit("mapswap.max_movies"))
+        self.check("mapswap", alive and not bad and not uncaught and not zombies and not grows and max(steady) <= limit
+                   and replaced and before_init and not loaded_replaced and not quiet_inits and quiet_ok and parent_alive,
+                   f"{maps} maps, {len(replaced)} replaced while loading, {len(before_init)} unloaded before init"
+                   f"{', loaded anyway: ' + str(loaded_replaced) if loaded_replaced else ''}"
+                   f"{', init in a quiet spell: ' + quiet_inits[0] if quiet_inits else ''}; "
+                   f"resident in quiet spells {quiet} (exactly {self.QUIET_MOVIES}); "
+                   f"resident movies {min(movies)} to {max(movies)} over {len(movies)} samples, steady max "
+                   f"{max(steady)} (limit {limit}){'; growing' if grows else ''}; "
+                   f"{len(zombies)} traces from unloaded maps{', first: ' + zombies[0] if zombies else ''}; "
+                   f"parent {len(parent)} traces (at least {min_parent_traces:.0f}), last {parent[-1] if parent else None}"
+                   f"{'; ' + str(bad) if bad else ''}{'; uncaught: ' + uncaught[0] if uncaught else ''}")
+
+    # smoke: skua.swf loads the game to the login screen; its callbacks register; a 958x550 screenshot; no uncaught
+    # AS3 error while it sits there (skua.swf's modules run every frame, before login too), and none from skua.swf's
+    # own code even where the game's uncaughtError listener cancels it (AQW's Game.registerErrorSuppression).
     def smoke(self):
         if not self.a.skua_swf or not os.path.exists(self.a.skua_swf):
             return self.check("smoke", False, f"no skua.swf at {self.a.skua_swf!r}")
@@ -311,7 +397,8 @@ class Suite:
         h.wait_for(lambda: set(h.callbacks) >= expected, timeout=10)
         time.sleep(self.base["smoke_settle_secs"])
         shot = h.ask(b"S", struct.pack("<I", 0))
-        bad, uncaught = h.bad_logs(), h.uncaught()
+        bad, uncaught, cancelled = h.bad_logs(), h.uncaught(), h.uncaught_cancelled()
+        from_skua = [t[:200] for movie, t in cancelled if movie == "skua.swf"]
         h.close()
         got = set(h.callbacks)
         w, hh, frames = struct.unpack("<IIQ", shot[:16]) if shot and len(shot) >= 16 else (0, 0, 0)
@@ -320,10 +407,26 @@ class Suite:
         open(path, "wb").write(png)
         min_png = self.base["smoke.min_png_bytes"]
         self.check("smoke", got == expected and len(expected) == self.base["smoke.callbacks"] and (w, hh) == (958, 550)
-                   and len(png) >= min_png and png[:8] == b"\x89PNG\r\n\x1a\n" and not bad and not uncaught,
+                   and len(png) >= min_png and png[:8] == b"\x89PNG\r\n\x1a\n" and not bad and not uncaught and not from_skua,
                    f"'loaded' after {load_ms:.0f} ms; callbacks {len(got)}/{len(expected)} missing {sorted(expected - got)}; "
                    f"screenshot {w}x{hh} frame~{frames} {len(png)} B (min {min_png}) -> {path}{'; ' + str(bad) if bad else ''}"
-                   f"{'; %d uncaught AS3 errors, first: %s' % (len(uncaught), uncaught[0]) if uncaught else ''}")
+                   f"{'; %d uncaught AS3 errors, first: %s' % (len(uncaught), uncaught[0]) if uncaught else ''}"
+                   f"; {len(cancelled)} cancelled uncaught errors, {len(from_skua)} from skua.swf"
+                   f"{', first: ' + from_skua[0] if from_skua else ''}")
+
+    # cancelled: Cancelled.swf cancels every uncaught error, as AQW does; it and its child CancelledChild.swf each throw
+    # one from an anonymous callback. Both, and nothing else, reach the flash log as [uncaught-cancelled], each with the
+    # movie whose code threw it, which is how smoke tells skua.swf's errors from the game's.
+    def cancelled(self):
+        h = self.host(self.swf("Cancelled"), "cancelled")
+        h.wait_for(lambda: "done" in h.traces, timeout=20)
+        bad, uncaught, cancelled = h.bad_logs(), h.uncaught(), h.uncaught_cancelled()
+        h.close()
+        expected = [("Cancelled.swf", "thrown by the root"), ("CancelledChild.swf", "thrown by the child")]
+        found = sorted((movie, msg) for movie, t in cancelled for _, msg in expected if msg in t)
+        self.check("cancelled", sorted(expected) == found and len(cancelled) == 2 and not uncaught and not bad,
+                   f"cancelled {[(movie, t.split('] ', 2)[-1][:80]) for movie, t in cancelled]}"
+                   f"{'; uncaught: ' + uncaught[0] if uncaught else ''}{'; ' + str(bad) if bad else ''}")
 
     # lifecycle: closing stdin ends the host within 1 s; a panic inside Ruffle aborts it.
     def lifecycle(self):
@@ -354,7 +457,8 @@ class Suite:
     def run(self, only):
         cases = {"stress2": lambda: self.footprint_case("stress2"), "stress3": lambda: self.footprint_case("stress3"),
                  "stress4": self.stress4, "sounds": self.sounds, "weakdict": self.weakdict, "events": self.events,
-                 "reads": self.reads, "smoke": self.smoke, "lifecycle": self.lifecycle}
+                 "reads": self.reads, "mapswap": self.mapswap, "cancelled": self.cancelled, "smoke": self.smoke,
+                 "lifecycle": self.lifecycle}
         for name, case in cases.items():
             if not only or name in only:
                 case()

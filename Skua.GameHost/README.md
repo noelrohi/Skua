@@ -15,7 +15,7 @@ cargo build --release --locked   # target/release/skua-gamehost
 cargo test --locked              # framing, XML and options; tests/game_storage.rs runs the host on Metal with a test SWF
 ```
 
-- The toolchain is pinned in `rust-toolchain.toml` (1.98.1, `aarch64-apple-darwin`); rustup installs it on first use.
+- The toolchain is pinned in `rust-toolchain.toml` (1.99.1, `aarch64-apple-darwin`); rustup installs it on first use.
   It moves only together with the Ruffle pin.
 - The build needs the macOS SDK (Xcode or the Command Line Tools). wgpu compiles its Metal shaders at runtime.
 - A cold build takes about 5 minutes on an M4 Pro. Always use the release build with the Engine: the debug build
@@ -67,9 +67,9 @@ every generated getter stay unchanged. The authoritative list is `src/frame.rs`.
 | Game Host → Engine | `R` | `u32 id` + return XML |
 | Game Host → Engine | `I` | `u32 id`, `u32 w`, `u32 h`, `u64 frame` + PNG bytes (w = h = 0 and no PNG if there's no image; `frame` is an estimate, time run × frame rate) |
 | Game Host → Engine | `P` | `u32 id`: pong |
-| Game Host → Engine | `Q` | `u32 id` + stats JSON (render and tick timings; the sums and maxima reset on each read) |
+| Game Host → Engine | `Q` | `u32 id` + stats JSON (render and tick timings, the sums and maxima reset on each read; `movies`, the movie libraries Ruffle still holds) |
 | Game Host → Engine | `E` | `<invoke>` XML: AS3 called `ExternalInterface.call`; the host returns `undefined` to AS3 at once |
-| Game Host → Engine | `F` | Flash log: AS3 `trace()`, warnings and uncaught AS3 errors |
+| Game Host → Engine | `F` | Flash log: AS3 `trace()`, warnings and uncaught AS3 errors (`[uncaught]`, or `[uncaught-cancelled] movie=<url>` when an `uncaughtError` listener cancelled the error, `<url>` being the movie whose code threw it) |
 | Game Host → Engine | `L` | `u8 level` (1 error, 2 warn) + a Ruffle/wgpu log line |
 | Game Host → Engine | `X` | a name AS3 registered with `ExternalInterface.addCallback` |
 | Game Host → Engine | `O` | `u8 cursor` (0 arrow, 1 hand, 2 I-beam, 3 grab) + `u8 visible` (0 after `Mouse.hide()`): the Game View's cursor changed. Only with a Frame Buffer. |
@@ -131,9 +131,9 @@ The lag killer is also on while headless, but the Engine owns that.
 `Cargo.toml` takes `ruffle_core`, `ruffle_render`, `ruffle_render_wgpu` and `ruffle_frontend_utils` from
 [`noelrohi/ruffle`](https://github.com/noelrohi/ruffle) by full `rev`:
 
-- **rev** `6d13d1167b144b7dda7d3bccdb5620aabda45938`
-- **tag** `skua-20261011-a1277c0` (tags are immutable and never deleted, so every rev a Skua commit names stays reachable)
-- **base** upstream Ruffle `a1277c0`
+- **rev** `43cb31710603c348197e60b5f42f35117c442098`
+- **tag** `skua-20261017f-4536637` (tags are immutable and never deleted, so every rev a Skua commit names stays reachable)
+- **base** upstream Ruffle `4536637`
 
 There is no `[patch]` section: wgpu-hal and gc-arena are stock. The `skua` branch holds one commit per fix, with
 no diagnostics and no `SKUA_*` environment hooks. The host calls the setters instead.
@@ -155,9 +155,18 @@ Commits are named by subject from now on. This table keeps the old resolutions r
 | 0017 (without its census) | `skua: Draw finished blend layers early` (`set_layer_flush`, default 8) |
 | (none; #49) | `skua: Write whole numbers in JSON.stringify as Flash does` |
 | (none; #263) | `skua: Trust the cached enumeration position only while no key was added or removed` |
+| (none; Artix's Ruffle build) | `skua: Stop the listeners, timers and sounds of content that unloadAndStop unloads` |
+| (none; Artix's Ruffle build, Ruffle PR #23897) | `skua: Hold the listeners added with useWeakReference weakly` |
+| (none; Artix's Ruffle build, Ruffle PR #23897) | `skua: Collect when content calls System.gc()` |
+| (none; Artix's Ruffle build) | `skua: Cancel a Loader's loads on reuse, close and unload` (with an upstream image-load leak the `mapswap` case found) |
+| (none; Artix's Ruffle build) | `skua: Dispatch uncaught errors to uncaughtErrorEvents` |
+| (none; Artix's Ruffle build) | `skua: Unregister a released movie library's sounds` |
 | 0001, 0007 stats, 0009 counter, 0012, 0014, 0017 census | 6 commits on `skua-diag` (not shipped) |
 | 0002 (wgpu-hal peak counter) | `diag/wgpu-hal-30.0.1-peak-counter.patch` (not shipped) |
 | gc-arena census | `diag/gc-arena-0.7.0-census.patch` (not shipped) |
+
+Each Artix port carries the fixes of three reviews. Up to `skua-20261017e-4536637` those fixes were commits of their
+own, and that tag and the ones before it keep them.
 
 ### Upstreaming candidates
 
@@ -170,6 +179,8 @@ Offering these upstream would shrink the fork. Nobody has offered them yet.
 - `skua: Trim the texture pools, on by default`
 - `skua: Flush mid-frame once a pass budget is reached` (a PR draft is on branch `prototype/gamehost-flush`)
 - `skua: Draw finished blend layers early` (it would need `Send` bounds on Ruffle's handle traits)
+- the image-load part of `skua: Cancel a Loader's loads on reuse, close and unload` (upstream keeps every image load
+  into an AS3 `Loader` registered, and what it reaches alive, for the session)
 
 Not candidates:
 
@@ -179,6 +190,13 @@ Not candidates:
 
 Known limit: the pass counter and the in-flight queue are process-global. That is fine with one Ruffle `Player` per Game
 Host. The upstreaming shape moves both onto `Descriptors`.
+
+### Known limitations
+
+- A play queued on an AS3 `Sound` whose fetch failed is not cancelled by `unloadAndStop`. If a movie that survives the
+  unload keeps that `Sound`, the play still starts later, and it keeps the unloaded movie alive.
+- The content's own `unload` handlers run after `unloadAndStop`'s sweep, so a listener, timer or sound one of them
+  starts is not swept. In Flash a strong listener that content adds keeps it alive anyway.
 
 ## Changing Ruffle
 
@@ -206,10 +224,16 @@ One Skua commit carries the new `rev`, the toolchain and `Cargo.lock` together.
 Each step gates the next.
 
 1. **Ruffle's own tests, on the fork at the new tag.**
-   - Run `cargo test -p tests --test tests -- avm2/`, then `-- avm1/`. The baseline at `skua-20261011-a1277c0`
-     is avm2 1,171 passed and avm1 765 passed.
+   - Run `cargo test -p tests --test tests -- avm2/`, then `-- avm1/`. The baseline at `skua-20261017f-4536637`
+     is avm2 1,204 passed and avm1 771 passed.
    - Run #24590's lifetime tests (`loader_unload_releases_library`, `retained_class_keeps_library`,
-     `released_class_frees_library`) and `weak_keys_are_collected`, one filter at a time.
+     `released_class_frees_library`), `loader_unload_unregisters_sounds` and `weak_keys_are_collected`, then the
+     fork's own (`requested_gc_is_postponed_not_dropped`, `released_importer_keeps_imported_sound`,
+     `unregistered_sound_fails_to_start`, `settled_loads_leave_the_load_manager`,
+     `loader_cancellations_are_not_errors`, `cancelled_uncaught_errors_are_logged`,
+     `dead_weak_listeners_are_pruned_on_dispatch`, `unloading_cancels_loads`, `unloading_itself_releases_library`,
+     `unloading_drops_queued_sounds`),
+     one `--exact` filter at a time: `avm2/` does not reach them.
    - A failure fails the step, unless the upstream base fails it too.
 2. **The offline stress suite:** `stress/check.sh` (below). Every case must pass against `stress/baseline.txt`.
 3. **One live smoke** with one Test Account login.
@@ -246,10 +270,12 @@ stderr and the smoke screenshot go to `stress/out/`.
 | `stress3` | `Stress3.as`: 1,500 masked, filtered, layered children on one stage | the same |
 | `stress4` | `Stress4.as`: 6,000 of them | the average `submit_frame` time on the render thread is under baseline + 20% |
 | `sounds` | `Sounds.as`: AQW's `SoundFX`, which keeps each channel until `SOUND_COMPLETE` | the live channel count doesn't grow (the second half never exceeds the first) and stays under baseline + 20% |
-| `weakdict` | `WeakDict.as`: AQW's `Game._colorCache`, a weak-key `Dictionary` | dead keys are collected: the count falls back to a fresh cycle's and stays under baseline + 20% |
+| `weakdict` | `WeakDict.as`: AQW's `Game._colorCache`, a weak-key `Dictionary` | dead keys are collected: the count stays at or falls back to a fresh cycle's (the keys of one trace period plus the live ones, as the clip reports them) and stays under baseline + 20% |
 | `events` | `Events.as`: 30,000 numbered `ExternalInterface.call`s in three interleaved streams | every event arrives, in order |
 | `reads` | `Reads.as`: `getGameObject` of AQW-shaped objects: items with CharItemIDs past 2^28, a 1,000-item bank behind a getter, the players' weak-key `Dictionary` (and each player by key, as the Engine reads them), odd numbers and text, and the inventory as `addItems` leaves it: entries from JSON and literals, each enumerated to the end (`copyObj`'s AMF round trip or a for-in) and then given a new key such as `iQtyNow` | every reply parses as JSON with all its entries; every whole number is written as an integer and the `Dictionary` as `"Dictionary"`, as Flash writes them; every inventory entry lists each of its keys once, `ItemID` included (#263; it fails without the fork's commit `skua: Trust the cached enumeration position only while no key was added or removed`) |
-| `smoke` | `skua.swf` | the game loads, all 73 callbacks register, the screenshot is a 958×550 login screen, and no uncaught AS3 error reaches the flash log |
+| `mapswap` | `MapSwap.as`: AQW's map change (`World.cleanupMap`: `close`, `unloadAndStop(true)`, `System.gc()`) into one `Loader`, every 12 frames and every fourth map after only 5 (two collection requests within ten frames), with every third map replaced while its load is still in flight. Every fifth map is unloaded once its content is in the `Loader` but before its `init`, and the next map loads only 48 frames later. Each `MapChild.as` adds a stage `enterFrame` listener, a weak listener on its `LoaderInfo.sharedEvents`, a running `Timer` and an image `Loader`. The parent unloads an image `Loader` of its own with each map, as AQW's mail window does, and keeps a stage `enterFrame` listener and a `Timer` | no map's stage listener or `Timer` fires once a later map has loaded, nor its weak listener once a map later still has; a map replaced while loading, or unloaded before its `init`, never loads, and no map loads in the 48 frames that follow; the parent's listener and `Timer` run to the end; the resident movie libraries (`movies` in the `Q` stats) stay flat and under baseline + 20%, and in the second half of each 48-frame spell, sampled every 0.25 s, come down to exactly 1, the parent alone (on `skua-20261017b-4536637` the first image unload stops the parent's own listeners, and the swaps with them; on `skua-20261017c-4536637` a map unloaded before its `init` still gets it and stays resident) |
+| `cancelled` | `Cancelled.as`, which cancels every uncaught error as AQW does, and `CancelledChild.as`, which it loads; each throws from an anonymous callback | each error reaches the flash log as `[uncaught-cancelled]` with the movie whose code threw it, which is how `smoke` tells skua.swf's errors from the game's |
+| `smoke` | `skua.swf` | the game loads, all 84 callbacks register, the screenshot is a 958×550 login screen, no uncaught AS3 error reaches the flash log, and none from skua.swf's own code that the game's `uncaughtError` listener cancelled (`[uncaught-cancelled] movie=…/skua.swf` in the flash log) |
 | `lifecycle` | `Events.as` | closing stdin ends the host within 1 s; a panic inside Ruffle aborts it with SIGABRT and an `L` frame |
 
 "Flat" means the least-squares slope after warm-up is at most 10% of the baseline per minute. Without the
