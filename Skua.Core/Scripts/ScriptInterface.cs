@@ -551,6 +551,7 @@ public class ScriptInterface : IScriptInterface, IScriptInterfaceManager, IDispo
                             {
                                 Stats.Drops += (int)data.iQty;
                                 Stats.GetSpace();
+                                Messenger.Send<ItemPickedUpMessage, int>(new(Convert.ToInt32(data.ItemID)), (int)MessageChannels.GameEvents);
                             }
                             if (toBank)
                             {
