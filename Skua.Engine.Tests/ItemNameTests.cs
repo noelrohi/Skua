@@ -192,10 +192,21 @@ public class ItemNameTests
             return $"{exists} {Bot.Drops.Exists(4845)} {Bot.Drops.Exists(4846)}";
             """,
             cancellationToken: Ct);
+        // A drop leaves Current Drops only once the game confirms the pickup.
+        await session.GameHost.DoAsync("pickup 4845");
+        await session.GameHost.DoAsync("pickup 4846");
+        EvalResult pickedUp = await session.Connection.EvalAsync(
+            """
+            Bot.Wait.ForTrue(() => !Bot.Drops.Exists(4845) && !Bot.Drops.Exists(4846), 20);
+            return $"{Bot.Drops.Exists(4845)} {Bot.Drops.Exists(4846)}";
+            """,
+            cancellationToken: Ct);
         string[] calls = await session.GameHost.CallsAsync();
 
         Assert.Null(dropped.Error);
-        Assert.Equal("True False False", dropped.Value!.Value.GetString());
+        Assert.Equal("True True True", dropped.Value!.Value.GetString());
+        Assert.Null(pickedUp.Error);
+        Assert.Equal("False False", pickedUp.Value!.Value.GetString());
         Assert.Contains(calls, c => c.StartsWith("send %xt%zm%getDrop%", StringComparison.Ordinal) && c.EndsWith("%4845%", StringComparison.Ordinal));
         Assert.Contains(calls, c => c.StartsWith("send %xt%zm%getDrop%", StringComparison.Ordinal) && c.EndsWith("%4846%", StringComparison.Ordinal));
         // skua.swf keeps a drop whose lower-cased name, as the game holds it, is on the whitelist.
