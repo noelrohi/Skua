@@ -28,6 +28,7 @@ public partial class ScriptDrop : ObservableRecipient, IScriptDrop, IAsyncDispos
         _lazyInventory = inventory;
 
         StrongReferenceMessenger.Default.Register<ScriptDrop, ItemDroppedMessage, int>(this, (int)MessageChannels.GameEvents, AddDrop);
+        StrongReferenceMessenger.Default.Register<ScriptDrop, ItemPickedUpMessage, int>(this, (int)MessageChannels.GameEvents, DropPickedUp);
         StrongReferenceMessenger.Default.Register<ScriptDrop, LogoutMessage, int>(this, (int)MessageChannels.GameEvents, ClearDrops);
         StrongReferenceMessenger.Default.Register<ScriptDrop, ScriptStoppedMessage, int>(this, (int)MessageChannels.ScriptStatus, ScriptStopped);
         Messenger.Register<ScriptDrop, PropertyChangedMessage<bool>>(this, OptionsChanged);
@@ -79,9 +80,6 @@ public partial class ScriptDrop : ObservableRecipient, IScriptDrop, IAsyncDispos
             return;
 
         Send.Packet($"%xt%zm%getDrop%{Map.RoomID}%{drop.ID}%");
-        _currentDropInfos.Remove(drop);
-        OnPropertyChanged(nameof(CurrentDropInfos));
-        OnPropertyChanged(nameof(CurrentDrops));
     }
 
     public void Pickup(int id)
@@ -91,9 +89,6 @@ public partial class ScriptDrop : ObservableRecipient, IScriptDrop, IAsyncDispos
             return;
 
         Send.Packet($"%xt%zm%getDrop%{Map.RoomID}%{id}%");
-        _currentDropInfos.Remove(drop);
-        OnPropertyChanged(nameof(CurrentDropInfos));
-        OnPropertyChanged(nameof(CurrentDrops));
     }
 
     public void Pickup(params string[] names)
@@ -158,7 +153,6 @@ public partial class ScriptDrop : ObservableRecipient, IScriptDrop, IAsyncDispos
             keep.UnionWith(CurrentDropInfos.Where(d => d.Coins).Select(d => d.Name));
         if (!Flash.Call<bool>("rejectExcept", keep.SelectMany(ItemNameComparer.Spellings).Distinct().Join(',').ToLowerInvariant()))
             return;
-        _currentDropInfos.Remove(d => !keep.Contains(d.Name));
         OnPropertyChanged(nameof(CurrentDropInfos));
         OnPropertyChanged(nameof(CurrentDrops));
     }
@@ -322,6 +316,14 @@ public partial class ScriptDrop : ObservableRecipient, IScriptDrop, IAsyncDispos
     private void ClearDrops(ScriptDrop recipient, LogoutMessage message)
     {
         recipient._currentDropInfos.Clear();
+        recipient.OnPropertyChanged(nameof(recipient.CurrentDropInfos));
+        recipient.OnPropertyChanged(nameof(recipient.CurrentDrops));
+    }
+
+    private void DropPickedUp(ScriptDrop recipient, ItemPickedUpMessage message)
+    {
+        if (recipient._currentDropInfos.Remove(drop => drop.ID == message.ItemID) == 0)
+            return;
         recipient.OnPropertyChanged(nameof(recipient.CurrentDropInfos));
         recipient.OnPropertyChanged(nameof(recipient.CurrentDrops));
     }
