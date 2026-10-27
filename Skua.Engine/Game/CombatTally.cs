@@ -30,8 +30,22 @@ internal sealed class CombatTally
             if (function == "pext" && args is [string packet] && packet.Contains("\"addGoldExp\"", StringComparison.Ordinal) && IsKill(packet))
                 Record(_kills, DateTime.UtcNow);
         };
-        StrongReferenceMessenger.Default.Register<CombatTally, PlayerDeathMessage, int>(
-            this, (int)MessageChannels.GameEvents, static (t, _) => t.Record(t._deaths, DateTime.UtcNow));
+        StrongReferenceMessenger.Default.Register<CombatTally, PlayerDeathMessage, int>(this, (int)MessageChannels.GameEvents, static (t, _) =>
+        {
+            DateTime now = DateTime.UtcNow;
+            t.Record(t._deaths, now);
+            t.Died?.Invoke(now);
+        });
+    }
+
+    /// <summary>The player died, at the time given, once the death is counted.</summary>
+    public event Action<DateTime>? Died;
+
+    /// <summary>How many times the player died after <paramref name="from"/>, up to <paramref name="to"/>.</summary>
+    public int DeathsBetween(DateTime from, DateTime to)
+    {
+        lock (_lock)
+            return _deaths.Count(d => d > from && d <= to);
     }
 
     /// <summary><paramref name="run"/> with its kills, kill rate and deaths so far.</summary>

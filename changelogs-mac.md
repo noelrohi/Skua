@@ -4,6 +4,11 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 
 ---
 
+## October 27, 2026
+
+### New
+* The Engine records a `run.struggling` event (`{run, script, deaths, windowSec, map, goal}`) once when a run's deaths in the last 5 minutes reach 5, so a `hooks/run.struggling` Hook can notify, stop the Script or call for help instead of a watch on `status`. `SKUA_STRUGGLE_DEATHS` sets the count (0 turns it off); fewer deaths in the window, or a new run, re-arm it. See [Logs and events](./BUILD.md#logs-and-events).
+
 ## October 11, 2026
 
 ### New
