@@ -65,6 +65,32 @@ internal sealed class GameQueries
         }, cancellationToken);
     }
 
+    /// <summary>
+    /// The items whose name contains the text in every item store. The bank only once this login's bank has arrived: loading it would be a
+    /// game action, and before it arrives the game holds none of it.
+    /// </summary>
+    public Task<FindResult> FindAsync(string text, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            throw RpcErrors.Of(ErrorCode.InvalidArgument, "Give part of an item's name to find.");
+        _slot.EnsurePlaying("search the items");
+        return Task.Run(() =>
+        {
+            bool bankLoaded = Volatile.Read(ref _bankWorld) == Volatile.Read(ref _world) || BankArrived();
+            List<FoundItemDto> found =
+            [
+                .. Matching(InventoryKind.Inventory, _api.Inventory.Items),
+                .. bankLoaded ? Matching(InventoryKind.Bank, _api.Bank.Items) : [],
+                .. Matching(InventoryKind.Temp, _api.TempInv.Items),
+                .. Matching(InventoryKind.House, _api.House.Items),
+            ];
+            return new FindResult(text, found, bankLoaded);
+        }, cancellationToken);
+
+        IEnumerable<FoundItemDto> Matching(InventoryKind store, IEnumerable<ItemBase> items) =>
+            items.Where(i => i.Name?.Contains(text, StringComparison.OrdinalIgnoreCase) == true).Select(i => new FoundItemDto(store, i.ID, i.Name, i.Quantity));
+    }
+
     /// <summary>The inventory with its Bag Space, and its Misc Space unless the game has none (before AQW client 5.0).</summary>
     private InventoryResult InventoryWithSpaces()
     {

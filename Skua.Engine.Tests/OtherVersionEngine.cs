@@ -150,6 +150,9 @@ public sealed class OtherVersionEngine : IEngineRpc, IAsyncDisposable
     public Task<InventoryResult> InventoryAsync(InventoryKind kind, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("A client called inventory after a protocol mismatch.");
 
+    public Task<FindResult> FindAsync(string text, CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("A client called find after a protocol mismatch.");
+
     public Task<QuestsResult> QuestsAsync(QuestFilter filter, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("A client called quests after a protocol mismatch.");
 

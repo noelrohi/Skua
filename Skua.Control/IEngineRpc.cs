@@ -197,6 +197,16 @@ public partial interface IEngineRpc
     [JsonRpcMethod("inventory")]
     Task<InventoryResult> InventoryAsync(InventoryKind kind = InventoryKind.Inventory, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The items whose name contains <paramref name="text"/>, ignoring case, in every item store: the inventory, the bank once the game has
+    /// loaded it, the temporary inventory and the house. It doesn't load the bank, and says whether it was loaded.
+    /// </summary>
+    /// <param name="text">Part of an item's name, e.g. <c>sage</c>.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    /// <remarks>Fails with <see cref="ErrorCode.NotLoggedIn"/> unless playing, and <see cref="ErrorCode.InvalidArgument"/> for a blank text.</remarks>
+    [JsonRpcMethod("find")]
+    Task<FindResult> FindAsync(string text, CancellationToken cancellationToken = default);
+
     /// <summary>The loaded or active quests, with their requirements and rewards. Fails with <see cref="ErrorCode.NotLoggedIn"/> unless playing.</summary>
     [JsonRpcMethod("quests")]
     Task<QuestsResult> QuestsAsync(QuestFilter filter = QuestFilter.Loaded, CancellationToken cancellationToken = default);

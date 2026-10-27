@@ -522,6 +522,7 @@ RootCommand root = new("Drive a Skua Engine.")
 {
     json, engineName, status, account, servers, login, logout, join, jump, inventory, quests, map, drops, scripts, script, watch, dialogs, chat, eval, logs, screenshot, engine, hooks, mcp,
 };
+FindCommand.AddTo(root, json);
 Skill.AddTo(root);
 ParseResult parsed = root.Parse(args);
 // Several names are no one Engine; the commands that take several read them from the option.

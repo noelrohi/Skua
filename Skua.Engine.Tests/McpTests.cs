@@ -35,7 +35,7 @@ public class McpTests
         (string Tool, Dictionary<string, object?>? Arguments)[] calls =
         [
             ("scripts_source", null), ("scripts_update", null), ("scripts_search", new() { ["query"] = "good" }), ("scripts_list", null),
-            ("scripts_new", null), ("engine_list", null), ("status", null),
+            ("scripts_new", null), ("engine_list", null), ("status", null), ("find", new() { ["text"] = "sage" }),
         ];
         try
         {
@@ -48,9 +48,10 @@ public class McpTests
                 results[tool] = await client.CallToolAsync(tool, arguments, cancellationToken: ct);
 
             Assert.True(tools.Single(t => t.Name == "engine_list").ProtocolTool.Annotations?.ReadOnlyHint);
-            Assert.All(results.Where(r => r.Key != "status"), r => Assert.True(r.Value.IsError != true, $"{r.Key}: {((TextContentBlock)r.Value.Content[0]).Text}"));
+            Assert.All(results.Where(r => r.Key is not ("status" or "find")), r => Assert.True(r.Value.IsError != true, $"{r.Key}: {((TextContentBlock)r.Value.Content[0]).Text}"));
             Assert.True(results["status"].IsError);
             Assert.Equal("EngineUnavailable: Engine 'default' isn't running; 'skua engine start' starts it.", ((TextContentBlock)results["status"].Content.Single()).Text);
+            Assert.Equal("EngineUnavailable: Engine 'default' isn't running; 'skua engine start' starts it.", ((TextContentBlock)results["find"].Content.Single()).Text);
             JsonElement listed = Assert.Single(results["engine_list"].StructuredContent!.Value.GetProperty("engines").EnumerateArray());
             Assert.Equal("alt1", listed.GetProperty("engine").GetProperty("name").GetString());
             Assert.Equal("running", listed.GetProperty("engine").GetProperty("state").GetString());
@@ -213,10 +214,11 @@ public class McpTests
         CallToolResult quests = await client.CallToolAsync("quests", new Dictionary<string, object?> { ["filter"] = "active" }, cancellationToken: ct);
         CallToolResult map = await client.CallToolAsync("map", cancellationToken: ct);
         CallToolResult drops = await client.CallToolAsync("drops", cancellationToken: ct);
+        CallToolResult find = await client.CallToolAsync("find", new Dictionary<string, object?> { ["text"] = "slime" }, cancellationToken: ct);
         await client.CallToolAsync("logout", cancellationToken: ct);
         CallToolResult loggedOut = await client.CallToolAsync("map", cancellationToken: ct);
 
-        Assert.Subset(tools.Select(t => t.Name).ToHashSet(), new HashSet<string> { "join", "jump", "inventory", "quests", "quest_complete", "map", "drops" });
+        Assert.Subset(tools.Select(t => t.Name).ToHashSet(), new HashSet<string> { "join", "jump", "inventory", "quests", "quest_complete", "map", "drops", "find" });
         Assert.True(loggedOut.IsError);
         Assert.StartsWith("NotLoggedIn: ", ((TextContentBlock)loggedOut.Content.Single()).Text);
         Assert.Equal(new LocationResult("yulgar", "Room", "Spawn", false), JsonSerializer.Deserialize<LocationResult>(((TextContentBlock)join.Content.Single()).Text, ControlJson.Options));
@@ -227,6 +229,9 @@ public class McpTests
         Assert.Equal(2, quests.StructuredContent!.Value.GetProperty("quests").GetArrayLength());
         Assert.Equal("yulgar", map.StructuredContent!.Value.GetProperty("name").GetString());
         Assert.Equal(0, drops.StructuredContent!.Value.GetProperty("drops").GetArrayLength());
+        FindResult found = JsonSerializer.Deserialize<FindResult>(find.StructuredContent!.Value, ControlJson.Options)!;
+        Assert.Equal(("slime", false), (found.Text, found.BankLoaded));
+        Assert.Equal([new FoundItemDto(InventoryKind.Temp, 20, "Slime Sample", 3)], found.Items);
     }
 
     [Fact]

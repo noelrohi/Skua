@@ -111,6 +111,9 @@ public sealed class EngineConnection : IDisposable
     public Task<InventoryResult> InventoryAsync(InventoryKind kind = InventoryKind.Inventory, CancellationToken cancellationToken = default) =>
         CallAsync(rpc => rpc.InventoryAsync(kind, cancellationToken));
 
+    public Task<FindResult> FindAsync(string text, CancellationToken cancellationToken = default) =>
+        CallAsync(rpc => rpc.FindAsync(text, cancellationToken));
+
     public Task<QuestsResult> QuestsAsync(QuestFilter filter = QuestFilter.Loaded, CancellationToken cancellationToken = default) =>
         CallAsync(rpc => rpc.QuestsAsync(filter, cancellationToken));
 

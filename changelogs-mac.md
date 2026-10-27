@@ -4,6 +4,11 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 
 ---
 
+## October 27, 2026
+
+### New
+* `skua find <text>` (MCP `find`) says whether an account has an item: every item whose name contains the text, ignoring case, in the inventory, the bank, the temporary inventory and the house, with its store, ID and quantity; `--json` prints an array. It starts no Engine, and searches the bank only once the game has loaded it, saying so otherwise rather than counting none. See [Moving and reading the game](./BUILD.md#moving-and-reading-the-game).
+
 ## October 11, 2026
 
 ### New
