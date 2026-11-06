@@ -133,11 +133,14 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
         byte[] scriptBytes = await response.Content.ReadAsByteArrayAsync(token);
         // Whole: another Engine of the data folder may be compiling this file right now.
         ScriptCompileCache.WriteWhole(info.LocalFile, scriptBytes);
+        info.InvalidateLocalHash();
     }
 
     public async Task<int> DownloadAllWhereAsync(Func<ScriptInfo, bool> pred)
     {
-        List<ScriptInfo> toUpdate = _scripts.Where(pred).ToList();
+        // Predicates like Outdated hash files, so select off the calling (often UI) thread.
+        List<ScriptInfo> scripts = _scripts.ToList();
+        List<ScriptInfo> toUpdate = await Task.Run(() => scripts.Where(pred).ToList());
 
         await Parallel.ForEachAsync(toUpdate, async (script, _) =>
         {
@@ -155,6 +158,8 @@ public partial class GetScriptsService : ObservableObject, IGetScriptsService
                 File.Delete(info.LocalFile);
         }
         catch { }
+
+        info.InvalidateLocalHash();
 
         return Task.CompletedTask;
     }

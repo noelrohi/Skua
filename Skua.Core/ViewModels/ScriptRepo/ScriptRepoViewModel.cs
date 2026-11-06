@@ -28,6 +28,8 @@ public partial class ScriptRepoViewModel : BotControlViewModelBase
     protected override void OnActivated()
     {
         _getScriptsService.PropertyChanged += GetScriptsService_PropertyChanged;
+        if (!StrongReferenceMessenger.Default.IsRegistered<ScriptStartedMessage, int>(this, (int)MessageChannels.ScriptStatus))
+            StrongReferenceMessenger.Default.Register<ScriptRepoViewModel, ScriptStartedMessage, int>(this, (int)MessageChannels.ScriptStatus, (r, _) => r.OnScriptStarted());
         if (_scripts.Count == 0 || _getScriptsService.Scripts.Count == 0)
             RefreshScriptsCommand.Execute(null);
         else
@@ -37,6 +39,7 @@ public partial class ScriptRepoViewModel : BotControlViewModelBase
     protected override void OnDeactivated()
     {
         _getScriptsService.PropertyChanged -= GetScriptsService_PropertyChanged;
+        StrongReferenceMessenger.Default.Unregister<ScriptStartedMessage, int>(this, (int)MessageChannels.ScriptStatus);
     }
 
     private void GetScriptsService_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -49,12 +52,21 @@ public partial class ScriptRepoViewModel : BotControlViewModelBase
     private bool _isManagerMode;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(DownloadedQuantity), nameof(OutdatedQuantity), nameof(ScriptQuantity), nameof(BotScriptQuantity))]
+    [NotifyPropertyChangedFor(nameof(ScriptQuantity), nameof(BotScriptQuantity))]
     private RangedObservableCollection<ScriptInfoViewModel> _scripts = new();
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(DownloadedQuantity), nameof(OutdatedQuantity), nameof(ScriptQuantity), nameof(BotScriptQuantity))]
     private ScriptInfoViewModel? _selectedItem;
+
+    // Counted off the UI thread: the outdated check hashes every downloaded script.
+    [ObservableProperty]
+    private int _downloadedQuantity;
+
+    [ObservableProperty]
+    private int _outdatedQuantity;
+
+    private int _countsVersion;
+    private int _messageId;
 
     [ObservableProperty]
     private bool _isBusy;
@@ -74,8 +86,6 @@ public partial class ScriptRepoViewModel : BotControlViewModelBase
     public List<string> SortOptions { get; } = new() { "Name", "Date Created" };
     public List<string> FilterOptions { get; } = new() { "All", "Army", "Classes", "Dailies", "Evil", "Farm", "Good", "Legion", "Local", "Nation", "Other", "Rep", "Seasonal", "Story", "Ultras" };
 
-    public int DownloadedQuantity => _getScriptsService.Downloaded;
-    public int OutdatedQuantity => _getScriptsService.Outdated;
     public int ScriptQuantity => _getScriptsService.Total;
     public int BotScriptQuantity => _scripts.Count;
     public IRelayCommand OpenScriptFolderCommand { get; }
@@ -92,6 +102,44 @@ public partial class ScriptRepoViewModel : BotControlViewModelBase
             return;
 
         StrongReferenceMessenger.Default.Send<EditScriptMessage, int>(new(SelectedItem.LocalFile), (int)MessageChannels.ScriptStatus);
+    }
+
+    [RelayCommand]
+    private void LoadScript(ScriptInfoViewModel? script)
+    {
+        if (script is null || !script.Downloaded)
+            return;
+
+        StrongReferenceMessenger.Default.Send<LoadScriptMessage, int>(new(script.LocalFile), (int)MessageChannels.ScriptStatus);
+
+        // In the Manager the account page takes the load and confirms it with its own dialog.
+        if (!IsManagerMode)
+            ProgressHandler($"Loaded {script.FileName}");
+    }
+
+    [RelayCommand]
+    private void StartScript(ScriptInfoViewModel? script)
+    {
+        if (script is null || !script.Downloaded)
+            return;
+
+        StrongReferenceMessenger.Default.Send<StartScriptMessage, int>(new(script.LocalFile), (int)MessageChannels.ScriptStatus);
+    }
+
+    // "Started" comes from ScriptStartedMessage, not the button: the loader may ask first, and a declined or failed
+    // start sends nothing. It reports whichever script actually started while this window is open.
+    private void OnScriptStarted()
+    {
+        IScriptManager? manager = CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default.GetService<IScriptManager>();
+        string? path = manager?.LoadedScript;
+        if (manager is null || !manager.ScriptRunning || string.IsNullOrEmpty(path))
+            return;
+
+        string fullPath = Path.GetFullPath(path);
+        string name = _getScriptsService.Scripts
+            .FirstOrDefault(s => string.Equals(Path.GetFullPath(s.LocalFile), fullPath, StringComparison.OrdinalIgnoreCase))?.Name
+            ?? Path.GetFileNameWithoutExtension(path);
+        ProgressHandler($"Started {name}");
     }
 
     /// <summary>
@@ -222,8 +270,6 @@ public partial class ScriptRepoViewModel : BotControlViewModelBase
 
             RebuildIndexCallback?.Invoke();
 
-            OnPropertyChanged(nameof(DownloadedQuantity));
-            OnPropertyChanged(nameof(OutdatedQuantity));
             OnPropertyChanged(nameof(ScriptQuantity));
             OnPropertyChanged(nameof(BotScriptQuantity));
             IsBusy = false;
@@ -232,6 +278,24 @@ public partial class ScriptRepoViewModel : BotControlViewModelBase
         {
             _refreshGate.Release();
         }
+
+        await UpdateCountsAsync();
+    }
+
+    private async Task UpdateCountsAsync()
+    {
+        int version = Interlocked.Increment(ref _countsVersion);
+
+        // Snapshot on the calling thread, then count off it: Outdated hashes files.
+        List<ScriptInfo> scripts = _getScriptsService.Scripts.ToList();
+        (int downloaded, int outdated) = await Task.Run(() => (scripts.Count(s => s.Downloaded), scripts.Count(s => s.Outdated)));
+
+        // A newer count started meanwhile (a refresh, download or delete); its totals win.
+        if (version != Volatile.Read(ref _countsVersion))
+            return;
+
+        DownloadedQuantity = downloaded;
+        OutdatedQuantity = outdated;
     }
 
     private bool PassesFilter(ScriptInfo script)
@@ -262,8 +326,14 @@ public partial class ScriptRepoViewModel : BotControlViewModelBase
 
     public void ProgressHandler(string message)
     {
+        int id = Interlocked.Increment(ref _messageId);
         ProgressReportMessage = message;
-        _ = Task.Delay(3000).ContinueWith(_ => ProgressReportMessage = string.Empty);
+        _ = Task.Delay(3000).ContinueWith(_ =>
+        {
+            // A newer message (even with the same text, or one set directly) keeps its own time.
+            if (Volatile.Read(ref _messageId) == id && ProgressReportMessage == message)
+                ProgressReportMessage = string.Empty;
+        });
     }
 
     [RelayCommand]
@@ -275,12 +345,13 @@ public partial class ScriptRepoViewModel : BotControlViewModelBase
 
         ProgressReportMessage = $"Deleting {_selectedItem.FileName}.";
         await _getScriptsService.DeleteScriptAsync(_selectedItem.Info);
-        ProgressReportMessage = $"Deleted {_selectedItem.FileName}.";
-        _selectedItem.Downloaded = false;
-        OnPropertyChanged(nameof(DownloadedQuantity));
-        OnPropertyChanged(nameof(OutdatedQuantity));
+        _selectedItem.Downloaded = _selectedItem.Info.Downloaded;
+        ProgressReportMessage = _selectedItem.Downloaded
+            ? $"Could not delete {_selectedItem.FileName}."
+            : $"Deleted {_selectedItem.FileName}.";
         OnPropertyChanged(nameof(ScriptQuantity));
         OnPropertyChanged(nameof(BotScriptQuantity));
+        await UpdateCountsAsync();
         IsBusy = false;
     }
 
@@ -295,10 +366,9 @@ public partial class ScriptRepoViewModel : BotControlViewModelBase
         await _getScriptsService.DownloadScriptAsync(_selectedItem.Info);
         ProgressReportMessage = $"Downloaded {_selectedItem.FileName}.";
         _selectedItem.Downloaded = true;
-        OnPropertyChanged(nameof(DownloadedQuantity));
-        OnPropertyChanged(nameof(OutdatedQuantity));
         OnPropertyChanged(nameof(ScriptQuantity));
         OnPropertyChanged(nameof(BotScriptQuantity));
+        await UpdateCountsAsync();
         IsBusy = false;
     }
 

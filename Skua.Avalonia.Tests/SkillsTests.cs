@@ -106,26 +106,29 @@ public sealed class SkillsTests(AppEngine app)
             AddSkill(editor, "2");
             AddSkill(editor, "3");
             ListBox list = editor.FindControl<ListBox>("SkillsList")!;
-            await Ui.PumpUntilAsync(() => Shown(list).SequenceEqual(["1 - [Health > 50%]", "2", "3"]), "the three skills in the list");
+            await Ui.PumpUntilAsync(() => Shown(list).SequenceEqual(["1 - [Health ≥ 50%]", "2", "3"]), "the three skills in the list");
 
             // ⌘↓ moves the selected skill down; ⌫ removes the selected one.
             list.SelectedIndex = 0;
             await FocusRowAsync(list, 0);
             Press(window, Key.Down, PhysicalKey.ArrowDown, RawInputModifiers.Meta, held);
-            await Ui.PumpUntilAsync(() => Shown(list).SequenceEqual(["2", "1 - [Health > 50%]", "3"]), "skill 1 moved down");
+            await Ui.PumpUntilAsync(() => Shown(list).SequenceEqual(["2", "1 - [Health ≥ 50%]", "3"]), "skill 1 moved down");
             list.SelectedIndex = 2;
             await FocusRowAsync(list, 2);
             Press(window, Key.Back, PhysicalKey.Backspace, RawInputModifiers.None, held);
-            await Ui.PumpUntilAsync(() => Shown(list).SequenceEqual(["2", "1 - [Health > 50%]"]), "skill 3 removed");
+            await Ui.PumpUntilAsync(() => Shown(list).SequenceEqual(["2", "1 - [Health ≥ 50%]"]), "skill 3 removed");
 
             // Wait for Cooldown and Use if Available are one setting, shown both ways.
             Click(editor.FindControl<CheckBox>("WaitForCooldown")!);
             await Ui.PumpUntilAsync(() => model.UseWaitModeBool && editor.FindControl<CheckBox>("UseIfAvailable")!.IsChecked == false, "Wait for Cooldown");
             Click(editor.FindControl<CheckBox>("UseIfAvailable")!);
             await Ui.PumpUntilAsync(() => !model.UseWaitModeBool && editor.FindControl<CheckBox>("WaitForCooldown")!.IsChecked == false, "Use if Available");
+            // The timeout only applies to Wait for Cooldown.
+            Assert.False(editor.FindControl<TextBox>("SkillTimeout")!.IsEnabled);
             Click(editor.FindControl<CheckBox>("WaitForCooldown")!);
+            await Ui.PumpUntilAsync(() => editor.FindControl<TextBox>("SkillTimeout")!.IsEnabled, "the timeout enabled with Wait for Cooldown");
             editor.FindControl<CheckBox>("ResetOnTargetChange")!.IsChecked = true;
-            editor.FindControl<TextBox>("SkillTimeout")!.Text = "150";
+            editor.FindControl<TextBox>("SkillTimeout")!.Text = "15000";
             editor.FindControl<TextBox>("ClassName")!.Text = className;
             editor.FindControl<ComboBox>("ClassUseMode")!.SelectedItem = nameof(ClassUseMode.Solo);
             Ui.Click(editor.FindControl<Button>("SaveSkills")!);
@@ -133,8 +136,8 @@ public sealed class SkillsTests(AppEngine app)
             SavedAdvancedSkillsView saved = Ui.Find<SavedAdvancedSkillsView>(skills)!;
             await Ui.PumpUntilAsync(() => saved.Shown.Any(s => s.ClassName == className), "the saved set in the list");
             AdvancedSkill set = saved.Shown.Single(s => s.ClassName == className);
-            Assert.Equal(("2 | 1 H>50%", 150, ClassUseMode.Solo, SkillUseMode.WaitForCooldown, true),
-                (set.Skills, set.SkillTimeout, set.ClassUseMode, set.SkillUseMode, set.ResetComboOnTargetChange));
+            Assert.Equal(("2 | 1 H>50%", 15000, ClassUseMode.Solo, SkillUseMode.WaitForCooldown, true),
+                (set.Skills, set.SkillTimeoutMs, set.ClassUseMode, set.SkillUseMode, set.ResetComboOnTargetChange));
 
             // The running Script loads the set as saved.
             await File.AppendAllTextAsync(go, "1", Ct);
@@ -148,14 +151,14 @@ public sealed class SkillsTests(AppEngine app)
             await Ui.PumpUntilAsync(() => saved.Shown.Select(s => s.ClassName).SequenceEqual([className]), "the search to show only the set");
             savedList.SelectedItem = set;
             savedList.RaiseEvent(new TappedEventArgs(InputElement.DoubleTappedEvent, null!));
-            await Ui.PumpUntilAsync(() => skills.FindControl<Expander>("EditExpander")!.IsExpanded && Shown(list).SequenceEqual(["2", "1 - [Health > 50%]"]),
+            await Ui.PumpUntilAsync(() => skills.FindControl<Expander>("EditExpander")!.IsExpanded && Shown(list).SequenceEqual(["2", "1 - [Health ≥ 50%]"]),
                 "the set open in the editor");
-            Assert.Equal((className, nameof(ClassUseMode.Solo), "150"),
+            Assert.Equal((className, nameof(ClassUseMode.Solo), "15000"),
                 (editor.FindControl<TextBox>("ClassName")!.Text, editor.FindControl<ComboBox>("ClassUseMode")!.SelectedItem, editor.FindControl<TextBox>("SkillTimeout")!.Text));
             AddSkill(editor, "4");
-            editor.FindControl<TextBox>("SkillTimeout")!.Text = "175";
+            editor.FindControl<TextBox>("SkillTimeout")!.Text = "17500";
             Ui.Click(editor.FindControl<Button>("SaveSkills")!);
-            await Ui.PumpUntilAsync(() => saved.Shown.Any(s => s.ClassName == className && s.SkillTimeout == 175), "the edited set in the list");
+            await Ui.PumpUntilAsync(() => saved.Shown.Any(s => s.ClassName == className && s.SkillTimeoutMs == 17500), "the edited set in the list");
             Assert.Single(app.Get<IAdvancedSkillContainer>().LoadedSkills, s => s.ClassName == className);
 
             await File.AppendAllTextAsync(go, "2", Ct);
@@ -207,6 +210,8 @@ public sealed class SkillsTests(AppEngine app)
                     dialogRules.FindControl<CheckBox>("UseRule")!.IsChecked = true;
                     dialogRules.FindControl<ToggleButton>("ManaCompare")!.IsChecked = false;
                     dialogRules.FindControl<TextBox>("Mana")!.Text = "30";
+                    // Any (OR): the mana rule or the aura checks.
+                    dialogRules.FindControl<CheckBox>("MatchAny")!.IsChecked = true;
                     // Two aura checks, OR'd; the checks' rows bind too.
                     dialogRules.FindControl<CheckBox>("MultiAura")!.IsChecked = true;
                     dialogRules.FindControl<ComboBox>("Operator")!.SelectedIndex = 1;
@@ -225,8 +230,8 @@ public sealed class SkillsTests(AppEngine app)
             await Ui.PumpUntilAsync(() => edited.IsCompleted, "the rules dialog to be confirmed");
             await edited;
 
-            await Ui.PumpUntilAsync(() => Shown(list).SequenceEqual(["2 - [Mana < 30%] - [Multi-Aura (OR) 'Focus'>3 'Stale'>0]"]), "the skill with its new rules");
-            Assert.Equal("2 M<30% MA>\"Focus\" 3: MA>\"Stale\" 0", model.CurrentSkillsList[0].Convert());
+            await Ui.PumpUntilAsync(() => Shown(list).SequenceEqual(["2 - [Mana ≤ 30%] OR [Multi-Aura (OR) 'Focus' ≥ 3 'Stale' ≥ 0]"]), "the skill with its new rules");
+            Assert.Equal("2 M<30% OR MA>\"Focus\" 3: MA>\"Stale\" 0", model.CurrentSkillsList[0].Convert());
             // The editor's own rules, for the next skill added, are untouched.
             Assert.False(model.UseRules.UseRuleBool);
             Assert.True(errors.Lines.Count == 0, string.Join("\n", errors.Lines));
@@ -321,6 +326,10 @@ public sealed class SkillsTests(AppEngine app)
 
         Assert.Equal((set.ClassName, set.Skills, set.SkillTimeout, set.ClassUseMode, set.SkillUseMode, set.ResetComboOnTargetChange),
             (back.ClassName, back.Skills, back.SkillTimeout, back.ClassUseMode, back.SkillUseMode, back.ResetComboOnTargetChange));
+        Assert.DoesNotContain("skillTimeoutMs", SkillSetText.From([set]));
+        // A timeout that isn't whole ticks keeps its milliseconds; ticks alone would round it up.
+        set.SkillTimeoutMs = 1750;
+        Assert.Equal((18, 1750), (Assert.Single(SkillSetText.Parse(SkillSetText.From([set]))).SkillTimeout, Assert.Single(SkillSetText.Parse(SkillSetText.From([set]))).SkillTimeoutMs));
         Assert.Equal(ClassUseMode.Solo, Assert.Single(SkillSetText.Parse("""{"className":"Legion Revenant","classUseMode":"solo","skills":"3 | 1 | 2 | 4"}""")).ClassUseMode);
         Assert.Empty(SkillSetText.Parse("1 | 2 | 3"));
         Assert.Empty(SkillSetText.Parse("""[{"className":"","skills":"1"}]"""));

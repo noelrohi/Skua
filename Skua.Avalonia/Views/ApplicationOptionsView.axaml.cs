@@ -9,9 +9,9 @@ public partial class ApplicationOptionsView : UserControl
 {
     /// <summary>
     /// The tags of the options hidden here: Clear Flash Cache, as the Game Host runs Ruffle and has no Flash cache, and the client
-    /// animation frame-rate, which only WPF reads.
+    /// animation frame-rate and Square Window Corners, which only WPF reads (macOS draws the window's corners itself).
     /// </summary>
-    private static readonly IReadOnlySet<string> HiddenOnMac = new HashSet<string> { "Clear Flash Cache", "ClientAnim" };
+    private static readonly IReadOnlySet<string> HiddenOnMac = new HashSet<string> { "Clear Flash Cache", "ClientAnim", "SquareWindowCorners" };
 
     public ApplicationOptionsView()
     {
