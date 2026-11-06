@@ -204,7 +204,11 @@ public partial class ScriptRepoView : UserControl
             Ioc.Default.GetRequiredService<IProcessService>().OpenVSC(script.LocalFile);
     });
 
-    /// <summary>Runs a command of the view model on the Script whose context menu was used, as the Windows view selects it first.</summary>
+    private void OnLoadClick(object? sender, RoutedEventArgs e) => OnSelected(sender, viewModel => viewModel.LoadScriptCommand.Execute(viewModel.SelectedItem));
+
+    private void OnStartClick(object? sender, RoutedEventArgs e) => OnSelected(sender, viewModel => viewModel.StartScriptCommand.Execute(viewModel.SelectedItem));
+
+    /// <summary>Runs a command of the view model on the Script whose context menu or button was used, selecting it first as the Windows view does.</summary>
     private void OnSelected(object? sender, Action<ScriptRepoViewModel> command)
     {
         if (_viewModel is null || (sender as StyledElement)?.DataContext is not ScriptInfoViewModel script)

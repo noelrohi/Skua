@@ -25,11 +25,19 @@
     <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,350,Auto">
         <Border Grid.Row="0" Grid.Column="0" Margin="6,6,3,3" Classes="group">
             <StackPanel>
-                <TextBlock Classes="header" Text="Set SkillTimeout" />
+                <TextBlock Classes="header" Text="Set SkillTimeout (ms)" />
                 <TextBox
                     x:Name="SkillTimeout"
-                    Text="{Binding CurrentSkillTimeout}"
-                    ToolTip.Tip="The maximum time it will wait for a skill in multiples of the SkillTimer (default 100ms). Default SkillTimeout is 100 (10000 ms). Note that the skill timeout is only used when Wait for Cooldown is enabled." />
+                    IsEnabled="{Binding UseWaitModeBool}"
+                    Text="{Binding CurrentSkillTimeoutMs}"
+                    ToolTip.Tip="The longest it waits for a skill's cooldown before skipping it, in milliseconds. Default 10000 (10 s); 0 waits as long as it takes. Only used with Wait for Cooldown. A skill held up by anything else (mana, a stun, an empty potion slot) is skipped at once."
+                    Watermark="SkillTimeout (ms)" />
+                <TextBlock
+                    Margin="0,2,0,0"
+                    FontSize="11"
+                    IsVisible="{Binding !UseWaitModeBool}"
+                    Opacity="0.6"
+                    Text="Only used with Wait for Cooldown." />
             </StackPanel>
         </Border>
         <Border Grid.Row="0" Grid.Column="1" Margin="3,6,6,3" Classes="group">
@@ -41,7 +49,7 @@
                         Grid.Column="0"
                         Content="Wait for Cooldown"
                         IsChecked="{Binding UseWaitModeBool}"
-                        ToolTip.Tip="Will wait for either the skill to fully cooldown or the defined skill timeout (default is 25 seconds). It is important that you use the &quot;Skip if not available&quot; use rule for better control of the skill combo." />
+                        ToolTip.Tip="Will wait for either the skill to fully cooldown or the defined skill timeout (default is 10 seconds). It is important that you use the &quot;Skip if not available&quot; use rule for better control of the skill combo." />
                     <CheckBox
                         x:Name="UseIfAvailable"
                         Grid.Column="1"

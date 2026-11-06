@@ -69,8 +69,8 @@
                                         <MenuItem Click="OnDownloadClick" Header="Download" IsEnabled="{Binding !Downloaded}" />
                                         <MenuItem Click="OnDeleteClick" Header="Delete" IsEnabled="{Binding Downloaded}" />
                                         <MenuItem Click="OnOpenInVSCodeClick" Header="Open in VSCode" IsEnabled="{Binding Downloaded}" />
-                                        <MenuItem Command="{Binding LoadScriptCommand}" CommandParameter="{Binding}" Header="Load" IsEnabled="{Binding Downloaded}" />
-                                        <MenuItem Command="{Binding StartScriptCommand}" CommandParameter="{Binding}" Header="Start" IsEnabled="{Binding Downloaded}" />
+                                        <MenuItem Click="OnLoadClick" Header="Load" IsEnabled="{Binding Downloaded}" />
+                                        <MenuItem Click="OnStartClick" Header="Start" IsEnabled="{Binding Downloaded}" />
                                     </ContextMenu>
                                 </Border.ContextMenu>
                                 <Grid ColumnDefinitions="*,Auto">
@@ -98,15 +98,13 @@
                                             Width="70"
                                             Margin="0,0,6,0"
                                             HorizontalContentAlignment="Center"
-                                            Command="{Binding StartScriptCommand}"
-                                            CommandParameter="{Binding}"
+                                            Click="OnStartClick"
                                             Content="Start"
                                             IsEnabled="{Binding Downloaded}" />
                                         <Button
                                             Width="70"
                                             HorizontalContentAlignment="Center"
-                                            Command="{Binding LoadScriptCommand}"
-                                            CommandParameter="{Binding}"
+                                            Click="OnLoadClick"
                                             Content="Load"
                                             IsEnabled="{Binding Downloaded}" />
                                     </StackPanel>
