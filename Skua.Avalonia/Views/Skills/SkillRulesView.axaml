@@ -60,8 +60,11 @@
                     <Button
                         Command="{Binding ResetUseRulesCommand}"
                         Content="Reset"
-                        DockPanel.Dock="Right" />
-                    <StackPanel Orientation="Horizontal" Spacing="15">
+                        VerticalAlignment="Top"
+                        DockPanel.Dock="Right"
+                        ToolTip.Tip="Clears the use rules." />
+                    <!--  Wraps, so the three checks never run under Reset in a narrow window.  -->
+                    <WrapPanel ItemSpacing="10" LineSpacing="3">
                         <CheckBox
                             x:Name="UseRule"
                             Content="Use Rule?"
@@ -72,7 +75,12 @@
                             Content="Multi Aura"
                             IsChecked="{Binding MultiAuraBool}"
                             ToolTip.Tip="Use multiple aura checks instead of single aura rule." />
-                    </StackPanel>
+                        <CheckBox
+                            x:Name="MatchAny"
+                            Content="Any (OR)"
+                            IsChecked="{Binding MatchAnyBool}"
+                            ToolTip.Tip="Use the skill when any of its conditions holds (health OR mana OR aura...), instead of only when all of them do." />
+                    </WrapPanel>
                 </DockPanel>
                 <Grid ColumnDefinitions="Auto,Auto,*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="3">
                     <TextBlock Grid.Row="0" Classes="label" Text="Health" />

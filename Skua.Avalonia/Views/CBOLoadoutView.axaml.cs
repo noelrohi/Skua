@@ -5,7 +5,7 @@ using Skua.Core.ViewModels;
 namespace Skua.Avalonia.Views;
 
 /// <summary>
-/// The classes and equipment CoreBots uses. As on Windows, opening a class list reloads the player's classes and keeps the ones chosen, and
+/// The classes and equipment CoreBots uses. As on Windows, opening a class list reloads the player's classes and keeps the ones chosen and their modes, and
 /// opening an equipment list reloads the inventory.
 /// </summary>
 public partial class CBOLoadoutView : UserControl
@@ -19,12 +19,5 @@ public partial class CBOLoadoutView : UserControl
             equipment.DropDownOpened += (_, _) => (Equipment.DataContext as CBOClassEquipmentViewModel)?.RefreshInventoryCommand.Execute(null);
     }
 
-    private void ReloadClasses()
-    {
-        if (ClassSelect.DataContext is not CBOClassSelectViewModel model)
-            return;
-        (string? solo, string? farm, string? dodge, string? boss) = (model.SelectedSoloClass, model.SelectedFarmClass, model.SelectedDodgeClass, model.SelectedBossClass);
-        model.ReloadClassesCommand.Execute(null);
-        (model.SelectedSoloClass, model.SelectedFarmClass, model.SelectedDodgeClass, model.SelectedBossClass) = (solo, farm, dodge, boss);
-    }
+    private void ReloadClasses() => (ClassSelect.DataContext as CBOClassSelectViewModel)?.RefreshClassesKeepSelection();
 }

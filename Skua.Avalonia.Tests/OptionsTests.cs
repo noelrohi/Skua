@@ -194,12 +194,13 @@ public sealed class OptionsTests(AppEngine app)
         Dictionary<string, object?> valuesBefore = checkOptions.ToDictionary(o => o.Tag, o => o.Value);
         try
         {
-            // Core's list, which the Windows app shows, keeps both.
+            // Core's list, which the Windows app shows, keeps them all.
             Assert.Contains(core, o => o.Content == "Clear Flash Cache");
             Assert.Contains(core, o => o.Content == "* Client Animation Frame-rate");
+            Assert.Contains(core, o => o.Content == "Square Window Corners");
             List<OptionItemView> shown = [.. window.GetVisualDescendants().OfType<OptionItemView>()];
             Assert.Equal(
-                core.Select(o => o.Content).Where(c => c is not ("Clear Flash Cache" or "* Client Animation Frame-rate")),
+                core.Select(o => o.Content).Where(c => c is not ("Clear Flash Cache" or "* Client Animation Frame-rate" or "Square Window Corners")),
                 shown.Select(v => v.Item.Content));
 
             foreach (OptionItemView view in shown)
