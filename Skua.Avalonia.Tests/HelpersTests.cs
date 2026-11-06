@@ -109,7 +109,10 @@ public sealed class HelpersTests(AppEngine app)
 
         Ui.Click(TravelButton(panel, name)!);
         await Ui.PumpUntilAsync(() => app.Get<IScriptMap>().Name == "yulgar" && app.Get<IScriptPlayer>().Cell == "Upstairs", "the player in yulgar, Upstairs");
-        Assert.Contains("tfer yulgar Upstairs Left", GameCalls());
+        // Fast travel joins a private room unless told otherwise.
+        IMapService travels = app.Get<IMapService>();
+        Assert.True(travels.UsePrivateRoom);
+        Assert.Contains($"tfer yulgar-{travels.PrivateRoomNumber} Upstairs Left", GameCalls());
 
         // The search shows the travels whose name has it.
         panel.FindControl<TextBox>("SearchBox")!.Text = "no such travel";
