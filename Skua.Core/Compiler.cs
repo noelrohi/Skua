@@ -27,9 +27,13 @@ public class Compiler : CSharpScriptExecution
         concurrentBuild: false,
         deterministic: true,
         reportSuppressedDiagnostics: false);
+    // MACOS marks the headless Engine, which has no Windows Forms; Scripts made ready for it test it (#if !MACOS). The Linux Engine is the same
+    // Engine, so it defines it too, and LINUX for a Script that must tell the two apart.
     private static readonly CSharpParseOptions _parseOptions = OperatingSystem.IsMacOS()
         ? CSharpParseOptions.Default.WithPreprocessorSymbols("MACOS")
-        : CSharpParseOptions.Default;
+        : OperatingSystem.IsLinux()
+            ? CSharpParseOptions.Default.WithPreprocessorSymbols("MACOS", "LINUX")
+            : CSharpParseOptions.Default;
     private readonly object _namespaceCacheLock = new();
     private string? _cachedNamespacePrefix = null;
     private int _lastNamespaceHash = 0;

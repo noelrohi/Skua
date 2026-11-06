@@ -65,7 +65,31 @@ public static class ScriptCheck
         }
         finally
         {
-            Directory.Delete(stage, recursive: true);
+            DeleteStage(stage);
+        }
+    }
+
+    /// <summary>
+    /// Deletes the stage. Core's cache cleanup (<see cref="Skua.Core.Compiler.CleanCache"/>) may still be opening its lock file there on a background thread,
+    /// which fails a recursive delete with "Directory not empty", so the delete tries again; a stage it still can't delete stays in the temp folder.
+    /// </summary>
+    private static void DeleteStage(string stage)
+    {
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                Directory.Delete(stage, recursive: true);
+                return;
+            }
+            catch (IOException) when (attempt < 10)
+            {
+                Thread.Sleep(50);
+            }
+            catch (IOException)
+            {
+                return;
+            }
         }
     }
 

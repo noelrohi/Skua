@@ -288,6 +288,7 @@ public class LoginTests
     [Fact]
     public async Task The_Engine_holds_off_idle_sleep_while_logged_in()
     {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Only the Mac idle-sleeps; pmset lists the Engine's assertion.");
         await using EngineSandbox sandbox = new();
         await using GameFixture session = await GameFixture.StartAsync(sandbox);
         string assertion = $"pid {session.Engine.Id}(skua-engine)";

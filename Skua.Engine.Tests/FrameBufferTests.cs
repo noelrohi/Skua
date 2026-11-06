@@ -9,6 +9,7 @@ public sealed unsafe partial class FrameBufferTests
     [Fact]
     public void Creates_an_object_only_this_user_can_open_and_unlinks_its_name()
     {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "The Frame Buffer is the Mac App's, and these tests use macOS's shm_open flags and struct stat.");
         using FrameBuffer buffer = FrameBuffer.Create(FrameBuffer.NewName(), 4, 2);
         string name = buffer.Name;
 
@@ -30,6 +31,7 @@ public sealed unsafe partial class FrameBufferTests
     [Fact]
     public void Reads_the_latest_frame_once_and_only_when_it_is_whole()
     {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "The Frame Buffer is the Mac App's, and these tests use macOS's shm_open flags and struct stat.");
         using FrameBuffer buffer = FrameBuffer.Create(FrameBuffer.NewName(), 4, 2);
         using Writer writer = new(buffer.Name);
         byte[] rows = new byte[4 * 4 * 2];
@@ -87,6 +89,7 @@ public sealed unsafe partial class FrameBufferTests
     [Fact]
     public void Tells_the_latest_frames_size_as_frames_grow_and_shrink()
     {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "The Frame Buffer is the Mac App's, and these tests use macOS's shm_open flags and struct stat.");
         using FrameBuffer buffer = FrameBuffer.Create(FrameBuffer.NewName(), 6, 4);
         using Writer writer = new(buffer.Name);
         Assert.Null(buffer.LatestSize());

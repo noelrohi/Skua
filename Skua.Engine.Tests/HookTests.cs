@@ -188,6 +188,7 @@ public class HookTests
     [Fact]
     public async Task The_example_relogin_hook_logs_an_account_back_in_after_an_unexpected_logout_and_never_after_skua_logout()
     {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "The example Hooks read JSON with macOS's plutil.");
         await using EngineSandbox sandbox = new();
         await using GameFixture game = await GameFixture.StartAsync(sandbox);
         await game.Connection.LoginAsync("Galanoth", cancellationToken: Ct);

@@ -11,9 +11,11 @@ public static class ClientFileSources
     /// </summary>
     public const string SkuaDirEnvironmentVariable = "SKUA_DIR";
 
+    // On Linux, ~/.config is used even before it exists, as on a fresh server: verified, a missing one would make this a relative "Skua".
     public static string SkuaDIR { get; } = Environment.GetEnvironmentVariable(SkuaDirEnvironmentVariable) is { Length: > 0 } skuaDir
         ? Path.GetFullPath(skuaDir)
-        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Skua");
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData,
+            OperatingSystem.IsLinux() ? Environment.SpecialFolderOption.DoNotVerify : Environment.SpecialFolderOption.None), "Skua");
     public static string SkuaSettingsDIR { get; } = Path.Combine(SkuaDIR, "Skua.settings.json");
     public static string SkuaScriptsDIR { get; } = Path.Combine(SkuaDIR, "Scripts");
     public static string SkuaThemesDIR { get; } = Path.Combine(SkuaDIR, "themes");

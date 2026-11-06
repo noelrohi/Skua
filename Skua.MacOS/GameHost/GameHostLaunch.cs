@@ -50,9 +50,9 @@ public sealed record GameHostLaunch(string Executable, string Swf)
             ResolveFile(SwfVariable, baseDirectory, SwfName));
 
         if (!File.Exists(launch.Executable))
-            throw new FileNotFoundException($"The Game Host '{launch.Executable}' doesn't exist; build Skua.App.Engine on macOS, or set {ExecutableVariable}.", launch.Executable);
+            throw new FileNotFoundException($"The Game Host '{launch.Executable}' doesn't exist; build Skua.App.Engine on macOS or Linux, or set {ExecutableVariable}.", launch.Executable);
         if (!File.Exists(launch.Swf))
-            throw new FileNotFoundException($"The Game Client's SWF '{launch.Swf}' doesn't exist; build Skua.App.Engine on macOS, or set {SwfVariable}.", launch.Swf);
+            throw new FileNotFoundException($"The Game Client's SWF '{launch.Swf}' doesn't exist; build Skua.App.Engine on macOS or Linux, or set {SwfVariable}.", launch.Swf);
 
         return launch;
     }
