@@ -50,6 +50,9 @@ public class ScriptInfo
     /// <summary>Whether the local file differs from <c>scripts.json</c>'s entry, in size or, when the entry has one, in SHA-256.</summary>
     public bool Outdated => Downloaded && (MeasureLocal() is not { } local || local.Size != Size || (!string.IsNullOrEmpty(Sha256) && local.Sha256 != Sha256));
 
+    /// <summary>Forgets the cached measure, for a caller that just rewrote <see cref="LocalFile"/>.</summary>
+    public void InvalidateLocalHash() => _localMeasure = null;
+
     /// <summary>
     /// A Script file's size and SHA-256 as the Scripts generator writes them into <c>scripts.json</c>: those of its UTF-8 text without
     /// U+200B and U+FEFF, so a file with a byte order mark or a zero-width space matches its entry.
@@ -60,11 +63,35 @@ public class ScriptInfo
         return (text.Length, Convert.ToHexStringLower(SHA256.HashData(text)));
     }
 
+    private sealed record LocalMeasure(long Length, DateTime LastWriteUtc, int Size, string Sha256);
+
+    // Measuring every downloaded Script is slow, so reuse the last measure until the file's length or write time changes.
+    private LocalMeasure? _localMeasure;
+
     private (int Size, string Sha256)? MeasureLocal()
     {
         try
         {
-            return Downloaded ? Measure(File.ReadAllBytes(LocalFile)) : null;
+            FileInfo file = new(LocalFile);
+            if (!file.Exists)
+                return null;
+
+            LocalMeasure? cached = _localMeasure;
+            if (cached is not null && cached.Length == file.Length && cached.LastWriteUtc == file.LastWriteTimeUtc)
+                return (cached.Size, cached.Sha256);
+
+            // Share write and delete so a download or delete during a background count doesn't fail.
+            byte[] bytes;
+            using (FileStream stream = new(file.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            using (MemoryStream copy = new())
+            {
+                stream.CopyTo(copy);
+                bytes = copy.ToArray();
+            }
+
+            (int size, string sha256) = Measure(bytes);
+            _localMeasure = new(file.Length, file.LastWriteTimeUtc, size, sha256);
+            return (size, sha256);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
