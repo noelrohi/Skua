@@ -1,5 +1,6 @@
 //! The game's local storage through the real host (#250, ADR 0008): skua-gamehost runs tests/fixtures/Storage.swf, which reads the game's
-//! `AQLite_Data` SharedObject, counts the run in it and flushes it, and traces what it read as 'F' frames on stdout. Needs a Metal device.
+//! `AQLite_Data` SharedObject, counts the run in it and flushes it, and traces what it read as 'F' frames on stdout. Needs a Metal device
+//! (on Linux, Vulkan or GL: Mesa's lavapipe or llvmpipe does without a GPU).
 
 use std::io::Read;
 use std::path::{Path, PathBuf};

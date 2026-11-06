@@ -3,7 +3,7 @@ name = "skua-gamehost"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "Skua's macOS Game Host: runs skua.swf in embedded Ruffle and carries the Bridge over stdin/stdout"
+description = "Skua's Game Host (macOS and Linux): runs skua.swf in embedded Ruffle and carries the Bridge over stdin/stdout"
 
 # Ruffle comes from the noelrohi/ruffle fork by full rev (ADR 0004); the tag keeps the rev reachable.
 # rev 43cb31710603c348197e60b5f42f35117c442098 = tag skua-20261017f-4536637 (branch skua on upstream 4536637).
@@ -22,12 +22,15 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
 minifb = "0.28"
-objc2 = "0.6"
 # The Frame Buffer: shm_open, mmap and the mach_absolute_time clock.
 libc = "0.2"
 # diag only: the Metal peak command-buffer counter (diag/wgpu-hal-*.patch) and wgpu's resource counters.
 wgpu-hal = { version = "=30.0.1", optional = true }
 wgpu = { version = "=30.0.1", features = ["counters"], optional = true }
+
+# Metal's autorelease pools (main.rs, render.rs).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
 
 [features]
 # Census and memory frames. Builds only against the skua-diag branch plus the patched gc-arena and wgpu-hal

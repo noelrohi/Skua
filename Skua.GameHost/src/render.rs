@@ -110,7 +110,7 @@ impl ThreadedBackend {
             .spawn(move || {
                 while let Ok(job) = rx.recv() {
                     // Metal objects made on this thread are autoreleased here too.
-                    objc2::rc::autoreleasepool(|_| {
+                    crate::autoreleasepool(|| {
                         let mut g = sh.inner.lock().unwrap();
                         {
                             let mut q = sh.queued.lock().unwrap();

@@ -1,12 +1,13 @@
 # Skua.GameHost
 
-`skua-gamehost` is the macOS Game Host: a small Rust program that runs the Game Client (`skua.swf`) in embedded
-Ruffle, offscreen on Metal, and carries the Bridge to the Engine over its stdin/stdout. Why Ruffle, and why a
+`skua-gamehost` is the Game Host of macOS and Linux: a small Rust program that runs the Game Client (`skua.swf`) in
+embedded Ruffle, offscreen on Metal (on Linux, Vulkan or GL, which Mesa's lavapipe or llvmpipe provide without a GPU),
+and carries the Bridge to the Engine over its stdin/stdout. Why Ruffle, and why a
 custom host: [ADR 0003](../docs/adr/0003-game-host-rust-embedding-ruffle.md). How Ruffle is pinned and patched:
 [ADR 0004](../docs/adr/0004-ruffle-patches-on-a-fork-branch.md).
 
-This Cargo project is not in `Skua.sln`, and Windows never builds it. On macOS, `dotnet build` of `Skua.App.Engine` builds it
-and puts `skua-gamehost` next to `skua-engine` (see `BUILD.md`).
+This Cargo project is not in `Skua.sln`, and Windows never builds it. On macOS and Linux, `dotnet build` of `Skua.App.Engine`
+builds it and puts `skua-gamehost` next to `skua-engine` (see `BUILD.md`).
 
 ## Build and test
 
@@ -18,6 +19,9 @@ cargo test --locked              # framing, XML and options; tests/game_storage.
 - The toolchain is pinned in `rust-toolchain.toml` (1.99.1, `aarch64-apple-darwin`); rustup installs it on first use.
   It moves only together with the Ruffle pin.
 - The build needs the macOS SDK (Xcode or the Command Line Tools). wgpu compiles its Metal shaders at runtime.
+- On Linux it needs a C toolchain (`build-essential`), and at runtime a Vulkan or GL driver: without a GPU,
+  `mesa-vulkan-drivers` (lavapipe). `WGPU_BACKEND=gl` picks GL; the tests run on whichever it finds. macOS-only code
+  (the autorelease pools, `CLOCK_UPTIME_RAW`) is behind `cfg(target_os = "macos")`.
 - A cold build takes about 5 minutes on an M4 Pro. Always use the release build with the Engine: the debug build
   is too slow for the Bridge.
 - The release profile keeps line tables, so panics still print file and line.
@@ -115,7 +119,7 @@ From #13 and #17. Together they keep a headless host under 2 GB and responsive o
 
 | Default | Where |
 |---|---|
-| Drain an autorelease pool every loop iteration (Metal objects are autoreleased) | `main.rs`, `render.rs` |
+| Drain an autorelease pool every loop iteration (Metal objects are autoreleased; macOS only) | `main.rs`, `render.rs` |
 | Trim the offscreen texture pool every 30 ticks; the main-frame pool trims itself every frame | `--trim-ticks`; fork commit `skua: Trim the texture pools, on by default` |
 | Pass budget 64, in-flight bound 2, layer flush 8 | set from the flags at start-up |
 | `submit_frame` on a render thread, under a 10% render budget: 1 s interval, capped at 5 s | `render.rs`, `opts.rs` |

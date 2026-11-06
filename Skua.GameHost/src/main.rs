@@ -1,5 +1,6 @@
-//! skua-gamehost: runs skua.swf (the Game Client) in embedded Ruffle, offscreen on Metal, and carries the
-//! Bridge to the Engine over stdin/stdout (frame format: `frame.rs`). ADR 0003, ADR 0004.
+//! skua-gamehost: runs skua.swf (the Game Client) in embedded Ruffle, offscreen on Metal (on Linux, Vulkan or GL,
+//! which Mesa's lavapipe or llvmpipe provide without a GPU), and carries the Bridge to the Engine over stdin/stdout
+//! (frame format: `frame.rs`). ADR 0003, ADR 0004.
 //!
 //! Lifecycle: exits on stdin EOF; aborts on any panic (`bridge.rs`).
 
@@ -102,15 +103,17 @@ fn main() {
     wgpu_backend::set_max_in_flight(opts.max_in_flight);
     wgpu_backend::set_layer_flush(opts.layer_flush);
 
-    // Offscreen Metal device.
-    let instance = create_wgpu_instance(wgpu::Backends::METAL, wgpu::BackendOptions::default(), None);
+    // Offscreen device.
+    let backends = gpu_backends();
+    let instance = create_wgpu_instance(backends, wgpu::BackendOptions::default(), None);
     let (adapter, device, queue) = futures::executor::block_on(request_adapter_and_device(
-        wgpu::Backends::METAL,
+        backends,
         &instance,
         None,
         wgpu::PowerPreference::LowPower,
     ))
-    .unwrap_or_else(|e| fail(1, &format!("no Metal device: {e}")));
+    .unwrap_or_else(|e| fail(1, &format!("no {} device: {e}", backend_names(backends))));
+    tracing::info!("rendering on {:?}", adapter.get_info());
     let descriptors = Arc::new(Descriptors::new(instance, adapter, device, queue));
     let target = TextureTarget::new(&descriptors.device, (WIDTH, HEIGHT))
         .unwrap_or_else(|e| fail(1, &format!("render target: {e}")));
@@ -265,6 +268,44 @@ struct Host {
     stats: LoopStats,
 }
 
+/// The wgpu backends the offscreen device may use: Metal on macOS.
+#[cfg(target_os = "macos")]
+fn gpu_backends() -> wgpu::Backends {
+    wgpu::Backends::METAL
+}
+
+/// The wgpu backends the offscreen device may use: on Linux, Vulkan or GL, which without a GPU are Mesa's
+/// lavapipe and llvmpipe. `WGPU_BACKEND` (e.g. `gl`) narrows them.
+#[cfg(not(target_os = "macos"))]
+fn gpu_backends() -> wgpu::Backends {
+    wgpu::Backends::from_env().unwrap_or(wgpu::Backends::VULKAN | wgpu::Backends::GL)
+}
+
+fn backend_names(backends: wgpu::Backends) -> String {
+    let names: Vec<_> = [
+        (wgpu::Backends::METAL, "Metal"),
+        (wgpu::Backends::VULKAN, "Vulkan"),
+        (wgpu::Backends::GL, "GL"),
+    ]
+    .into_iter()
+    .filter(|(b, _)| backends.contains(*b))
+    .map(|(_, name)| name)
+    .collect();
+    names.join(" or ")
+}
+
+/// Runs `f` inside an autorelease pool on macOS, where Metal autoreleases its objects (#13); elsewhere just runs it.
+#[cfg(target_os = "macos")]
+pub fn autoreleasepool<T>(f: impl FnOnce() -> T) -> T {
+    objc2::rc::autoreleasepool(|_| f())
+}
+
+/// Runs `f` inside an autorelease pool on macOS, where Metal autoreleases its objects (#13); elsewhere just runs it.
+#[cfg(not(target_os = "macos"))]
+pub fn autoreleasepool<T>(f: impl FnOnce() -> T) -> T {
+    f()
+}
+
 fn backend(p: &mut Player) -> &mut ThreadedBackend {
     <dyn Any>::downcast_mut::<ThreadedBackend>(p.renderer_mut()).expect("the renderer is a ThreadedBackend")
 }
@@ -278,7 +319,7 @@ impl Host {
         loop {
             // Metal returns autoreleased objects (command buffers, encoders, descriptors). A plain Rust loop
             // never drains an autorelease pool, so drain one per iteration like an AppKit run loop does (#13).
-            objc2::rc::autoreleasepool(|_| self.iteration(&rx));
+            autoreleasepool(|| self.iteration(&rx));
         }
     }
 
