@@ -9,7 +9,7 @@ namespace Skua.App.Cli.Mcp;
 
 /// <summary>
 /// The MCP tools: one snake_case tool per Control Surface method, with the same arguments and DTOs, except that <c>screenshot</c> returns its PNG
-/// as an image block. The tools whose CLI commands start no Engine (<c>status</c>, <c>engine_list</c> and the <c>scripts_*</c> tools) start none
+/// as an image block. The tools whose CLI commands start no Engine (<c>status</c>, <c>engine_list</c>, <c>find</c> and the <c>scripts_*</c> tools) start none
 /// either, and share those commands' code; every other tool auto-starts the Engine.
 /// </summary>
 /// <param name="scripts">
@@ -79,6 +79,17 @@ internal sealed class EngineTools(Func<EngineClientOptions> options, DataFolderS
         [Description("inventory, bank, temp or house.")] InventoryKind kind = InventoryKind.Inventory,
         CancellationToken cancellationToken = default) =>
         CallAsync(connection => connection.InventoryAsync(kind, cancellationToken), cancellationToken);
+
+    [McpServerTool(Name = "find", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(FindResult))]
+    [Description("Does the account have an item? The items whose name contains text, ignoring case, in every item store: items, each with store (inventory, bank, temp or house), id, name and qty. The bank is searched only once the game has loaded it this login (bankLoaded); when it is false, the bank's copies are unknown, not none: the inventory tool with kind bank loads it. Starts no Engine: fails with EngineUnavailable when it isn't running, NotLoggedIn unless playing, and InvalidArgument for a blank text.")]
+    public Task<CallToolResult> Find(
+        [Description("Part of an item's name, e.g. \"sage\" or \"Dragon of Time\".")] string text,
+        CancellationToken cancellationToken = default) =>
+        WithoutAutoStartAsync(async () =>
+        {
+            using EngineConnection connection = await EngineCommands.ConnectToRunningAsync(options(), cancellationToken);
+            return await connection.FindAsync(text, cancellationToken);
+        });
 
     [McpServerTool(Name = "quests", ReadOnly = true, UseStructuredContent = true, OutputSchemaType = typeof(QuestsResult))]
     [Description("The quests the game has loaded, or only the accepted ones: status (notAccepted, inProgress, completable: ready to turn in), member-only, gold, xp, requirements (item, qty needed and how many the player has) and rewards; for a daily, weekly or monthly quest its repeat and repeatDone (turned in since the game last reset it; null when the game can't tell); and lastRejection, the game server's reason for refusing its last turn-in, until it is turned in. Fails with NotLoggedIn unless playing.")]

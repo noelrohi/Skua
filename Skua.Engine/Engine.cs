@@ -332,6 +332,9 @@ internal sealed class Engine : IEngineRpc
     public Task<InventoryResult> InventoryAsync(InventoryKind kind, CancellationToken cancellationToken) =>
         _queries.InventoryAsync(kind, cancellationToken);
 
+    public Task<FindResult> FindAsync(string text, CancellationToken cancellationToken) =>
+        _queries.FindAsync(text, cancellationToken);
+
     public Task<QuestsResult> QuestsAsync(QuestFilter filter, CancellationToken cancellationToken) =>
         _queries.QuestsAsync(filter, cancellationToken);
 

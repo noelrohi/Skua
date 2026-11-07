@@ -134,6 +134,8 @@ public sealed class FakeEngine : IEngineRpc, IAsyncDisposable
 
     public Task<InventoryResult> InventoryAsync(InventoryKind kind, CancellationToken cancellationToken) => Unexpected<InventoryResult>("inventory");
 
+    public Task<FindResult> FindAsync(string text, CancellationToken cancellationToken) => Unexpected<FindResult>("find");
+
     public Task<QuestsResult> QuestsAsync(QuestFilter filter, CancellationToken cancellationToken) => Unexpected<QuestsResult>("quests");
 
     public Task<QuestCompleteResult> QuestCompleteAsync(int id, int? rewardId, int? timeoutSec, CancellationToken cancellationToken) =>

@@ -203,7 +203,7 @@ fn the_screen_shows_accounts_by_group_with_their_engines_and_the_selected_ones_o
         &screen,
         &[
             " skua  windowless Engines",
-            "3 Engines · 2 alerts · hooks off · protocol 18",
+            "3 Engines · 2 alerts · hooks off · protocol 19",
             "Accounts",
             "▾ Farm · 2",
             "▾ Butler · 1",

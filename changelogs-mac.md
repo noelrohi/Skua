@@ -7,6 +7,7 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 ## October 27, 2026
 
 ### New
+* `skua find <text>` (MCP `find`) says whether an account has an item: every item whose name contains the text, ignoring case, in the inventory, the bank, the temporary inventory and the house, with its store, ID and quantity; `--json` prints an array. It starts no Engine, and searches the bank only once the game has loaded it, saying so otherwise rather than counting none. See [Moving and reading the game](./BUILD.md#moving-and-reading-the-game).
 * `skua engine up alt1 alt2 alt3 --server <server>` starts a windowless Engine for each account that has none running and logs each in as its own account, in parallel, with one line per Engine. Without names it brings up every Skua Manager account. An Engine already playing is left alone, and one that fails doesn't stop the others. See [The Skua Manager](./BUILD.md#the-skua-manager).
 
 ## October 11, 2026
