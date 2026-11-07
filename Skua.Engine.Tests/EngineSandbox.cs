@@ -97,15 +97,21 @@ public sealed class EngineSandbox : IAsyncDisposable
     }
 
     /// <summary>
-    /// Starts <c>skua</c> on a pseudo-terminal, through macOS's <c>script</c>, as a developer runs it in a terminal: what is written to its
-    /// standard input is typed, and its output has the terminal's CRLF line ends and echo. Disposing the sandbox kills it.
+    /// Starts <c>skua</c> on a pseudo-terminal, through macOS's <c>script</c> (util-linux's on Linux), as a developer runs it in a terminal: what
+    /// is written to its standard input is typed, and its output has the terminal's CRLF line ends and echo. Disposing the sandbox kills it.
     /// </summary>
     public Process StartCliInTerminal(IDictionary<string, string> environment, params string[] arguments)
     {
-        Process process = LaunchCli(environment, ["-q", "/dev/null", CliExecutable, .. arguments], terminal: true);
+        // util-linux's script runs one shell command line, and exits with it (-e).
+        string[] scriptArguments = OperatingSystem.IsLinux()
+            ? ["-q", "-e", "-c", string.Join(' ', ((string[])["exec", CliExecutable, .. arguments]).Select(ShellQuote)), "/dev/null"]
+            : ["-q", "/dev/null", CliExecutable, .. arguments];
+        Process process = LaunchCli(environment, scriptArguments, terminal: true);
         _processes.Add(process);
         return process;
     }
+
+    private static string ShellQuote(string argument) => $"'{argument.Replace("'", "'\\''", StringComparison.Ordinal)}'";
 
     private Process LaunchCli(IDictionary<string, string> environment, string[] arguments, bool terminal = false, bool closeInput = true)
     {

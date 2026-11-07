@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Builds skua.swf on macOS with Apache Flex SDK 4.16.1 and Adobe playerglobal 32.0.
+# Builds skua.swf on macOS or Linux with Apache Flex SDK 4.16.1 and Adobe playerglobal 32.0.
 # The Windows build is compile-as3.ps1; this script uses the same mxmlc flags.
 #
 # Usage: ./compile-as3.sh [-o <output.swf>]
 #   Default output: skua/bin/skua.swf (the path the Windows projects link).
-#   Downloads are cached in $SKUA_AS3_CACHE (default ~/Library/Caches/skua-as3) and checked against pinned SHA-256s.
+#   Downloads are cached in $SKUA_AS3_CACHE (default ~/Library/Caches/skua-as3, on Linux ~/.cache/skua-as3) and checked against pinned SHA-256s.
 #   Requires Java (17 is known to work).
 
 set -euo pipefail
@@ -19,7 +19,12 @@ PLAYERGLOBAL_URL="https://fpdownload.macromedia.com/get/flashplayer/updaters/32/
 PLAYERGLOBAL_SHA256="7d4d6168d27603cfb3b750302448e354e0bbc1bdd58f5d101c3dcf6891e9bb65"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cache_dir="${SKUA_AS3_CACHE:-$HOME/Library/Caches/skua-as3}"
+if [ "$(uname -s)" = Darwin ]; then
+    default_cache_dir="$HOME/Library/Caches/skua-as3"
+else
+    default_cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/skua-as3"
+fi
+cache_dir="${SKUA_AS3_CACHE:-$default_cache_dir}"
 output="$script_dir/skua/bin/skua.swf"
 
 while [ $# -gt 0 ]; do

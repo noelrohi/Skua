@@ -1,7 +1,7 @@
 <Project>
 
   <!--
-    On macOS, building the Engine also builds the Game Host (skua-gamehost, with cargo) and the Game Client's SWF (skua.swf, with
+    On macOS and Linux, building the Engine also builds the Game Host (skua-gamehost, with cargo) and the Game Client's SWF (skua.swf, with
     Skua.AS3/compile-as3.sh), and puts both next to skua-engine, for dotnet build and dotnet publish alike. Windows never runs these targets.
 
     Escape hatches:
@@ -10,7 +10,7 @@
   -->
 
   <PropertyGroup>
-    <SkuaMacBuild Condition="'$(SkuaMacBuild)' == '' and $([MSBuild]::IsOSPlatform('OSX')) and '$(DesignTimeBuild)' != 'true'">true</SkuaMacBuild>
+    <SkuaMacBuild Condition="'$(SkuaMacBuild)' == '' and ($([MSBuild]::IsOSPlatform('OSX')) or $([MSBuild]::IsOSPlatform('Linux'))) and '$(DesignTimeBuild)' != 'true'">true</SkuaMacBuild>
     <SkuaGameHostDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', 'Skua.GameHost'))</SkuaGameHostDir>
     <!-- Cargo resolves a relative CARGO_TARGET_DIR against its working directory, the Cargo project. -->
     <SkuaCargoTargetDir>$(SkuaGameHostDir)target</SkuaCargoTargetDir>
@@ -38,7 +38,8 @@
     <Exec Command="java -version" EchoOff="true" StandardOutputImportance="low" StandardErrorImportance="low" IgnoreExitCode="true">
       <Output TaskParameter="ExitCode" PropertyName="_SkuaJavaMissing" />
     </Exec>
-    <Error Condition="'$(_SkuaJavaMissing)' != '0'" Text="Java was not found. Install a JDK (17 is known to work): brew install --cask zulu@17" />
+    <Error Condition="'$(_SkuaJavaMissing)' != '0' and $([MSBuild]::IsOSPlatform('OSX'))" Text="Java was not found. Install a JDK (17 is known to work): brew install --cask zulu@17" />
+    <Error Condition="'$(_SkuaJavaMissing)' != '0' and !$([MSBuild]::IsOSPlatform('OSX'))" Text="Java was not found. Install a JDK (17 is known to work): sudo apt install openjdk-17-jdk-headless" />
     <Exec Command="/bin/bash &quot;$(SkuaAs3Dir)compile-as3.sh&quot;" IgnoreStandardErrorWarningFormat="true" />
   </Target>
 

@@ -25,13 +25,14 @@ internal static unsafe partial class Interrupts
         }
     }
 
-    /// <summary>macOS's <c>struct sigaction</c>.</summary>
-    [StructLayout(LayoutKind.Sequential)]
+    /// <summary>
+    /// A <c>struct sigaction</c>, whose handler comes first: macOS's is 16 bytes, glibc's on 64-bit Linux 152 (a 128-byte <c>sigset_t</c>), so
+    /// it is sized for the larger and zeroed past the handler.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential, Size = 152)]
     private struct SigAction
     {
         public nint Handler;
-        public uint Mask;
-        public int Flags;
     }
 
     [LibraryImport("libc")]

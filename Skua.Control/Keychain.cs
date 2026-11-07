@@ -16,12 +16,16 @@ public sealed record KeychainItem(string Account, string Password)
 
 /// <summary>
 /// Generic passwords in the user's Keychain, through macOS's <c>security</c> tool. A password reaches <c>security</c> only on its standard input,
-/// never on a command line, where <c>ps</c> would show it.
+/// never on a command line, where <c>ps</c> would show it. On Linux, which has no Keychain, they are <see cref="CredentialFiles"/> in
+/// <c>&lt;SkuaDIR&gt;/credentials</c> instead, unless <see cref="ToolVariable"/> names a <c>security</c> tool.
 /// </summary>
 public static partial class Keychain
 {
     /// <summary>Runs another <c>security</c> tool instead of macOS's, for tests.</summary>
     public const string ToolVariable = "SKUA_SECURITY_TOOL";
+
+    /// <summary>The folder of <see cref="Files"/>, in the Skua data folder.</summary>
+    public const string CredentialsFolder = "credentials";
 
     /// <summary><c>security</c>'s exit code when no item matches.</summary>
     private const int ItemNotFound = 44;
@@ -33,6 +37,8 @@ public static partial class Keychain
     /// <exception cref="ControlException"><see cref="ErrorCode.KeychainFailed"/> when <c>security</c> fails.</exception>
     public static async Task<KeychainAttributes?> FindAsync(string service, CancellationToken cancellationToken)
     {
+        if (Files() is { } files)
+            return files.Find(service);
         (int exitCode, string attributes, string error) = await RunAsync(["find-generic-password", "-s", service], null, cancellationToken);
         return exitCode switch
         {
@@ -49,6 +55,8 @@ public static partial class Keychain
     /// <exception cref="ControlException"><see cref="ErrorCode.KeychainFailed"/> when <c>security</c> fails.</exception>
     public static async Task<KeychainItem?> ReadAsync(string service, CancellationToken cancellationToken)
     {
+        if (Files() is { } files)
+            return files.Read(service);
         // The attributes come on stdout and the password line on stderr; on a failure stderr carries only security's own message.
         (int exitCode, string attributes, string passwordLine) = await RunAsync(["find-generic-password", "-s", service, "-g"], null, cancellationToken);
         return exitCode switch
@@ -69,6 +77,11 @@ public static partial class Keychain
     {
         if (password.Length == 0)
             throw new ControlException(ErrorCode.InvalidArgument, "A Keychain password can't be empty.");
+        if (Files() is { } files)
+        {
+            files.Add(service, account, comment, password);
+            return;
+        }
         // security's interactive mode reads the command from stdin, with quoting as a shell's.
         string quoted = Quote(password);
         // The comment is always given, so a replaced item doesn't keep the old one.
@@ -83,6 +96,8 @@ public static partial class Keychain
     /// <exception cref="ControlException"><see cref="ErrorCode.KeychainFailed"/> when <c>security</c> fails.</exception>
     public static async Task<bool> DeleteAsync(string service, CancellationToken cancellationToken)
     {
+        if (Files() is { } files)
+            return files.Delete(service);
         (int exitCode, _, string error) = await RunAsync(["delete-generic-password", "-s", service], null, cancellationToken);
         return exitCode switch
         {
@@ -91,6 +106,15 @@ public static partial class Keychain
             _ => throw Failed(exitCode, error),
         };
     }
+
+    /// <summary>
+    /// The credential files that stand in for Keychain on Linux, in the Skua data folder (which honours <c>SKUA_DIR</c>); null elsewhere,
+    /// or when <see cref="ToolVariable"/> names a <c>security</c> tool, as the tests' fake does.
+    /// </summary>
+    private static CredentialFiles? Files() =>
+        !OperatingSystem.IsLinux() || Environment.GetEnvironmentVariable(ToolVariable) is { Length: > 0 }
+            ? null
+            : new CredentialFiles(Path.Combine(EngineEndpoint.DefaultSkuaDir(), CredentialsFolder));
 
     /// <summary>A double-quoted argument for security's interactive mode, which unescapes a backslashed character as a shell does.</summary>
     private static string Quote(string value)

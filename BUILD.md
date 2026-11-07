@@ -245,6 +245,26 @@ For agents, `skua --skill` prints the skill for driving Engines, `skills/skua/SK
 
 `skua-engine` loads plugins as the Mac App does: every `.dll` in its own data folder's `plugins` (`<SkuaDIR>/plugins`, so `$SKUA_DIR/plugins` when `SKUA_DIR` is set, never the default folder then), as it starts and before it answers on its socket. A plugin that fails to load, such as one that needs WPF, gets a line in the `debug` log saying why, and the Engine runs on. A plugin's menu items have nowhere to show windowless, and there is no **View Plugins**: to add or remove one, change the folder and restart the Engine (`skua engine stop`). This is how Butlerv4's `LeaderButlerSyncv2.dll` works between windowless Engines.
 
+### Install on Linux
+
+The Engine, `skua`, `skua-tui` and the Game Host run on Linux (x64 and arm64), on a server without a GPU too; the Mac App and the Skua Manager don't. On Ubuntu:
+
+```bash
+sudo apt install git build-essential openjdk-17-jdk-headless mesa-vulkan-drivers
+# plus the .NET 10 SDK (https://learn.microsoft.com/dotnet/core/install/linux) and Rust (https://rustup.rs)
+./install-linux.sh
+```
+
+`install-linux.sh` is `install-macos.sh` without `--app` and `SKUA_NO_TUI`: same build folders, links, `SKUA_INSTALL_DIR`, `SKUA_BIN_DIR` and `dotnet publish` arguments. By hand, `dotnet build Skua.Linux.slnf` and `dotnet test Skua.Linux.slnf`.
+
+What differs from macOS:
+
+- **Rendering:** Vulkan or GL instead of Metal, with no display. Without a GPU, Mesa's lavapipe renders on the CPU; `WGPU_BACKEND=gl` picks llvmpipe instead.
+- **Accounts:** no Keychain. `skua account` keeps each account in `<SkuaDIR>/credentials/<service>` (mode 0600, folder 0700), which needs no desktop session; messages still say Keychain. ADR 0010.
+- **Data folder:** `~/.config/Skua`, unless `SKUA_DIR` names another.
+- **Scripts** compile with `MACOS` defined, as on the Mac, and `LINUX`.
+- **Not on Linux:** the idle-sleep assertion, the Frame Buffer, the live-game harness and the example Hooks (`plutil`).
+
 ### Running the Mac App
 
 The Mac App (`Skua.App.Mac`, ADR 0006) is the Game View with its own Engine inside it. Building it also puts `skua-gamehost` and `skua.swf` next to it:
@@ -601,6 +621,8 @@ msbuild Skua.Installer\Skua.Installer.wixproj /p:Configuration=Release /p:Platfo
 ## CI/CD
 
 The `macOS` workflow builds `Skua.MacOS.slnf` (including `skua-gamehost` and `skua.swf`), runs the Game Host's `cargo test` and then the .NET tests, on every push to `master` and on every pull request. It caches cargo (rust-cache, saved only on `master`) and the Flex SDK downloads (`~/Library/Caches/skua-as3`, keyed on `compile-as3.sh`).
+
+The `Linux` workflow does the same with `Skua.Linux.slnf` on Ubuntu 24.04, x64 and arm64, rendering the Game Host's tests with Mesa's lavapipe as the runners have no GPU, then installs with `install-linux.sh`. It caches the Flex SDK downloads in `~/.cache/skua-as3`.
 
 ### Local CI Testing
 

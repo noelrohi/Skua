@@ -84,10 +84,15 @@ public sealed record EngineEndpoint
     public string GameStorageDir { get; }
 
     /// <summary>The default Skua data folder, honouring <c>SKUA_DIR</c>.</summary>
+    /// <remarks>
+    /// On Linux, <c>~/.config</c> is used even before it exists, as on a fresh server: verified, a missing one would make the data folder a
+    /// relative <c>Skua</c> in the working directory.
+    /// </remarks>
     public static string DefaultSkuaDir() =>
         Environment.GetEnvironmentVariable(SkuaDirVariable) is { Length: > 0 } dir
             ? Path.GetFullPath(dir)
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Skua");
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData,
+                OperatingSystem.IsLinux() ? Environment.SpecialFolderOption.DoNotVerify : Environment.SpecialFolderOption.None), "Skua");
 
     /// <summary>Resolves the endpoint from this process's environment.</summary>
     /// <param name="name">

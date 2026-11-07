@@ -1,5 +1,6 @@
-//! skua-gamehost: runs skua.swf (the Game Client) in embedded Ruffle, offscreen on Metal, and carries the
-//! Bridge to the Engine over stdin/stdout (frame format: `frame.rs`). ADR 0003, ADR 0004.
+//! skua-gamehost: runs skua.swf (the Game Client) in embedded Ruffle, offscreen on Metal (on Linux, Vulkan or GL,
+//! which Mesa's lavapipe or llvmpipe provide without a GPU), and carries the Bridge to the Engine over stdin/stdout
+//! (frame format: `frame.rs`). ADR 0003, ADR 0004.
 //!
 //! Lifecycle: exits on stdin EOF; aborts on any panic (`bridge.rs`).
 
@@ -102,15 +103,17 @@ fn main() {
     wgpu_backend::set_max_in_flight(opts.max_in_flight);
     wgpu_backend::set_layer_flush(opts.layer_flush);
 
-    // Offscreen Metal device.
-    let instance = create_wgpu_instance(wgpu::Backends::METAL, wgpu::BackendOptions::default(), None);
+    // Offscreen device.
+    let (backends, backend_name) = gpu_backends();
+    let instance = create_wgpu_instance(backends, wgpu::BackendOptions::default(), None);
     let (adapter, device, queue) = futures::executor::block_on(request_adapter_and_device(
-        wgpu::Backends::METAL,
+        backends,
         &instance,
         None,
         wgpu::PowerPreference::LowPower,
     ))
-    .unwrap_or_else(|e| fail(1, &format!("no Metal device: {e}")));
+    .unwrap_or_else(|e| fail(1, &format!("no {backend_name} device: {e}")));
+    tracing::info!("rendering on {:?}", adapter.get_info());
     let descriptors = Arc::new(Descriptors::new(instance, adapter, device, queue));
     let target = TextureTarget::new(&descriptors.device, (WIDTH, HEIGHT))
         .unwrap_or_else(|e| fail(1, &format!("render target: {e}")));
@@ -265,6 +268,27 @@ struct Host {
     stats: LoopStats,
 }
 
+/// The wgpu backends the offscreen device may use, and their name for errors: Metal on macOS.
+#[cfg(target_os = "macos")]
+fn gpu_backends() -> (wgpu::Backends, &'static str) {
+    (wgpu::Backends::METAL, "Metal")
+}
+
+/// The wgpu backends the offscreen device may use, and their name for errors: on Linux, Vulkan or GL, which
+/// without a GPU are Mesa's lavapipe and llvmpipe. `WGPU_BACKEND` (e.g. `gl`) narrows them.
+#[cfg(not(target_os = "macos"))]
+fn gpu_backends() -> (wgpu::Backends, &'static str) {
+    (wgpu::Backends::from_env().unwrap_or(wgpu::Backends::VULKAN | wgpu::Backends::GL), "Vulkan or GL")
+}
+
+/// Runs `f` inside an autorelease pool on macOS, where Metal autoreleases its objects (#13); elsewhere just runs it.
+pub fn autoreleasepool<T>(f: impl FnOnce() -> T) -> T {
+    #[cfg(target_os = "macos")]
+    return objc2::rc::autoreleasepool(|_| f());
+    #[cfg(not(target_os = "macos"))]
+    f()
+}
+
 fn backend(p: &mut Player) -> &mut ThreadedBackend {
     <dyn Any>::downcast_mut::<ThreadedBackend>(p.renderer_mut()).expect("the renderer is a ThreadedBackend")
 }
@@ -278,7 +302,7 @@ impl Host {
         loop {
             // Metal returns autoreleased objects (command buffers, encoders, descriptors). A plain Rust loop
             // never drains an autorelease pool, so drain one per iteration like an AppKit run loop does (#13).
-            objc2::rc::autoreleasepool(|_| self.iteration(&rx));
+            autoreleasepool(|| self.iteration(&rx));
         }
     }
 

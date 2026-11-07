@@ -14,6 +14,7 @@ public class LiveRunTests
     [Fact]
     public async Task A_dry_run_of_the_smoke_test_samples_every_minute_and_fails_only_on_the_fakes_blank_screenshots()
     {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "The live-game harness measures with macOS's footprint and CoreGraphics.");
         await using DryRun dry = DryRun.Start();
 
         LiveRunResult result = await LiveRun.RunAsync("smoke", dry.Environment, dry.Options,
@@ -94,6 +95,7 @@ public class LiveRunTests
     [Fact]
     public async Task A_dry_run_of_hidden_running_checks_the_lock_the_tick_rate_and_that_the_player_progresses()
     {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "The live-game harness measures with macOS's footprint and CoreGraphics.");
         await using DryRun dry = DryRun.Start();
 
         LiveRunResult result = await LiveRun.RunAsync("hidden", dry.Environment, dry.Options, async run =>
@@ -167,6 +169,7 @@ public class LiveRunTests
     [Fact]
     public async Task Footprint_and_RSS_of_a_running_process_are_read_and_those_of_an_exited_one_are_null()
     {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "The live-game harness measures with macOS's footprint and CoreGraphics.");
         Assert.True(await LiveMetrics.FootprintMbAsync(Environment.ProcessId) > 1);
         Assert.True(await LiveMetrics.RssMbAsync(Environment.ProcessId) > 1);
         Assert.Null(await LiveMetrics.FootprintMbAsync(999_999));

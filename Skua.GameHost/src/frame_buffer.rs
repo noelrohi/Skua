@@ -8,7 +8,8 @@
 //!   16 u32 max width      20 u32 max height   24 u32 slot bytes        28 u32 latest slot (NO_SLOT: none yet)
 //!   32 u32 reading slot (NO_SLOT: none)       40 u64 frames published
 //!   64 + 48 * i  slot i: u64 seq (odd while written) | u64 frame number | u64 write stamp (ns on
-//!                CLOCK_UPTIME_RAW, the mach_absolute_time clock) | u32 width | u32 height | u32 stride
+//!                CLOCK_UPTIME_RAW, the mach_absolute_time clock; CLOCK_MONOTONIC on Linux) | u32 width
+//!                | u32 height | u32 stride
 //!   256 + slot bytes * i  slot i's rows, RGBA8, opaque
 //!
 //! The writer takes the slot that is neither the latest nor the one being read, makes its seq odd,
@@ -69,7 +70,11 @@ impl FrameBuffer {
         let cname = std::ffi::CString::new(name).map_err(|_| format!("bad Frame Buffer name {name:?}"))?;
         // SAFETY: plain libc calls on a NUL-terminated name and our own fd.
         unsafe {
+            // libc declares shm_open variadic on macOS; Linux's takes the mode, unused without O_CREAT.
+            #[cfg(target_os = "macos")]
             let fd = libc::shm_open(cname.as_ptr(), libc::O_RDWR);
+            #[cfg(not(target_os = "macos"))]
+            let fd = libc::shm_open(cname.as_ptr(), libc::O_RDWR, 0);
             if fd < 0 {
                 return Err(format!("shm_open {name}: {}", std::io::Error::last_os_error()));
             }
@@ -216,11 +221,18 @@ pub fn free_slot(latest: u32, reading: u32) -> u32 {
         .expect("three slots leave one free")
 }
 
-/// Now on the write stamps' clock: nanoseconds of CLOCK_UPTIME_RAW, the mach_absolute_time clock.
+/// The write stamps' clock: CLOCK_UPTIME_RAW, the mach_absolute_time clock, on macOS.
+#[cfg(target_os = "macos")]
+const STAMP_CLOCK: libc::clockid_t = libc::CLOCK_UPTIME_RAW;
+/// The write stamps' clock elsewhere, which has no CLOCK_UPTIME_RAW.
+#[cfg(not(target_os = "macos"))]
+const STAMP_CLOCK: libc::clockid_t = libc::CLOCK_MONOTONIC;
+
+/// Now on the write stamps' clock, in nanoseconds.
 pub fn now_ns() -> u64 {
     let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
     // SAFETY: a plain libc call into our own timespec.
-    unsafe { libc::clock_gettime(libc::CLOCK_UPTIME_RAW, &mut ts) };
+    unsafe { libc::clock_gettime(STAMP_CLOCK, &mut ts) };
     ts.tv_sec as u64 * 1_000_000_000 + ts.tv_nsec as u64
 }
 

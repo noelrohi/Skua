@@ -4,6 +4,7 @@ namespace Skua.Engine.Game;
 
 /// <summary>
 /// An IOKit assertion that keeps the Mac from idle-sleeping, as <c>caffeinate -i</c> does; <c>pmset -g assertions</c> lists it by name.
+/// Elsewhere it holds nothing: a Linux server doesn't idle-sleep.
 /// </summary>
 internal sealed partial class PowerAssertion : IDisposable
 {
@@ -27,7 +28,7 @@ internal sealed partial class PowerAssertion : IDisposable
     {
         lock (_lock)
         {
-            if (hold && _id is null && !_disposed)
+            if (hold && _id is null && !_disposed && OperatingSystem.IsMacOS())
                 _id = Create(_name);
             else if (!hold && _id is { } id)
             {
