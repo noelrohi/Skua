@@ -10,6 +10,7 @@ on:
 
 permissions:
   actions: write
+  pull-requests: read
 
 jobs:
   rerun:
@@ -21,10 +22,13 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           since=$(date -u -d '3 days ago' +%F)
+          # Only master and branches with an open PR: a merged or closed branch's run no longer matters.
+          live=$(gh pr list --state open --limit 200 --json headRefName --jq '[.[].headRefName] + ["master"]')
           gh run list --workflow macos.yml --created ">=$since" --limit 200 \
-            --json databaseId,headBranch,createdAt,conclusion,attempt \
-            --jq 'group_by(.headBranch)[] | max_by(.createdAt)
-                  | select(.conclusion == "failure" and .attempt < 10) | .databaseId' |
+            --json databaseId,headBranch,createdAt,conclusion,attempt |
+          jq -r --argjson live "$live" 'group_by(.headBranch)[] | max_by(.createdAt)
+                  | select(.conclusion == "failure" and .attempt < 10 and (.headBranch | IN($live[])))
+                  | .databaseId' |
           while read -r id; do
             steps=$(gh api "repos/$GH_REPO/actions/runs/$id/jobs" --jq '[.jobs[].steps | length] | add')
             if [ "$steps" = 0 ]; then
