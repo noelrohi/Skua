@@ -244,6 +244,20 @@ public sealed record ItemDto(int Id, string Name, int Qty, int MaxStack, string 
 /// <param name="MiscSlots">How many slots the inventory's Misc Space has; null for the other stores, and when the game has no Misc Space.</param>
 public sealed record InventoryResult(InventoryKind Kind, int UsedSlots, int? TotalSlots, IReadOnlyList<ItemDto> Items, int? MiscUsedSlots = null, int? MiscSlots = null);
 
+/// <summary>An item <c>find</c> found in one of the player's item stores.</summary>
+/// <param name="Store">The item store that holds it.</param>
+/// <param name="Id">The item's ID, the same for every copy of the item.</param>
+public sealed record FoundItemDto(InventoryKind Store, int Id, string Name, int Qty);
+
+/// <summary>The reply to <c>find</c>.</summary>
+/// <param name="Text">The text searched for.</param>
+/// <param name="Items">The items whose name contains the text, ignoring case: the inventory's, the bank's, the temporary inventory's, then the house's.</param>
+/// <param name="BankLoaded">
+/// Whether the game has loaded the bank this login, so that it was searched. The game has no bank until a Script or <c>inventory bank</c>
+/// loads it, and <c>find</c> doesn't load it.
+/// </param>
+public sealed record FindResult(string Text, IReadOnlyList<FoundItemDto> Items, bool BankLoaded);
+
 /// <summary>Which quests <c>quests</c> lists.</summary>
 public enum QuestFilter
 {

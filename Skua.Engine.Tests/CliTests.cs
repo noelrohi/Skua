@@ -280,6 +280,54 @@ public class CliTests
     }
 
     [Fact]
+    public async Task Skua_find_prints_each_matching_item_with_its_store_and_says_when_the_bank_isnt_loaded_yet()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: ct);
+        await session.GameHost.DoAsync("own-stack 50 Item 3 10 Sage Tonic");
+        await session.GameHost.DoAsync("stock bank 51 Sage Tonic");
+
+        ProcessResult unloaded = await sandbox.RunCliAsync("find", "sage");
+        ProcessResult unloadedJson = await sandbox.RunCliAsync("find", "sage", "--json");
+        await session.Connection.InventoryAsync(InventoryKind.Bank, ct);
+        ProcessResult loaded = await sandbox.RunCliAsync("find", "sage");
+        ProcessResult loadedJson = await sandbox.RunCliAsync("find", "sage", "--json");
+        ProcessResult none = await sandbox.RunCliAsync("find", "Dragon of Time");
+
+        Assert.Equal(0, unloaded.ExitCode);
+        Assert.Equal(
+            "inventory        50  Sage Tonic x3\nThe bank isn't loaded yet, so it wasn't searched; 'skua inventory bank' loads it.",
+            unloaded.Stdout.Trim().ReplaceLineEndings("\n"));
+        // stdout stays the array; the unloaded bank is said on stderr.
+        using (JsonDocument json = JsonDocument.Parse(unloadedJson.Stdout))
+            Assert.Equal(["inventory"], json.RootElement.EnumerateArray().Select(i => i.GetProperty("store").GetString()));
+        Assert.Equal("skua: The bank isn't loaded yet, so it wasn't searched; 'skua inventory bank' loads it.", unloadedJson.Stderr.Trim());
+        Assert.Equal("inventory        50  Sage Tonic x3\nbank             51  Sage Tonic x1", loaded.Stdout.Trim().ReplaceLineEndings("\n"));
+        using (JsonDocument json = JsonDocument.Parse(loadedJson.Stdout))
+        {
+            JsonElement bank = json.RootElement[1];
+            Assert.Equal(("bank", 51, "Sage Tonic", 1),
+                (bank.GetProperty("store").GetString(), bank.GetProperty("id").GetInt32(), bank.GetProperty("name").GetString(), bank.GetProperty("qty").GetInt32()));
+        }
+        Assert.Equal("", loadedJson.Stderr.Trim());
+        Assert.Equal((0, "No item's name contains 'Dragon of Time'."), (none.ExitCode, none.Stdout.Trim()));
+    }
+
+    [Fact]
+    public async Task Skua_find_starts_no_Engine()
+    {
+        await using EngineSandbox sandbox = new();
+
+        ProcessResult result = await sandbox.RunCliAsync("find", "sage");
+
+        Assert.Equal(ExitCodes.For(ErrorCode.EngineUnavailable), result.ExitCode);
+        Assert.Equal("skua: Engine 'default' isn't running; 'skua engine start' starts it.", result.Stderr.Trim());
+        Assert.Empty(EngineEndpoint.InDataFolder(sandbox.SkuaDir));
+    }
+
+    [Fact]
     public async Task Status_prints_the_games_social_options_and_Skuas_options_on_while_playing()
     {
         await using EngineSandbox sandbox = new();

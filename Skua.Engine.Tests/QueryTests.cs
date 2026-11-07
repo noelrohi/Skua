@@ -51,6 +51,46 @@ public class QueryTests
     }
 
     [Fact]
+    public async Task Find_lists_the_items_whose_name_contains_the_text_in_every_item_store_and_the_bank_once_loaded()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        await session.GameHost.DoAsync("own-stack 50 Item 3 10 Sage Tonic");
+        await session.GameHost.DoAsync("stock bank 51 Sage Tonic");
+        await session.GameHost.DoAsync("stock temp 52 Sage Leaf");
+        await session.GameHost.DoAsync("stock house 53 Sage Statue");
+
+        FindResult unloaded = await session.Connection.FindAsync("SAGE", Ct);
+        await session.Connection.InventoryAsync(InventoryKind.Bank, Ct);
+        FindResult loaded = await session.Connection.FindAsync("sage", Ct);
+        FindResult none = await session.Connection.FindAsync("Dragon of Time", Ct);
+        ControlException blank = await Assert.ThrowsAsync<ControlException>(() => session.Connection.FindAsync(" ", Ct));
+
+        // The game has no bank until something loads it, so find doesn't search it rather than report none; nor does it load it.
+        Assert.False(unloaded.BankLoaded);
+        Assert.Equal(
+            [
+                new FoundItemDto(InventoryKind.Inventory, 50, "Sage Tonic", 3),
+                new FoundItemDto(InventoryKind.Temp, 52, "Sage Leaf", 1),
+                new FoundItemDto(InventoryKind.House, 53, "Sage Statue", 1),
+            ],
+            unloaded.Items);
+        Assert.True(loaded.BankLoaded);
+        Assert.Equal(
+            [
+                new FoundItemDto(InventoryKind.Inventory, 50, "Sage Tonic", 3),
+                new FoundItemDto(InventoryKind.Bank, 51, "Sage Tonic", 1),
+                new FoundItemDto(InventoryKind.Temp, 52, "Sage Leaf", 1),
+                new FoundItemDto(InventoryKind.House, 53, "Sage Statue", 1),
+            ],
+            loaded.Items);
+        Assert.Equal(("Dragon of Time", 0), (none.Text, none.Items.Count));
+        Assert.Equal(ErrorCode.InvalidArgument, blank.Code);
+        Assert.Single(await session.GameHost.CallsAsync(), c => c == "getBank");
+    }
+
+    [Fact]
     public async Task Quests_lists_the_loaded_or_active_quests_with_requirements_and_rewards()
     {
         await using EngineSandbox sandbox = new();
@@ -124,7 +164,7 @@ public class QueryTests
         await session.GameHost.DoAsync("drop 40 1 Frogzard Scale");
 
         List<object> replies = [await session.Connection.StatusAsync(Ct), await session.Connection.MapAsync(Ct), await session.Connection.QuestsAsync(cancellationToken: Ct),
-            await session.Connection.DropsAsync(Ct)];
+            await session.Connection.DropsAsync(Ct), await session.Connection.FindAsync("e", Ct)];
         foreach (InventoryKind kind in Enum.GetValues<InventoryKind>())
             replies.Add(await session.Connection.InventoryAsync(kind, Ct));
 
@@ -142,7 +182,8 @@ public class QueryTests
         await using GameFixture session = await GameFixture.StartAsync(sandbox);
         EngineConnection connection = session.Connection;
 
-        Func<Task>[] queries = [() => connection.InventoryAsync(cancellationToken: Ct), () => connection.QuestsAsync(cancellationToken: Ct), () => connection.MapAsync(Ct), () => connection.DropsAsync(Ct)];
+        Func<Task>[] queries = [() => connection.InventoryAsync(cancellationToken: Ct), () => connection.QuestsAsync(cancellationToken: Ct), () => connection.MapAsync(Ct), () => connection.DropsAsync(Ct),
+            () => connection.FindAsync("sage", Ct)];
         foreach (Func<Task> query in queries)
             Assert.Equal(ErrorCode.NotLoggedIn, (await Assert.ThrowsAsync<ControlException>(query)).Code);
     }

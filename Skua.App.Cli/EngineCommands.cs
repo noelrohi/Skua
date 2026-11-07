@@ -54,20 +54,25 @@ internal static class EngineCommands
     /// </summary>
     public static async Task<StatusDto> StatusOfRunningAsync(EngineClientOptions options, CancellationToken cancellationToken)
     {
+        using EngineConnection connection = await ConnectToRunningAsync(options, cancellationToken);
+        return await connection.StatusAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Connects to the Engine when it runs or is starting; otherwise it fails with <see cref="ErrorCode.EngineUnavailable"/>, saying how to start
+    /// it. It never starts one.
+    /// </summary>
+    public static async Task<EngineConnection> ConnectToRunningAsync(EngineClientOptions options, CancellationToken cancellationToken)
+    {
         EngineEndpoint endpoint = options.Endpoint;
-        EngineConnection connection;
         try
         {
-            connection = await EngineClient.ConnectAsync(options with { AutoStart = false }, cancellationToken);
+            return await EngineClient.ConnectAsync(options with { AutoStart = false }, cancellationToken);
         }
         // An Engine that is starting or hung still holds its lock, and keeps its own message.
         catch (ControlException e) when (e.Code == ErrorCode.EngineUnavailable && !EngineLock.IsHeld(endpoint.LockPath))
         {
             throw new ControlException(ErrorCode.EngineUnavailable, $"Engine '{endpoint.Name}' isn't running; '{Cli.Command(endpoint.Name, "engine start")}' starts it.", e);
-        }
-        using (connection)
-        {
-            return await connection.StatusAsync(cancellationToken);
         }
     }
 
