@@ -65,7 +65,20 @@ public static class ScriptCheck
         }
         finally
         {
-            Directory.Delete(stage, recursive: true);
+            // Core's cache cleanup (Compiler.CleanCache) may still be opening its lock file in the stage on a background thread, which fails a
+            // recursive delete with "Directory not empty"; a stage that still won't go after half a second stays in the temp folder.
+            for (int attempt = 0; attempt < 10; attempt++)
+            {
+                try
+                {
+                    Directory.Delete(stage, recursive: true);
+                    break;
+                }
+                catch (IOException)
+                {
+                    Thread.Sleep(50);
+                }
+            }
         }
     }
 
