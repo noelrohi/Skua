@@ -236,6 +236,29 @@ public class HookTests
             data.GetProperty("drop").GetProperty("id").GetInt32(), data.GetProperty("drop").GetProperty("name").GetString()));
     }
 
+    /// <summary>A run's deaths piling up are the Engine's <c>run.struggling</c> (#287), so a Hook of that name runs on it with the event's JSON.</summary>
+    [Fact]
+    public async Task A_run_struggling_hook_runs_when_a_runs_deaths_reach_the_threshold()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture game = await GameFixture.StartAsync(sandbox, environment: new Dictionary<string, string> { ["SKUA_STRUGGLE_DEATHS"] = "2" });
+        await game.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        TestScripts.Write(sandbox, "Tests/Loop.cs", TestScripts.Loop);
+        WriteHook(sandbox, EventTypes.RunStruggling, "#!/bin/sh\ncat\n");
+        Process runner = sandbox.StartCli("hooks");
+        await WaitForLineAsync(runner, "Following Engine 'default'");
+
+        ScriptStartResult start = await game.Connection.ScriptStartAsync("Tests/Loop.cs", cancellationToken: Ct);
+        await game.GameHost.DoAsync("die");
+        await game.GameHost.DoAsync("die");
+        HookRunDto run = Run(await game.Connection.WaitForEventAsync(EventTypes.HookRan));
+
+        Assert.Equal((EventTypes.RunStruggling, (int?)0), (run.Hook, run.ExitCode));
+        using JsonDocument stdin = JsonDocument.Parse(run.Output);
+        JsonElement data = stdin.RootElement.GetProperty("data");
+        Assert.Equal((start.Run, "Tests/Loop.cs", 2), (data.GetProperty("run").GetInt32(), data.GetProperty("script").GetString(), data.GetProperty("deaths").GetInt32()));
+    }
+
     private static HookRunDto Run(LogEntryDto entry) => entry.Data!.Value.Deserialize<HookRunDto>(ControlJson.Options)!;
 
     private static async Task WaitForLineAsync(Process process, string text)

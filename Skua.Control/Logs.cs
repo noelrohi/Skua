@@ -136,6 +136,13 @@ public static class EventTypes
     public const string QuestStalled = "quest.stalled";
 
     /// <summary>
+    /// The player's deaths in a run have reached the threshold (5) within the window (the last 5 minutes): <c>{run, script, deaths, windowSec, map, goal}</c>,
+    /// deaths those in the window and goal the run's <see cref="ScriptGoalDto"/> or null. It is recorded once; a death that finds fewer in the window,
+    /// or another run, re-arms it. <c>SKUA_STRUGGLE_DEATHS</c> sets the threshold (0 turns it off), <c>SKUA_STRUGGLE_WINDOW_SEC</c> the window.
+    /// </summary>
+    public const string RunStruggling = "run.struggling";
+
+    /// <summary>
     /// The game server turned a quest in: <c>{id, name}</c>. Recorded for every turn-in, a Script's, <c>quest_complete</c>'s or the game's own.
     /// </summary>
     public const string QuestCompleted = "quest.completed";

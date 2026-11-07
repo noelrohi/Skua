@@ -87,6 +87,7 @@ internal sealed class Engine : IEngineRpc
         _goal = new ScriptGoal(logs);
         _questOperations = new QuestOperations(services.GetRequiredService<IFlashUtil>(), services.GetRequiredService<IScriptWait>(), gameHost.TurnIns, gameSlot);
         _questProgress = new QuestProgress(services.GetRequiredService<IScriptInterface>(), gameHost.Tracker, gameHost.TurnIns, gameHost.QuestTraffic, _runs, logs, _tally, _goal);
+        _ = new RunStruggle(_runs, logs, _tally, _goal, services.GetRequiredService<IScriptMap>());
         _queries = new GameQueries(services.GetRequiredService<IScriptInterface>(), services.GetRequiredService<IFlashUtil>(), gameHost.Tracker, gameSlot, _questProgress);
         _scripts = new ScriptOperations(manager, _runs, broker, _slot, _scriptsSlot, compiling);
         _eval = new EvalOperations(manager, services.GetRequiredService<IScriptInterface>(), logs, compiling);
