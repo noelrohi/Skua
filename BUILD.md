@@ -309,6 +309,16 @@ Every `skua` command, `skua mcp` included, takes `--engine <name>`: it talks to 
 
 `skua engine list --brief` prints one line per Engine, for watching a party without a `status` per Engine: Engine Name, class, HP, map·cell, target, Script and run time, kills a minute and deaths, in columns. An Engine that isn't playing shows its game state instead, one that isn't running why, and the line ends with pending Questions and `another build` when there are any. `--brief --json` prints the same array as `--json`, whose `status` carries every field of the line.
 
+`skua engine up [<name>...]` brings several accounts up at once: for each name it starts a windowless Engine with that Engine Name where none runs, and logs it in as the account of the same name, as skua-tui's `L` does (`skua --engine <name> login --account <name>`). Without names it does every Skua Manager account. `--server <server>` logs them all in on that server; without it each Engine picks an online, non-member server with room, as `skua login` does, so name one to keep a party together. `--timeout` is each login's, as `login`'s. The Engines come up in parallel, and it prints one line per Engine, in the order named:
+
+```
+alt1  started, logged in as Alt1User on Galanoth.
+alt2  already playing as Alt2User on Galanoth.
+alt3  started, then failed: The login on Galanoth failed: ...
+```
+
+An Engine already playing as its account is left alone (with `--server`, as long as it plays on that server), so running it again changes nothing; one from another build is replaced when idle, as by any command that drives the game. A name Keychain has no account for fails without starting an Engine. A failure doesn't stop the others, and the command then exits with 1. `--json` prints an array of `{name, started, login, error}`: `login` as `skua login --json` prints it, and `error` as `{code, message}`, one of them null. It is a developer's command, like `skua login`: it logs in any account named (ADR 0005).
+
 ```
 alt1  Void Highlord    HP 2400/2600  tercessuinotlim·Boss  Nulgath #1  Nation/Nulgath.cs 1:02:05           6.5 kills/min  2 deaths
 alt2  Legion Revenant  HP 2100/2100  tercessuinotlim·Boss  Nulgath #1  Tools/Butlerv4/Butlerv4.cs 1:01:40  6.5 kills/min  0 deaths

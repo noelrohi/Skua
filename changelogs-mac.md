@@ -8,6 +8,7 @@ What's new in Skua on macOS, newest first. To install or update, follow [Install
 
 ### New
 * The Engine records a `run.struggling` event (`{run, script, deaths, windowSec, map, goal}`) once when a run's deaths in the last 5 minutes reach 5, so a `hooks/run.struggling` Hook can notify, stop the Script or call for help instead of a watch on `status`. `SKUA_STRUGGLE_DEATHS` sets the count (0 turns it off); fewer deaths in the window, or a new run, re-arm it. See [Logs and events](./BUILD.md#logs-and-events).
+* `skua engine up alt1 alt2 alt3 --server <server>` starts a windowless Engine for each account that has none running and logs each in as its own account, in parallel, with one line per Engine. Without names it brings up every Skua Manager account. An Engine already playing is left alone, and one that fails doesn't stop the others. See [The Skua Manager](./BUILD.md#the-skua-manager).
 
 ## October 11, 2026
 

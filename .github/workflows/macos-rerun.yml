@@ -1,0 +1,37 @@
+name: Rerun macOS runs GitHub never started
+
+# GitHub's hosted macOS runners can run out: a job then waits 15 minutes and is cancelled with 0 steps
+# ("The job was not acquired by Runner of type hosted"). The queue is shortest in Europe's and Asia's morning,
+# so retry each branch's latest such run then. A run that started and failed is left alone.
+on:
+  schedule:
+    - cron: "20 0-8 * * *" # 00:20–08:20 UTC, 08:20–16:20 Manila
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  pull-requests: read
+
+jobs:
+  rerun:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Rerun the latest never-started macOS run of each branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          since=$(date -u -d '3 days ago' +%F)
+          # Only master and branches with an open PR: a merged or closed branch's run no longer matters.
+          live=$(gh pr list --state open --limit 200 --json headRefName --jq '[.[].headRefName] + ["master"]')
+          gh run list --workflow macos.yml --created ">=$since" --limit 200 \
+            --json databaseId,headBranch,createdAt,conclusion,attempt |
+          jq -r --argjson live "$live" 'group_by(.headBranch)[] | max_by(.createdAt)
+                  | select(.conclusion == "failure" and .attempt < 10 and (.headBranch | IN($live[])))
+                  | .databaseId' |
+          while read -r id; do
+            steps=$(gh api "repos/$GH_REPO/actions/runs/$id/jobs" --jq '[.jobs[].steps | length] | add')
+            if [ "$steps" = 0 ]; then
+              gh run rerun "$id" && echo "Reran $id"
+            fi
+          done
