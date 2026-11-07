@@ -111,11 +111,11 @@ public static partial class Keychain
     }
 
     /// <summary>
-    /// The credential files that stand in for Keychain on Linux, in the Skua data folder (which honours <c>SKUA_DIR</c>); null on macOS,
+    /// The credential files that stand in for Keychain on Linux, in the Skua data folder (which honours <c>SKUA_DIR</c>); null elsewhere,
     /// or when <see cref="ToolVariable"/> names a <c>security</c> tool, as the tests' fake does.
     /// </summary>
     private static CredentialFiles? Files() =>
-        OperatingSystem.IsMacOS() || Environment.GetEnvironmentVariable(ToolVariable) is { Length: > 0 }
+        !OperatingSystem.IsLinux() || Environment.GetEnvironmentVariable(ToolVariable) is { Length: > 0 }
             ? null
             : new CredentialFiles(Path.Combine(EngineEndpoint.DefaultSkuaDir(), CredentialsFolder));
 
