@@ -509,7 +509,7 @@ Command engineList = new("list", "List every Engine in the data folder, in the S
 engineList.SetAction((parse, ct) => Cli.RunAsync(parse.GetValue(json), _ => EngineCommands.ListAsync(ct),
     parse.GetValue(engineListBrief) ? Output.EngineListBrief : Output.EngineList));
 
-Command engine = new("engine", "Control the Engine's lifetime.") { engineStart, engineStop, engineStatus, engineList };
+Command engine = new("engine", "Control the Engine's lifetime.") { engineStart, engineStop, engineStatus, engineList, EngineUp.Command(json, engineName) };
 
 Command hooks = new("hooks",
     "Run the Hook Runner: follow every Engine's events (or --engine's) and run <SKUA_DIR>/hooks/<event type> for each, with the event's JSON on stdin; one per data folder.");
