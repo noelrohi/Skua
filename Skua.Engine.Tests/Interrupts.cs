@@ -17,11 +17,6 @@ internal static unsafe partial class Interrupts
     [ModuleInitializer]
     internal static void RestoreDefault()
     {
-        if (OperatingSystem.IsLinux())
-        {
-            RestoreDefaultOnLinux();
-            return;
-        }
         SigAction current;
         if (sigaction(SIGINT, null, &current) == 0 && current.Handler == SIG_IGN)
         {
@@ -30,37 +25,16 @@ internal static unsafe partial class Interrupts
         }
     }
 
-    /// <summary>macOS's <c>struct sigaction</c>.</summary>
-    [StructLayout(LayoutKind.Sequential)]
-    private struct SigAction
-    {
-        public nint Handler;
-        public uint Mask;
-        public int Flags;
-    }
-
-    private static void RestoreDefaultOnLinux()
-    {
-        LinuxSigAction current;
-        if (linux_sigaction(SIGINT, null, &current) == 0 && current.Handler == SIG_IGN)
-        {
-            LinuxSigAction byDefault = default;
-            linux_sigaction(SIGINT, &byDefault, null);
-        }
-    }
-
     /// <summary>
-    /// glibc's <c>struct sigaction</c> on 64-bit Linux: the handler, a 128-byte <c>sigset_t</c>, the flags and the restorer, 152 bytes in all.
+    /// A <c>struct sigaction</c>, whose handler comes first: macOS's is 16 bytes, glibc's on 64-bit Linux 152 (a 128-byte <c>sigset_t</c>), so
+    /// it is sized for the larger and zeroed past the handler.
     /// </summary>
     [StructLayout(LayoutKind.Sequential, Size = 152)]
-    private struct LinuxSigAction
+    private struct SigAction
     {
         public nint Handler;
     }
 
     [LibraryImport("libc")]
     private static partial int sigaction(int signal, SigAction* action, SigAction* old);
-
-    [LibraryImport("libc", EntryPoint = "sigaction")]
-    private static partial int linux_sigaction(int signal, LinuxSigAction* action, LinuxSigAction* old);
 }

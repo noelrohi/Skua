@@ -247,7 +247,7 @@ For agents, `skua --skill` prints the skill for driving Engines, `skills/skua/SK
 
 ### Install on Linux
 
-The Engine, `skua`, `skua-tui` and the Game Host run on Linux (x64 and arm64), including a server or VM without a GPU, so a Script can run unattended from cron. The Mac App and the Skua Manager are macOS-only. On Ubuntu:
+The Engine, `skua`, `skua-tui` and the Game Host run on Linux (x64 and arm64), on a server without a GPU too; the Mac App and the Skua Manager don't. On Ubuntu:
 
 ```bash
 sudo apt install git build-essential openjdk-17-jdk-headless mesa-vulkan-drivers
@@ -255,31 +255,15 @@ sudo apt install git build-essential openjdk-17-jdk-headless mesa-vulkan-drivers
 ./install-linux.sh
 ```
 
-`install-linux.sh` is `install-macos.sh` without `--app`: it builds everything (the first run takes about 5 minutes, for the Game Host), publishes `skua`, `skua-engine`, `skua-gamehost`, `skua.swf` and `skua-tui` self-contained in `~/.local/share/skua/versions/<build>/` and links `~/.local/bin/skua` and `~/.local/bin/skua-tui` to it. Re-run it to update. `SKUA_NO_TUI`, `SKUA_INSTALL_DIR`, `SKUA_BIN_DIR` and the `dotnet publish` arguments work as on macOS. To build by hand, `dotnet build Skua.Linux.slnf` and `dotnet test Skua.Linux.slnf` build and test the Engine, the CLI and their tests, the Game Host and `skua.swf` included.
+`install-linux.sh` is `install-macos.sh` without `--app` and `SKUA_NO_TUI`: same build folders, links, `SKUA_INSTALL_DIR`, `SKUA_BIN_DIR` and `dotnet publish` arguments. By hand, `dotnet build Skua.Linux.slnf` and `dotnet test Skua.Linux.slnf`.
 
 What differs from macOS:
 
-- **Rendering.** The Game Host renders offscreen with Vulkan or GL instead of Metal, and needs no display. Without a GPU, Mesa's lavapipe (`mesa-vulkan-drivers`) renders on the CPU; `WGPU_BACKEND=gl` makes it use GL (llvmpipe) instead. It keeps the headless render budget it has on macOS ([Skua.GameHost's README](Skua.GameHost/README.md)).
-- **Accounts.** There is no Keychain: `skua account` keeps each account in `<SkuaDIR>/credentials/<service>`, a file only you can read (mode 0600, in a folder of mode 0700), and `login` reads it there; the messages still say Keychain. Unlike libsecret, it needs no desktop session, so cron can log in. ADR 0010.
-- **The data folder** is `~/.config/Skua` (or `$XDG_CONFIG_HOME/Skua`), unless `SKUA_DIR` names another.
-- **Scripts** compile with `MACOS` defined, as on the Mac (the Script Source's `#if !MACOS` hides Windows Forms), and `LINUX` too.
-- **Not on Linux:** the idle-sleep assertion (a server doesn't idle-sleep), the Game View's Frame Buffer, the live-game harness (it measures with macOS tools), and the example Hooks as they are (they read JSON with `plutil`).
-
-#### Unattended runs with cron
-
-Add the account once, then let cron log it in and start the Script every day. cron's PATH lacks `~/.local/bin`, so name `skua` in full; the Engine `login` auto-starts keeps running after the job ends, and plays the Script to its end.
-
-```bash
-skua account add        # once: asks for the username and password
-crontab -e
-```
-
-```cron
-# 13:00 in Asia/Manila is 05:00 UTC; cron uses the system's time zone (timedatectl).
-0 5 * * * $HOME/.local/bin/skua login && $HOME/.local/bin/skua script start Army/OneClient/AllDailies.cs --dialogs Cancel >> $HOME/skua-cron.log 2>&1
-```
-
-`--dialogs Cancel` gives a Script's Questions their fallback at once, since nobody is there to answer them. `skua status` and `skua logs script` show the run afterwards.
+- **Rendering:** Vulkan or GL instead of Metal, with no display. Without a GPU, Mesa's lavapipe renders on the CPU; `WGPU_BACKEND=gl` picks llvmpipe instead.
+- **Accounts:** no Keychain. `skua account` keeps each account in `<SkuaDIR>/credentials/<service>` (mode 0600, folder 0700), which needs no desktop session; messages still say Keychain. ADR 0010.
+- **Data folder:** `~/.config/Skua`, unless `SKUA_DIR` names another.
+- **Scripts** compile with `MACOS` defined, as on the Mac, and `LINUX`.
+- **Not on Linux:** the idle-sleep assertion, the Frame Buffer, the live-game harness and the example Hooks (`plutil`).
 
 ### Running the Mac App
 

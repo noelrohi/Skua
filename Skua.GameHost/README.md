@@ -19,9 +19,8 @@ cargo test --locked              # framing, XML and options; tests/game_storage.
 - The toolchain is pinned in `rust-toolchain.toml` (1.99.1, `aarch64-apple-darwin`); rustup installs it on first use.
   It moves only together with the Ruffle pin.
 - The build needs the macOS SDK (Xcode or the Command Line Tools). wgpu compiles its Metal shaders at runtime.
-- On Linux it needs a C toolchain (`build-essential`), and at runtime a Vulkan or GL driver: without a GPU,
-  `mesa-vulkan-drivers` (lavapipe). `WGPU_BACKEND=gl` picks GL; the tests run on whichever it finds. macOS-only code
-  (the autorelease pools, `CLOCK_UPTIME_RAW`) is behind `cfg(target_os = "macos")`.
+- On Linux it needs `build-essential`, and at runtime a Vulkan or GL driver: without a GPU, `mesa-vulkan-drivers`
+  (lavapipe). `WGPU_BACKEND=gl` picks GL.
 - A cold build takes about 5 minutes on an M4 Pro. Always use the release build with the Engine: the debug build
   is too slow for the Bridge.
 - The release profile keeps line tables, so panics still print file and line.

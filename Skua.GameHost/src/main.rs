@@ -104,7 +104,7 @@ fn main() {
     wgpu_backend::set_layer_flush(opts.layer_flush);
 
     // Offscreen device.
-    let backends = gpu_backends();
+    let (backends, backend_name) = gpu_backends();
     let instance = create_wgpu_instance(backends, wgpu::BackendOptions::default(), None);
     let (adapter, device, queue) = futures::executor::block_on(request_adapter_and_device(
         backends,
@@ -112,7 +112,7 @@ fn main() {
         None,
         wgpu::PowerPreference::LowPower,
     ))
-    .unwrap_or_else(|e| fail(1, &format!("no {} device: {e}", backend_names(backends))));
+    .unwrap_or_else(|e| fail(1, &format!("no {backend_name} device: {e}")));
     tracing::info!("rendering on {:?}", adapter.get_info());
     let descriptors = Arc::new(Descriptors::new(instance, adapter, device, queue));
     let target = TextureTarget::new(&descriptors.device, (WIDTH, HEIGHT))
@@ -268,41 +268,24 @@ struct Host {
     stats: LoopStats,
 }
 
-/// The wgpu backends the offscreen device may use: Metal on macOS.
+/// The wgpu backends the offscreen device may use, and their name for errors: Metal on macOS.
 #[cfg(target_os = "macos")]
-fn gpu_backends() -> wgpu::Backends {
-    wgpu::Backends::METAL
+fn gpu_backends() -> (wgpu::Backends, &'static str) {
+    (wgpu::Backends::METAL, "Metal")
 }
 
-/// The wgpu backends the offscreen device may use: on Linux, Vulkan or GL, which without a GPU are Mesa's
-/// lavapipe and llvmpipe. `WGPU_BACKEND` (e.g. `gl`) narrows them.
+/// The wgpu backends the offscreen device may use, and their name for errors: on Linux, Vulkan or GL, which
+/// without a GPU are Mesa's lavapipe and llvmpipe. `WGPU_BACKEND` (e.g. `gl`) narrows them.
 #[cfg(not(target_os = "macos"))]
-fn gpu_backends() -> wgpu::Backends {
-    wgpu::Backends::from_env().unwrap_or(wgpu::Backends::VULKAN | wgpu::Backends::GL)
-}
-
-fn backend_names(backends: wgpu::Backends) -> String {
-    let names: Vec<_> = [
-        (wgpu::Backends::METAL, "Metal"),
-        (wgpu::Backends::VULKAN, "Vulkan"),
-        (wgpu::Backends::GL, "GL"),
-    ]
-    .into_iter()
-    .filter(|(b, _)| backends.contains(*b))
-    .map(|(_, name)| name)
-    .collect();
-    names.join(" or ")
+fn gpu_backends() -> (wgpu::Backends, &'static str) {
+    (wgpu::Backends::from_env().unwrap_or(wgpu::Backends::VULKAN | wgpu::Backends::GL), "Vulkan or GL")
 }
 
 /// Runs `f` inside an autorelease pool on macOS, where Metal autoreleases its objects (#13); elsewhere just runs it.
-#[cfg(target_os = "macos")]
 pub fn autoreleasepool<T>(f: impl FnOnce() -> T) -> T {
-    objc2::rc::autoreleasepool(|_| f())
-}
-
-/// Runs `f` inside an autorelease pool on macOS, where Metal autoreleases its objects (#13); elsewhere just runs it.
-#[cfg(not(target_os = "macos"))]
-pub fn autoreleasepool<T>(f: impl FnOnce() -> T) -> T {
+    #[cfg(target_os = "macos")]
+    return objc2::rc::autoreleasepool(|_| f());
+    #[cfg(not(target_os = "macos"))]
     f()
 }
 

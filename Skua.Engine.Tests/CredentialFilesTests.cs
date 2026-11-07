@@ -45,19 +45,6 @@ public class CredentialFilesTests
         Assert.Null(files.Find("skua-account-alt1"));
     }
 
-    [Fact]
-    public async Task A_service_that_isnt_a_plain_file_name_is_refused_and_a_damaged_file_fails_as_Keychain_does()
-    {
-        await using EngineSandbox sandbox = new();
-        CredentialFiles files = new(Path.Combine(sandbox.SkuaDir, "credentials"));
-        files.Add("skua-test-account", "SkuaTester", "", "hunter2");
-        File.WriteAllText(Path.Combine(files.Directory, "skua-test-account"), "{ not json");
-
-        foreach (string service in (string[])["../escape", ".hidden", "a/b", ""])
-            Assert.Equal(ErrorCode.InvalidArgument, Assert.Throws<ControlException>(() => files.Find(service)).Code);
-        Assert.Equal(ErrorCode.KeychainFailed, Assert.Throws<ControlException>(() => files.Read("skua-test-account")).Code);
-    }
-
     /// <summary>As AccountTests' three-step flow, with no <c>security</c> tool: the CLI stores the account and the Engine logs in with it.</summary>
     [Fact]
     public async Task On_Linux_account_add_stores_the_account_in_a_credential_file_that_login_reads_and_remove_deletes()

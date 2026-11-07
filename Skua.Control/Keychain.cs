@@ -79,9 +79,6 @@ public static partial class Keychain
             throw new ControlException(ErrorCode.InvalidArgument, "A Keychain password can't be empty.");
         if (Files() is { } files)
         {
-            // The same values security takes, so an account moves between the two unchanged.
-            foreach (string value in (string[])[service, account, comment, password])
-                Quote(value);
             files.Add(service, account, comment, password);
             return;
         }
