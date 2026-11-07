@@ -489,6 +489,21 @@ internal static class Output
 
     private static string InApp(EngineStateDto engine) => engine.Host == EngineHost.App ? " in the Skua app" : "";
 
+    /// <summary>One line per Engine of <c>skua engine up</c>, its name padded so the results line up.</summary>
+    public static string EngineUp(IReadOnlyList<EngineUpResult> results)
+    {
+        int width = results.Max(result => result.Name.Length);
+        return string.Join('\n', results.Select(result => $"{result.Name.PadRight(width)}  {(result switch
+        {
+            { Error: { } error } => $"{(result.Started ? "started, then failed" : "failed")}: {error.Message}",
+            { Login: { AlreadyLoggedIn: true } login } => $"already playing as {LoggedInAs(login)}",
+            { Login: { } login } => $"{(result.Started ? "started, logged in" : "logged in")} as {LoggedInAs(login)}",
+            _ => "",
+        })}"));
+
+        static string LoggedInAs(LoginResult login) => $"{login.Username}{(login.IsTestAccount ? " (the Test Account)" : "")} on {login.Server}.";
+    }
+
     public static string ScriptSource(ScriptSourceResult result) => result.IsDefault
         ? $"{Source(result.Source)} (the default)"
         : $"{Source(result.Source)} (set in Skua.settings.json; the default is {Source(result.Default)}, which 'skua scripts source --default' restores)";
