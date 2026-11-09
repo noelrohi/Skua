@@ -318,6 +318,21 @@ public sealed class BridgeFlashUtil : IFlashUtil
     private void OnInvoked(string request)
     {
         (string function, object[] args) = FlashXml.ReadInvoke(request);
-        FlashCall?.Invoke(function, args);
+        FlashCallHandler? subscribers = FlashCall;
+        if (subscribers is null)
+            return;
+
+        // One throwing subscriber must not hide the call from the rest.
+        foreach (FlashCallHandler handler in subscribers.GetInvocationList().Cast<FlashCallHandler>())
+        {
+            try
+            {
+                handler(function, args);
+            }
+            catch (Exception e)
+            {
+                Report(e, function, args);
+            }
+        }
     }
 }

@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.DependencyInjection;
 using CommunityToolkit.Mvvm.Messaging;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Skua.Core.Interfaces;
 using Skua.Core.Interfaces.Services;
 using Skua.Core.Messaging;
@@ -304,6 +305,8 @@ public class ScriptInterface : IScriptInterface, IScriptInterfaceManager, IDispo
 
                 _limit.LimitedRun("connDetail", 100, () => (lastConnChange, lastConnDetail) = CheckStuckonLoading(lastConnChange, lastConnDetail));
 
+                UpdateCounterAttack();
+
                 if (Manager.ScriptRunning)
                     RunScriptHandlers();
 
@@ -445,203 +448,334 @@ public class ScriptInterface : IScriptInterface, IScriptInterfaceManager, IDispo
                 break;
 
             case "pext":
-                dynamic packet = JsonConvert.DeserializeObject<dynamic>((string)args[0])!;
-                string type = packet["params"].type;
-                dynamic data = packet["params"].dataObj;
-                if (type is not null and "json")
+                if (args is not [string pextJson, ..])
+                    break;
+                dynamic? packet = JsonConvert.DeserializeObject<dynamic>(pextJson);
+                if (packet is null)
+                    break;
+                string? pextCmd = null;
+                try
                 {
-                    string cmd = data.cmd;
-                    switch (cmd)
+                    string type = packet["params"].type;
+                    dynamic data = packet["params"].dataObj;
+                    if (type is not null and "json")
                     {
-                        case "event":
-                            string zone = data.args?["zoneSet"]!;
-                            if (zone is not null)
-                                Messenger.Send<RunToAreaMessage, int>(new(zone), (int)MessageChannels.GameEvents);
-                            break;
-
-                        case "moveToArea":
-                            Stats.GetSpace();
-                            Messenger.Send<MapChangedMessage, int>(new(Convert.ToString(data.strMapName)), (int)MessageChannels.GameEvents);
-                            Map.FilePath = Convert.ToString(data.strMapFileName);
-                            Map.LastMap = Convert.ToString(data.strMapName);
-                            break;
-
-                        case "ct":
-                            dynamic p = data.p?[Player.Username.ToLower()]!;
-                            if (p is not null && p.intHP == 0)
-                            {
-                                Stats.Deaths++;
-                                Messenger.Send<PlayerDeathMessage, int>((int)MessageChannels.GameEvents);
+                        string cmd = data.cmd;
+                        pextCmd = cmd;
+                        switch (cmd)
+                        {
+                            case "event":
+                                string zone = data.args?["zoneSet"]!;
+                                if (zone is not null)
+                                    Messenger.Send<RunToAreaMessage, int>(new(zone), (int)MessageChannels.GameEvents);
                                 break;
-                            }
-                            dynamic anims = data.anims?[0]!;
-                            if (anims is not null)
-                            {
-                                string msg = anims["msg"];
-                                if (msg is not null && msg.Contains("prepares a counter attack!"))
+
+                            case "moveToArea":
+                                Stats.GetSpace();
+                                Messenger.Send<MapChangedMessage, int>(new(Convert.ToString(data.strMapName)), (int)MessageChannels.GameEvents);
+                                Map.FilePath = Convert.ToString(data.strMapFileName);
+                                Map.LastMap = Convert.ToString(data.strMapName);
+                                break;
+
+                            case "ct":
+                                dynamic p = data.p?[Player.Username.ToLower()]!;
+                                if (p is not null && p.intHP == 0)
                                 {
-                                    Messenger.Send<CounterAttackMessage, int>(new(false), (int)MessageChannels.GameEvents);
+                                    Stats.Deaths++;
+                                    Messenger.Send<PlayerDeathMessage, int>((int)MessageChannels.GameEvents);
                                     break;
                                 }
-                            }
-                            if (data.a is not null)
-                            {
-                                foreach (dynamic? a in data.a)
+                                if (data is JObject ctData)
+                                    HandleCounterAttack(ctData);
+                                break;
+
+                            case "sellItem":
+                                Stats.GetSpace();
+                                Messenger.Send<ItemSoldMessage, int>(new(
+                                    Convert.ToInt32(data.CharItemID),
+                                    Convert.ToInt32(data.iQty),
+                                    Convert.ToInt32(data.iQtyNow),
+                                    Convert.ToInt32(data.intAmount),
+                                    Convert.ToInt32(data.bCoins) == 1),
+                                    (int)MessageChannels.GameEvents);
+                                break;
+
+                            case "buyItem":
+                                if (data.bitSuccess == 1)
                                 {
-                                    if (a is null)
-                                        continue;
+                                    Messenger.Send<ItemBoughtMessage, int>(new(Convert.ToInt32(data.CharItemID)), (int)MessageChannels.GameEvents);
+                                    Stats.GetSpace();
+                                }
+                                break;
 
-                                    if (a.aura is null || (string)a.aura["nam"] is not "Counter Attack")
-                                    {
-                                        continue;
-                                    }
+                            case "dropItem":
+                                string items = Convert.ToString(data["items"]);
+                                InventoryItem drop = JsonConvert.DeserializeObject<Dictionary<string, InventoryItem>>(items)!.First().Value;
+                                Messenger.Send<ItemDroppedMessage, int>(new(drop), (int)MessageChannels.GameEvents);
+                                break;
 
-                                    Messenger.Send<CounterAttackMessage, int>(new(true), (int)MessageChannels.GameEvents);
+                            case "addItems":
+                                string addItems = Convert.ToString(data["items"]);
+                                Dictionary<int, dynamic> addedItem = JsonConvert.DeserializeObject<Dictionary<int, dynamic>>(addItems)!;
+                                int itemID = addedItem.Keys.First()!;
+                                ItemBase? invItem = Inventory.GetItem(itemID) ?? TempInv.GetItem(itemID);
+                                Stats.GetSpace();
+                                if (invItem is null)
+                                {
+                                    // A banked item is only in Bank once the bank is loaded; house items are in neither.
+                                    ItemBase? addedBankItem = Bank.GetItem(itemID);
+                                    if (addedBankItem is not null)
+                                        Messenger.Send<ItemAddedToBankMessage, int>(new(addedBankItem, addedBankItem.Quantity), (int)MessageChannels.GameEvents);
                                     break;
                                 }
-                            }
-                            break;
-
-                        case "sellItem":
-                            Stats.GetSpace();
-                            Messenger.Send<ItemSoldMessage, int>(new(
-                                Convert.ToInt32(data.CharItemID),
-                                Convert.ToInt32(data.iQty),
-                                Convert.ToInt32(data.iQtyNow),
-                                Convert.ToInt32(data.intAmount),
-                                Convert.ToInt32(data.bCoins) == 1),
-                                (int)MessageChannels.GameEvents);
-                            break;
-
-                        case "buyItem":
-                            if (data.bitSuccess == 1)
-                            {
-                                Messenger.Send<ItemBoughtMessage, int>(new(Convert.ToInt32(data.CharItemID)), (int)MessageChannels.GameEvents);
-                                Stats.GetSpace();
-                            }
-                            break;
-
-                        case "dropItem":
-                            string items = Convert.ToString(data["items"]);
-                            InventoryItem drop = JsonConvert.DeserializeObject<Dictionary<string, InventoryItem>>(items)!.First().Value;
-                            Messenger.Send<ItemDroppedMessage, int>(new(drop), (int)MessageChannels.GameEvents);
-                            break;
-
-                        case "addItems":
-                            string addItems = Convert.ToString(data["items"]);
-                            Dictionary<int, dynamic> addedItem = JsonConvert.DeserializeObject<Dictionary<int, dynamic>>(addItems)!;
-                            int itemID = addedItem.Keys.First()!;
-                            ItemBase? invItem = Inventory.GetItem(itemID) ?? TempInv.GetItem(itemID);
-                            Stats.GetSpace();
-                            if (invItem is null)
-                            {
-                                // An item the game keeps in neither store, as the bank before it loads, has nothing to report.
-                                if (Bank.GetItem(itemID) is { } bankItem)
-                                    Messenger.Send<ItemAddedToBankMessage, int>(new(bankItem, bankItem.Quantity), (int)MessageChannels.GameEvents);
+                                if (!invItem.Temp)
+                                    Stats.Drops++;
+                                Messenger.Send<ItemDroppedMessage, int>(new(invItem, true, Convert.ToInt32(addedItem.Values.First().iQtyNow)), (int)MessageChannels.GameEvents);
                                 break;
-                            }
-                            if (!invItem.Temp)
-                                Stats.Drops++;
-                            Messenger.Send<ItemDroppedMessage, int>(new(invItem, true, Convert.ToInt32(addedItem.Values.First().iQtyNow)), (int)MessageChannels.GameEvents);
-                            break;
 
-                        case "getDrop":
-                            bool toBank = Convert.ToBoolean(data.bBank);
-                            if (data.bSuccess == 1)
-                            {
-                                Stats.Drops += (int)data.iQty;
+                            case "getDrop":
+                                bool toBank = Convert.ToBoolean(data.bBank);
+                                if (data.bSuccess == 1)
+                                {
+                                    Stats.Drops += (int)data.iQty;
+                                    Stats.GetSpace();
+                                    Messenger.Send<ItemPickedUpMessage, int>(new(Convert.ToInt32(data.ItemID)), (int)MessageChannels.GameEvents);
+                                }
+                                if (toBank)
+                                {
+                                    ItemBase? bankItem = Bank.GetItem(Convert.ToInt32(data.ItemID));
+                                    if (bankItem is not null)
+                                        Messenger.Send<ItemAddedToBankMessage, int>(new(bankItem, Convert.ToInt32(data.iQtyNow)), (int)MessageChannels.GameEvents);
+                                }
+                                break;
+
+                            case "addGoldExp":
+                                if (data.typ == "m")
+                                {
+                                    Stats.Kills++;
+                                    Messenger.Send<MonsterKilledMessage, int>(new(Convert.ToInt32(data.id)), (int)MessageChannels.GameEvents);
+                                }
+                                break;
+
+                            case "ccqr":
+                                if (data.bSuccess == 1)
+                                {
+                                    Stats.QuestsCompleted++;
+                                    Messenger.Send<QuestTurninMessage, int>(new(Convert.ToInt32(data.QuestID)), (int)MessageChannels.GameEvents);
+                                }
+                                break;
+
+                            case "loadBank":
                                 Stats.GetSpace();
-                                Messenger.Send<ItemPickedUpMessage, int>(new(Convert.ToInt32(data.ItemID)), (int)MessageChannels.GameEvents);
-                            }
-                            if (toBank)
-                            {
-                                ItemBase bankItem = Bank.GetItem(Convert.ToInt32(data.ItemID))!;
-                                Messenger.Send<ItemAddedToBankMessage, int>(new(bankItem, Convert.ToInt32(data.iQtyNow)), (int)MessageChannels.GameEvents);
-                            }
-                            break;
+                                Messenger.Send<BankLoadedMessage, int>((int)MessageChannels.GameEvents);
+                                break;
 
-                        case "addGoldExp":
-                            if (data.typ == "m")
-                            {
-                                Stats.Kills++;
-                                Messenger.Send<MonsterKilledMessage, int>(new(Convert.ToInt32(data.id)), (int)MessageChannels.GameEvents);
-                            }
-                            break;
+                            case "loadShop":
+                                Stats.GetSpace();
+                                Messenger.Send<ShopLoadedMessage, int>(new(new(Shops.ID, Shops.Name, Shops.Items)), (int)MessageChannels.GameEvents);
+                                break;
+                        }
+                    }
+                    else if (type is not null and "str")
+                    {
+                        string cmd = data[0];
+                        pextCmd = cmd;
+                        switch (cmd)
+                        {
+                            case "popup":
+                                string b = Convert.ToString(packet);
+                                Debug.WriteLine(b);
+                                break;
 
-                        case "ccqr":
-                            if (data.bSuccess == 1)
-                            {
-                                Stats.QuestsCompleted++;
-                                Messenger.Send<QuestTurninMessage, int>(new(Convert.ToInt32(data.QuestID)), (int)MessageChannels.GameEvents);
-                            }
-                            break;
+                            case "uotls":
+                                if (Player.Username == (string)data[2] && data[3] == "afk:true")
+                                    Messenger.Send<PlayerAFKMessage, int>((int)MessageChannels.GameEvents);
+                                break;
 
-                        case "loadBank":
-                            Stats.GetSpace();
-                            Messenger.Send<BankLoadedMessage, int>((int)MessageChannels.GameEvents);
-                            break;
-
-                        case "loadShop":
-                            Stats.GetSpace();
-                            Messenger.Send<ShopLoadedMessage, int>(new(new(Shops.ID, Shops.Name, Shops.Items)), (int)MessageChannels.GameEvents);
-                            break;
+                            case "loginResponse":
+                                Stats.GetSpace();
+                                Options.CustomName = string.Empty;
+                                Options.CustomGuild = string.Empty;
+                                Messenger.Send<LoginMessage, int>(new(Convert.ToString(data[4])), (int)MessageChannels.GameEvents);
+                                break;
+                        }
                     }
                 }
-                else if (type is not null and "str")
+                catch (Exception ex)
                 {
-                    string cmd = data[0];
-                    switch (cmd)
-                    {
-                        case "popup":
-                            string b = Convert.ToString(packet);
-                            Debug.WriteLine(b);
-                            break;
-
-                        case "uotls":
-                            if (Player.Username == (string)data[2] && data[3] == "afk:true")
-                                Messenger.Send<PlayerAFKMessage, int>((int)MessageChannels.GameEvents);
-                            break;
-
-                        case "loginResponse":
-                            Stats.GetSpace();
-                            Options.CustomName = string.Empty;
-                            Options.CustomGuild = string.Empty;
-                            Messenger.Send<LoginMessage, int>(new(Convert.ToString(data[4])), (int)MessageChannels.GameEvents);
-                            break;
-                    }
+                    _logger.DebugLog($"Error handling extension packet '{pextCmd}': {ex.Message}\n{ex.StackTrace}");
                 }
                 Messenger.Send<ExtensionPacketMessage, int>(new(packet), (int)MessageChannels.GameEvents);
                 break;
 
             case "packet":
-                string[] parts = ((string)args[0]).Split('%', StringSplitOptions.RemoveEmptyEntries);
-                switch (parts[2])
+                if (args is not [string packetText, ..])
+                    break;
+                try
                 {
-                    case "moveToCell":
-                        Messenger.Send<CellChangedMessage, int>(new(Map.Name, parts[4], parts[5]), (int)MessageChannels.GameEvents);
-                        break;
+                    string[] parts = packetText.Split('%', StringSplitOptions.RemoveEmptyEntries);
+                    switch (parts[2])
+                    {
+                        case "moveToCell":
+                            Messenger.Send<CellChangedMessage, int>(new(Map.Name, parts[4], parts[5]), (int)MessageChannels.GameEvents);
+                            break;
 
-                    case "buyItem":
-                        Stats.GetSpace();
-                        Messenger.Send<TryBuyItemMessage, int>(new(int.Parse(parts[5]), int.Parse(parts[4]), int.Parse(parts[6])), (int)MessageChannels.GameEvents);
-                        break;
+                        case "buyItem":
+                            Stats.GetSpace();
+                            Messenger.Send<TryBuyItemMessage, int>(new(int.Parse(parts[5]), int.Parse(parts[4]), int.Parse(parts[6])), (int)MessageChannels.GameEvents);
+                            break;
 
-                    case "acceptQuest":
-                        Stats.QuestsAccepted++;
-                        Messenger.Send<QuestAcceptedMessage, int>(new(int.Parse(parts[4])), (int)MessageChannels.GameEvents);
-                        break;
+                        case "acceptQuest":
+                            Stats.QuestsAccepted++;
+                            Messenger.Send<QuestAcceptedMessage, int>(new(int.Parse(parts[4])), (int)MessageChannels.GameEvents);
+                            break;
 
-                    case "cmd":
-                        if (parts.Length >= 5 && parts[4] == "logout")
-                        {
-                            Messenger.Send<LogoutMessage, int>((int)MessageChannels.GameEvents);
-                            _ = OnLogout();
-                        }
-                        break;
+                        case "cmd":
+                            if (parts.Length >= 5 && parts[4] == "logout")
+                            {
+                                Messenger.Send<LogoutMessage, int>((int)MessageChannels.GameEvents);
+                                _ = OnLogout();
+                            }
+                            break;
+                    }
                 }
-                Messenger.Send<PacketMessage, int>(new((string)args[0]), (int)MessageChannels.GameEvents);
+                catch (Exception ex)
+                {
+                    _logger.DebugLog($"Error handling packet: {ex.Message}");
+                }
+                Messenger.Send<PacketMessage, int>(new(packetText), (int)MessageChannels.GameEvents);
                 break;
         }
+    }
+
+    private const string CounterAttackWarning = "prepares a counter attack";
+    private const string CounterAttackAnimation = "Reflect";
+    private const string CounterAttackAuraName = "Counter Attack";
+
+    private const int CounterAttackWarningSeconds = 10;
+    private const int CounterAttackMarginSeconds = 1;
+
+    // A counter in progress, per monster ("m:<MapID>"): its counter aura (null until the aura arrives) and when the
+    // counter is assumed over if no removal packet comes.
+    private sealed record CounterAttackState(string? Aura, DateTime Expires);
+
+    private readonly Dictionary<string, CounterAttackState> _counterAttacks = new();
+    private readonly object _counterAttackLock = new();
+    // Whether the last CounterAttackMessage said a counter is on. Only the script timer thread touches it.
+    private bool _counterAttackSent;
+
+    /// <summary>
+    /// Tracks monsters' counter attacks from a <c>ct</c> packet. A warning message starts one. Its aura is the aura the
+    /// monster puts on itself in the same packet as its <c>Reflect</c> animation (or one named "Counter Attack"; the
+    /// shortest if there are several), so the name doesn't have to be known. A counter ends when that aura is removed
+    /// from that monster, when the monster dies, or when it expires. Messages are sent by
+    /// <see cref="UpdateCounterAttack"/>.
+    /// </summary>
+    private void HandleCounterAttack(JObject data)
+    {
+        lock (_counterAttackLock)
+        {
+            DateTime now = DateTime.Now;
+            HashSet<string> reflecting = new();
+            if (data["anims"] is JArray anims)
+            {
+                foreach (JToken anim in anims)
+                {
+                    string? caster = (string?)anim["cInf"];
+                    if (caster is null || !caster.StartsWith("m:"))
+                        continue;
+
+                    string? msg = (string?)anim["msg"];
+                    if (msg is not null && msg.Contains(CounterAttackWarning, StringComparison.OrdinalIgnoreCase))
+                        _counterAttacks[caster] = new(null, now.AddSeconds(CounterAttackWarningSeconds));
+
+                    string? animStr = (string?)anim["animStr"];
+                    if (animStr is not null && animStr.Split(',').Contains(CounterAttackAnimation))
+                        reflecting.Add(caster);
+                }
+            }
+
+            // A dead monster can't counter.
+            if (data["m"] is JObject monsters)
+            {
+                foreach (JProperty monster in monsters.Properties())
+                {
+                    if (monster.Value is JObject state && (int?)state["intState"] == 0)
+                        _counterAttacks.Remove("m:" + monster.Name);
+                }
+            }
+
+            if (data["a"] is JArray actions)
+            {
+                Dictionary<string, (string Name, float Duration)> counterAuras = new();
+                foreach (JToken action in actions)
+                {
+                    string? cmd = (string?)action["cmd"];
+                    string? target = (string?)action["tInf"];
+                    if (cmd is null || target is null || !target.StartsWith("m:"))
+                        continue;
+
+                    switch (cmd)
+                    {
+                        case "aura+":
+                        case "aura++":
+                            if ((string?)action["cInf"] != target || action["auras"] is not JArray auras)
+                                break;
+                            foreach (JToken aura in auras)
+                            {
+                                string? name = (string?)aura["nam"];
+                                if (name is null || (!reflecting.Contains(target) && name != CounterAttackAuraName))
+                                    continue;
+
+                                // Counter auras are short (3-6 s); a longer one in the same packet (e.g. "Skill
+                                // Locked", 45 s) is something else the monster cast.
+                                float duration = (float?)aura["dur"] ?? 0;
+                                if (!counterAuras.TryGetValue(target, out (string Name, float Duration) best)
+                                    || (duration > 0 && (best.Duration <= 0 || duration < best.Duration)))
+                                    counterAuras[target] = (name, duration);
+                            }
+                            break;
+
+                        case "aura-":
+                        case "aura--":
+                            if (!_counterAttacks.TryGetValue(target, out CounterAttackState? counter) || counter.Aura is null)
+                                break;
+                            IEnumerable<JToken> removed = action["auras"] is JArray list ? list : new[] { action["aura"] }.OfType<JToken>();
+                            if (removed.Any(a => (string?)a["nam"] == counter.Aura))
+                                _counterAttacks.Remove(target);
+                            break;
+                    }
+                }
+
+                foreach ((string monster, (string name, float duration)) in counterAuras)
+                {
+                    double seconds = (duration > 0 ? duration : CounterAttackWarningSeconds) + CounterAttackMarginSeconds;
+                    _counterAttacks[monster] = new(name, now.AddSeconds(seconds));
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Sends <see cref="CounterAttackMessage"/> when the first counter starts and when the last one ends, including
+    /// counters that expire because their removal packet never came (lost, the monster left, or a warning with no
+    /// counter after it). Runs on the script timer thread only, so start and end messages can't arrive out of order.
+    /// </summary>
+    private void UpdateCounterAttack()
+    {
+        bool active;
+        lock (_counterAttackLock)
+        {
+            DateTime now = DateTime.Now;
+            foreach (string monster in _counterAttacks.Where(c => c.Value.Expires <= now).Select(c => c.Key).ToList())
+                _counterAttacks.Remove(monster);
+            active = _counterAttacks.Count > 0;
+        }
+
+        if (active == _counterAttackSent)
+            return;
+        _counterAttackSent = active;
+        Messenger.Send<CounterAttackMessage, int>(new(!active), (int)MessageChannels.GameEvents);
     }
 
     private Task? _reloginTask;

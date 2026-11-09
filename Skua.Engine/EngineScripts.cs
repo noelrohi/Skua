@@ -43,6 +43,12 @@ public sealed class EngineScripts
     /// <summary>Whether the Script running now started without anyone asking, such as CoreBots' restart after a relogin (#144).</summary>
     public bool RunningUnasked => _attached?.Runs.Unasked ?? false;
 
+    /// <summary>Whether Core's auto-relogin is restarting a Script, which nobody waits to answer a window for.</summary>
+    public bool RestartingAfterRelogin => _attached?.Runs.RestartingAfterRelogin ?? false;
+
+    /// <summary>Whether Core is starting a Script for <c>script_start</c>, whose caller waits for the start.</summary>
+    public bool StartingForControlSurface => _attached?.Runs.StartingForControlSurface ?? false;
+
     internal void Attach(
         ScriptOperations scripts, ScriptSourceOperations source, ScriptRuns runs, ActionSlot slot, ActionSlot scriptsSlot, SemaphoreSlim compiling) =>
         _attached = new Attached(scripts, source, runs, slot, scriptsSlot, compiling);

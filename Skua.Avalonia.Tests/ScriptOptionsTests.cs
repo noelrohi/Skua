@@ -131,6 +131,104 @@ public sealed class ScriptOptionsTests(AppEngine app)
     }
 
     [AvaloniaFact]
+    public async Task A_saved_choice_that_no_longer_exists_shows_a_notice_and_closing_the_editor_saves_its_default()
+    {
+        (string path, _) = WriteFarm();
+        IScriptOptionContainer config = StoreRemovedChoice(path);
+        config.Load();
+        using EditorWindows editors = new(app);
+
+        Task configured = Task.Run(config.Configure, Ct);
+        DialogWindow editor = await editors.NextAsync();
+        Assert.Equal("Fast Farm", ((ComboBox)await RowAsync(editor, "mode")).SelectedItem);
+        TextBlock notice = Ui.Find<TextBlock>(editor, t => t.Text?.Contains("no longer exist", StringComparison.Ordinal) == true)!;
+        Assert.True(notice.IsEffectivelyVisible);
+        Assert.Contains("\"Turbo\" → \"Fast Farm\"", notice.Text);
+        editor.Close();
+        await configured.WaitAsync(Ui.Timeout, Ct);
+
+        Assert.Contains("Options:mode=Fast_Farm", File.ReadAllLines(config.OptionsFile));
+
+        // Nothing to report the next time, whether it opens before a load or after one.
+        foreach (bool reload in new[] { false, true })
+        {
+            if (reload)
+                config.Load();
+            configured = Task.Run(config.Configure, Ct);
+            editor = await editors.NextAsync();
+            await RowAsync(editor, "mode");
+            Assert.Null(Ui.Find<TextBlock>(editor, t => t.Text?.Contains("no longer exist", StringComparison.Ordinal) == true));
+            editor.Close();
+            await configured.WaitAsync(Ui.Timeout, Ct);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task An_agents_start_with_a_removed_choice_returns_while_the_editor_is_open_and_runs_with_the_default()
+    {
+        await WaitAsync();
+        (string path, _) = WriteFarm();
+        IScriptOptionContainer config = StoreRemovedChoice(path);
+        using EditorWindows editors = new(app);
+        using EngineConnection connection = await ConnectAsync();
+
+        Task<ScriptStartResult> start = connection.ScriptStartAsync(path, cancellationToken: Ct);
+        DialogWindow editor = await editors.NextAsync();
+        try
+        {
+            ScriptStartResult started = await start.WaitAsync(Ui.Timeout, Ct);
+            Assert.Contains("mode=Fast_Farm", await LoggedAsync(connection, started.Run));
+        }
+        finally
+        {
+            editor.Close();
+        }
+        await start;
+        await connection.ScriptWaitAsync(60, Ct);
+
+        await Ui.PumpUntilAsync(() => File.ReadAllLines(config.OptionsFile).Contains("Options:mode=Fast_Farm"), "the default to be saved");
+    }
+
+    [AvaloniaFact]
+    public async Task A_relogin_restarts_a_Script_with_a_removed_choice_without_waiting_for_another_editor()
+    {
+        await WaitAsync();
+        (string path, _) = WriteFarm(before: """
+            bot.Log("started");
+            while (!bot.ShouldExit)
+                Thread.Sleep(50);
+            return;
+            """);
+        StoreRemovedChoice(path);
+        IScriptOption options = app.Get<IScriptOption>();
+        (bool autoRelogin, bool safeRelogin, int delay) = (options.AutoRelogin, options.SafeRelogin, options.ReloginTryDelay);
+        using EditorWindows editors = new(app);
+        using EngineConnection connection = await ConnectAsync();
+        DialogWindow? editor = null;
+        try
+        {
+            (options.AutoRelogin, options.SafeRelogin, options.ReloginTryDelay) = (true, false, 200);
+            await connection.LoginAsync("Galanoth", cancellationToken: Ct);
+            ScriptStartResult start = await connection.ScriptStartAsync(path, cancellationToken: Ct);
+            // Nobody closes the agent's editor, so the removed choice is still in the file at the restart.
+            editor = await editors.NextAsync();
+            await connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Run == start.Run && e.Text == "started");
+
+            await AppEngine.DoAsync("lose-connection Your connection to the server has been lost.");
+
+            await connection.WaitForLogsAsync(LogKind.Script, 2, e => e.Run == start.Run && e.Text == "started");
+            Assert.Equal(1, editors.Opened);
+        }
+        finally
+        {
+            editor?.Close();
+            await connection.ScriptStopAsync(Ct);
+            (options.AutoRelogin, options.SafeRelogin, options.ReloginTryDelay) = (autoRelogin, safeRelogin, delay);
+            await connection.LogoutAsync(Ct);
+        }
+    }
+
+    [AvaloniaFact]
     public async Task Closing_the_editor_saves_only_what_changed_so_a_value_an_agent_stored_while_it_was_open_survives()
     {
         (string path, _) = WriteFarm();
@@ -261,6 +359,18 @@ public sealed class ScriptOptionsTests(AppEngine app)
             }
             """);
         return (path, storage);
+    }
+
+    /// <summary>Stores a <c>mode</c> the Script's enum no longer has, as after an update that removed the choice.</summary>
+    /// <returns>The container that stored it, before it has read the choice back.</returns>
+    private IScriptOptionContainer StoreRemovedChoice(string path)
+    {
+        IScriptManager manager = app.Get<EngineScripts>().ScriptManager;
+        manager.LoadScriptConfig(manager.Compile(File.ReadAllText(Path.Combine(ClientFileSources.SkuaScriptsDIR, path))));
+        IScriptOptionContainer config = Assert.IsType<AvaloniaScriptOptionContainer>(manager.Config);
+        config.Save();
+        File.WriteAllLines(config.OptionsFile, File.ReadAllLines(config.OptionsFile).Select(l => l.StartsWith("Options:mode=", StringComparison.Ordinal) ? "Options:mode=Turbo" : l));
+        return config;
     }
 
     /// <summary>

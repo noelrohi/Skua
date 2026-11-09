@@ -7,6 +7,7 @@ using Skua.Core.Messaging;
 using Skua.Core.Utils;
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Windows.Forms;
 using System.Xml.Linq;
@@ -103,8 +104,34 @@ public class FlashUtil : IFlashUtil
 
     private void CallHandler(object sender, _IShockwaveFlashEvents_FlashCallEvent e)
     {
-        (string function, object[] args) = FlashXml.ReadInvoke(e.request);
-        FlashCall?.Invoke(function, args);
+        string function;
+        object[] args;
+        try
+        {
+            (function, args) = FlashXml.ReadInvoke(e.request);
+        }
+        catch (Exception ex)
+        {
+            _messenger.Send<FlashErrorMessage>(new(ex, "FlashCall"));
+            return;
+        }
+
+        FlashCallHandler? subscribers = FlashCall;
+        if (subscribers is null)
+            return;
+
+        // One throwing subscriber must not hide the call from the rest.
+        foreach (FlashCallHandler handler in subscribers.GetInvocationList().Cast<FlashCallHandler>())
+        {
+            try
+            {
+                handler(function, args);
+            }
+            catch (Exception ex)
+            {
+                _messenger.Send<FlashErrorMessage>(new(ex, function, args));
+            }
+        }
     }
 
     public string Call(string function, params object[] args)
@@ -131,7 +158,13 @@ public class FlashUtil : IFlashUtil
             _lazyManager.Value.ScriptCts?.Token.ThrowIfCancellationRequested();
         try
         {
-            string result = Flash?.CallFunction(FlashXml.Invoke(function, args))!;
+            string? result = Flash?.CallFunction(FlashXml.Invoke(function, args));
+            if (result is null)
+            {
+                // Flash has nothing to return yet, e.g. before the loader's callbacks exist.
+                _messenger.Send<FlashErrorMessage>(new(new InvalidOperationException("Flash returned no result."), function, args));
+                return default;
+            }
             return FlashXml.ReadReturn(result, type);
         }
         catch (Exception e)

@@ -164,6 +164,26 @@ internal sealed class ScriptRuns
         });
     }
 
+    /// <summary>Whether Core is starting the run <see cref="Begin"/> began, so <c>script_start</c>'s caller and the Engine's slots wait on it.</summary>
+    public bool StartingForControlSurface
+    {
+        get
+        {
+            lock (_lock)
+                return _run is { Started: false };
+        }
+    }
+
+    /// <summary>Whether Core's auto-relogin is restarting the run's Script, whose thread hasn't started again yet.</summary>
+    public bool RestartingAfterRelogin
+    {
+        get
+        {
+            lock (_lock)
+                return _manager.ScriptRunning && _run is { ReloginPending: true };
+        }
+    }
+
     /// <summary>
     /// Whether the Script thread running now started without anyone asking: Core's auto-relogin restarted it, or the Script itself (CoreBots,
     /// after a relogin) or an <c>eval</c> started it. Not for a start the Scripts panel or <c>script_start</c> asked for.
