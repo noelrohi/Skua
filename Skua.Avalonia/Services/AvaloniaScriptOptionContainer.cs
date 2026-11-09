@@ -32,7 +32,7 @@ public sealed class AvaloniaScriptOptionContainer : ScriptOptionContainer, IScri
     /// <summary>Shows the options editor and waits until it closes, except during an agent's start; closing it, however it closes, saves what changed, as on Windows.</summary>
     public new void Configure()
     {
-        if (_scripts.RunningUnasked)
+        if (_scripts.RunningUnasked || _scripts.RestartingAfterRelogin)
             return;
         // Core waits here at the start of a Script with a removed choice; an agent's start must not wait on a person, with the Engine busy.
         // The Script runs with the default, as with the editor Core opens once a Script has started.

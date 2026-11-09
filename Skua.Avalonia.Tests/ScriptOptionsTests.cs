@@ -190,6 +190,45 @@ public sealed class ScriptOptionsTests(AppEngine app)
     }
 
     [AvaloniaFact]
+    public async Task A_relogin_restarts_a_Script_with_a_removed_choice_without_waiting_for_another_editor()
+    {
+        await WaitAsync();
+        (string path, _) = WriteFarm(before: """
+            bot.Log("started");
+            while (!bot.ShouldExit)
+                Thread.Sleep(50);
+            return;
+            """);
+        StoreRemovedChoice(path);
+        IScriptOption options = app.Get<IScriptOption>();
+        (bool autoRelogin, bool safeRelogin, int delay) = (options.AutoRelogin, options.SafeRelogin, options.ReloginTryDelay);
+        using EditorWindows editors = new(app);
+        using EngineConnection connection = await ConnectAsync();
+        DialogWindow? editor = null;
+        try
+        {
+            (options.AutoRelogin, options.SafeRelogin, options.ReloginTryDelay) = (true, false, 200);
+            await connection.LoginAsync("Galanoth", cancellationToken: Ct);
+            ScriptStartResult start = await connection.ScriptStartAsync(path, cancellationToken: Ct);
+            // Nobody closes the agent's editor, so the removed choice is still in the file at the restart.
+            editor = await editors.NextAsync();
+            await connection.WaitForLogsAsync(LogKind.Script, 1, e => e.Run == start.Run && e.Text == "started");
+
+            await AppEngine.DoAsync("lose-connection Your connection to the server has been lost.");
+
+            await connection.WaitForLogsAsync(LogKind.Script, 2, e => e.Run == start.Run && e.Text == "started");
+            Assert.Equal(1, editors.Opened);
+        }
+        finally
+        {
+            editor?.Close();
+            await connection.ScriptStopAsync(Ct);
+            (options.AutoRelogin, options.SafeRelogin, options.ReloginTryDelay) = (autoRelogin, safeRelogin, delay);
+            await connection.LogoutAsync(Ct);
+        }
+    }
+
+    [AvaloniaFact]
     public async Task Closing_the_editor_saves_only_what_changed_so_a_value_an_agent_stored_while_it_was_open_survives()
     {
         (string path, _) = WriteFarm();
