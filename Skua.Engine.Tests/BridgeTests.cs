@@ -1,6 +1,9 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text;
+using CommunityToolkit.Mvvm.Messaging;
+using Skua.Core.Interfaces;
+using Skua.Core.Messaging;
 using Skua.MacOS.GameHost;
 
 namespace Skua.Engine.Tests;
@@ -145,6 +148,30 @@ public class BridgeTests
         Assert.Equal(["[Game] first", "[Game] second"], flash);
         Assert.True(gameHost.IsRunning);
         Assert.Empty(gameHost.Request('P', [], TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public async Task A_FlashCall_subscriber_that_throws_is_reported_and_the_rest_still_get_the_call()
+    {
+        await using EngineSandbox sandbox = new();
+        FakeGameHost fake = new FakeGameHost(sandbox).Send('E', Invoke("event"));
+        WeakReferenceMessenger messenger = new();
+        object recipient = new();
+        TaskCompletionSource<FlashErrorMessage> reported = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        messenger.Register<FlashErrorMessage>(recipient, (_, message) => reported.TrySetResult(message));
+        TaskCompletionSource<string> reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using BridgeFlashUtil flash = new(messenger, new Lazy<IScriptManager>(() => throw new NotSupportedException()), new GameHostLaunch(EngineSandbox.FakeGameHostExecutable, fake.Write()));
+        flash.FlashCall += (_, _) => throw new InvalidOperationException("a subscriber's bug");
+        flash.FlashCall += (function, _) => reached.TrySetResult(function);
+
+        flash.InitializeFlash();
+
+        CancellationToken token = TestContext.Current.CancellationToken;
+        Assert.Equal("event", await reached.Task.WaitAsync(TimeSpan.FromSeconds(10), token));
+        FlashErrorMessage error = await reported.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
+        Assert.Equal("event", error.Function);
+        Assert.Equal("a subscriber's bug", error.Exception.Message);
+        GC.KeepAlive(recipient);
     }
 
     [Fact]
