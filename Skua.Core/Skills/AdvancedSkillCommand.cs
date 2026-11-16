@@ -43,7 +43,12 @@ public class AdvancedSkillCommand
         if (skillIndex < 0 || skillIndex >= UseRules.Count)
             return true;
 
-        if (UseRules.Count == 0 || UseRules[skillIndex].First().Rule == SkillRule.None)
+        // "Skip if not available": a step whose skill cannot be used now is passed over at once, rather than waited
+        // for (Wait for Cooldown). The flag is the same on every rule of the step.
+        if (!canUse && UseRules[skillIndex].Any(r => r.ShouldSkip))
+            return null;
+
+        if (UseRules[skillIndex].First().Rule == SkillRule.None)
             return true;
 
         bool matchAny = skillIndex < MatchAny.Count && MatchAny[skillIndex];
@@ -56,8 +61,6 @@ public class AdvancedSkillCommand
 
             if (useRule.Rule == SkillRule.Wait)
             {
-                if (useRule.ShouldSkip && !canUse)
-                    return null;
                 Task.Delay((int)useRule.Value).Wait();
                 continue;
             }
@@ -171,7 +174,7 @@ public class AdvancedSkillCommand
             foreach (string member in members)
             {
                 PlayerInfo? targetPlayer = _flash.GetGameObject<PlayerInfo>($"world.uoTree[\"{member}\"]");
-                if (targetPlayer == null || string.IsNullOrEmpty(targetPlayer.Cell) || targetPlayer.Cell != player.Cell)
+                if (targetPlayer == null || string.IsNullOrEmpty(targetPlayer.Cell) || !targetPlayer.Cell.Equals(player.Cell, StringComparison.OrdinalIgnoreCase))
                     continue;
 
                 int targetHealth = targetPlayer.HP;

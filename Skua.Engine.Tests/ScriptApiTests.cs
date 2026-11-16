@@ -161,6 +161,34 @@ public class ScriptApiTests
     }
 
     [Fact]
+    public async Task Combat_SelectMonster_targets_by_id_name_and_monster_without_attacking()
+    {
+        await using EngineSandbox sandbox = new();
+        await using GameFixture session = await GameFixture.StartAsync(sandbox);
+        await session.Connection.LoginAsync("Galanoth", cancellationToken: Ct);
+        await session.Connection.JumpAsync("r2", cancellationToken: Ct);
+
+        EvalResult selected = await session.Connection.EvalAsync(
+            """
+            bool byId = Bot.Combat.SelectMonster(2);
+            int? idTarget = Bot.Player.Target?.MapID;
+            bool byName = Bot.Combat.SelectMonster("frogzard");
+            int? nameTarget = Bot.Player.Target?.MapID;
+            bool byMonster = Bot.Combat.SelectMonster(Bot.Monsters.CurrentMonsters.First(m => m.MapID == 2));
+            int? monsterTarget = Bot.Player.Target?.MapID;
+            bool missing = Bot.Combat.SelectMonster("Nulgath");
+            return $"{byId} {idTarget} {byName} {nameTarget} {byMonster} {monsterTarget} {missing}";
+            """,
+            cancellationToken: Ct);
+        string[] calls = await session.GameHost.CallsAsync();
+
+        Assert.Null(selected.Error);
+        Assert.Equal("True 2 True 1 True 2 False", selected.Value!.Value.GetString());
+        Assert.Equal(["target 2", "target frogzard", "target 2", "target Nulgath"], calls.Where(c => c.StartsWith("target ", StringComparison.Ordinal)));
+        Assert.DoesNotContain(calls, c => c.StartsWith("attack ", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Inventory_EquipItem_equips_the_item_and_logs_nothing()
     {
         await using EngineSandbox sandbox = new();

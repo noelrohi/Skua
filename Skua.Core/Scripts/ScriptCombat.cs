@@ -117,6 +117,17 @@ public partial class ScriptCombat : IScriptCombat
         return Flash.Call<bool>("targetMonsterID", id);
     }
 
+    // Upstream's name for a target without the counter-attack guard; the same skua.swf call as Target.
+    public bool SelectMonster(string name)
+    {
+        return Flash.Call<bool>("targetMonsterName", name);
+    }
+
+    public bool SelectMonster(int id)
+    {
+        return Flash.Call<bool>("targetMonsterID", id);
+    }
+
     public bool AttackPlayer(string name)
     {
         return Flash.Call<bool>("attackPlayer", name);
